@@ -1,0 +1,70 @@
+openapi: 3.0.3
+info:
+  title: mentoring-service
+  version: 0.1.0
+  description: >
+    Quản lý phiên mentoring (booking, session lifecycle). Sở hữu bởi Thắng.
+    Cũng chứa logic CV Parsing + Chatbot enrichment (gọi sang profile-service
+    để đọc/ghi profile qua endpoint /api/profile/mentee/{userId}/enrichment-chat).
+servers:
+  - url: http://localhost:8083
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200": { description: OK }
+
+  /api/mentoring/sessions:
+    post:
+      summary: Tạo booking session giữa mentee và mentor (sau khi đã match)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menteeId, mentorId, scheduledAt]
+              properties:
+                menteeId: { type: string, format: uuid }
+                mentorId: { type: string, format: uuid }
+                scheduledAt: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Session đã tạo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+
+  /api/mentoring/mentee/{menteeId}/cv-upload:
+    post:
+      summary: >
+        Upload CV mentee (PDF) — parse thành structured data, sau đó
+        khởi tạo chatbot enrichment dựa trên kết quả parse.
+      parameters:
+        - name: menteeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: CV đã parse, sẵn sàng bắt đầu chatbot enrichment
+
+components:
+  schemas:
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        menteeId: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time }
+        status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED] }

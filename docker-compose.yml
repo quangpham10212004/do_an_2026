@@ -1,0 +1,144 @@
+version: "3.9"
+
+services:
+  # ---------- Databases ----------
+  auth-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5433:5432"]
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+      - ./db/init/auth-service.sql:/docker-entrypoint-initdb.d/init.sql
+
+  profile-db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: profile_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5434:5432"]
+    volumes:
+      - profile-db-data:/var/lib/postgresql/data
+      - ./db/init/profile-service.sql:/docker-entrypoint-initdb.d/init.sql
+
+  mentoring-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: mentoring_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5435:5432"]
+    volumes:
+      - mentoring-db-data:/var/lib/postgresql/data
+      - ./db/init/mentoring-service.sql:/docker-entrypoint-initdb.d/init.sql
+
+  payment-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5436:5432"]
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+      - ./db/init/payment-service.sql:/docker-entrypoint-initdb.d/init.sql
+
+  learning-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: learning_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5437:5432"]
+    volumes:
+      - learning-db-data:/var/lib/postgresql/data
+      - ./db/init/learning-service.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  # ---------- Backend services ----------
+  auth-service:
+    build: ./auth-service
+    ports: ["8081:8081"]
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_NAME: auth_db
+    depends_on: [auth-db]
+
+  profile-service:
+    build: ./profile-service
+    ports: ["8082:8082"]
+    environment:
+      DB_HOST: profile-db
+      DB_PORT: 5432
+      DB_NAME: profile_db
+      MATCHING_SERVICE_URL: http://matching-service:8090
+    depends_on: [profile-db, matching-service]
+
+  mentoring-service:
+    build: ./mentoring-service
+    ports: ["8083:8083"]
+    environment:
+      DB_HOST: mentoring-db
+      DB_PORT: 5432
+      DB_NAME: mentoring_db
+    depends_on: [mentoring-db]
+
+  payment-service:
+    build: ./payment-service
+    ports: ["8084:8084"]
+    environment:
+      DB_HOST: payment-db
+      DB_PORT: 5432
+      DB_NAME: payment_db
+    depends_on: [payment-db]
+
+  learning-service:
+    build: ./learning-service
+    ports: ["8085:8085"]
+    environment:
+      DB_HOST: learning-db
+      DB_PORT: 5432
+      DB_NAME: learning_db
+    depends_on: [learning-db]
+
+  matching-service:
+    build: ./matching-service
+    ports: ["8090:8090"]
+    environment:
+      # Đọc trực tiếp (read-only) DB của profile-service — ngoại lệ đã
+      # được duyệt, xem CONVENTIONS.md mục 6.
+      PROFILE_DB_URL: postgresql://postgres:postgres@profile-db:5432/profile_db
+    depends_on: [profile-db]
+
+  # ---------- Frontend ----------
+  frontend:
+    build: ./frontend
+    ports: ["3000:3000"]
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      LEARNING_SERVICE_URL: http://learning-service:8085
+      MATCHING_SERVICE_URL: http://matching-service:8090
+      MENTORING_SERVICE_URL: http://mentoring-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+    depends_on:
+      - auth-service
+      - profile-service
+      - learning-service
+      - matching-service
+      - mentoring-service
+      - payment-service
+
+volumes:
+  auth-db-data:
+  profile-db-data:
+  mentoring-db-data:
+  payment-db-data:
+  learning-db-data:

@@ -1,0 +1,26 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: profile-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:profile_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+matching:
+  service:
+    url: ${MATCHING_SERVICE_URL:http://matching-service:8090}

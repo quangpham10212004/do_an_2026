@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: matching-service
+  version: 0.1.0
+  description: >
+    AI Matching pipeline: embedding + pgvector retrieval + hard filter +
+    re-rank. Sở hữu bởi Thảo. Đọc trực tiếp (READ-ONLY) bảng embedding
+    trong DB của profile-service — ngoại lệ đã được duyệt, xem
+    CONVENTIONS.md mục 6.
+servers:
+  - url: http://localhost:8090
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+
+  /internal/embed:
+    post:
+      summary: >
+        Nội bộ — sinh embedding vector từ 1 đoạn text. Được profile-service
+        gọi mỗi khi profile được tạo/cập nhật. KHÔNG expose public.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        "200":
+          description: Vector embedding
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embedding:
+                    type: array
+                    items: { type: number, format: float }
+                    minItems: 384
+                    maxItems: 384
+
+  /api/matching/mentors:
+    get:
+      summary: >
+        Tìm danh sách mentor phù hợp cho 1 mentee, đã qua pipeline
+        top-K retrieval -> hard filter -> re-rank. Đây là "seam" — frontend
+        gọi endpoint này mà không cần biết bên dưới là AI-based hay
+        filter-based thường (giai đoạn đầu có thể fallback filter cứng).
+      parameters:
+        - name: menteeId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        "200":
+          description: Danh sách mentor đã xếp hạng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  menteeId: { type: string, format: uuid }
+                  mentors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RankedMentor"
+        "404":
+          description: Không tìm thấy mentee hoặc mentee chưa có embedding
+
+components:
+  schemas:
+    RankedMentor:
+      type: object
+      properties:
+        mentorId: { type: string, format: uuid }
+        displayName: { type: string }
+        domain: { type: string }
+        similarityScore:
+          type: number
+          format: float
+          description: "1 - cosine distance, càng gần 1 càng giống"
+        finalScore:
+          type: number
+          format: float
+          description: "Điểm sau re-rank: 0.7*similarity + 0.2*rating + 0.1*experience"
+        rating: { type: number, format: float }
+        yearsExperience: { type: integer }

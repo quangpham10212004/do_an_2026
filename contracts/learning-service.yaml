@@ -1,0 +1,59 @@
+openapi: 3.0.3
+info:
+  title: learning-service
+  version: 0.1.0
+  description: Learning Hub — khoá học, tài liệu, tiến độ học. Sở hữu bởi Quang.
+servers:
+  - url: http://localhost:8085
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200": { description: OK }
+
+  /api/learning/courses:
+    get:
+      summary: Danh sách khoá học
+      responses:
+        "200":
+          description: Danh sách khoá học
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Course" }
+
+  /api/learning/courses/{courseId}/progress/{userId}:
+    get:
+      summary: Tiến độ học của 1 user trong 1 khoá
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Tiến độ học
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Progress" }
+
+components:
+  schemas:
+    Course:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        domain: { type: string }
+    Progress:
+      type: object
+      properties:
+        courseId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        percentComplete: { type: number, format: float }

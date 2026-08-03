@@ -1,0 +1,43 @@
+openapi: 3.0.3
+info:
+  title: payment-service
+  version: 0.1.0
+  description: Thanh toán phiên mentoring + referral. Sở hữu bởi Thắng.
+servers:
+  - url: http://localhost:8084
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200": { description: OK }
+
+  /api/payment/charge:
+    post:
+      summary: Tạo giao dịch thanh toán cho 1 session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, amount]
+              properties:
+                sessionId: { type: string, format: uuid }
+                amount: { type: number, format: float }
+      responses:
+        "200":
+          description: Giao dịch thành công
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+
+components:
+  schemas:
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        amount: { type: number, format: float }
+        status: { type: string, enum: [SUCCESS, FAILED, PENDING] }
