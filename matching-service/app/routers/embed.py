@@ -1,16 +1,18 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from starlette.concurrency import run_in_threadpool
+
 from app.schemas.matching import EmbedRequest, EmbedResponse
+from app.security import require_internal
 from app.services.embedding_service import embed_text
 
 router = APIRouter()
 
 
-@router.post("/internal/embed", response_model=EmbedResponse)
-def embed(req: EmbedRequest) -> EmbedResponse:
+@router.post("/internal/embed", response_model=EmbedResponse, dependencies=[Depends(require_internal)])
+async def embed(req: EmbedRequest) -> EmbedResponse:
     """
     Nội bộ — được profile-service gọi mỗi khi profile được tạo/cập nhật.
-    KHÔNG expose ra ngoài (nên chặn ở API gateway/network policy khi deploy
-    thật — trong đồ án, docker-compose network nội bộ là đủ).
+    Yêu cầu header X-Internal-Token. Model chạy trong threadpool để không chặn event loop.
     """
-    vector = embed_text(req.text)
+    vector = await run_in_threadpool(embed_text, req.text)
     return EmbedResponse(embedding=vector)

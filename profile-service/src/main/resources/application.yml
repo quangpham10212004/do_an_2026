@@ -5,15 +5,13 @@ spring:
   application:
     name: profile-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:profile_db}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/${DB_NAME:profile_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
   jpa:
+    open-in-view: false
     hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate:
-        format_sql: true
+      ddl-auto: none
 
 management:
   endpoints:
@@ -21,6 +19,13 @@ management:
       exposure:
         include: health,info
 
-matching:
-  service:
-    url: ${MATCHING_SERVICE_URL:http://matching-service:8090}
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
+    internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
+    public-paths: ""
+  services:
+    matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}
+  embedding:
+    # Chu kỳ job retry sinh embedding cho profile bị lỗi/chưa có embedding
+    retry-interval: ${EMBEDDING_RETRY_INTERVAL:PT1M}

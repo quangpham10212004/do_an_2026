@@ -5,18 +5,30 @@ spring:
   application:
     name: payment-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payment_db}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5436}/${DB_NAME:payment_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
   jpa:
+    open-in-view: false
     hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate:
-        format_sql: true
+      ddl-auto: none
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
+    internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
+    public-paths: ""
+  services:
+    mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  referral:
+    # FR-6.6 — quy tắc cộng điểm & chống gian lận cơ bản
+    reward-points: 100
+    min-qualifying-amount: 50000
+    max-qualified-per-referrer-per-day: 5

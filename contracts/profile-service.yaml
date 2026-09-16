@@ -1,92 +1,225 @@
 openapi: 3.0.3
 info:
   title: profile-service
-  version: 0.1.0
+  version: 1.0.0
   description: >
-    Quản lý career profile của mentor/mentee, bao gồm việc sinh và lưu
-    embedding vector (gọi sang matching-service). Sở hữu bởi Thảo.
+    Career profile của mentor/mentee, lịch rảnh, trạng thái xác thực mentor và sinh/lưu
+    embedding (gọi matching-service POST /internal/embed). Sở hữu bởi Thảo.
+    Endpoint /internal/* yêu cầu header X-Internal-Token; còn lại yêu cầu JWT.
 servers:
   - url: http://localhost:8082
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    AvailabilitySlot:
+      type: object
+      required: [dayOfWeek, startTime, endTime]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        dayOfWeek: { type: integer, minimum: 1, maximum: 7, description: "ISO-8601: 1 = Thứ Hai … 7 = Chủ Nhật" }
+        startTime: { type: string, example: "19:00" }
+        endTime: { type: string, example: "21:00" }
+    MentorProfileInput:
+      type: object
+      required: [displayName, skills, domain, bio]
+      properties:
+        displayName: { type: string, maxLength: 100 }
+        skills: { type: array, minItems: 1, maxItems: 30, items: { type: string } }
+        domain: { type: string, description: "backend | frontend | fullstack | devops | data | mobile …" }
+        bio: { type: string, maxLength: 3000 }
+        yearsExperience: { type: integer, minimum: 0, maximum: 60 }
+        cvFileUrl: { type: string, nullable: true }
+        portfolioLinks: { type: array, items: { type: string } }
+        hourlyRate: { type: number, description: "VNĐ/giờ, 0 = miễn phí" }
+        capacity: { type: integer, minimum: 1, maximum: 50, description: Số mentee tối đa cùng lúc }
+        isAvailable: { type: boolean }
+    MentorProfile:
+      allOf:
+        - $ref: "#/components/schemas/MentorProfileInput"
+        - type: object
+          properties:
+            userId: { type: string, format: uuid }
+            activeMenteeCount: { type: integer, description: Đồng bộ từ mentoring-service }
+            rating: { type: number, format: float }
+            ratingCount: { type: integer }
+            verificationStatus: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
+            embeddingUpdatedAt: { type: string, format: date-time, nullable: true }
+            embeddingStatus: { type: string, enum: [UPDATED, UNCHANGED, PENDING] }
+            availability: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
+    MenteeProfileInput:
+      type: object
+      required: [displayName, goal, domain]
+      properties:
+        displayName: { type: string }
+        goal: { type: string, maxLength: 3000 }
+        domain: { type: string }
+        currentLevel: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+        skills: { type: array, items: { type: string } }
+        portfolioLinks: { type: array, items: { type: string } }
+        cvFileUrl: { type: string, nullable: true }
+    MenteeProfile:
+      allOf:
+        - $ref: "#/components/schemas/MenteeProfileInput"
+        - type: object
+          properties:
+            userId: { type: string, format: uuid }
+            embeddingUpdatedAt: { type: string, format: date-time, nullable: true }
+            embeddingStatus: { type: string, enum: [UPDATED, UNCHANGED, PENDING] }
+    MentorCard:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        domain: { type: string }
+        skills: { type: array, items: { type: string } }
+        yearsExperience: { type: integer }
+        rating: { type: number }
+        ratingCount: { type: integer }
+        hourlyRate: { type: number }
+        isAvailable: { type: boolean }
+        hasCapacity: { type: boolean }
+        verificationStatus: { type: string }
+    ProfileSummary:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        role: { type: string, enum: [MENTOR, MENTEE] }
+        domain: { type: string }
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
+      security: []
       summary: Health check
       responses:
+        "200": { description: OK }
+
+  /api/profile/mentors:
+    get:
+      summary: Duyệt danh sách mentor đã xác thực (không dùng AI) — admin có thể xem cả mentor chưa duyệt
+      parameters:
+        - { name: domain, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: includeUnverified, in: query, schema: { type: boolean, default: false } }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 12 } }
+      responses:
         "200":
-          description: OK
+          description: Trang kết quả
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/MentorCard" } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalItems: { type: integer }
+                  totalPages: { type: integer }
 
   /api/profile/mentor/{userId}:
     get:
-      summary: Lấy career profile của 1 mentor
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+      summary: Lấy hồ sơ mentor (kèm lịch rảnh)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:
         "200":
-          description: Profile mentor
+          description: OK
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/MentorProfile"
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "404": { description: PROFILE_NOT_FOUND }
     put:
       summary: >
-        Tạo/cập nhật profile mentor. Sau khi lưu, service tự động gọi
-        matching-service (POST /internal/embed) để sinh embedding mới
-        và lưu vào cột embedding — client không cần biết bước này.
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+        FR-2.4/FR-2.5 Tạo/cập nhật hồ sơ mentor (chủ hồ sơ hoặc ADMIN). Sau khi lưu, tự gọi
+        matching-service sinh embedding; nếu text chuẩn hoá không đổi thì bỏ qua (NFR-7),
+        nếu matching-service lỗi thì embeddingStatus = PENDING và job nền tự thử lại.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MentorProfileInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
+
+  /api/profile/mentor/{userId}/availability:
+    get:
+      summary: Lịch rảnh hằng tuần của mentor
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
+    put:
+      summary: FR-2.4 Thay toàn bộ lịch rảnh (các khung trong cùng ngày không được chồng lấn)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MentorProfileInput"
+              type: object
+              required: [slots]
+              properties:
+                slots: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
       responses:
         "200":
-          description: Cập nhật thành công
+          description: Lịch rảnh sau khi lưu
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/MentorProfile"
+              schema: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
+        "400": { description: INVALID_SLOT / OVERLAPPING_SLOTS }
 
   /api/profile/mentee/{userId}:
     get:
-      summary: Lấy career profile của 1 mentee
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+      summary: Lấy hồ sơ mentee (mentee chỉ xem được hồ sơ của chính mình; mentor/admin xem được)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:
         "200":
-          description: Profile mentee
+          description: OK
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/MenteeProfile"
+              schema: { $ref: "#/components/schemas/MenteeProfile" }
+        "404": { description: PROFILE_NOT_FOUND }
     put:
-      summary: Tạo/cập nhật profile mentee (kích hoạt sinh embedding tương tự mentor)
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+      summary: FR-2.1 → FR-2.3, FR-2.5 Tạo/cập nhật hồ sơ mentee (kích hoạt sinh embedding)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/MenteeProfileInput"
+            schema: { $ref: "#/components/schemas/MenteeProfileInput" }
       responses:
         "200":
-          description: Cập nhật thành công
+          description: OK
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/MenteeProfile"
+              schema: { $ref: "#/components/schemas/MenteeProfile" }
 
   /api/profile/mentee/{userId}/enrichment-chat:
     post:
       summary: >
-        [Sở hữu bởi Thắng, logic đặt ở mentoring-service, gọi API này để
-        đọc/ghi profile] Nhận kết quả tổng hợp từ bước "chatbot enrichment"
-        (đã hỏi thêm mentee dựa trên CV) và merge vào goal/description của
-        mentee profile, sau đó kích hoạt sinh lại embedding.
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+        FR-8.5 Nhận goal đã được chatbot enrichment tổng hợp (mentoring-service gọi bằng
+        X-Internal-Token, hoặc chính mentee), ghi đè goal, gộp kỹ năng trích từ CV và sinh lại embedding.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      security: [{ bearerAuth: [] }, { internalToken: [] }]
       requestBody:
         required: true
         content:
@@ -95,80 +228,97 @@ paths:
               type: object
               required: [enrichedGoalText]
               properties:
-                enrichedGoalText:
-                  type: string
-                  description: Đoạn text đã được chatbot tổng hợp từ hội thoại
+                enrichedGoalText: { type: string, maxLength: 3000 }
+                cvSkills: { type: array, items: { type: string } }
+                cvFileUrl: { type: string }
       responses:
         "200":
-          description: Đã cập nhật goal và re-embed
+          description: Hồ sơ sau khi cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenteeProfile" }
+
+  /api/profile/admin/embeddings/rebuild:
+    post:
+      summary: (ADMIN) Sinh embedding còn thiếu (force=false) hoặc sinh lại toàn bộ (force=true)
+      parameters:
+        - { name: force, in: query, schema: { type: boolean, default: false } }
+      responses:
+        "200": { description: "{ mentors, mentees, pending }" }
 
   /internal/profile-summary/{userId}:
     get:
-      summary: >
-        Nội bộ — trả về bản tóm tắt profile (KHÔNG bao gồm embedding thô)
-        cho các service khác cần hiển thị thông tin cơ bản (ví dụ
-        mentoring-service khi tạo session).
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+      summary: Nội bộ — tóm tắt hồ sơ (không bao gồm embedding)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:
         "200":
-          description: Tóm tắt profile
+          description: OK
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ProfileSummary"
+              schema: { $ref: "#/components/schemas/ProfileSummary" }
+        "404": { description: PROFILE_NOT_FOUND }
 
-components:
-  parameters:
-    UserId:
-      name: userId
-      in: path
-      required: true
-      schema: { type: string, format: uuid }
+  /internal/mentor/{userId}:
+    get:
+      summary: Nội bộ — hồ sơ mentor đầy đủ (giá, sức chứa, lịch rảnh) cho mentoring-service
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
 
-  schemas:
-    MentorProfileInput:
-      type: object
-      required: [skills, domain, bio]
-      properties:
-        skills: { type: array, items: { type: string } }
-        domain: { type: string }
-        bio: { type: string }
-        yearsExperience: { type: integer }
-        cvFileUrl: { type: string, nullable: true }
+  /internal/mentor/{userId}/verification:
+    put:
+      summary: Nội bộ — cập nhật trạng thái xác thực (mentoring-service gọi sau AI Interview / admin review)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
+      responses:
+        "200": { description: Hồ sơ mentor sau cập nhật }
 
-    MentorProfile:
-      allOf:
-        - $ref: "#/components/schemas/MentorProfileInput"
-        - type: object
-          properties:
-            userId: { type: string, format: uuid }
-            capacity: { type: integer, description: "Số slot mentee còn nhận" }
-            isAvailable: { type: boolean }
-            rating: { type: number, format: float }
-            embeddingUpdatedAt: { type: string, format: date-time }
+  /internal/mentor/{userId}/rating:
+    put:
+      summary: Nội bộ — đồng bộ điểm đánh giá trung bình
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating, ratingCount]
+              properties:
+                rating: { type: number, minimum: 0, maximum: 5 }
+                ratingCount: { type: integer, minimum: 0 }
+      responses:
+        "204": { description: OK }
 
-    MenteeProfileInput:
-      type: object
-      required: [goal, domain]
-      properties:
-        goal: { type: string }
-        domain: { type: string }
-        currentLevel: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
-        cvFileUrl: { type: string, nullable: true }
-
-    MenteeProfile:
-      allOf:
-        - $ref: "#/components/schemas/MenteeProfileInput"
-        - type: object
-          properties:
-            userId: { type: string, format: uuid }
-            embeddingUpdatedAt: { type: string, format: date-time }
-
-    ProfileSummary:
-      type: object
-      properties:
-        userId: { type: string, format: uuid }
-        displayName: { type: string }
-        role: { type: string, enum: [MENTOR, MENTEE] }
-        domain: { type: string }
+  /internal/mentor/{userId}/active-mentees:
+    put:
+      summary: Nội bộ — đồng bộ số mentee đang hướng dẫn (dùng cho lọc sức chứa)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [activeMenteeCount]
+              properties:
+                activeMenteeCount: { type: integer, minimum: 0 }
+      responses:
+        "204": { description: OK }

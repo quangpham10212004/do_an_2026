@@ -1,0 +1,20 @@
+# Build output
+target/
+*.class
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Env & runtime data
+.env
+uploads/

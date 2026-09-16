@@ -1,23 +1,234 @@
 openapi: 3.0.3
 info:
   title: mentoring-service
-  version: 0.1.0
+  version: 1.0.0
   description: >
-    Quản lý phiên mentoring (booking, session lifecycle). Sở hữu bởi Thắng.
-    Cũng chứa logic CV Parsing + Chatbot enrichment (gọi sang profile-service
-    để đọc/ghi profile qua endpoint /api/profile/mentee/{userId}/enrichment-chat).
+    Mentoring workflow (yêu cầu, đặt lịch, đánh giá, thông báo) và luồng AI Interview — sở hữu bởi Thắng.
+    Luồng CV Parsing + Chatbot enrichment — do Quang phụ trách. Service này lưu trạng thái (buổi phỏng vấn,
+    hội thoại, file CV); phần tính toán AI được giao cho ai-service (contracts/ai-service.yaml, DeepSeek hoặc
+    rule-based). Sau khi chatbot hoàn tất, gọi profile-service POST /api/profile/mentee/{userId}/enrichment-chat.
+    Khi ai-service không khả dụng, các endpoint AI trả 502 AI_SERVICE_UNAVAILABLE.
 servers:
   - url: http://localhost:8083
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    Request:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        menteeId: { type: string, format: uuid }
+        menteeName: { type: string }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string }
+        message: { type: string, nullable: true }
+        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED] }
+        responseNote: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        respondedAt: { type: string, format: date-time, nullable: true }
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        menteeId: { type: string, format: uuid }
+        menteeName: { type: string }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string }
+        scheduledAt: { type: string, format: date-time }
+        durationMinutes: { type: integer }
+        price: { type: number, description: "hourlyRate × duration/60, làm tròn 1.000đ" }
+        topic: { type: string, nullable: true }
+        status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED], description: "PENDING = chờ thanh toán" }
+        reviewed: { type: boolean }
+        reviewRating: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time }
+    AvailableSlots:
+      type: object
+      properties:
+        timezone: { type: string, example: Asia/Ho_Chi_Minh }
+        durationMinutes: { type: integer }
+        price: { type: number, description: "Giá phiên với thời lượng này" }
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              startAt: { type: string, format: date-time }
+              endAt: { type: string, format: date-time }
+    InterviewTurn:
+      type: object
+      properties:
+        turnNo: { type: integer }
+        topic: { type: string }
+        strategy: { type: string, enum: [OPENING, DEEPEN, PIVOT] }
+        question: { type: string }
+        answer: { type: string, nullable: true }
+        score: { type: number, nullable: true, description: "0-10; null với mentor khi buổi phỏng vấn chưa kết thúc" }
+        feedback: { type: string, nullable: true }
+    Interview:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string, nullable: true }
+        domain: { type: string }
+        skills: { type: array, items: { type: string } }
+        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED] }
+        engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
+        maxTurns: { type: integer }
+        currentTurn: { type: integer }
+        currentQuestion: { $ref: "#/components/schemas/InterviewTurn" }
+        turns: { type: array, items: { $ref: "#/components/schemas/InterviewTurn" } }
+        overallScore: { type: number, nullable: true, description: 0-100 }
+        summary: { type: string, nullable: true }
+        strengths: { type: array, items: { type: string } }
+        weaknesses: { type: array, items: { type: string } }
+        recommendation: { type: string, nullable: true, enum: [APPROVE, REJECT, NEEDS_REVIEW] }
+        reviewNote: { type: string, nullable: true }
+    ParsedCv:
+      type: object
+      properties:
+        currentRole: { type: string, nullable: true }
+        skills: { type: array, items: { type: string } }
+        yearsExperience: { type: integer, nullable: true }
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              description: { type: string }
+              technologies: { type: array, items: { type: string } }
+        education: { type: array, items: { type: string } }
+        summary: { type: string }
+    Cv:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fileName: { type: string }
+        engine: { type: string }
+        parsed: { $ref: "#/components/schemas/ParsedCv" }
+        createdAt: { type: string, format: date-time }
+    Conversation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        menteeId: { type: string, format: uuid }
+        cvId: { type: string, format: uuid }
+        status: { type: string, enum: [IN_PROGRESS, COMPLETED] }
+        engine: { type: string }
+        maxTurns: { type: integer }
+        currentTurn: { type: integer }
+        currentQuestion: { $ref: "#/components/schemas/EnrichmentMessage" }
+        messages: { type: array, items: { $ref: "#/components/schemas/EnrichmentMessage" } }
+        enrichedGoal: { type: string, nullable: true }
+        profileSynced: { type: boolean }
+    EnrichmentMessage:
+      type: object
+      properties:
+        turnNo: { type: integer }
+        slot: { type: string, enum: [TARGET_ROLE, FOCUS_AREAS, PROJECT_EXPERIENCE, CURRENT_GAPS, TIMELINE, MENTORING_PREFERENCE, FREE_FORM] }
+        slotLabel: { type: string }
+        question: { type: string }
+        answer: { type: string, nullable: true }
+    AnswerInput:
+      type: object
+      required: [answer]
+      properties:
+        answer: { type: string, maxLength: 5000 }
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
+      security: []
       summary: Health check
       responses:
         "200": { description: OK }
 
-  /api/mentoring/sessions:
+  # ---------------- Mentoring requests ----------------
+  /api/mentoring/requests:
+    get:
+      summary: Yêu cầu của tôi (mentee = đã gửi, mentor = đã nhận)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Request" } }
     post:
-      summary: Tạo booking session giữa mentee và mentor (sau khi đã match)
+      summary: FR-5.2 (MENTEE) Gửi yêu cầu tới mentor đã được xác thực
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mentorId]
+              properties:
+                mentorId: { type: string, format: uuid }
+                message: { type: string, maxLength: 1000 }
+      responses:
+        "201":
+          description: Đã gửi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "400": { description: MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE }
+        "409": { description: REQUEST_ALREADY_EXISTS }
+  /api/mentoring/requests/{id}/respond:
+    post:
+      summary: FR-5.3 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [ACCEPT, REJECT] }
+                note: { type: string }
+      responses:
+        "200": { description: Request }
+        "409": { description: REQUEST_NOT_PENDING / CAPACITY_FULL }
+  /api/mentoring/requests/{id}/cancel:
+    post:
+      summary: (MENTEE) Huỷ yêu cầu đang chờ
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Request }
+  /api/mentoring/requests/{id}/complete:
+    post:
+      summary: Kết thúc quan hệ mentoring (giải phóng 1 slot sức chứa)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Request }
+
+  # ---------------- Sessions ----------------
+  /api/mentoring/sessions:
+    get:
+      summary: FR-5.7 Lịch sử phiên của tôi
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Session" } }
+    post:
+      summary: >
+        FR-5.4 (MENTEE) Đặt lịch — yêu cầu đã ACCEPTED, thời điểm nằm trọn trong lịch rảnh
+        của mentor (giờ Asia/Ho_Chi_Minh), trước ≥ 1 giờ và trong 60 ngày, không trùng
+        phiên PENDING/CONFIRMED của mentor hoặc mentee. Phiên có phí → PENDING (chờ thanh
+        toán, tự huỷ sau 30 phút); phiên miễn phí → CONFIRMED.
       requestBody:
         required: true
         content:
@@ -29,23 +240,180 @@ paths:
                 menteeId: { type: string, format: uuid }
                 mentorId: { type: string, format: uuid }
                 scheduledAt: { type: string, format: date-time }
+                durationMinutes: { type: integer, minimum: 30, maximum: 180, default: 60 }
+                topic: { type: string, maxLength: 300 }
       responses:
         "201":
           description: Session đã tạo
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
+        "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR }
+        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
+  /api/mentoring/sessions/{id}:
+    get:
+      summary: Chi tiết phiên (người tham gia / admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Session }
+  /api/mentoring/sessions/{id}/cancel:
+    post:
+      summary: Huỷ phiên chưa bắt đầu; phiên đã thanh toán được hoàn tiền (gọi payment-service)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200": { description: Session }
+  /api/mentoring/sessions/{id}/complete:
+    post:
+      summary: (MENTOR) Đánh dấu phiên CONFIRMED đã diễn ra
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Session }
+  /api/mentoring/sessions/{id}/review:
+    post:
+      summary: FR-5.6 (MENTEE) Đánh giá sau phiên COMPLETED — rating trung bình đồng bộ sang profile-service
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 2000 }
+      responses:
+        "201": { description: Review }
+        "409": { description: SESSION_NOT_COMPLETED / ALREADY_REVIEWED }
+  /api/mentoring/mentors/{id}/reviews:
+    get:
+      summary: Các đánh giá của 1 mentor
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "Review[]" }
+  /api/mentoring/mentors/{id}/available-slots:
+    get:
+      summary: >
+        FR-5.4 Các thời điểm có thể đặt lịch với mentor — bước 30 phút, nằm trọn trong lịch rảnh
+        hằng tuần, không trùng phiên PENDING/CONFIRMED của mentor hoặc của người gọi, tuân thủ
+        min-lead-time và max-advance. Chỉ trả thời điểm, không lộ thông tin phiên của người khác.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: durationMinutes, in: query, schema: { type: integer, minimum: 30, maximum: 180, default: 60 } }
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 28, default: 14 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AvailableSlots" }
+        "404": { description: MENTOR_NOT_FOUND }
 
-  /api/mentoring/mentee/{menteeId}/cv-upload:
+  # ---------------- Notifications ----------------
+  /api/mentoring/notifications:
+    get:
+      summary: FR-5.5 Thông báo của tôi (kèm số chưa đọc)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 30 } }
+      responses:
+        "200": { description: "{ unreadCount, items: [{ id, type, title, message, link, read, createdAt }] }" }
+  /api/mentoring/notifications/{id}/read:
+    post:
+      summary: Đánh dấu đã đọc
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/mentoring/notifications/read-all:
+    post:
+      summary: Đánh dấu tất cả đã đọc
+      responses:
+        "204": { description: OK }
+
+  # ---------------- AI Interview (FR-7.x) ----------------
+  /api/mentoring/interviews:
+    post:
+      summary: FR-7.1 (MENTOR) Bắt đầu phỏng vấn (hoặc trả về buổi đang dở). Cần có hồ sơ mentor.
+      responses:
+        "200":
+          description: Buổi phỏng vấn với câu hỏi đầu tiên
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Interview" }
+        "400": { description: PROFILE_REQUIRED }
+        "409": { description: INTERVIEW_PENDING_REVIEW / ALREADY_APPROVED }
+  /api/mentoring/interviews/me:
+    get:
+      summary: (MENTOR) Buổi phỏng vấn gần nhất
+      responses:
+        "200": { description: Interview }
+        "204": { description: Chưa phỏng vấn }
+  /api/mentoring/interviews/{id}:
+    get:
+      summary: Chi tiết buổi phỏng vấn (mentor chủ buổi / admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Interview }
+  /api/mentoring/interviews/{id}/answers:
     post:
       summary: >
-        Upload CV mentee (PDF) — parse thành structured data, sau đó
-        khởi tạo chatbot enrichment dựa trên kết quả parse.
+        FR-7.2 → FR-7.4 (MENTOR) Trả lời câu hỏi hiện tại. Engine chấm điểm, sinh câu kế tiếp
+        (DEEPEN/PIVOT); sau lượt cuối (mặc định 5) tổng hợp đánh giá → PENDING_REVIEW, thông báo admin.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerInput" }
+      responses:
+        "200":
+          description: Trạng thái buổi phỏng vấn sau lượt trả lời
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Interview" }
+        "409": { description: INTERVIEW_NOT_IN_PROGRESS }
+  /api/mentoring/admin/interviews:
+    get:
+      summary: (ADMIN) Danh sách buổi phỏng vấn theo trạng thái
       parameters:
-        - name: menteeId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED] } }
+      responses:
+        "200": { description: "Interview[]" }
+  /api/mentoring/admin/interviews/{id}/review:
+    post:
+      summary: FR-7.5 (ADMIN) Quyết định cuối cùng — APPROVE kích hoạt mentor, REJECT cho phép phỏng vấn lại
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                note: { type: string }
+      responses:
+        "200": { description: Interview }
+  /api/mentoring/admin/stats:
+    get:
+      summary: (ADMIN) Thống kê phiên & phỏng vấn
+      responses:
+        "200": { description: OK }
+
+  # ---------------- CV + Chatbot enrichment (FR-8.x) ----------------
+  /api/mentoring/mentee/{id}/cv-upload:
+    post:
+      summary: >
+        FR-8.1 → FR-8.3 (MENTEE) Upload CV PDF (≤ 5MB, ≤ 10 trang, có lớp text) → parse có cấu trúc →
+        mở hội thoại enrichment với câu hỏi đầu tiên dựa trên CV. Yêu cầu đã có hồ sơ mentee.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
         content:
@@ -56,15 +424,97 @@ paths:
                 file: { type: string, format: binary }
       responses:
         "200":
-          description: CV đã parse, sẵn sàng bắt đầu chatbot enrichment
+          description: CV đã parse và hội thoại đã bắt đầu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cv: { $ref: "#/components/schemas/Cv" }
+                  conversation: { $ref: "#/components/schemas/Conversation" }
+        "400": { description: INVALID_FILE_TYPE / CV_NO_TEXT / CV_TOO_LONG / PROFILE_REQUIRED }
+  /api/mentoring/mentee/{id}/enrichment/latest:
+    get:
+      summary: CV + hội thoại gần nhất của mentee
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "{ cv, conversation }" }
+        "204": { description: Chưa có }
+  /api/mentoring/enrichment/conversations/{id}:
+    get:
+      summary: Chi tiết hội thoại
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+  /api/mentoring/enrichment/conversations/{id}/answers:
+    post:
+      summary: >
+        FR-8.3 → FR-8.5 (MENTEE) Trả lời câu hỏi; sau lượt cuối (mặc định 4) tổng hợp enrichedGoal và
+        gửi sang profile-service (cập nhật goal, gộp kỹ năng CV, sinh lại embedding).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+  /api/mentoring/cv/parse:
+    post:
+      summary: Parse CV không kèm chatbot (mentor dùng để điền nhanh hồ sơ)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cv" }
+  /api/mentoring/cv/{id}/file:
+    get:
+      summary: Tải file CV gốc (chủ CV, mentor, admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: PDF
+          content:
+            application/pdf: {}
 
-components:
-  schemas:
-    Session:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        menteeId: { type: string, format: uuid }
-        mentorId: { type: string, format: uuid }
-        scheduledAt: { type: string, format: date-time }
-        status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED] }
+  # ---------------- Internal (payment-service) ----------------
+  /internal/sessions/{id}:
+    get:
+      summary: Nội bộ — thông tin phiên để payment-service tính tiền
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "{ id, menteeId, mentorId, scheduledAt, durationMinutes, price, status }" }
+  /internal/sessions/{id}/payment-succeeded:
+    post:
+      summary: Nội bộ — FR-6.2 xác nhận phiên sau thanh toán thành công (phiên đã huỷ → tự hoàn tiền)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionId]
+              properties:
+                transactionId: { type: string, format: uuid }
+      responses:
+        "200": { description: Phiên sau cập nhật }

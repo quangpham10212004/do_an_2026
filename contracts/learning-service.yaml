@@ -1,59 +1,274 @@
 openapi: 3.0.3
 info:
   title: learning-service
-  version: 0.1.0
-  description: Learning Hub — khoá học, tài liệu, tiến độ học. Sở hữu bởi Quang.
+  version: 1.0.0
+  description: Learning Hub — khoá học, tài liệu, roadmap, tiến độ học. Sở hữu bởi Quang. Mọi endpoint yêu cầu JWT.
 servers:
   - url: http://localhost:8085
-paths:
-  /health:
-    get:
-      summary: Health check
-      responses:
-        "200": { description: OK }
-
-  /api/learning/courses:
-    get:
-      summary: Danh sách khoá học
-      responses:
-        "200":
-          description: Danh sách khoá học
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Course" }
-
-  /api/learning/courses/{courseId}/progress/{userId}:
-    get:
-      summary: Tiến độ học của 1 user trong 1 khoá
-      parameters:
-        - name: courseId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-        - name: userId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Tiến độ học
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Progress" }
-
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
   schemas:
-    Course:
+    CourseSummary:
       type: object
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
+        description: { type: string }
         domain: { type: string }
+        level: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+        skills: { type: array, items: { type: string } }
+        materialCount: { type: integer }
+        enrolled: { type: boolean }
+        percentComplete: { type: number, format: float }
+    Material:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string, enum: [ARTICLE, VIDEO, DOCUMENT, EXERCISE] }
+        url: { type: string, nullable: true }
+        content: { type: string, nullable: true }
+        orderIndex: { type: integer }
+        completed: { type: boolean }
+    CourseDetail:
+      allOf:
+        - $ref: "#/components/schemas/CourseSummary"
+        - type: object
+          properties:
+            enrollmentCount: { type: integer }
+            materials: { type: array, items: { $ref: "#/components/schemas/Material" } }
     Progress:
       type: object
       properties:
         courseId: { type: string, format: uuid }
         userId: { type: string, format: uuid }
-        percentComplete: { type: number, format: float }
+        percentComplete: { type: number, format: float, description: "= tài liệu đã hoàn thành / tổng tài liệu × 100" }
+    RoadmapDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        track: { type: string }
+        description: { type: string }
+        percentComplete: { type: number }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              title: { type: string }
+              description: { type: string }
+              orderIndex: { type: integer }
+              courseId: { type: string, format: uuid, nullable: true }
+              courseTitle: { type: string, nullable: true }
+              completed: { type: boolean }
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        "200": { description: OK }
+  /api/learning/courses:
+    get:
+      summary: FR-3.1 Danh sách khoá học (lọc theo lĩnh vực / từ khoá)
+      parameters:
+        - { name: domain, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CourseSummary" } }
+  /api/learning/me/courses:
+    get:
+      summary: Khoá học người dùng đã đăng ký (kèm tiến độ)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CourseSummary" } }
+  /api/learning/courses/{id}:
+    get:
+      summary: Chi tiết khoá học + tài liệu + trạng thái hoàn thành của người dùng
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourseDetail" }
+        "404": { description: COURSE_NOT_FOUND }
+  /api/learning/courses/{id}/enroll:
+    post:
+      summary: Đăng ký khoá học
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: CourseDetail }
+    delete:
+      summary: Huỷ đăng ký
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/courses/{courseId}/progress/{userId}:
+    get:
+      summary: FR-3.3 Tiến độ của 1 người dùng trong 1 khoá (chính chủ hoặc ADMIN)
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Progress" }
+  /api/learning/materials/{id}/complete:
+    post:
+      summary: FR-3.3 Đánh dấu hoàn thành tài liệu (tự ghi danh, tính lại %)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: CourseDetail }
+    delete:
+      summary: Bỏ đánh dấu hoàn thành
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: CourseDetail }
+  /api/learning/roadmaps:
+    get:
+      summary: FR-3.2 Danh sách roadmap
+      responses:
+        "200": { description: "[{ id, title, track, description, itemCount }]" }
+  /api/learning/roadmaps/{id}:
+    get:
+      summary: FR-3.2 Chi tiết roadmap + tiến độ
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoadmapDetail" }
+  /api/learning/roadmap-items/{id}/complete:
+    post:
+      summary: FR-3.3 Đánh dấu hoàn thành bước roadmap
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: RoadmapDetail }
+    delete:
+      summary: Bỏ đánh dấu
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: RoadmapDetail }
+
+  # ---------- FR-3.4 Admin quản lý nội dung (role ADMIN) ----------
+  /api/learning/admin/courses:
+    post:
+      summary: Tạo khoá học
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, domain]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                domain: { type: string }
+                level: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+                skills: { type: array, items: { type: string } }
+      responses:
+        "201": { description: Course }
+  /api/learning/admin/courses/{id}:
+    put:
+      summary: Sửa khoá học (body như POST)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Course }
+    delete:
+      summary: Xoá khoá học (xoá kèm tài liệu và tiến độ)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/admin/courses/{id}/materials:
+    post:
+      summary: Thêm tài liệu vào khoá
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                type: { type: string, enum: [ARTICLE, VIDEO, DOCUMENT, EXERCISE] }
+                url: { type: string }
+                content: { type: string }
+                orderIndex: { type: integer }
+      responses:
+        "201": { description: Material }
+  /api/learning/admin/materials/{id}:
+    put:
+      summary: Sửa tài liệu
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Material }
+    delete:
+      summary: Xoá tài liệu
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/admin/roadmaps:
+    post:
+      summary: Tạo roadmap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, track]
+              properties:
+                title: { type: string }
+                track: { type: string }
+                description: { type: string }
+      responses:
+        "201": { description: Roadmap }
+  /api/learning/admin/roadmaps/{id}:
+    put:
+      summary: Sửa roadmap
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Roadmap }
+    delete:
+      summary: Xoá roadmap
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/admin/roadmaps/{id}/items:
+    post:
+      summary: Thêm bước vào roadmap (có thể liên kết courseId)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "201": { description: RoadmapItem }
+  /api/learning/admin/roadmap-items/{id}:
+    put:
+      summary: Sửa bước roadmap
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: RoadmapItem }
+    delete:
+      summary: Xoá bước roadmap
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
