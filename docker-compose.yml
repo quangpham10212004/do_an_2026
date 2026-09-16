@@ -1,4 +1,16 @@
-version: "3.9"
+# Mentor-Mentee Learning Platform — toàn bộ hệ thống chạy bằng: docker compose up --build
+# Biến môi trường tuỳ chỉnh đặt trong file .env (xem .env.example).
+
+x-db-healthcheck: &db-healthcheck
+  test: ["CMD-SHELL", "pg_isready -U postgres"]
+  interval: 5s
+  timeout: 5s
+  retries: 20
+
+x-common-env: &common-env
+  JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
+  TZ: Asia/Ho_Chi_Minh
 
 services:
   # ---------- Databases ----------
@@ -12,6 +24,7 @@ services:
     volumes:
       - auth-db-data:/var/lib/postgresql/data
       - ./db/init/auth-service.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck: *db-healthcheck
 
   profile-db:
     image: pgvector/pgvector:pg16
@@ -23,6 +36,7 @@ services:
     volumes:
       - profile-db-data:/var/lib/postgresql/data
       - ./db/init/profile-service.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck: *db-healthcheck
 
   mentoring-db:
     image: postgres:16
@@ -34,6 +48,7 @@ services:
     volumes:
       - mentoring-db-data:/var/lib/postgresql/data
       - ./db/init/mentoring-service.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck: *db-healthcheck
 
   payment-db:
     image: postgres:16
@@ -45,6 +60,7 @@ services:
     volumes:
       - payment-db-data:/var/lib/postgresql/data
       - ./db/init/payment-service.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck: *db-healthcheck
 
   learning-db:
     image: postgres:16
@@ -56,6 +72,7 @@ services:
     volumes:
       - learning-db-data:/var/lib/postgresql/data
       - ./db/init/learning-service.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck: *db-healthcheck
 
   redis:
     image: redis:7-alpine
@@ -66,56 +83,122 @@ services:
     build: ./auth-service
     ports: ["8081:8081"]
     environment:
+      <<: *common-env
       DB_HOST: auth-db
       DB_PORT: 5432
       DB_NAME: auth_db
-    depends_on: [auth-db]
+      REDIS_HOST: redis
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mmp.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
+    depends_on:
+      auth-db: { condition: service_healthy }
+      redis: { condition: service_started }
+    healthcheck: &java-health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   profile-service:
     build: ./profile-service
     ports: ["8082:8082"]
     environment:
+      <<: *common-env
       DB_HOST: profile-db
       DB_PORT: 5432
       DB_NAME: profile_db
       MATCHING_SERVICE_URL: http://matching-service:8090
-    depends_on: [profile-db, matching-service]
+    depends_on:
+      profile-db: { condition: service_healthy }
+      matching-service: { condition: service_started }
+    healthcheck:
+      <<: *java-health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health || exit 1"]
 
   mentoring-service:
     build: ./mentoring-service
     ports: ["8083:8083"]
     environment:
+      <<: *common-env
       DB_HOST: mentoring-db
       DB_PORT: 5432
       DB_NAME: mentoring_db
-    depends_on: [mentoring-db]
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      AI_SERVICE_URL: http://ai-service:8091
+      CV_STORAGE_DIR: /data/cv
+      REMINDER_BEFORE: ${REMINDER_BEFORE:-PT24H}
+    volumes:
+      - cv-storage:/data/cv
+    depends_on:
+      mentoring-db: { condition: service_healthy }
+      ai-service: { condition: service_started }
+    healthcheck:
+      <<: *java-health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
 
   payment-service:
     build: ./payment-service
     ports: ["8084:8084"]
     environment:
+      <<: *common-env
       DB_HOST: payment-db
       DB_PORT: 5432
       DB_NAME: payment_db
-    depends_on: [payment-db]
+      MENTORING_SERVICE_URL: http://mentoring-service:8083
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      payment-db: { condition: service_healthy }
+    healthcheck:
+      <<: *java-health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/health || exit 1"]
 
   learning-service:
     build: ./learning-service
     ports: ["8085:8085"]
     environment:
+      <<: *common-env
       DB_HOST: learning-db
       DB_PORT: 5432
       DB_NAME: learning_db
-    depends_on: [learning-db]
+    depends_on:
+      learning-db: { condition: service_healthy }
+    healthcheck:
+      <<: *java-health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/health || exit 1"]
 
   matching-service:
     build: ./matching-service
     ports: ["8090:8090"]
     environment:
-      # Đọc trực tiếp (read-only) DB của profile-service — ngoại lệ đã
-      # được duyệt, xem CONVENTIONS.md mục 6.
-      PROFILE_DB_URL: postgresql://postgres:postgres@profile-db:5432/profile_db
-    depends_on: [profile-db]
+      <<: *common-env
+      # Đọc trực tiếp (read-only) DB của profile-service bằng role chỉ có quyền
+      # SELECT — ngoại lệ đã được duyệt, xem CONVENTIONS.md mục 7.
+      PROFILE_DB_URL: postgresql://matching_reader:matching_reader@profile-db:5432/profile_db
+    depends_on:
+      profile-db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  ai-service:
+    build: ./ai-service
+    ports: ["8091:8091"]
+    environment:
+      <<: *common-env
+      # Để trống DEEPSEEK_API_KEY => AI Interview & CV enrichment dùng engine rule-based (chạy offline)
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   # ---------- Frontend ----------
   frontend:
@@ -142,3 +225,4 @@ volumes:
   mentoring-db-data:
   payment-db-data:
   learning-db-data:
+  cv-storage:

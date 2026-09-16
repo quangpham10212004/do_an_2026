@@ -1,43 +1,214 @@
 openapi: 3.0.3
 info:
   title: payment-service
-  version: 0.1.0
-  description: Thanh toán phiên mentoring + referral. Sở hữu bởi Thắng.
+  version: 1.0.0
+  description: >
+    Thanh toán phiên mentoring qua cổng sandbox + Referral/Affiliate. Sở hữu bởi Thắng.
+    Thẻ test: 4242 4242 4242 4242 (thành công), 4000 0000 0000 0002 (CARD_DECLINED),
+    4000 0000 0000 9995 (INSUFFICIENT_FUNDS).
 servers:
   - url: http://localhost:8084
-paths:
-  /health:
-    get:
-      summary: Health check
-      responses:
-        "200": { description: OK }
-
-  /api/payment/charge:
-    post:
-      summary: Tạo giao dịch thanh toán cho 1 session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [sessionId, amount]
-              properties:
-                sessionId: { type: string, format: uuid }
-                amount: { type: number, format: float }
-      responses:
-        "200":
-          description: Giao dịch thành công
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Transaction" }
-
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
   schemas:
     Transaction:
       type: object
       properties:
         id: { type: string, format: uuid }
         sessionId: { type: string, format: uuid }
-        amount: { type: number, format: float }
-        status: { type: string, enum: [SUCCESS, FAILED, PENDING] }
+        payerId: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        amount: { type: number }
+        currency: { type: string, example: VND }
+        status: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED] }
+        provider: { type: string, example: SANDBOX }
+        providerReference: { type: string, nullable: true }
+        failureReason: { type: string, nullable: true, example: CARD_DECLINED }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Referral:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        referrerId: { type: string, format: uuid }
+        refereeId: { type: string, format: uuid }
+        code: { type: string }
+        status: { type: string, enum: [REGISTERED, QUALIFIED, REJECTED] }
+        rejectReason: { type: string, nullable: true, enum: [REFERRER_IS_SESSION_MENTOR, DAILY_LIMIT_EXCEEDED] }
+        createdAt: { type: string, format: date-time }
+        qualifiedAt: { type: string, format: date-time, nullable: true }
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        "200": { description: OK }
+
+  /api/payment/charge:
+    post:
+      summary: >
+        FR-6.1 → FR-6.3 Thanh toán 1 phiên PENDING (MENTEE chủ phiên). Số tiền lấy từ
+        mentoring-service; nếu client gửi amount khác giá phiên → AMOUNT_MISMATCH.
+        SUCCESS → xử lý referral + báo mentoring-service xác nhận phiên (FR-6.2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, card]
+              properties:
+                sessionId: { type: string, format: uuid }
+                amount: { type: number, description: Tuỳ chọn, dùng để đối chiếu }
+                card:
+                  type: object
+                  required: [cardNumber, expiry, cvv]
+                  properties:
+                    cardNumber: { type: string }
+                    cardHolder: { type: string }
+                    expiry: { type: string, example: "12/28" }
+                    cvv: { type: string }
+      responses:
+        "200":
+          description: Kết quả giao dịch (SUCCESS hoặc FAILED kèm failureReason)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { description: AMOUNT_MISMATCH / FREE_SESSION }
+        "403": { description: Không phải mentee của phiên }
+        "409": { description: ALREADY_PAID / SESSION_NOT_PAYABLE }
+
+  /api/payment/transactions:
+    get:
+      summary: FR-6.3 Giao dịch của tôi (mentee = đã trả, mentor = đã nhận)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Transaction" } }
+  /api/payment/transactions/{id}:
+    get:
+      summary: Chi tiết giao dịch (người trả / mentor / admin)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+  /api/payment/sessions/{sessionId}/transactions:
+    get:
+      summary: Lịch sử giao dịch của 1 phiên
+      parameters:
+        - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Transaction" } }
+
+  /api/payment/referrals/me:
+    get:
+      summary: FR-6.4 → FR-6.6 Mã giới thiệu (tạo lần đầu), danh sách người đã giới thiệu, số dư điểm
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: K7QM2ZPA }
+                  shareUrl: { type: string }
+                  totalReferrals: { type: integer }
+                  qualifiedReferrals: { type: integer }
+                  pointsBalance: { type: integer }
+                  rewardPointsPerReferral: { type: integer }
+                  minQualifyingAmount: { type: number }
+                  referrals: { type: array, items: { $ref: "#/components/schemas/Referral" } }
+                  rewards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        points: { type: integer }
+                        reason: { type: string }
+                        createdAt: { type: string, format: date-time }
+
+  /api/payment/admin/transactions:
+    get:
+      summary: (ADMIN) Giám sát giao dịch
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED] } }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200": { description: "{ items: Transaction[], page, size, totalItems, totalPages }" }
+  /api/payment/admin/stats:
+    get:
+      summary: (ADMIN) Thống kê giao dịch
+      responses:
+        "200": { description: "{ successCount, failedCount, refundedCount, totalRevenue }" }
+  /api/payment/admin/referrals:
+    get:
+      summary: (ADMIN) Giám sát referral
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Referral" } }
+
+  /internal/referrals:
+    post:
+      summary: Nội bộ — auth-service ghi nhận người dùng mới đăng ký bằng mã giới thiệu (FR-6.5)
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, refereeId]
+              properties:
+                code: { type: string }
+                refereeId: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Đã ghi nhận
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Referral" }
+        "400": { description: SELF_REFERRAL }
+        "404": { description: REFERRAL_CODE_NOT_FOUND }
+        "409": { description: ALREADY_REFERRED }
+  /internal/payments/refund:
+    post:
+      summary: Nội bộ — mentoring-service yêu cầu hoàn tiền khi phiên đã thanh toán bị huỷ
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string, format: uuid }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Giao dịch sau khi hoàn tiền (status = REFUNDED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { description: NO_SUCCESS_TRANSACTION }

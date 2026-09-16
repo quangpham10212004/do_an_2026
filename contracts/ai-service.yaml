@@ -1,0 +1,280 @@
+openapi: 3.0.3
+info:
+  title: ai-service
+  version: 1.0.0
+  description: >
+    Service AI (Python/FastAPI) cho AI Interview (Thắng) và CV Parsing + Chatbot enrichment (Quang).
+    KHÔNG lưu trạng thái: mentoring-service lưu buổi phỏng vấn/hội thoại và gửi kèm lịch sử mỗi lượt.
+    Engine: DEEPSEEK (khi có DEEPSEEK_API_KEY, gọi DeepSeek Chat Completions ở JSON Output mode) hoặc
+    RULE_BASED (thuật toán luật, tất định, chạy offline). Nếu lời gọi DeepSeek lỗi, lượt đó tự dùng
+    RULE_BASED và trả `fallbackUsed = true`. Mọi endpoint (trừ /health) chỉ nhận header X-Internal-Token.
+servers:
+  - url: http://localhost:8091
+security:
+  - internalToken: []
+components:
+  securitySchemes:
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: CV_NO_TEXT }
+            message: { type: string }
+    EngineInfo:
+      type: object
+      properties:
+        engine: { type: string, enum: [DEEPSEEK, RULE_BASED], description: Engine được chọn cho yêu cầu }
+        fallbackUsed: { type: boolean, description: DeepSeek lỗi/không hợp lệ nên kết quả do RULE_BASED tạo }
+    PreferredEngine:
+      type: string
+      enum: [DEEPSEEK, RULE_BASED]
+      nullable: true
+      description: Engine đã dùng ở các lượt trước (để nhất quán). Bỏ trống ở lượt đầu → DEEPSEEK nếu có key.
+    InterviewContext:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string }
+        skills: { type: array, items: { type: string } }
+        yearsExperience: { type: integer }
+        bio: { type: string, nullable: true }
+        maxTurns: { type: integer, default: 5 }
+    TurnRecord:
+      type: object
+      required: [turnNo, topic, strategy, question]
+      properties:
+        turnNo: { type: integer }
+        topic: { type: string }
+        strategy: { type: string, enum: [OPENING, DEEPEN, PIVOT] }
+        question: { type: string }
+        answer: { type: string, nullable: true }
+        score: { type: number, nullable: true }
+    QuestionPlan:
+      type: object
+      properties:
+        topic: { type: string }
+        strategy: { type: string, enum: [OPENING, DEEPEN, PIVOT] }
+        question: { type: string }
+    ParsedCv:
+      type: object
+      properties:
+        currentRole: { type: string, nullable: true }
+        skills: { type: array, items: { type: string } }
+        yearsExperience: { type: integer, nullable: true }
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              description: { type: string }
+              technologies: { type: array, items: { type: string } }
+        education: { type: array, items: { type: string } }
+        summary: { type: string, nullable: true }
+    MenteeContext:
+      type: object
+      required: [domain, cv]
+      properties:
+        domain: { type: string }
+        currentLevel: { type: string, nullable: true }
+        currentGoal: { type: string, nullable: true }
+        cv: { $ref: "#/components/schemas/ParsedCv" }
+        maxTurns: { type: integer, default: 4 }
+    Exchange:
+      type: object
+      required: [turnNo, slot, question]
+      properties:
+        turnNo: { type: integer }
+        slot: { type: string, enum: [TARGET_ROLE, FOCUS_AREAS, PROJECT_EXPERIENCE, CURRENT_GAPS, TIMELINE, MENTORING_PREFERENCE, FREE_FORM] }
+        question: { type: string }
+        answer: { type: string, nullable: true }
+  responses:
+    Error:
+      description: Lỗi (400 dữ liệu không hợp lệ / 403 thiếu internal token / 413 file quá lớn)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+paths:
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        "200": { description: "{ status, service, llmEnabled, llmProvider, model }" }
+
+  /internal/interview/first-question:
+    post:
+      summary: FR-7.1 Câu hỏi mở đầu của AI Interview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [context]
+              properties:
+                context: { $ref: "#/components/schemas/InterviewContext" }
+                engine: { $ref: "#/components/schemas/PreferredEngine" }
+      responses:
+        "200":
+          description: Câu hỏi (strategy = OPENING)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/QuestionPlan"
+                  - $ref: "#/components/schemas/EngineInfo"
+        "403": { $ref: "#/components/responses/Error" }
+
+  /internal/interview/evaluate:
+    post:
+      summary: FR-7.2 Chấm câu trả lời hiện tại (0-10) và sinh câu tiếp theo (DEEPEN/PIVOT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [context, current, isLastTurn]
+              properties:
+                context: { $ref: "#/components/schemas/InterviewContext" }
+                history: { type: array, items: { $ref: "#/components/schemas/TurnRecord" }, description: Các lượt trước (đã có câu trả lời) }
+                current: { $ref: "#/components/schemas/TurnRecord" }
+                isLastTurn: { type: boolean }
+                engine: { $ref: "#/components/schemas/PreferredEngine" }
+      responses:
+        "200":
+          description: Kết quả chấm
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      score: { type: number, minimum: 0, maximum: 10 }
+                      feedback: { type: string }
+                      next:
+                        allOf: [{ $ref: "#/components/schemas/QuestionPlan" }]
+                        nullable: true
+                        description: null khi isLastTurn = true
+                  - $ref: "#/components/schemas/EngineInfo"
+
+  /internal/interview/summarize:
+    post:
+      summary: FR-7.4 Tổng hợp đánh giá sau lượt cuối
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [context, turns]
+              properties:
+                context: { $ref: "#/components/schemas/InterviewContext" }
+                turns: { type: array, items: { $ref: "#/components/schemas/TurnRecord" } }
+                engine: { $ref: "#/components/schemas/PreferredEngine" }
+      responses:
+        "200":
+          description: Đánh giá tổng hợp
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      overallScore: { type: number, minimum: 0, maximum: 100 }
+                      summary: { type: string }
+                      strengths: { type: array, items: { type: string } }
+                      weaknesses: { type: array, items: { type: string } }
+                      recommendation: { type: string, enum: [APPROVE, REJECT, NEEDS_REVIEW] }
+                  - $ref: "#/components/schemas/EngineInfo"
+
+  /internal/cv/parse:
+    post:
+      summary: FR-8.2 Trích xuất văn bản PDF (pypdf) và parse CV có cấu trúc
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: "PDF ≤ 5MB, ≤ 10 trang, có lớp văn bản" }
+                engine: { $ref: "#/components/schemas/PreferredEngine" }
+      responses:
+        "200":
+          description: Kết quả parse
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      rawText: { type: string }
+                      parsed: { $ref: "#/components/schemas/ParsedCv" }
+                  - $ref: "#/components/schemas/EngineInfo"
+        "400":
+          description: INVALID_FILE_TYPE / INVALID_PDF / ENCRYPTED_PDF / CV_TOO_LONG / CV_NO_TEXT
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "413": { $ref: "#/components/responses/Error" }
+
+  /internal/enrichment/next-question:
+    post:
+      summary: FR-8.3 Câu hỏi tiếp theo của chatbot, dựa trên CV và các câu trả lời trước (không hỏi lại thông tin đã có)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [context]
+              properties:
+                context: { $ref: "#/components/schemas/MenteeContext" }
+                history: { type: array, items: { $ref: "#/components/schemas/Exchange" } }
+                engine: { $ref: "#/components/schemas/PreferredEngine" }
+      responses:
+        "200":
+          description: Câu hỏi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      slot: { type: string }
+                      slotLabel: { type: string, example: Mục tiêu nghề nghiệp }
+                      question: { type: string }
+                  - $ref: "#/components/schemas/EngineInfo"
+
+  /internal/enrichment/summarize:
+    post:
+      summary: FR-8.4 Tổng hợp đoạn mục tiêu học tập chuẩn hoá từ CV + hội thoại
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [context, history]
+              properties:
+                context: { $ref: "#/components/schemas/MenteeContext" }
+                history: { type: array, items: { $ref: "#/components/schemas/Exchange" } }
+                engine: { $ref: "#/components/schemas/PreferredEngine" }
+      responses:
+        "200":
+          description: Mục tiêu đã làm rõ
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      enrichedGoal: { type: string }
+                  - $ref: "#/components/schemas/EngineInfo"

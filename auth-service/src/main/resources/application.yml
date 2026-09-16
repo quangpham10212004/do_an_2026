@@ -5,18 +5,46 @@ spring:
   application:
     name: auth-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auth_db}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:auth_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
   jpa:
+    open-in-view: false
     hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate:
-        format_sql: true
+      # Schema do db/init/*.sql quản lý (nguồn sự thật duy nhất), không để Hibernate tự sinh
+      ddl-auto: none
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+  health:
+    redis:
+      enabled: false
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
+    internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
+    public-paths: /api/auth/register,/api/auth/login,/api/auth/refresh,/api/auth/logout,/api/auth/verify-email,/api/auth/verify-token
+  jwt:
+    access-token-ttl: ${ACCESS_TOKEN_TTL:PT30M}
+    refresh-token-ttl: ${REFRESH_TOKEN_TTL:P7D}
+  login-protection:
+    max-failed-attempts: 5
+    block-duration: PT15M
+  # Demo không có SMTP: link xác thực email được ghi log; bật cờ này để trả
+  # token xác thực trong response đăng ký (chỉ dùng cho môi trường demo).
+  expose-verification-token: ${EXPOSE_VERIFICATION_TOKEN:true}
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  admin:
+    email: ${ADMIN_EMAIL:admin@mmp.local}
+    password: ${ADMIN_PASSWORD:Admin@123}
+  services:
+    payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}

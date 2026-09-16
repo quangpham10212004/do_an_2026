@@ -1,27 +1,59 @@
 openapi: 3.0.3
 info:
   title: matching-service
-  version: 0.1.0
+  version: 1.0.0
   description: >
-    AI Matching pipeline: embedding + pgvector retrieval + hard filter +
-    re-rank. Sở hữu bởi Thảo. Đọc trực tiếp (READ-ONLY) bảng embedding
-    trong DB của profile-service — ngoại lệ đã được duyệt, xem
-    CONVENTIONS.md mục 6.
+    AI Matching pipeline: embedding (sentence-transformers all-MiniLM-L6-v2, 384 chiều) +
+    pgvector top-K retrieval → hard filter → re-rank → giải thích. Sở hữu bởi Thảo.
+    Đọc trực tiếp (READ-ONLY, role matching_reader) bảng mentor_profiles, mentee_profiles,
+    mentor_availability trong DB của profile-service — ngoại lệ đã được duyệt (CONVENTIONS.md mục 7).
 servers:
   - url: http://localhost:8090
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
+  schemas:
+    RankedMentor:
+      type: object
+      properties:
+        mentorId: { type: string, format: uuid }
+        displayName: { type: string }
+        domain: { type: string }
+        skills: { type: array, items: { type: string } }
+        similarityScore: { type: number, format: float, description: "1 - cosine distance, kẹp về [0,1]" }
+        finalScore:
+          type: number
+          format: float
+          description: "0.7*similarity + 0.2*(rating/5) + 0.1*min(years/10,1); mentor chưa có đánh giá dùng rating trung tính 3.5"
+        rating: { type: number, format: float }
+        ratingCount: { type: integer }
+        yearsExperience: { type: integer }
+        hourlyRate: { type: number }
+        matchedSkills: { type: array, items: { type: string }, description: Kỹ năng trùng với kỹ năng/mục tiêu của mentee }
+        reasons: { type: array, items: { type: string }, description: "FR-4.6 — lý do đề xuất, ví dụ 'Trùng kỹ năng: Java'" }
+    PipelineStats:
+      type: object
+      properties:
+        k: { type: integer }
+        retrieved: { type: integer, description: Số ứng viên lấy được ở bước top-K }
+        excluded:
+          type: object
+          description: "Số mentor bị loại theo lý do: notVerified, unavailable, noSchedule, fullCapacity, domainMismatch"
+          additionalProperties: { type: integer }
+        returned: { type: integer }
+        weights: { type: object, additionalProperties: { type: number } }
 paths:
   /health:
     get:
       summary: Health check
       responses:
-        "200":
-          description: OK
+        "200": { description: "{ status: UP, modelLoaded: bool }" }
 
   /internal/embed:
     post:
-      summary: >
-        Nội bộ — sinh embedding vector từ 1 đoạn text. Được profile-service
-        gọi mỗi khi profile được tạo/cập nhật. KHÔNG expose public.
+      summary: Nội bộ — sinh embedding (vector đã chuẩn hoá L2) từ text. Gọi bởi profile-service.
+      security: [{ internalToken: [] }]
       requestBody:
         required: true
         content:
@@ -30,7 +62,7 @@ paths:
               type: object
               required: [text]
               properties:
-                text: { type: string }
+                text: { type: string, minLength: 1, maxLength: 10000 }
       responses:
         "200":
           description: Vector embedding
@@ -44,23 +76,15 @@ paths:
                     items: { type: number, format: float }
                     minItems: 384
                     maxItems: 384
+        "403": { description: Thiếu/sai X-Internal-Token }
 
   /api/matching/mentors:
     get:
-      summary: >
-        Tìm danh sách mentor phù hợp cho 1 mentee, đã qua pipeline
-        top-K retrieval -> hard filter -> re-rank. Đây là "seam" — frontend
-        gọi endpoint này mà không cần biết bên dưới là AI-based hay
-        filter-based thường (giai đoạn đầu có thể fallback filter cứng).
+      summary: FR-4.3 → FR-4.6 Danh sách mentor phù hợp cho mentee (mentee chỉ truy vấn cho chính mình; ADMIN mọi mentee)
+      security: [{ bearerAuth: [] }]
       parameters:
-        - name: menteeId
-          in: query
-          required: true
-          schema: { type: string, format: uuid }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, default: 10, maximum: 50 }
+        - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 10, minimum: 1, maximum: 50 } }
       responses:
         "200":
           description: Danh sách mentor đã xếp hạng
@@ -70,28 +94,8 @@ paths:
                 type: object
                 properties:
                   menteeId: { type: string, format: uuid }
-                  mentors:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/RankedMentor"
-        "404":
-          description: Không tìm thấy mentee hoặc mentee chưa có embedding
-
-components:
-  schemas:
-    RankedMentor:
-      type: object
-      properties:
-        mentorId: { type: string, format: uuid }
-        displayName: { type: string }
-        domain: { type: string }
-        similarityScore:
-          type: number
-          format: float
-          description: "1 - cosine distance, càng gần 1 càng giống"
-        finalScore:
-          type: number
-          format: float
-          description: "Điểm sau re-rank: 0.7*similarity + 0.2*rating + 0.1*experience"
-        rating: { type: number, format: float }
-        yearsExperience: { type: integer }
+                  mentors: { type: array, items: { $ref: "#/components/schemas/RankedMentor" } }
+                  pipeline: { $ref: "#/components/schemas/PipelineStats" }
+        "401": { description: UNAUTHORIZED }
+        "403": { description: FORBIDDEN — truy vấn cho mentee khác }
+        "404": { description: MENTEE_PROFILE_INCOMPLETE — chưa có hồ sơ hoặc chưa có embedding }

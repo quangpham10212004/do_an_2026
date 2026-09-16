@@ -7,8 +7,10 @@ on:
     branches: [main]
 
 jobs:
-  build-java-services:
+  java-services:
+    name: Build & unit test (${{ matrix.service }})
     strategy:
+      fail-fast: false
       matrix:
         service: [auth-service, learning-service, profile-service, mentoring-service, payment-service]
     runs-on: ubuntu-latest
@@ -18,11 +20,30 @@ jobs:
         with:
           java-version: "21"
           distribution: "temurin"
-      - name: Build ${{ matrix.service }}
+          cache: maven
+      - name: Build & test ${{ matrix.service }}
         working-directory: ${{ matrix.service }}
-        run: mvn -B -q package -DskipTests
+        run: mvn -B package
 
-  build-matching-service:
+  matching-service:
+    name: Unit test (matching-service)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps (PyTorch CPU)
+        working-directory: matching-service
+        run: |
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-dev.txt
+      - name: Run tests
+        working-directory: matching-service
+        run: python -m pytest -q tests/
+
+  ai-service:
+    name: Unit test (ai-service)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,13 +51,14 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install deps
-        working-directory: matching-service
-        run: pip install -r requirements.txt
+        working-directory: ai-service
+        run: pip install -r requirements-dev.txt
       - name: Run tests
-        working-directory: matching-service
-        run: python -m pytest tests/
+        working-directory: ai-service
+        run: python -m pytest -q tests/
 
-  build-frontend:
+  frontend:
+    name: Build (frontend)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +71,19 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  e2e:
+    name: End-to-end acceptance (docker compose)
+    needs: [java-services, matching-service, ai-service, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start whole system
+        run: docker compose up -d --build --wait
+      - name: Seed demo data
+        run: python3 scripts/seed_demo.py
+      - name: Acceptance test (Definition of Done)
+        run: python3 scripts/e2e_acceptance.py
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --tail=200

@@ -1,5 +1,6 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-sentence-transformers==3.0.1
-asyncpg==0.29.0
-pydantic==2.7.4
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sentence-transformers==3.3.1
+asyncpg==0.30.0
+pydantic==2.10.3
+PyJWT==2.10.1

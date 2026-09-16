@@ -1,27 +1,69 @@
 openapi: 3.0.3
 info:
   title: auth-service
-  version: 0.1.0
-  description: Đăng ký, đăng nhập, quản lý session/JWT. Sở hữu bởi Quang.
+  version: 1.0.0
+  description: >
+    Đăng ký, đăng nhập, JWT (access + refresh token), quản lý tài khoản và phân quyền.
+    Sở hữu bởi Quang. Access token là JWT HS256 (secret dùng chung JWT_SECRET) chứa
+    claim sub=userId, email, role, typ=access — các service khác tự xác minh cục bộ.
 servers:
   - url: http://localhost:8081
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: EMAIL_ALREADY_EXISTS }
+            message: { type: string }
+    AuthResponse:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string }
+        fullName: { type: string, nullable: true }
+        role: { type: string, enum: [MENTOR, MENTEE, ADMIN] }
+        emailVerified: { type: boolean }
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: Số giây access token còn hiệu lực }
+        referralApplied: { type: boolean, nullable: true, description: Chỉ có khi đăng ký kèm referralCode }
+        emailVerificationToken: { type: string, nullable: true, description: Chỉ trả về khi EXPOSE_VERIFICATION_TOKEN=true (demo không có SMTP) }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        fullName: { type: string, nullable: true }
+        role: { type: string, enum: [MENTOR, MENTEE, ADMIN] }
+        status: { type: string, enum: [ACTIVE, LOCKED] }
+        emailVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+  responses:
+    Error:
+      description: Lỗi
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
 paths:
   /health:
     get:
       summary: Health check
       responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status: { type: string, example: UP }
+        "200": { description: "{ status: UP }" }
 
   /api/auth/register:
     post:
-      summary: Đăng ký tài khoản (mentor hoặc mentee)
+      summary: FR-1.1 Đăng ký tài khoản (MENTOR hoặc MENTEE)
       requestBody:
         required: true
         content:
@@ -31,25 +73,22 @@ paths:
               required: [email, password, role]
               properties:
                 email: { type: string, format: email }
-                password: { type: string, minLength: 8 }
+                password: { type: string, minLength: 8, maxLength: 72 }
                 role: { type: string, enum: [MENTOR, MENTEE] }
+                fullName: { type: string, maxLength: 100 }
+                referralCode: { type: string, maxLength: 32, description: Mã giới thiệu (tuỳ chọn) }
       responses:
         "201":
           description: Tạo tài khoản thành công
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "409":
-          description: Email đã tồn tại
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 
   /api/auth/login:
     post:
-      summary: Đăng nhập
+      summary: FR-1.2 Đăng nhập
       requestBody:
         required: true
         content:
@@ -65,20 +104,54 @@ paths:
           description: Đăng nhập thành công
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "401":
-          description: Sai email hoặc mật khẩu
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401": { description: INVALID_CREDENTIALS }
+        "403": { description: ACCOUNT_LOCKED }
+        "429": { description: TOO_MANY_ATTEMPTS — sai mật khẩu 5 lần, chặn 15 phút }
+
+  /api/auth/refresh:
+    post:
+      summary: Đổi refresh token lấy cặp token mới (token cũ bị thu hồi — rotation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: Cặp token mới
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401": { description: Refresh token không hợp lệ / hết hạn / đã dùng }
+
+  /api/auth/logout:
+    post:
+      summary: Thu hồi refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "204": { description: Đã đăng xuất }
+
+  /api/auth/verify-email:
+    get:
+      summary: FR-1.1 Xác thực email bằng token trong email
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Đã xác thực
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { description: INVALID_VERIFICATION_TOKEN }
 
   /api/auth/verify-token:
     post:
-      summary: >
-        Xác thực JWT — được các service khác gọi nội bộ để xác minh
-        request có hợp lệ không (ví dụ profile-service, mentoring-service).
+      summary: Xác thực JWT và kiểm tra tài khoản còn ACTIVE (dành cho service cần kiểm tra thu hồi)
       requestBody:
         required: true
         content:
@@ -90,30 +163,113 @@ paths:
                 token: { type: string }
       responses:
         "200":
-          description: Token hợp lệ
+          description: Kết quả xác thực
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   valid: { type: boolean }
-                  userId: { type: string, format: uuid }
-                  role: { type: string, enum: [MENTOR, MENTEE, ADMIN] }
+                  userId: { type: string, format: uuid, nullable: true }
+                  role: { type: string, enum: [MENTOR, MENTEE, ADMIN], nullable: true }
 
-components:
-  schemas:
-    AuthResponse:
-      type: object
-      properties:
-        userId: { type: string, format: uuid }
-        email: { type: string }
-        role: { type: string, enum: [MENTOR, MENTEE] }
-        accessToken: { type: string }
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: object
-          properties:
-            code: { type: string }
-            message: { type: string }
+  /api/auth/me:
+    get:
+      summary: FR-1.4 Thông tin tài khoản hiện tại
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    put:
+      summary: FR-1.4 Cập nhật thông tin cá nhân
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName]
+              properties:
+                fullName: { type: string, maxLength: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /api/auth/me/change-password:
+    post:
+      summary: FR-1.4 Đổi mật khẩu (thu hồi mọi refresh token)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 8, maxLength: 72 }
+      responses:
+        "204": { description: Đã đổi mật khẩu }
+        "400": { description: WRONG_PASSWORD }
+
+  /api/auth/admin/users:
+    get:
+      summary: FR-1.5 (ADMIN) Danh sách người dùng có lọc & phân trang
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: role, in: query, schema: { type: string, enum: [MENTOR, MENTEE, ADMIN] } }
+        - { name: q, in: query, schema: { type: string }, description: Tìm theo email/tên }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        "200":
+          description: Trang kết quả
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/User" } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalItems: { type: integer }
+                  totalPages: { type: integer }
+        "403": { description: Không phải ADMIN }
+
+  /api/auth/admin/users/stats:
+    get:
+      summary: (ADMIN) Thống kê số người dùng
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: "{ total, mentors, mentees }" }
+
+  /api/auth/admin/users/{userId}/status:
+    patch:
+      summary: FR-1.5 (ADMIN) Khoá / mở khoá tài khoản
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [ACTIVE, LOCKED] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { description: CANNOT_LOCK_SELF / CANNOT_LOCK_ADMIN }
