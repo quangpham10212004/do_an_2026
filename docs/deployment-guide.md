@@ -8,7 +8,7 @@
 | RAM trống | ≥ 6 GB | 5 JVM + 2 service Python (model embedding) + 5 PostgreSQL |
 | Dung lượng đĩa | ≥ 8 GB | Image Maven/PyTorch CPU/Node |
 | Python | ≥ 3.9 | Chỉ để chạy script seed / e2e / benchmark (chỉ dùng thư viện chuẩn) |
-| Cổng trống | 3000, 5433–5437, 6379, 8081–8085, 8090, 8091 | |
+| Cổng trống | 3000, 5433–5438, 6379, 8081–8085, 8090, 8091 | |
 | Internet | Lần build đầu; khi bật DeepSeek | Tải dependency, model embedding và font Google (Nunito, tự host khi build frontend); engine rule-based chạy offline được |
 
 Phát triển từng service (không bắt buộc): JDK 21 + Maven 3.9, Python 3.11, Node.js 20.
@@ -61,8 +61,8 @@ docker compose down -v      # dừng và xoá toàn bộ volume (CSDL, file CV) 
 | `REMINDER_BEFORE` | `PT24H` | Nhắc lịch trước giờ bắt đầu (ISO-8601 duration) |
 
 Các tham số khác (đặt trong `environment` của service tương ứng trong `docker-compose.yml`):
-`INTERVIEW_MAX_TURNS` (5), `ENRICHMENT_MAX_TURNS` (4), `AI_SERVICE_TIMEOUT` (PT150S) — mentoring-service;
-`DEEPSEEK_MAX_TOKENS` (4000), `DEEPSEEK_TIMEOUT_SECONDS` (60) — ai-service; `EMBEDDING_MODEL` (matching-service),
+`INTERVIEW_MAX_TURNS` (5), `ENRICHMENT_MAX_TURNS` (4), `DEEPSEEK_MAX_TOKENS` (4000),
+`DEEPSEEK_TIMEOUT_SECONDS` (60), `PROFILE_SYNC_RETRY_SECONDS` (120) — ai-service; `EMBEDDING_MODEL` (matching-service),
 `ACCESS_TOKEN_TTL` (PT30M), `REFRESH_TOKEN_TTL` (P7D), `EXPOSE_VERIFICATION_TOKEN` (true — hiển thị
 liên kết xác thực email trên giao diện vì demo không có SMTP).
 
@@ -133,7 +133,7 @@ Mở 3 cửa sổ trình duyệt (hoặc 1 cửa sổ thường + 2 cửa sổ �
 
 ```bash
 # CSDL + Redis bằng Docker
-docker compose up -d auth-db profile-db mentoring-db payment-db learning-db redis
+docker compose up -d auth-db profile-db mentoring-db payment-db learning-db ai-db redis
 
 # Service Java (cổng CSDL mặc định trong application.yml trỏ về localhost:543x)
 cd auth-service && mvn spring-boot:run
@@ -142,7 +142,7 @@ cd auth-service && mvn spring-boot:run
 cd matching-service && python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt && uvicorn app.main:app --port 8090 --reload
 
-# ai-service
+# ai-service (AI_DB_URL mặc định trỏ về localhost:5438)
 cd ai-service && python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt && uvicorn app.main:app --port 8091 --reload
 
@@ -160,6 +160,7 @@ cd frontend && npm install && npm run dev
 | Đặt lịch báo "Mentor không rảnh" | Thời điểm ngoài khung rảnh (giờ Việt Nam) hoặc phiên vượt quá giờ kết thúc | Chọn giờ nằm trọn trong khung lịch hiển thị ở hồ sơ mentor |
 | Upload CV báo không đọc được | PDF ảnh scan | Dùng PDF có lớp văn bản (xuất từ Word/Google Docs) |
 | matching-service 401 với mọi token | `JWT_SECRET` giữa các service khác nhau | Đặt cùng giá trị trong `.env`, `docker compose up -d` lại |
-| AI Interview / tải CV báo "Dịch vụ AI tạm thời không khả dụng" | ai-service chưa chạy | `docker compose ps ai-service`, `docker compose logs ai-service` |
+| AI Interview / tải CV lỗi 502 hoặc `/health` của 8091 báo `dbConnected: false` | ai-service hoặc ai-db chưa chạy | `docker compose ps ai-service ai-db`, `docker compose logs ai-service` |
+| Hội thoại enrichment xong nhưng `profileSynced = false` | profile-service tạm thời lỗi | Job nền của ai-service thử lại mỗi 2 phút; xem `docker compose logs ai-service profile-service` |
 | Đã điền `DEEPSEEK_API_KEY` nhưng `/health` của 8091 vẫn `llmEnabled: false` | Container chưa nhận biến mới | `docker compose up -d ai-service` sau khi sửa `.env` |
 | Cổng bị chiếm | Ứng dụng khác dùng 3000/5433/8081… | Tắt ứng dụng đó hoặc đổi cổng host trong `docker-compose.yml` |

@@ -27,8 +27,8 @@ Tài liệu kỹ thuật khác trong repo: `CONVENTIONS.md` (quy ước nhóm), 
 | Thành viên | Phần cần nắm vững khi bảo vệ |
 |---|---|
 | Phạm Ninh Phương Thảo | `ai-features.md` §1 · profile/matching trong `architecture.md`, `database-design.md` §2, `api-reference.md` §2–3 |
-| Đinh Quyết Thắng | `ai-features.md` §2 (ai-service `app/interview`) · mentoring/payment trong `business-domain-mentor-mentee.md` §2.4, §2.6, §3.1–3.3; `database-design.md` §3–4 |
-| Phạm Ngọc Quang | `ai-features.md` §3 (ai-service `app/cv`, `app/enrichment`) · auth/learning; bảo mật trong `architecture.md` §3; `database-design.md` §1, §5 |
+| Đinh Quyết Thắng | `ai-features.md` §2 (ai-service `app/interview`) · mentoring/payment trong `business-domain-mentor-mentee.md` §2.4, §2.5, §2.7, §3.1–3.3; `database-design.md` §3–5 |
+| Phạm Ngọc Quang | `ai-features.md` §3 (ai-service `app/cv`, `app/enrichment`) · auth/learning; bảo mật trong `architecture.md` §3; `database-design.md` §1, §4, §6 |
 
 ## Số liệu chính (17/09/2026)
 

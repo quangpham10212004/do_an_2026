@@ -74,6 +74,18 @@ services:
       - ./db/init/learning-service.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck: *db-healthcheck
 
+  ai-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ai_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5438:5432"]
+    volumes:
+      - ai-db-data:/var/lib/postgresql/data
+      - ./db/init/ai-service.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck: *db-healthcheck
+
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
@@ -127,14 +139,9 @@ services:
       DB_NAME: mentoring_db
       PROFILE_SERVICE_URL: http://profile-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8084
-      AI_SERVICE_URL: http://ai-service:8091
-      CV_STORAGE_DIR: /data/cv
       REMINDER_BEFORE: ${REMINDER_BEFORE:-PT24H}
-    volumes:
-      - cv-storage:/data/cv
     depends_on:
       mentoring-db: { condition: service_healthy }
-      ai-service: { condition: service_started }
     healthcheck:
       <<: *java-health
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
@@ -190,10 +197,20 @@ services:
     ports: ["8091:8091"]
     environment:
       <<: *common-env
+      AI_DB_URL: postgresql://postgres:postgres@ai-db:5432/ai_db
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      MENTORING_SERVICE_URL: http://mentoring-service:8083
+      CV_STORAGE_DIR: /data/cv
+      INTERVIEW_MAX_TURNS: ${INTERVIEW_MAX_TURNS:-5}
+      ENRICHMENT_MAX_TURNS: ${ENRICHMENT_MAX_TURNS:-4}
       # Để trống DEEPSEEK_API_KEY => AI Interview & CV enrichment dùng engine rule-based (chạy offline)
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+    volumes:
+      - cv-storage:/data/cv
+    depends_on:
+      ai-db: { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/health')\""]
       interval: 10s
@@ -211,6 +228,7 @@ services:
       MATCHING_SERVICE_URL: http://matching-service:8090
       MENTORING_SERVICE_URL: http://mentoring-service:8083
       PAYMENT_SERVICE_URL: http://payment-service:8084
+      AI_SERVICE_URL: http://ai-service:8091
     depends_on:
       - auth-service
       - profile-service
@@ -218,6 +236,7 @@ services:
       - matching-service
       - mentoring-service
       - payment-service
+      - ai-service
 
 volumes:
   auth-db-data:
@@ -225,4 +244,5 @@ volumes:
   mentoring-db-data:
   payment-db-data:
   learning-db-data:
+  ai-db-data:
   cv-storage:

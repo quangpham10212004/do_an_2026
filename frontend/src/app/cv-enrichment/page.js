@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead } from "@/components/ui";
-import { mentoringApi } from "@/features/mentoring/api";
+import { aiApi } from "@/features/ai/api";
 
 function ParsedCvCard({ cv }) {
   const p = cv.parsed;
@@ -47,7 +47,7 @@ function Enrichment({ user }) {
   const bottom = useRef(null);
 
   useEffect(() => {
-    mentoringApi.latestEnrichment(user.userId).then((r) => setState(r)).catch(() => setState(null));
+    aiApi.latestEnrichment(user.userId).then((r) => setState(r)).catch(() => setState(null));
   }, [user]);
 
   useEffect(() => {
@@ -59,7 +59,7 @@ function Enrichment({ user }) {
     setBusy(true);
     setError("");
     try {
-      setState(await mentoringApi.uploadCv(user.userId, file));
+      setState(await aiApi.uploadCv(user.userId, file));
     } catch (err) {
       setError(err.code === "PROFILE_REQUIRED" ? <>{err.message} <Link href="/profile">Tạo hồ sơ</Link></> : err.message);
     } finally {
@@ -73,7 +73,7 @@ function Enrichment({ user }) {
     setBusy(true);
     setError("");
     try {
-      const conversation = await mentoringApi.answerEnrichment(state.conversation.id, answer);
+      const conversation = await aiApi.answerEnrichment(state.conversation.id, answer);
       setState({ ...state, conversation });
       setAnswer("");
     } catch (err) {

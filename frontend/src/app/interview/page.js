@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, StatusBadge } from "@/components/ui";
-import { AssessmentCard, InterviewTranscript } from "@/features/mentoring/InterviewViews";
-import { mentoringApi } from "@/features/mentoring/api";
+import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
+import { aiApi } from "@/features/ai/api";
 import { STATUS_LABELS, formatDateTime } from "@/lib/format";
 
 function Interview() {
@@ -16,7 +16,7 @@ function Interview() {
   const bottom = useRef(null);
 
   useEffect(() => {
-    mentoringApi.myInterview().then(setInterview).catch(() => setInterview(null));
+    aiApi.myInterview().then(setInterview).catch(() => setInterview(null));
   }, []);
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -26,7 +26,7 @@ function Interview() {
     setBusy(true);
     setError("");
     try {
-      setInterview(await mentoringApi.startInterview());
+      setInterview(await aiApi.startInterview());
     } catch (err) {
       setError(err.code === "PROFILE_REQUIRED" ? <>{err.message} <Link href="/profile">Tạo hồ sơ</Link></> : err.message);
     } finally {
@@ -39,7 +39,7 @@ function Interview() {
     setBusy(true);
     setError("");
     try {
-      setInterview(await mentoringApi.answerInterview(interview.id, answer));
+      setInterview(await aiApi.answerInterview(interview.id, answer));
       setAnswer("");
     } catch (err) {
       setError(err.message);

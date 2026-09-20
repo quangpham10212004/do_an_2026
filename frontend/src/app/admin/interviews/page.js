@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Empty, Loading, PageHead, StatusBadge } from "@/components/ui";
-import { mentoringApi } from "@/features/mentoring/api";
+import { aiApi } from "@/features/ai/api";
 import { formatDateTime } from "@/lib/format";
 
 function Interviews() {
@@ -12,7 +12,7 @@ function Interviews() {
   const [items, setItems] = useState(undefined);
   useEffect(() => {
     setItems(undefined);
-    mentoringApi.adminInterviews(status).then(setItems);
+    aiApi.adminInterviews(status).then(setItems);
   }, [status]);
 
   return (

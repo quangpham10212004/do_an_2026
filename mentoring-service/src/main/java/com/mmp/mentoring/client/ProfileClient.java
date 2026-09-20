@@ -44,26 +44,12 @@ public class ProfileClient {
                              List<AvailabilitySlot> availability) {
     }
 
-    public record MenteeInfo(UUID userId, String displayName, String goal, String domain, String currentLevel,
-                             List<String> skills, String cvFileUrl) {
-    }
-
     public record ProfileSummary(UUID userId, String displayName, String role, String domain) {
     }
 
     public Optional<MentorInfo> findMentor(UUID mentorId) {
         try {
             return Optional.ofNullable(restClient.get().uri("/internal/mentor/{id}", mentorId).retrieve().body(MentorInfo.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return Optional.empty();
-        } catch (RestClientException e) {
-            throw unavailable(e);
-        }
-    }
-
-    public Optional<MenteeInfo> findMentee(UUID menteeId) {
-        try {
-            return Optional.ofNullable(restClient.get().uri("/api/profile/mentee/{id}", menteeId).retrieve().body(MenteeInfo.class));
         } catch (HttpClientErrorException.NotFound e) {
             return Optional.empty();
         } catch (RestClientException e) {
@@ -87,15 +73,6 @@ public class ProfileClient {
         return result;
     }
 
-    public void updateVerification(UUID mentorId, String status) {
-        try {
-            restClient.put().uri("/internal/mentor/{id}/verification", mentorId)
-                    .body(Map.of("status", status)).retrieve().toBodilessEntity();
-        } catch (RestClientException e) {
-            throw unavailable(e);
-        }
-    }
-
     public void updateRating(UUID mentorId, double rating, long count) {
         try {
             restClient.put().uri("/internal/mentor/{id}/rating", mentorId)
@@ -112,13 +89,6 @@ public class ProfileClient {
         } catch (RestClientException e) {
             log.warn("Could not sync active mentee count for mentor {}: {}", mentorId, e.getMessage());
         }
-    }
-
-    /** FR-8.5 — gửi goal đã làm rõ sang profile-service để cập nhật hồ sơ & sinh lại embedding. */
-    public void applyEnrichment(UUID menteeId, String enrichedGoal, List<String> cvSkills, String cvFileUrl) {
-        restClient.post().uri("/api/profile/mentee/{id}/enrichment-chat", menteeId)
-                .body(Map.of("enrichedGoalText", enrichedGoal, "cvSkills", cvSkills, "cvFileUrl", cvFileUrl))
-                .retrieve().toBodilessEntity();
     }
 
     private static ApiException unavailable(RestClientException e) {

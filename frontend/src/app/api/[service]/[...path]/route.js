@@ -11,6 +11,7 @@ const SERVICES = {
   payment: process.env.PAYMENT_SERVICE_URL || "http://localhost:8084",
   learning: process.env.LEARNING_SERVICE_URL || "http://localhost:8085",
   matching: process.env.MATCHING_SERVICE_URL || "http://localhost:8090",
+  ai: process.env.AI_SERVICE_URL || "http://localhost:8091",
 };
 
 export const dynamic = "force-dynamic";

@@ -1,6 +1,5 @@
 package com.mmp.mentoring.dto;
 
-import com.mmp.mentoring.client.AiModels.ParsedCv;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
@@ -73,46 +72,15 @@ public final class MentoringDtos {
     public record NotificationList(long unreadCount, List<NotificationView> items) {
     }
 
-    // ---------- AI Interview ----------
-
-    public record AnswerInput(@NotBlank @Size(max = 5000) String answer) {
+    public record AdminStats(long pendingSessions, long confirmedSessions, long completedSessions,
+                             long cancelledSessions) {
     }
 
-    public record InterviewTurnView(int turnNo, String topic, String strategy, String question, String answer,
-                                    Float score, String feedback, OffsetDateTime askedAt, OffsetDateTime answeredAt) {
-    }
+    // ---------- Internal ----------
 
-    public record InterviewView(UUID id, UUID mentorId, String mentorName, String domain, List<String> skills,
-                                String status, String engine, int maxTurns, int currentTurn,
-                                InterviewTurnView currentQuestion, List<InterviewTurnView> turns,
-                                Float overallScore, String summary, List<String> strengths, List<String> weaknesses,
-                                String recommendation, String reviewNote, OffsetDateTime createdAt,
-                                OffsetDateTime completedAt, OffsetDateTime reviewedAt) {
-    }
-
-    public record ReviewInterviewInput(@NotNull @Pattern(regexp = "APPROVE|REJECT") String decision,
-                                       @Size(max = 2000) String note) {
-    }
-
-    // ---------- CV + Enrichment ----------
-
-    public record CvView(UUID id, String fileName, String engine, ParsedCv parsed, OffsetDateTime createdAt) {
-    }
-
-    public record EnrichmentMessageView(int turnNo, String slot, String slotLabel, String question, String answer) {
-    }
-
-    public record ConversationView(UUID id, UUID menteeId, UUID cvId, String status, String engine, int maxTurns,
-                                   int currentTurn, EnrichmentMessageView currentQuestion,
-                                   List<EnrichmentMessageView> messages, String enrichedGoal, boolean profileSynced,
-                                   OffsetDateTime createdAt, OffsetDateTime completedAt) {
-    }
-
-    public record CvUploadResult(CvView cv, ConversationView conversation) {
-    }
-
-    public record AdminStats(long pendingSessions, long confirmedSessions, long completedSessions, long cancelledSessions,
-                             long interviewsInProgress, long interviewsPendingReview, long mentorsApproved,
-                             long mentorsRejected) {
+    /** Thông báo do service khác (ai-service) tạo qua /internal/notifications. */
+    public record NotificationInput(UUID recipientId, String recipientRole, @NotBlank String type,
+                                    @NotBlank @Size(max = 200) String title, @NotBlank @Size(max = 2000) String message,
+                                    @Size(max = 500) String link) {
     }
 }

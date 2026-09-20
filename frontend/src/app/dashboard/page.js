@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, PageHead, StatusBadge } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
+import { aiApi } from "@/features/ai/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { learningApi } from "@/features/learning/api";
 import { formatDateTime } from "@/lib/format";
@@ -51,8 +52,8 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     (isMentor ? profileApi.getMentor(user.userId) : profileApi.getMentee(user.userId)).then(setProfile).catch(() => setProfile(null));
-    if (isMentor) mentoringApi.myInterview().then(setInterview).catch(() => setInterview(null));
-    else mentoringApi.latestEnrichment(user.userId).then(setEnrichment).catch(() => setEnrichment(null));
+    if (isMentor) aiApi.myInterview().then(setInterview).catch(() => setInterview(null));
+    else aiApi.latestEnrichment(user.userId).then(setEnrichment).catch(() => setEnrichment(null));
     mentoringApi.sessions().then(setSessions).catch(() => {});
     mentoringApi.requests().then(setRequests).catch(() => {});
     learningApi.myCourses().then(setCourses).catch(() => {});

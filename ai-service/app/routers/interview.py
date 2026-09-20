@@ -1,77 +1,50 @@
-"""AI Interview (FR-7.2 → FR-7.4) — engine không lưu trạng thái; lịch sử do mentoring-service gửi kèm."""
-from fastapi import APIRouter, Depends
+"""AI Interview (FR-7.x) — phía mentor và phía admin."""
+from uuid import UUID
 
-from app import engines
-from app.interview import deepseek_engine, rule_based
-from app.interview.models import FinalAssessment, InterviewContext, QuestionPlan, TurnEvaluation, TurnRecord
-from app.llm.deepseek import get_client
-from app.schemas import CamelModel
-from app.security import require_internal
+from fastapi import APIRouter, Depends, Response
 
-router = APIRouter(prefix="/internal/interview", dependencies=[Depends(require_internal)])
+from app.interview import service
+from app.interview.views import AnswerInput, InterviewStats, InterviewView, ReviewInterviewInput
+from app.security import AuthUser, require_role, require_user
 
-
-class EngineInfo(CamelModel):
-    engine: str
-    fallback_used: bool = False
+router = APIRouter(prefix="/api/ai")
 
 
-class FirstQuestionRequest(CamelModel):
-    context: InterviewContext
-    engine: str | None = None
+@router.post("/interviews", response_model=InterviewView, response_model_by_alias=True)
+async def start(user: AuthUser = Depends(require_role("MENTOR"))) -> InterviewView:
+    return await service.start(user)
 
 
-class QuestionResponse(QuestionPlan, EngineInfo):
-    pass
+@router.get("/interviews/me", response_model=InterviewView, response_model_by_alias=True,
+            responses={204: {"description": "Mentor chưa có buổi phỏng vấn nào"}})
+async def mine(user: AuthUser = Depends(require_role("MENTOR"))):
+    view = await service.latest_for(user)
+    return view if view is not None else Response(status_code=204)
 
 
-class EvaluateRequest(CamelModel):
-    context: InterviewContext
-    history: list[TurnRecord] = []
-    current: TurnRecord
-    is_last_turn: bool
-    engine: str | None = None
+@router.get("/interviews/{interview_id}", response_model=InterviewView, response_model_by_alias=True)
+async def get(interview_id: UUID, user: AuthUser = Depends(require_user)) -> InterviewView:
+    return await service.get(user, interview_id)
 
 
-class EvaluationResponse(TurnEvaluation, EngineInfo):
-    pass
+@router.post("/interviews/{interview_id}/answers", response_model=InterviewView, response_model_by_alias=True)
+async def answer(interview_id: UUID, body: AnswerInput,
+                 user: AuthUser = Depends(require_role("MENTOR"))) -> InterviewView:
+    return await service.answer(user, interview_id, body.answer)
 
 
-class SummarizeRequest(CamelModel):
-    context: InterviewContext
-    turns: list[TurnRecord]
-    engine: str | None = None
+@router.get("/admin/interviews", response_model=list[InterviewView], response_model_by_alias=True)
+async def admin_list(status: str | None = None,
+                     _: AuthUser = Depends(require_role("ADMIN"))) -> list[InterviewView]:
+    return await service.list_interviews(status)
 
 
-class AssessmentResponse(FinalAssessment, EngineInfo):
-    pass
+@router.post("/admin/interviews/{interview_id}/review", response_model=InterviewView, response_model_by_alias=True)
+async def admin_review(interview_id: UUID, body: ReviewInterviewInput,
+                       user: AuthUser = Depends(require_role("ADMIN"))) -> InterviewView:
+    return await service.review(user, interview_id, body)
 
 
-@router.post("/first-question", response_model=QuestionResponse, response_model_by_alias=True)
-def first_question(req: FirstQuestionRequest) -> QuestionResponse:
-    engine = engines.select(req.engine)
-    if engine == engines.DEEPSEEK:
-        plan, fallback = deepseek_engine.first_question(get_client(), req.context)
-    else:
-        plan, fallback = rule_based.first_question(req.context), False
-    return QuestionResponse(**plan.model_dump(), engine=engine, fallback_used=fallback)
-
-
-@router.post("/evaluate", response_model=EvaluationResponse, response_model_by_alias=True)
-def evaluate(req: EvaluateRequest) -> EvaluationResponse:
-    engine = engines.select(req.engine)
-    if engine == engines.DEEPSEEK:
-        result, fallback = deepseek_engine.evaluate(get_client(), req.context, req.history, req.current, req.is_last_turn)
-    else:
-        result, fallback = rule_based.evaluate(req.context, req.history, req.current, req.is_last_turn), False
-    return EvaluationResponse(**result.model_dump(), engine=engine, fallback_used=fallback)
-
-
-@router.post("/summarize", response_model=AssessmentResponse, response_model_by_alias=True)
-def summarize(req: SummarizeRequest) -> AssessmentResponse:
-    engine = engines.select(req.engine)
-    if engine == engines.DEEPSEEK:
-        result, fallback = deepseek_engine.summarize(get_client(), req.context, req.turns)
-    else:
-        result, fallback = rule_based.summarize(req.context, req.turns), False
-    return AssessmentResponse(**result.model_dump(), engine=engine, fallback_used=fallback)
+@router.get("/admin/stats", response_model=InterviewStats, response_model_by_alias=True)
+async def admin_stats(_: AuthUser = Depends(require_role("ADMIN"))) -> InterviewStats:
+    return await service.stats()

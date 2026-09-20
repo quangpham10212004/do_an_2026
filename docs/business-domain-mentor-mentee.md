@@ -137,35 +137,6 @@ bổ sung kỹ năng/mục tiêu.
 
 ### 2.4 mentoring-service
 
-**AI Interview** (FR-7.x)
-
-Mentor đã lưu hồ sơ chọn *AI Interview* → Giao diện hướng dẫn trước khi bắt đầu → Mentor bấm *Bắt đầu
-phỏng vấn* → **Nếu chưa có hồ sơ**: báo lỗi kèm liên kết tạo hồ sơ → **Nếu đang có buổi dở**: tiếp tục
-buổi đó → **Nếu đang chờ duyệt / đã được duyệt**: báo trạng thái tương ứng → Hệ thống sinh câu hỏi đầu
-tiên theo lĩnh vực và kỹ năng đã khai → Mentor nhập câu trả lời và bấm *Gửi* → Hệ thống chấm câu trả
-lời, sinh câu tiếp theo: **nếu trả lời tốt** và chủ đề chưa đào sâu → hỏi sâu hơn cùng chủ đề; **ngược
-lại** → chuyển chủ đề liên quan → Lặp lại đến lượt thứ 5 (trong lúc làm, mentor không thấy điểm) → Sau
-lượt cuối hệ thống tổng hợp điểm 0–100, tóm tắt, điểm mạnh/yếu, khuyến nghị → Hiển thị kết quả cho
-mentor kèm thông báo "đang chờ quản trị viên xem xét" → Gửi thông báo cho admin.
-
-**Admin duyệt mentor** (FR-7.5)
-
-Admin mở *Duyệt mentor* → Danh sách buổi phỏng vấn chờ duyệt (điểm AI, khuyến nghị) → Admin mở một
-buổi → Xem toàn bộ hội thoại, điểm và nhận xét từng câu, đánh giá tổng hợp → Nhập nhận xét, bấm *Duyệt
-& kích hoạt* hoặc *Từ chối* → **Duyệt**: hồ sơ mentor chuyển APPROVED, mentor xuất hiện trong kết quả
-matching và nhận được yêu cầu → **Từ chối**: hồ sơ chuyển REJECTED, mentor được phép cập nhật hồ sơ và
-phỏng vấn lại → Mentor nhận thông báo kết quả.
-
-**Upload CV và chatbot enrichment** (FR-8.x)
-
-Mentee đã có hồ sơ chọn *Tải CV & làm rõ mục tiêu* → Chọn file PDF → Hệ thống kiểm tra file (PDF, ≤
-5MB, ≤ 10 trang, có lớp văn bản) → **Nếu không hợp lệ**: báo lỗi cụ thể → **Nếu chưa có hồ sơ**: báo
-cần tạo hồ sơ trước → Phân tích CV thành vai trò, kỹ năng, số năm kinh nghiệm, dự án, học vấn → Hiển thị
-thẻ "Thông tin trích xuất từ CV" và khung chat với câu hỏi đầu tiên nhắc lại thông tin trong CV →
-Mentee trả lời → Hệ thống chọn câu hỏi tiếp theo về thông tin CV chưa có, bỏ qua điều đã được trả lời →
-Lặp đến lượt 4 → Tổng hợp đoạn mục tiêu chuẩn hoá → Gửi sang profile-service cập nhật mục tiêu, bổ sung
-kỹ năng từ CV và sinh lại embedding → Hiển thị mục tiêu đã làm rõ và nút *Tìm mentor phù hợp*.
-
 **Gửi yêu cầu mentoring & phản hồi** (FR-5.2, FR-5.3)
 
 Mentee bấm *Gửi yêu cầu mentoring* ở thẻ/hồ sơ mentor → Nhập lời nhắn → Hệ thống kiểm tra mentor đã
@@ -203,7 +174,38 @@ Người tham gia bấm *Huỷ* với phiên chưa bắt đầu → **Phiên đ�
 tiền trước; nếu hoàn tiền lỗi thì báo lỗi và không huỷ → Chuyển phiên sang *Đã huỷ* → Thông báo cho bên
 còn lại.
 
-### 2.5 learning-service
+### 2.5 ai-service
+
+**AI Interview** (FR-7.x)
+
+Mentor đã lưu hồ sơ chọn *AI Interview* → Giao diện hướng dẫn trước khi bắt đầu → Mentor bấm *Bắt đầu
+phỏng vấn* → **Nếu chưa có hồ sơ**: báo lỗi kèm liên kết tạo hồ sơ → **Nếu đang có buổi dở**: tiếp tục
+buổi đó → **Nếu đang chờ duyệt / đã được duyệt**: báo trạng thái tương ứng → Hệ thống sinh câu hỏi đầu
+tiên theo lĩnh vực và kỹ năng đã khai → Mentor nhập câu trả lời và bấm *Gửi* → Hệ thống chấm câu trả
+lời, sinh câu tiếp theo: **nếu trả lời tốt** và chủ đề chưa đào sâu → hỏi sâu hơn cùng chủ đề; **ngược
+lại** → chuyển chủ đề liên quan → Lặp lại đến lượt thứ 5 (trong lúc làm, mentor không thấy điểm) → Sau
+lượt cuối hệ thống tổng hợp điểm 0–100, tóm tắt, điểm mạnh/yếu, khuyến nghị → Hiển thị kết quả cho
+mentor kèm thông báo "đang chờ quản trị viên xem xét" → Gửi thông báo cho admin.
+
+**Admin duyệt mentor** (FR-7.5)
+
+Admin mở *Duyệt mentor* → Danh sách buổi phỏng vấn chờ duyệt (điểm AI, khuyến nghị) → Admin mở một
+buổi → Xem toàn bộ hội thoại, điểm và nhận xét từng câu, đánh giá tổng hợp → Nhập nhận xét, bấm *Duyệt
+& kích hoạt* hoặc *Từ chối* → **Duyệt**: hồ sơ mentor chuyển APPROVED, mentor xuất hiện trong kết quả
+matching và nhận được yêu cầu → **Từ chối**: hồ sơ chuyển REJECTED, mentor được phép cập nhật hồ sơ và
+phỏng vấn lại → Mentor nhận thông báo kết quả.
+
+**Upload CV và chatbot enrichment** (FR-8.x)
+
+Mentee đã có hồ sơ chọn *Tải CV & làm rõ mục tiêu* → Chọn file PDF → Hệ thống kiểm tra file (PDF, ≤
+5MB, ≤ 10 trang, có lớp văn bản) → **Nếu không hợp lệ**: báo lỗi cụ thể → **Nếu chưa có hồ sơ**: báo
+cần tạo hồ sơ trước → Phân tích CV thành vai trò, kỹ năng, số năm kinh nghiệm, dự án, học vấn → Hiển thị
+thẻ "Thông tin trích xuất từ CV" và khung chat với câu hỏi đầu tiên nhắc lại thông tin trong CV →
+Mentee trả lời → Hệ thống chọn câu hỏi tiếp theo về thông tin CV chưa có, bỏ qua điều đã được trả lời →
+Lặp đến lượt 4 → Tổng hợp đoạn mục tiêu chuẩn hoá → Gửi sang profile-service cập nhật mục tiêu, bổ sung
+kỹ năng từ CV và sinh lại embedding → Hiển thị mục tiêu đã làm rõ và nút *Tìm mentor phù hợp*.
+
+### 2.6 learning-service
 
 **Học khoá học & theo dõi tiến độ** (FR-3.1 → FR-3.3)
 
@@ -219,7 +221,7 @@ sang khoá tương ứng.
 Admin mở *Nội dung* → Tạo khoá học (tiêu đề, mô tả, lĩnh vực, cấp độ, kỹ năng) → Chọn khoá để thêm/xoá
 tài liệu → Tạo roadmap và thêm bước (có thể liên kết khoá học) → Xoá khoá/roadmap kèm xác nhận.
 
-### 2.6 payment-service
+### 2.7 payment-service
 
 **Thanh toán phiên đã đặt** (FR-6.1 → FR-6.3)
 
@@ -290,28 +292,28 @@ sequenceDiagram
     autonumber
     actor Mt as Mentor
     actor Ad as Admin
-    participant MS as mentoring-service
-    participant AI as InterviewEngine
+    participant AI as ai-service
+    participant E as InterviewEngine<br/>(DeepSeek / rule-based)
     participant PS as profile-service
     participant MT as matching-service
 
-    Mt->>MS: POST /interviews
-    MS->>PS: GET /internal/mentor/{id}
-    MS->>AI: firstQuestion(domain, skills)
-    MS-->>Mt: Câu 1
+    Mt->>AI: POST /api/ai/interviews
+    AI->>PS: GET /internal/mentor/{id}
+    AI->>E: firstQuestion(domain, skills)
+    AI-->>Mt: Câu 1
     loop lượt 1..5
-        Mt->>MS: POST /interviews/{id}/answers
-        MS->>AI: evaluate(history, current, isLast)
+        Mt->>AI: POST /api/ai/interviews/{id}/answers
+        AI->>E: evaluate(history, current, isLast)
         alt chưa phải lượt cuối
-            MS-->>Mt: câu kế tiếp (DEEPEN/PIVOT), ẩn điểm
+            AI-->>Mt: câu kế tiếp (DEEPEN/PIVOT), ẩn điểm
         else lượt 5
-            MS->>AI: summarize(turns)
-            MS->>PS: PUT /internal/mentor/{id}/verification PENDING_REVIEW
-            MS-->>Mt: kết quả + "chờ admin"
+            AI->>E: summarize(turns)
+            AI->>PS: PUT /internal/mentor/{id}/verification PENDING_REVIEW
+            AI-->>Mt: kết quả + "chờ admin"
         end
     end
-    Ad->>MS: POST /admin/interviews/{id}/review APPROVE
-    MS->>PS: PUT verification APPROVED
+    Ad->>AI: POST /api/ai/admin/interviews/{id}/review APPROVE
+    AI->>PS: PUT verification APPROVED
     Note over MT,PS: Lần tìm kiếm kế tiếp, hard filter của matching-service<br/>đọc verification_status = APPROVED ⇒ mentor được xếp hạng
 ```
 

@@ -3,6 +3,13 @@
 Tài liệu dùng cho chương **Kiểm thử & đánh giá** của báo cáo. Số liệu trong tài liệu là kết quả chạy
 thực tế ngày 17/09/2026 (sau khi tách ai-service và chuyển sang DeepSeek) trên máy phát triển (macOS, Docker Desktop, JDK 21, Python 3.12, Node 26).
 
+> **Cập nhật 20/09/2026 (SRD v1.2).** Sau khi chuyển toàn bộ luồng + dữ liệu AI Interview và CV
+> enrichment sang ai-service, bộ test đã thay đổi: `AiClientTest` (mentoring-service, 5 test) bị xoá
+> cùng `AiClient`; ai-service có thêm `test_interview_flow.py` (7) và `test_cv_enrichment_flow.py` (8)
+> chạy trên Postgres thật, `test_api.py` chuyển sang kiểm tra API công khai `/api/ai/**` (9 test).
+> Tổng: mentoring-service 11 test, ai-service 58 test. Các mục bên dưới giữ nguyên số liệu của lần chạy
+> 17/09/2026 để đối chiếu lịch sử.
+
 ## 1. Chiến lược kiểm thử
 
 ```mermaid
@@ -237,7 +244,9 @@ hợp vào profile_db, gọi API matching 50 lần, sau đó xoá dữ liệu t�
   `/health` báo `llmEnabled=true, model=deepseek-flash`; `first-question` trả câu hỏi do "model" sinh
   (`engine=DEEPSEEK, fallbackUsed=false`); `cv/parse` dùng kết quả model; khi server giả lập trả nội dung
   không phải JSON, `evaluate` tự dùng rule-based (`fallbackUsed=true`).
-- ai-service không truy cập được qua proxy frontend (`/api/ai/...` → 404).
+- ai-service không truy cập được qua proxy frontend (`/api/ai/...` → 404). *(Từ SRD v1.2, ai-service có
+  API công khai `/api/ai/**` yêu cầu JWT và đi qua proxy như các service khác; `/internal/**` vẫn chỉ
+  nhận `X-Internal-Token`.)*
 - matching-service không phản hồi khi lưu hồ sơ → hồ sơ vẫn lưu, embedding `PENDING` và được retry (`ProfileLogicTest`).
 
 ## 5. Lỗi phát hiện trong quá trình kiểm thử

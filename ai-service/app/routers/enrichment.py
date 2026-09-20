@@ -1,52 +1,30 @@
-"""Chatbot enrichment (FR-8.3, FR-8.4) — không lưu trạng thái; lịch sử hội thoại do mentoring-service gửi kèm."""
-from fastapi import APIRouter, Depends
+"""Chatbot enrichment (FR-8.3 → FR-8.5) — hội thoại làm rõ mục tiêu của mentee."""
+from uuid import UUID
 
-from app import engines
-from app.enrichment import deepseek_engine, rule_based
-from app.enrichment.models import SLOT_LABELS, Exchange, MenteeContext
-from app.llm.deepseek import get_client
-from app.schemas import CamelModel
-from app.security import require_internal
+from fastapi import APIRouter, Depends, Response
 
-router = APIRouter(prefix="/internal/enrichment", dependencies=[Depends(require_internal)])
+from app.enrichment import service
+from app.enrichment.views import AnswerInput, ConversationView, CvUploadResult
+from app.security import AuthUser, require_role, require_user
 
-
-class EnrichmentRequest(CamelModel):
-    context: MenteeContext
-    history: list[Exchange] = []
-    engine: str | None = None
+router = APIRouter(prefix="/api/ai")
 
 
-class NextQuestionResponse(CamelModel):
-    slot: str
-    slot_label: str
-    question: str
-    engine: str
-    fallback_used: bool = False
+@router.get("/mentee/{mentee_id}/enrichment/latest", response_model=CvUploadResult, response_model_by_alias=True,
+            responses={204: {"description": "Mentee chưa tải CV lần nào"}})
+async def latest(mentee_id: UUID, user: AuthUser = Depends(require_user)):
+    result = await service.latest(user, mentee_id)
+    return result if result is not None else Response(status_code=204)
 
 
-class GoalResponse(CamelModel):
-    enriched_goal: str
-    engine: str
-    fallback_used: bool = False
+@router.get("/enrichment/conversations/{conversation_id}", response_model=ConversationView,
+            response_model_by_alias=True)
+async def conversation(conversation_id: UUID, user: AuthUser = Depends(require_user)) -> ConversationView:
+    return await service.get(user, conversation_id)
 
 
-@router.post("/next-question", response_model=NextQuestionResponse, response_model_by_alias=True)
-def next_question(req: EnrichmentRequest) -> NextQuestionResponse:
-    engine = engines.select(req.engine)
-    if engine == engines.DEEPSEEK:
-        q, fallback = deepseek_engine.next_question(get_client(), req.context, req.history)
-    else:
-        q, fallback = rule_based.next_question(req.context, req.history), False
-    return NextQuestionResponse(slot=q.slot, slot_label=SLOT_LABELS[q.slot], question=q.question, engine=engine,
-                                fallback_used=fallback)
-
-
-@router.post("/summarize", response_model=GoalResponse, response_model_by_alias=True)
-def summarize(req: EnrichmentRequest) -> GoalResponse:
-    engine = engines.select(req.engine)
-    if engine == engines.DEEPSEEK:
-        goal, fallback = deepseek_engine.summarize_goal(get_client(), req.context, req.history)
-    else:
-        goal, fallback = rule_based.summarize_goal(req.context, req.history), False
-    return GoalResponse(enriched_goal=goal, engine=engine, fallback_used=fallback)
+@router.post("/enrichment/conversations/{conversation_id}/answers", response_model=ConversationView,
+             response_model_by_alias=True)
+async def answer(conversation_id: UUID, body: AnswerInput,
+                 user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
+    return await service.answer(user, conversation_id, body.answer)

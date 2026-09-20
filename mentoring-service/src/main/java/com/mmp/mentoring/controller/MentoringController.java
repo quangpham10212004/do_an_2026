@@ -126,4 +126,13 @@ public class MentoringController {
     public void markAllRead() {
         notificationService.markAllRead(CurrentUser.get());
     }
+
+    // ---- Admin ----
+
+    /** Thống kê phiên mentoring; số liệu AI Interview do ai-service cung cấp (GET /api/ai/admin/stats). */
+    @GetMapping("/admin/stats")
+    @PreAuthorize("hasRole('ADMIN')")
+    public AdminStats stats() {
+        return sessionService.adminStats();
+    }
 }

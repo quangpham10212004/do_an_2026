@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, StatusBadge } from "@/components/ui";
-import { mentoringApi } from "@/features/mentoring/api";
-import { AssessmentCard, InterviewTranscript } from "@/features/mentoring/InterviewViews";
+import { aiApi } from "@/features/ai/api";
+import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 
 function InterviewReview({ id }) {
   const [interview, setInterview] = useState(undefined);
@@ -13,13 +13,13 @@ function InterviewReview({ id }) {
   const [msg, setMsg] = useState({});
 
   useEffect(() => {
-    mentoringApi.interview(id).then(setInterview).catch((e) => { setMsg({ error: e.message }); setInterview(null); });
+    aiApi.interview(id).then(setInterview).catch((e) => { setMsg({ error: e.message }); setInterview(null); });
   }, [id]);
 
   async function decide(decision) {
     setMsg({});
     try {
-      setInterview(await mentoringApi.reviewInterview(id, decision, note));
+      setInterview(await aiApi.reviewInterview(id, decision, note));
       setMsg({ ok: decision === "APPROVE" ? "Đã kích hoạt mentor." : "Đã từ chối mentor." });
     } catch (e) {
       setMsg({ error: e.message });
