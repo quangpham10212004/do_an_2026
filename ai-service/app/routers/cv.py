@@ -1,34 +1,41 @@
-"""CV Parsing (FR-8.2): nhận file PDF, trả văn bản trích xuất + dữ liệu có cấu trúc."""
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+"""CV Parsing (FR-8.1, FR-8.2) — upload, parse và tải lại file CV."""
+from urllib.parse import quote
+from uuid import UUID
 
-from app import config, engines
-from app.cv import deepseek_parser, rule_based
-from app.cv.extractor import extract_text
-from app.cv.models import ParsedCv
-from app.errors import AiError
-from app.llm.deepseek import get_client
-from app.schemas import CamelModel
-from app.security import require_internal
+from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi.responses import StreamingResponse
 
-router = APIRouter(prefix="/internal/cv", dependencies=[Depends(require_internal)])
+from app import config
+from app.enrichment import service
+from app.enrichment.views import CvUploadResult, CvView
+from app.security import AuthUser, require_role, require_user
 
-
-class CvParseResponse(CamelModel):
-    raw_text: str
-    parsed: ParsedCv
-    engine: str
-    fallback_used: bool = False
+router = APIRouter(prefix="/api/ai")
 
 
-@router.post("/parse", response_model=CvParseResponse, response_model_by_alias=True)
-async def parse_cv(file: UploadFile = File(...), engine: str | None = Form(default=None)) -> CvParseResponse:
-    content = await file.read(config.MAX_CV_BYTES + 1)
-    if len(content) > config.MAX_CV_BYTES:
-        raise AiError("FILE_TOO_LARGE", "File CV không được vượt quá 5MB", status=413)
-    text = extract_text(content)
-    selected = engines.select(engine)
-    if selected == engines.DEEPSEEK:
-        parsed, fallback = deepseek_parser.parse(get_client(), text)
-    else:
-        parsed, fallback = rule_based.parse(text), False
-    return CvParseResponse(raw_text=text, parsed=parsed, engine=selected, fallback_used=fallback)
+async def _read(file: UploadFile) -> tuple[str, bytes]:
+    return file.filename or "cv.pdf", await file.read(config.MAX_CV_BYTES + 1)
+
+
+@router.post("/mentee/{mentee_id}/cv-upload", response_model=CvUploadResult, response_model_by_alias=True)
+async def upload(mentee_id: UUID, file: UploadFile = File(...),
+                 user: AuthUser = Depends(require_role("MENTEE", "ADMIN"))) -> CvUploadResult:
+    file_name, content = await _read(file)
+    return await service.upload_for_mentee(user, mentee_id, file_name, content)
+
+
+@router.post("/cv/parse", response_model=CvView, response_model_by_alias=True)
+async def parse(file: UploadFile = File(...), user: AuthUser = Depends(require_user)) -> CvView:
+    """Parse CV không kèm chatbot — mentor dùng để điền nhanh hồ sơ."""
+    file_name, content = await _read(file)
+    return await service.parse_and_store(user.user_id, file_name, content)
+
+
+@router.get("/cv/{cv_id}/file")
+async def download(cv_id: UUID, user: AuthUser = Depends(require_user)) -> Response:
+    file_name, content = await service.cv_file(user, cv_id)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(file_name)}"},
+    )

@@ -31,7 +31,8 @@ python3 scripts/e2e_acceptance.py          # 65 kiểm tra theo Definition of Do
 python3 scripts/benchmark_matching.py      # hiệu năng AI Matching
 (cd mentoring-service && mvn test)         # unit test (tương tự các service Java khác)
 (cd matching-service && pip install -r requirements-dev.txt && pytest -q tests)
-(cd ai-service && pip install -r requirements-dev.txt && pytest -q tests)
+(cd ai-service && pip install -r requirements-dev.txt && pytest -q tests)   # cần Postgres ở AI_DB_URL,
+                                                                           # không có thì test CSDL tự skip
 ```
 
 Chi tiết: [docs/deployment-guide.md](docs/deployment-guide.md).
@@ -44,8 +45,8 @@ browser → frontend (Next.js :3000, proxy /api/<service>/**)
             ├─ learning-service   Spring Boot :8085  — khoá học, roadmap, tiến độ          (Quang)
             ├─ profile-service    Spring Boot :8082  — hồ sơ, lịch rảnh, embedding         (Thảo)
             ├─ matching-service   FastAPI     :8090  — AI Matching                         (Thảo)
-            ├─ mentoring-service  Spring Boot :8083  — yêu cầu, lịch, đánh giá; lưu dữ liệu AI  (Thắng)
-            │     └─ ai-service   FastAPI     :8091  — AI Interview (Thắng), CV + chatbot (Quang)
+            ├─ mentoring-service  Spring Boot :8083  — yêu cầu, lịch, đánh giá, thông báo   (Thắng)
+            ├─ ai-service         FastAPI     :8091  — AI Interview (Thắng), CV + chatbot (Quang)
             │                                          DeepSeek API + engine rule-based
             └─ payment-service    Spring Boot :8084  — thanh toán sandbox, referral        (Thắng)
 PostgreSQL 16 (1 DB/service, pgvector cho profile) · Redis · Docker Compose · GitHub Actions
@@ -63,6 +64,6 @@ docs/                     tài liệu đồ án
 scripts/                  seed_demo.py, e2e_acceptance.py, benchmark_matching.py, make_sample_cv.py
 auth-service/ learning-service/ profile-service/ mentoring-service/ payment-service/   Java 21, Spring Boot 3.3
 matching-service/         Python 3.11, FastAPI, sentence-transformers
-ai-service/               Python 3.11, FastAPI, DeepSeek (httpx), pypdf
+ai-service/               Python 3.11, FastAPI, DeepSeek (httpx), pypdf, asyncpg (CSDL ai_db)
 frontend/                 Next.js 14 (src/app = trang, src/features/<owner-folder> = API client)
 ```

@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import (AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
+from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
                     make_pdf, multipart_file)
 
 VN = timezone(timedelta(hours=7))
@@ -93,7 +93,7 @@ def main():
     # ---------------- DoD 3: CV + chatbot enrichment ----------------
     print("\nDoD 3 — Upload CV, chatbot hỏi thêm, tổng hợp & re-embedding")
     body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES))
-    upload = call("POST", f"{MENTORING}/api/mentoring/mentee/{mentee['userId']}/cv-upload", token=mentee_token,
+    upload = call("POST", f"{AI}/api/ai/mentee/{mentee['userId']}/cv-upload", token=mentee_token,
                   raw_body=body, content_type=ctype)
     parsed = upload["cv"]["parsed"]
     check(3, "Parse CV: trích xuất kỹ năng", {"Java", "Spring Boot", "Docker"} <= set(parsed["skills"]), parsed["skills"])
@@ -107,7 +107,7 @@ def main():
     slots = []
     while conv["status"] == "IN_PROGRESS":
         slots.append(conv["currentQuestion"]["slot"])
-        conv = call("POST", f"{MENTORING}/api/mentoring/enrichment/conversations/{conv['id']}/answers",
+        conv = call("POST", f"{AI}/api/ai/enrichment/conversations/{conv['id']}/answers",
                     {"answer": answers[len(slots) - 1]}, token=mentee_token)
     check(3, f"Hội thoại kết thúc sau đúng {conv['maxTurns']} lượt, không lặp slot", len(slots) == conv["maxTurns"] and len(set(slots)) == len(slots), slots)
     check(3, "Mốc thời gian đã nêu ('6 tháng') nên không hỏi lại TIMELINE", "TIMELINE" not in slots, slots)
@@ -140,7 +140,7 @@ def main():
                                       {"mentorId": mentor["userId"]}, token=mentee_token), 400)
     check(5, "Không gửi được yêu cầu tới mentor chưa xác thực", ok)
 
-    interview = call("POST", f"{MENTORING}/api/mentoring/interviews", token=mentor_token)
+    interview = call("POST", f"{AI}/api/ai/interviews", token=mentor_token)
     strong = ("Toi dung Redis theo cache-aside voi TTL, invalidation khi ghi. Trong du an thuc te latency giam tu 300ms "
               "xuong 40ms. Toi can nhac trade-off giua consistency va hieu nang, dung index, transaction, "
               "REST API versioning va status code 201/404, pagination, idempotent. Vi du cu the o production.")
@@ -151,7 +151,7 @@ def main():
         strategies.append(interview["currentQuestion"]["strategy"])
         check(4, f"Lượt {turns}: điểm từng câu bị ẩn với mentor khi đang phỏng vấn",
               all(t["score"] is None for t in interview["turns"])) if turns == 2 else None
-        interview = call("POST", f"{MENTORING}/api/mentoring/interviews/{interview['id']}/answers", {"answer": strong}, token=mentor_token)
+        interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": strong}, token=mentor_token)
     check(4, f"AI Interview dừng sau đúng {interview['maxTurns']} lượt (FR-7.3)", turns == interview["maxTurns"])
     check(4, "Câu hỏi thích ứng: có cả DEEPEN và PIVOT (FR-7.2)", "DEEPEN" in strategies and "PIVOT" in strategies, strategies)
     check(4, "Engine AI được ghi nhận (ai-service: DEEPSEEK hoặc RULE_BASED)", interview["engine"] in ("DEEPSEEK", "RULE_BASED"),
@@ -162,9 +162,9 @@ def main():
     check(4, "Trạng thái xác thực mentor = PENDING_REVIEW", mentor_profile["verificationStatus"] == "PENDING_REVIEW")
     ids, _ = mentor_ids_in_matching()
     check(5, "Mentor chờ duyệt vẫn chưa xuất hiện trong matching (NFR-8)", mentor["userId"] not in ids)
-    pending = call("GET", f"{MENTORING}/api/mentoring/admin/interviews?status=PENDING_REVIEW", token=admin_token)
+    pending = call("GET", f"{AI}/api/ai/admin/interviews?status=PENDING_REVIEW", token=admin_token)
     check(4, "Admin thấy buổi phỏng vấn trong danh sách chờ duyệt", any(i["id"] == interview["id"] for i in pending))
-    call("POST", f"{MENTORING}/api/mentoring/admin/interviews/{interview['id']}/review",
+    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review",
          {"decision": "APPROVE", "note": "Tra loi tot"}, token=admin_token)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
     check(4, "Admin duyệt → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED")

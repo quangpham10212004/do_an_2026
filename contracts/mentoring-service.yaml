@@ -3,11 +3,10 @@ info:
   title: mentoring-service
   version: 1.0.0
   description: >
-    Mentoring workflow (yêu cầu, đặt lịch, đánh giá, thông báo) và luồng AI Interview — sở hữu bởi Thắng.
-    Luồng CV Parsing + Chatbot enrichment — do Quang phụ trách. Service này lưu trạng thái (buổi phỏng vấn,
-    hội thoại, file CV); phần tính toán AI được giao cho ai-service (contracts/ai-service.yaml, DeepSeek hoặc
-    rule-based). Sau khi chatbot hoàn tất, gọi profile-service POST /api/profile/mentee/{userId}/enrichment-chat.
-    Khi ai-service không khả dụng, các endpoint AI trả 502 AI_SERVICE_UNAVAILABLE.
+    Mentoring workflow — yêu cầu, đặt lịch, đánh giá, thông báo (Thắng).
+    Các tính năng AI (AI Interview, CV Parsing + Chatbot enrichment) thuộc ai-service,
+    xem contracts/ai-service.yaml — service này không còn logic AI nào.
+    mentoring-service sở hữu bảng notifications; ai-service tạo thông báo qua POST /internal/notifications.
 servers:
   - url: http://localhost:8083
 components:
@@ -60,87 +59,6 @@ components:
             properties:
               startAt: { type: string, format: date-time }
               endAt: { type: string, format: date-time }
-    InterviewTurn:
-      type: object
-      properties:
-        turnNo: { type: integer }
-        topic: { type: string }
-        strategy: { type: string, enum: [OPENING, DEEPEN, PIVOT] }
-        question: { type: string }
-        answer: { type: string, nullable: true }
-        score: { type: number, nullable: true, description: "0-10; null với mentor khi buổi phỏng vấn chưa kết thúc" }
-        feedback: { type: string, nullable: true }
-    Interview:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        mentorId: { type: string, format: uuid }
-        mentorName: { type: string, nullable: true }
-        domain: { type: string }
-        skills: { type: array, items: { type: string } }
-        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED] }
-        engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
-        maxTurns: { type: integer }
-        currentTurn: { type: integer }
-        currentQuestion: { $ref: "#/components/schemas/InterviewTurn" }
-        turns: { type: array, items: { $ref: "#/components/schemas/InterviewTurn" } }
-        overallScore: { type: number, nullable: true, description: 0-100 }
-        summary: { type: string, nullable: true }
-        strengths: { type: array, items: { type: string } }
-        weaknesses: { type: array, items: { type: string } }
-        recommendation: { type: string, nullable: true, enum: [APPROVE, REJECT, NEEDS_REVIEW] }
-        reviewNote: { type: string, nullable: true }
-    ParsedCv:
-      type: object
-      properties:
-        currentRole: { type: string, nullable: true }
-        skills: { type: array, items: { type: string } }
-        yearsExperience: { type: integer, nullable: true }
-        projects:
-          type: array
-          items:
-            type: object
-            properties:
-              name: { type: string }
-              description: { type: string }
-              technologies: { type: array, items: { type: string } }
-        education: { type: array, items: { type: string } }
-        summary: { type: string }
-    Cv:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        fileName: { type: string }
-        engine: { type: string }
-        parsed: { $ref: "#/components/schemas/ParsedCv" }
-        createdAt: { type: string, format: date-time }
-    Conversation:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        menteeId: { type: string, format: uuid }
-        cvId: { type: string, format: uuid }
-        status: { type: string, enum: [IN_PROGRESS, COMPLETED] }
-        engine: { type: string }
-        maxTurns: { type: integer }
-        currentTurn: { type: integer }
-        currentQuestion: { $ref: "#/components/schemas/EnrichmentMessage" }
-        messages: { type: array, items: { $ref: "#/components/schemas/EnrichmentMessage" } }
-        enrichedGoal: { type: string, nullable: true }
-        profileSynced: { type: boolean }
-    EnrichmentMessage:
-      type: object
-      properties:
-        turnNo: { type: integer }
-        slot: { type: string, enum: [TARGET_ROLE, FOCUS_AREAS, PROJECT_EXPERIENCE, CURRENT_GAPS, TIMELINE, MENTORING_PREFERENCE, FREE_FORM] }
-        slotLabel: { type: string }
-        question: { type: string }
-        answer: { type: string, nullable: true }
-    AnswerInput:
-      type: object
-      required: [answer]
-      properties:
-        answer: { type: string, maxLength: 5000 }
 security:
   - bearerAuth: []
 paths:
@@ -336,165 +254,14 @@ paths:
       responses:
         "204": { description: OK }
 
-  # ---------------- AI Interview (FR-7.x) ----------------
-  /api/mentoring/interviews:
-    post:
-      summary: FR-7.1 (MENTOR) Bắt đầu phỏng vấn (hoặc trả về buổi đang dở). Cần có hồ sơ mentor.
-      responses:
-        "200":
-          description: Buổi phỏng vấn với câu hỏi đầu tiên
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Interview" }
-        "400": { description: PROFILE_REQUIRED }
-        "409": { description: INTERVIEW_PENDING_REVIEW / ALREADY_APPROVED }
-  /api/mentoring/interviews/me:
-    get:
-      summary: (MENTOR) Buổi phỏng vấn gần nhất
-      responses:
-        "200": { description: Interview }
-        "204": { description: Chưa phỏng vấn }
-  /api/mentoring/interviews/{id}:
-    get:
-      summary: Chi tiết buổi phỏng vấn (mentor chủ buổi / admin)
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      responses:
-        "200": { description: Interview }
-  /api/mentoring/interviews/{id}/answers:
-    post:
-      summary: >
-        FR-7.2 → FR-7.4 (MENTOR) Trả lời câu hỏi hiện tại. Engine chấm điểm, sinh câu kế tiếp
-        (DEEPEN/PIVOT); sau lượt cuối (mặc định 5) tổng hợp đánh giá → PENDING_REVIEW, thông báo admin.
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/AnswerInput" }
-      responses:
-        "200":
-          description: Trạng thái buổi phỏng vấn sau lượt trả lời
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Interview" }
-        "409": { description: INTERVIEW_NOT_IN_PROGRESS }
-  /api/mentoring/admin/interviews:
-    get:
-      summary: (ADMIN) Danh sách buổi phỏng vấn theo trạng thái
-      parameters:
-        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED] } }
-      responses:
-        "200": { description: "Interview[]" }
-  /api/mentoring/admin/interviews/{id}/review:
-    post:
-      summary: FR-7.5 (ADMIN) Quyết định cuối cùng — APPROVE kích hoạt mentor, REJECT cho phép phỏng vấn lại
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [decision]
-              properties:
-                decision: { type: string, enum: [APPROVE, REJECT] }
-                note: { type: string }
-      responses:
-        "200": { description: Interview }
+  # ---------------- Admin ----------------
   /api/mentoring/admin/stats:
     get:
-      summary: (ADMIN) Thống kê phiên & phỏng vấn
+      summary: (ADMIN) Thống kê phiên mentoring (số liệu AI Interview ở GET /api/ai/admin/stats)
       responses:
-        "200": { description: OK }
+        "200": { description: "{ pendingSessions, confirmedSessions, completedSessions, cancelledSessions }" }
 
-  # ---------------- CV + Chatbot enrichment (FR-8.x) ----------------
-  /api/mentoring/mentee/{id}/cv-upload:
-    post:
-      summary: >
-        FR-8.1 → FR-8.3 (MENTEE) Upload CV PDF (≤ 5MB, ≤ 10 trang, có lớp text) → parse có cấu trúc →
-        mở hội thoại enrichment với câu hỏi đầu tiên dựa trên CV. Yêu cầu đã có hồ sơ mentee.
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file: { type: string, format: binary }
-      responses:
-        "200":
-          description: CV đã parse và hội thoại đã bắt đầu
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  cv: { $ref: "#/components/schemas/Cv" }
-                  conversation: { $ref: "#/components/schemas/Conversation" }
-        "400": { description: INVALID_FILE_TYPE / CV_NO_TEXT / CV_TOO_LONG / PROFILE_REQUIRED }
-  /api/mentoring/mentee/{id}/enrichment/latest:
-    get:
-      summary: CV + hội thoại gần nhất của mentee
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      responses:
-        "200": { description: "{ cv, conversation }" }
-        "204": { description: Chưa có }
-  /api/mentoring/enrichment/conversations/{id}:
-    get:
-      summary: Chi tiết hội thoại
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Conversation" }
-  /api/mentoring/enrichment/conversations/{id}/answers:
-    post:
-      summary: >
-        FR-8.3 → FR-8.5 (MENTEE) Trả lời câu hỏi; sau lượt cuối (mặc định 4) tổng hợp enrichedGoal và
-        gửi sang profile-service (cập nhật goal, gộp kỹ năng CV, sinh lại embedding).
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/AnswerInput" }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Conversation" }
-  /api/mentoring/cv/parse:
-    post:
-      summary: Parse CV không kèm chatbot (mentor dùng để điền nhanh hồ sơ)
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file: { type: string, format: binary }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Cv" }
-  /api/mentoring/cv/{id}/file:
-    get:
-      summary: Tải file CV gốc (chủ CV, mentor, admin)
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      responses:
-        "200":
-          description: PDF
-          content:
-            application/pdf: {}
-
-  # ---------------- Internal (payment-service) ----------------
+  # ---------------- Internal (payment-service, ai-service) ----------------
   /internal/sessions/{id}:
     get:
       summary: Nội bộ — thông tin phiên để payment-service tính tiền
@@ -518,3 +285,24 @@ paths:
                 transactionId: { type: string, format: uuid }
       responses:
         "200": { description: Phiên sau cập nhật }
+  /internal/notifications:
+    post:
+      summary: Nội bộ — tạo thông báo trong ứng dụng (ai-service dùng để báo kết quả AI Interview / enrichment)
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, title, message]
+              properties:
+                recipientId: { type: string, format: uuid, nullable: true, description: Gửi cho 1 người dùng }
+                recipientRole: { type: string, nullable: true, description: "Gửi cho toàn bộ role (ví dụ ADMIN) khi recipientId trống" }
+                type: { type: string }
+                title: { type: string, maxLength: 200 }
+                message: { type: string, maxLength: 2000 }
+                link: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "204": { description: OK }
+        "400": { description: RECIPIENT_REQUIRED }

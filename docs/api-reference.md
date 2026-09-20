@@ -1,6 +1,6 @@
 # Đặc tả API — MentorHub
 
-Bảng tra cứu toàn bộ endpoint của 7 service (99 endpoint nghiệp vụ, 106 kể cả `/health`). Schema request/response đầy đủ nằm trong
+Bảng tra cứu toàn bộ endpoint của 7 service (95 endpoint nghiệp vụ, 102 kể cả `/health`). Schema request/response đầy đủ nằm trong
 `contracts/<service>.yaml` (OpenAPI 3.0.3) — có thể mở bằng <https://editor.swagger.io>.
 
 ## Quy ước chung
@@ -8,7 +8,7 @@ Bảng tra cứu toàn bộ endpoint của 7 service (99 endpoint nghiệp vụ,
 | Nội dung | Quy ước |
 |---|---|
 | Truy cập từ trình duyệt | Qua frontend: `http://localhost:3000/api/<service>/...` (proxy tới service) |
-| Truy cập trực tiếp | `http://localhost:<port>/api/<service>/...` (8081 auth, 8082 profile, 8083 mentoring, 8084 payment, 8085 learning, 8090 matching, 8091 ai — chỉ `/internal`) |
+| Truy cập trực tiếp | `http://localhost:<port>/api/<service>/...` (8081 auth, 8082 profile, 8083 mentoring, 8084 payment, 8085 learning, 8090 matching, 8091 ai) |
 | Xác thực | `Authorization: Bearer <accessToken>` |
 | Nội bộ | `/internal/**` chỉ nhận header `X-Internal-Token: <INTERNAL_API_KEY>`; không đi qua frontend |
 | Định dạng | JSON `camelCase`; thời gian ISO-8601 có offset (`2026-09-20T19:00:00+07:00`); tiền tệ VND |
@@ -111,7 +111,7 @@ Ví dụ response:
 | POST | `/api/learning/admin/roadmaps/{id}/items` | Admin | Thêm bước | 3.4 |
 | PUT / DELETE | `/api/learning/admin/roadmap-items/{id}` | Admin | Sửa / xoá bước | 3.4 |
 
-## 5. mentoring-service (8083) — Thắng (CV/enrichment: Quang)
+## 5. mentoring-service (8083) — Thắng
 
 ### 5.1 Yêu cầu mentoring & phiên
 
@@ -134,40 +134,15 @@ Ví dụ response:
 | GET | `/api/mentoring/notifications?limit=` | Auth | `{unreadCount, items}` | 5.5 |
 | POST | `/api/mentoring/notifications/{id}/read` | Auth | Đánh dấu đã đọc | 5.5 |
 | POST | `/api/mentoring/notifications/read-all` | Auth | Đánh dấu tất cả đã đọc | 5.5 |
+| GET | `/api/mentoring/admin/stats` | Admin | `{pendingSessions, confirmedSessions, completedSessions, cancelledSessions}` | — |
 
-### 5.2 AI Interview
-
-| Method | Endpoint | Quyền | Mô tả | FR |
-|---|---|---|---|---|
-| POST | `/api/mentoring/interviews` | Mentor | Bắt đầu / tiếp tục phỏng vấn → `Interview` kèm `currentQuestion` | 7.1 |
-| GET | `/api/mentoring/interviews/me` | Mentor | Buổi gần nhất (204 nếu chưa có) | 7.1 |
-| GET | `/api/mentoring/interviews/{id}` | Owner / Admin | Chi tiết | 7.4 |
-| POST | `/api/mentoring/interviews/{id}/answers` | Mentor | `{answer}` → trạng thái sau lượt | 7.2–7.4 |
-| GET | `/api/mentoring/admin/interviews?status=` | Admin | Danh sách theo trạng thái | 7.5 |
-| POST | `/api/mentoring/admin/interviews/{id}/review` | Admin | `{decision: APPROVE\|REJECT, note?}` | 7.5 |
-| GET | `/api/mentoring/admin/stats` | Admin | Thống kê phiên & phỏng vấn | — |
-
-### 5.3 CV Parsing + Chatbot enrichment
-
-| Method | Endpoint | Quyền | Mô tả | FR |
-|---|---|---|---|---|
-| POST | `/api/mentoring/mentee/{id}/cv-upload` | Owner (Mentee) | `multipart/form-data: file` → `{cv, conversation}` | 8.1–8.3 |
-| GET | `/api/mentoring/mentee/{id}/enrichment/latest` | Owner | CV + hội thoại gần nhất (204 nếu chưa có) | 8.3 |
-| GET | `/api/mentoring/enrichment/conversations/{id}` | Owner | Chi tiết hội thoại | 8.3 |
-| POST | `/api/mentoring/enrichment/conversations/{id}/answers` | Mentee | `{answer}`; lượt cuối → `enrichedGoal`, đồng bộ hồ sơ | 8.3–8.5 |
-| POST | `/api/mentoring/cv/parse` | Auth | Parse CV không kèm chatbot (mentor điền nhanh hồ sơ) | 8.1, 8.2 |
-| GET | `/api/mentoring/cv/{id}/file` | Owner / Mentor / Admin | Tải file PDF gốc | 8.1 |
-
-Các endpoint AI Interview và CV/enrichment ở trên lưu trạng thái tại mentoring-service và gọi ai-service
-(mục 7) để tính toán. ai-service không phản hồi → `502 AI_SERVICE_UNAVAILABLE`; lỗi file CV từ ai-service
-(`INVALID_FILE_TYPE`, `CV_NO_TEXT`, …) được chuyển tiếp nguyên mã.
-
-### 5.4 Nội bộ
+### 5.2 Nội bộ
 
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/internal/sessions/{id}` | Internal | `{id, menteeId, mentorId, scheduledAt, durationMinutes, price, status}` |
 | POST | `/internal/sessions/{id}/payment-succeeded` | Internal | `{transactionId}` → xác nhận phiên (FR-6.2) |
+| POST | `/internal/notifications` | Internal | `{recipientId? , recipientRole?, type, title, message, link?}` → tạo thông báo (ai-service gọi) |
 
 ## 6. payment-service (8084) — Thắng
 
@@ -196,21 +171,38 @@ Các endpoint AI Interview và CV/enrichment ở trên lưu trạng thái tại 
 
 ## 7. ai-service (8091) — Thắng (`interview`), Quang (`cv`, `enrichment`)
 
-Chỉ phục vụ mentoring-service (header `X-Internal-Token`), không lưu trạng thái. Mọi response có
-`engine` (`DEEPSEEK` | `RULE_BASED`) và `fallbackUsed` (DeepSeek lỗi → kết quả do rule-based tạo).
-Request có thể gửi `engine` đã dùng ở lượt trước để giữ nhất quán.
+ai-service sở hữu trọn vẹn 3 tính năng AI (luồng nghiệp vụ + dữ liệu trong `ai_db`). `/api/ai/**` yêu cầu
+JWT như các service khác và đi qua proxy của frontend. Mọi bản ghi có `engine` (`DEEPSEEK` | `RULE_BASED`)
+— engine chọn ở lượt đầu được lưu lại để cả buổi dùng nhất quán một engine; DeepSeek lỗi ở một lượt thì
+lượt đó tự dùng rule-based.
+
+### 7.1 AI Interview
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
-| GET | `/health` | Public | `{status, llmEnabled, llmProvider, model}` | — |
-| POST | `/internal/interview/first-question` | Internal | `{context, engine?}` → `{topic, strategy: OPENING, question}` | 7.1 |
-| POST | `/internal/interview/evaluate` | Internal | `{context, history[], current, isLastTurn, engine?}` → `{score 0-10, feedback, next?}` | 7.2, 7.3 |
-| POST | `/internal/interview/summarize` | Internal | `{context, turns[], engine?}` → `{overallScore 0-100, summary, strengths, weaknesses, recommendation}` | 7.4 |
-| POST | `/internal/cv/parse` | Internal | `multipart: file, engine?` → `{rawText, parsed: ParsedCv}`; 400 `INVALID_FILE_TYPE`/`INVALID_PDF`/`ENCRYPTED_PDF`/`CV_TOO_LONG`/`CV_NO_TEXT`, 413 `FILE_TOO_LARGE` | 8.2 |
-| POST | `/internal/enrichment/next-question` | Internal | `{context: {domain, currentLevel, currentGoal, cv, maxTurns}, history[], engine?}` → `{slot, slotLabel, question}` | 8.3 |
-| POST | `/internal/enrichment/summarize` | Internal | `{context, history[], engine?}` → `{enrichedGoal}` | 8.4 |
+| GET | `/health` | Public | `{status, dbConnected, llmEnabled, llmProvider, model}` | — |
+| POST | `/api/ai/interviews` | Mentor | Bắt đầu / tiếp tục phỏng vấn → `Interview` kèm `currentQuestion` | 7.1 |
+| GET | `/api/ai/interviews/me` | Mentor | Buổi gần nhất (204 nếu chưa có) | 7.1 |
+| GET | `/api/ai/interviews/{id}` | Owner / Admin | Chi tiết | 7.4 |
+| POST | `/api/ai/interviews/{id}/answers` | Mentor | `{answer}` → trạng thái sau lượt | 7.2–7.4 |
+| GET | `/api/ai/admin/interviews?status=` | Admin | Danh sách theo trạng thái | 7.5 |
+| POST | `/api/ai/admin/interviews/{id}/review` | Admin | `{decision: APPROVE\|REJECT, note?}` → đồng bộ trạng thái xác thực sang profile-service | 7.5 |
+| GET | `/api/ai/admin/stats` | Admin | `{interviewsInProgress, interviewsPendingReview, mentorsApproved, mentorsRejected}` | — |
 
----
+### 7.2 CV Parsing + Chatbot enrichment
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| POST | `/api/ai/mentee/{id}/cv-upload` | Owner (Mentee) | `multipart/form-data: file` → `{cv, conversation}` | 8.1–8.3 |
+| GET | `/api/ai/mentee/{id}/enrichment/latest` | Owner | CV + hội thoại gần nhất (204 nếu chưa có) | 8.3 |
+| GET | `/api/ai/enrichment/conversations/{id}` | Owner | Chi tiết hội thoại | 8.3 |
+| POST | `/api/ai/enrichment/conversations/{id}/answers` | Mentee | `{answer}`; lượt cuối → `enrichedGoal`, đồng bộ hồ sơ | 8.3–8.5 |
+| POST | `/api/ai/cv/parse` | Auth | Parse CV không kèm chatbot (mentor điền nhanh hồ sơ) | 8.1, 8.2 |
+| GET | `/api/ai/cv/{id}/file` | Owner / Mentor / Admin | Tải file PDF gốc | 8.1 |
+
+Lỗi file CV: 400 `INVALID_FILE_TYPE` / `INVALID_PDF` / `ENCRYPTED_PDF` / `CV_TOO_LONG` / `CV_NO_TEXT`,
+413 `FILE_TOO_LARGE`. Engine không sinh được câu hỏi tiếp theo → 502 `AI_ENGINE_UNAVAILABLE` và không
+ghi gì vào CSDL, người dùng gửi lại được.
 
 ## 8. Ví dụ gọi API bằng curl
 
@@ -223,6 +215,6 @@ TOKEN=$(curl -s -X POST localhost:8081/api/auth/login -H 'Content-Type: applicat
 curl -s "localhost:8090/api/matching/mentors?menteeId=<menteeId>&limit=5" -H "Authorization: Bearer $TOKEN"
 
 # Upload CV
-curl -s -X POST localhost:8083/api/mentoring/mentee/<menteeId>/cv-upload \
+curl -s -X POST localhost:8091/api/ai/mentee/<menteeId>/cv-upload \
   -H "Authorization: Bearer $TOKEN" -F file=@scripts/sample-cv.pdf
 ```

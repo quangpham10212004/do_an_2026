@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 
-// mentoring-service (Thắng; phần CV enrichment do Quang phụ trách)
+// mentoring-service (Thắng) — các tính năng AI nằm ở ai-service, xem features/ai/api.js
 export const mentoringApi = {
   // Yêu cầu mentoring
   requests: () => api("/api/mentoring/requests"),
@@ -22,25 +22,6 @@ export const mentoringApi = {
   notifications: (limit = 50) => api(`/api/mentoring/notifications?limit=${limit}`),
   markRead: (id) => api(`/api/mentoring/notifications/${id}/read`, { method: "POST" }),
   markAllRead: () => api("/api/mentoring/notifications/read-all", { method: "POST" }),
-  // AI Interview
-  myInterview: () => api("/api/mentoring/interviews/me"),
-  startInterview: () => api("/api/mentoring/interviews", { method: "POST" }),
-  answerInterview: (id, answer) => api(`/api/mentoring/interviews/${id}/answers`, { method: "POST", body: { answer } }),
-  interview: (id) => api(`/api/mentoring/interviews/${id}`),
-  adminInterviews: (status = "") => api(`/api/mentoring/admin/interviews?status=${status}`),
-  reviewInterview: (id, decision, note) => api(`/api/mentoring/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
+  // Admin — thống kê phiên mentoring (số liệu AI Interview lấy từ aiApi.adminStats)
   adminStats: () => api("/api/mentoring/admin/stats"),
-  // CV + chatbot enrichment
-  uploadCv: (menteeId, file) => {
-    const form = new FormData();
-    form.append("file", file);
-    return api(`/api/mentoring/mentee/${menteeId}/cv-upload`, { method: "POST", form });
-  },
-  parseCv: (file) => {
-    const form = new FormData();
-    form.append("file", file);
-    return api("/api/mentoring/cv/parse", { method: "POST", form });
-  },
-  latestEnrichment: (menteeId) => api(`/api/mentoring/mentee/${menteeId}/enrichment/latest`),
-  answerEnrichment: (id, answer) => api(`/api/mentoring/enrichment/conversations/${id}/answers`, { method: "POST", body: { answer } }),
 };

@@ -312,6 +312,15 @@ public class SessionService {
         }).toList();
     }
 
+    /** Số liệu phiên mentoring cho bảng điều khiển quản trị. */
+    public AdminStats adminStats() {
+        return new AdminStats(
+                sessionRepo.countByStatus(MentoringSession.Status.PENDING),
+                sessionRepo.countByStatus(MentoringSession.Status.CONFIRMED),
+                sessionRepo.countByStatus(MentoringSession.Status.COMPLETED),
+                sessionRepo.countByStatus(MentoringSession.Status.CANCELLED));
+    }
+
     private static SessionInternalView toInternal(MentoringSession s) {
         return new SessionInternalView(s.getId(), s.getMenteeId(), s.getMentorId(), s.getScheduledAt(), s.getDurationMinutes(),
                 s.getPrice(), s.getStatus().name());

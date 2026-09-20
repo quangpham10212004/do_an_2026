@@ -12,10 +12,6 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
-  servlet:
-    multipart:
-      max-file-size: 5MB
-      max-request-size: 6MB
 
 management:
   endpoints:
@@ -31,9 +27,6 @@ app:
   services:
     profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
-    # ai-service (Python): AI Interview, CV Parsing, Chatbot enrichment (DeepSeek + rule-based)
-    ai-url: ${AI_SERVICE_URL:http://localhost:8091}
-    ai-timeout: ${AI_SERVICE_TIMEOUT:PT150S}
   timezone: Asia/Ho_Chi_Minh
   booking:
     min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
@@ -41,10 +34,3 @@ app:
     payment-hold: PT30M           # phiên chưa thanh toán sau 30 phút sẽ tự huỷ để giải phóng khung giờ
   reminder:
     before: ${REMINDER_BEFORE:PT24H}   # FR-5.5 — nhắc lịch trước giờ bắt đầu
-  interview:
-    max-turns: ${INTERVIEW_MAX_TURNS:5}   # FR-7.3 — số lượt hỏi-đáp cố định
-    max-answer-length: 5000
-  enrichment:
-    max-turns: ${ENRICHMENT_MAX_TURNS:4}  # FR-8.4 — số lượt chatbot hỏi thêm
-  storage:
-    cv-dir: ${CV_STORAGE_DIR:./data/cv}

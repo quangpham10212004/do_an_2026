@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, PageHead, useDialog } from "@/components/ui";
+import { aiApi } from "@/features/ai/api";
 import { authApi } from "@/features/auth/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { paymentApi } from "@/features/payment/api";
@@ -23,6 +24,7 @@ function Stat({ label, value, href }) {
 function AdminHome() {
   const [users, setUsers] = useState(null);
   const [mentoring, setMentoring] = useState(null);
+  const [interviews, setInterviews] = useState(null);
   const [payments, setPayments] = useState(null);
   const [msg, setMsg] = useState("");
   const [dialog, ask] = useDialog();
@@ -30,6 +32,7 @@ function AdminHome() {
   useEffect(() => {
     authApi.adminStats().then(setUsers).catch(() => {});
     mentoringApi.adminStats().then(setMentoring).catch(() => {});
+    aiApi.adminStats().then(setInterviews).catch(() => {});
     paymentApi.adminStats().then(setPayments).catch(() => {});
   }, []);
 
@@ -43,14 +46,14 @@ function AdminHome() {
         <Stat label="Tổng tài khoản" value={users?.total} href="/admin/users" />
         <Stat label="Mentor" value={users?.mentors} href="/admin/users" />
         <Stat label="Mentee" value={users?.mentees} href="/admin/users" />
-        <Stat label="AI Interview chờ duyệt" value={mentoring?.interviewsPendingReview} href="/admin/interviews" />
+        <Stat label="AI Interview chờ duyệt" value={interviews?.interviewsPendingReview} href="/admin/interviews" />
       </div>
       <h2>Mentoring</h2>
       <div className="grid grid-4" style={{ marginBottom: "1.25rem" }}>
         <Stat label="Phiên chờ thanh toán" value={mentoring?.pendingSessions} />
         <Stat label="Phiên đã xác nhận" value={mentoring?.confirmedSessions} />
         <Stat label="Phiên hoàn thành" value={mentoring?.completedSessions} />
-        <Stat label="Mentor đã duyệt / từ chối" value={mentoring ? `${mentoring.mentorsApproved} / ${mentoring.mentorsRejected}` : null} />
+        <Stat label="Mentor đã duyệt / từ chối" value={interviews ? `${interviews.mentorsApproved} / ${interviews.mentorsRejected}` : null} />
       </div>
       <h2>Thanh toán</h2>
       <div className="grid grid-4" style={{ marginBottom: "1.25rem" }}>

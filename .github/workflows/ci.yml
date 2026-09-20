@@ -45,6 +45,17 @@ jobs:
   ai-service:
     name: Unit test (ai-service)
     runs-on: ubuntu-latest
+    services:
+      # ai-service lưu trạng thái AI Interview / CV enrichment => test chạy trên Postgres thật.
+      ai-db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ai_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5438:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,6 +66,8 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Run tests
         working-directory: ai-service
+        env:
+          AI_DB_URL: postgresql://postgres:postgres@localhost:5438/ai_db
         run: python -m pytest -q tests/
 
   frontend:

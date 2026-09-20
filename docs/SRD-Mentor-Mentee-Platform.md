@@ -6,8 +6,8 @@
 | **Nhóm thực hiện** | Phạm Ngọc Quang (B22DCDT243), Đinh Quyết Thắng (B22DCCN809), Phạm Ninh Phương Thảo (B22DCCN803) |
 | **Lớp** | E22CNPM03 |
 | **GVHD** | Đào Ngọc Phong |
-| **Phiên bản** | 1.1 — cập nhật theo hệ thống đã hiện thực hoá |
-| **Ngày** | 17/09/2026 |
+| **Phiên bản** | 1.2 — cập nhật theo hệ thống đã hiện thực hoá |
+| **Ngày** | 20/09/2026 |
 
 ### Lịch sử phiên bản
 
@@ -16,7 +16,8 @@
 | 0.1 | 2026 | Bản đầu: Auth, Profile, Learning Hub, AI Matching, Mentoring, Payment |
 | 0.2 | 31/07/2026 | Bổ sung AI Interview, CV Parsing + Chatbot enrichment, quy trình nghiệp vụ chi tiết (lưu tại `archive/SRD-Mentor-Mentee-Platform-v0.2.md`) |
 | 1.0 | 16/09/2026 | Chốt yêu cầu theo bản hiện thực: bổ sung các quyết định thiết kế (mục 2.4), hoàn thiện đặc tả API (mục 9), đánh dấu tiêu chí nghiệm thu đã đạt (mục 6), thống nhất phân công giữa SRD và `CONVENTIONS.md` |
-| **1.1** | 17/09/2026 | Tách phần AI hội thoại (AI Interview, CV Parsing, Chatbot enrichment) thành **ai-service** (Python/FastAPI); đổi nhà cung cấp LLM sang **DeepSeek API** (quyết định D4, D12) |
+| 1.1 | 17/09/2026 | Tách phần AI hội thoại (AI Interview, CV Parsing, Chatbot enrichment) thành **ai-service** (Python/FastAPI); đổi nhà cung cấp LLM sang **DeepSeek API** (quyết định D4, D12) |
+| **1.2** | 20/09/2026 | Chuyển **toàn bộ** AI Interview và CV Parsing + Chatbot enrichment (luồng nghiệp vụ + dữ liệu) từ mentoring-service (Java) sang ai-service (Python); ai-service có CSDL riêng `ai_db` và API công khai `/api/ai/**` (cập nhật quyết định D12) |
 
 > Tài liệu liên quan: [Kiến trúc](architecture.md) · [Thiết kế CSDL](database-design.md) ·
 > [Đặc tả API](api-reference.md) · [Tính năng AI](ai-features.md) ·
@@ -128,7 +129,7 @@ ai-service) — khi không cấu hình API key, hệ thống tự dùng engine r
 | D9 | Phiên chưa thanh toán | Tự huỷ sau 30 phút | Giải phóng khung giờ bị giữ chỗ |
 | D10 | Referral hợp lệ | Giao dịch thành công **đầu tiên** của người được giới thiệu, giá trị ≥ 50.000đ; không cộng nếu người giới thiệu là mentor của giao dịch; tối đa 5 lượt thưởng/ngày/người | Chống gian lận cơ bản (FR-6.6) |
 | D11 | Frontend gọi backend | Route handler Next.js làm proxy `/api/<service>/**` | Cùng origin (không cần CORS), không bao giờ expose `/internal/*` |
-| D12 | Vị trí mã nguồn AI hội thoại | Service riêng **ai-service** (Python/FastAPI, không lưu trạng thái, chỉ có endpoint nội bộ); mentoring-service giữ luồng nghiệp vụ và dữ liệu, gửi kèm lịch sử hội thoại mỗi lượt | Hệ sinh thái AI chủ yếu ở Python; thay đổi/triển khai model độc lập với nghiệp vụ đặt lịch–thanh toán; AI Interview và CV enrichment dùng chung client LLM & cơ chế fallback; không lưu trạng thái nên dễ nhân bản và khởi động lại |
+| D12 | Vị trí mã nguồn AI hội thoại | Service riêng **ai-service** (Python/FastAPI) sở hữu **trọn vẹn** engine, luồng nghiệp vụ và dữ liệu (CSDL riêng `ai_db`, API `/api/ai/**`); không service Java nào còn logic AI *(v1.2 — trước đó luồng & dữ liệu nằm ở mentoring-service)* | Hệ sinh thái AI chủ yếu ở Python; gom cả luồng về Python bỏ được vòng gọi HTTP hai chiều và việc gửi kèm toàn bộ lịch sử hội thoại mỗi lượt; đổi model/prompt/lược đồ dữ liệu không đụng tới code Java; AI Interview và CV enrichment dùng chung client LLM & cơ chế fallback |
 
 ---
 
@@ -227,7 +228,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 |---|---|---|---|---|
 | NFR-1 | Hiệu năng | Top-K matching < 2 giây với vài nghìn profile | Tính khoảng cách ngay trong PostgreSQL (pgvector + HNSW), vector mentee lấy bằng subquery | ~5.000 mentor: p95 **5,7 ms**, max 6,8 ms |
 | NFR-2 | Bảo mật | Hash mật khẩu, JWT có hạn, phân quyền theo role | BCrypt; access token 30 phút; refresh token lưu dạng SHA-256, xoay vòng, phát hiện tái sử dụng; chặn brute-force (Redis); `@PreAuthorize`; internal token cho `/internal/*` | `AuthServiceTest` (9 test) và nhóm kiểm tra DoD 1 trong e2e đều pass |
-| NFR-3 | Khả năng mở rộng | Microservices, triển khai độc lập qua Docker | 7 service + 5 CSDL riêng, mỗi service 1 Dockerfile; ai-service & matching-service không lưu trạng thái | — |
+| NFR-3 | Khả năng mở rộng | Microservices, triển khai độc lập qua Docker | 7 service + 6 CSDL riêng, mỗi service 1 Dockerfile; matching-service không lưu trạng thái | — |
 | NFR-4 | Khả dụng | Chạy ổn định bằng Docker Compose | Healthcheck mọi service, `depends_on` theo trạng thái healthy, job retry/đối soát | `docker compose up` → 7/7 service healthy |
 | NFR-5 | Khả năng bảo trì | Tổ chức module rõ ràng, có test | Kiến trúc phân lớp controller/service/repository; 106 unit test + 65 kiểm tra e2e; CI GitHub Actions | 100% pass |
 | NFR-6 | Minh bạch AI | Kết quả matching giải thích được | Danh sách lý do + kỹ năng trùng + thống kê mentor bị loại theo từng ràng buộc + trọng số | — |
@@ -252,9 +253,9 @@ service.
 | learning-service | 8085 | Quang | Learning Hub | — |
 | profile-service | 8082 | Thảo | Career profile, lịch rảnh, embedding | Sinh & lưu embedding |
 | matching-service | 8090 | Thảo | AI Matching | **AI Matching** (Thảo) |
-| mentoring-service | 8083 | Thắng | Yêu cầu, lịch, đánh giá, thông báo; luồng & dữ liệu AI Interview và CV enrichment | — (gọi ai-service) |
+| mentoring-service | 8083 | Thắng | Yêu cầu, lịch, đánh giá, thông báo | — |
 | payment-service | 8084 | Thắng | Thanh toán sandbox, referral | — |
-| ai-service | 8091 | Thắng (`app/interview`), Quang (`app/cv`, `app/enrichment`) | Tính toán AI hội thoại, không lưu trạng thái | **AI Interview** (Thắng); **CV Parsing + Chatbot enrichment** (Quang) |
+| ai-service | 8091 | Thắng (`app/interview`), Quang (`app/cv`, `app/enrichment`) | AI hội thoại: engine + luồng nghiệp vụ + dữ liệu (`ai_db`) | **AI Interview** (Thắng); **CV Parsing + Chatbot enrichment** (Quang) |
 
 ### 5.2 Công nghệ sử dụng
 
@@ -262,7 +263,7 @@ service.
 |---|---|
 | Frontend | Next.js 14 (App Router), React 18 |
 | Backend (5 service) | Java 21, Spring Boot 3.3 (Web, Security, Data JPA, Validation, Actuator) |
-| Backend (matching-service, ai-service) | Python 3.11, FastAPI, Pydantic; asyncpg (matching), httpx + pypdf (ai-service) |
+| Backend (matching-service, ai-service) | Python 3.11, FastAPI, Pydantic, asyncpg; httpx + pypdf + PyJWT (ai-service) |
 | Cơ sở dữ liệu | PostgreSQL 16 (1 DB riêng/service) |
 | Vector Database | pgvector (HNSW, cosine) trong DB của profile-service |
 | Embedding model | sentence-transformers `all-MiniLM-L6-v2` (384 chiều) |
@@ -309,7 +310,7 @@ Chi tiết ownership, quy ước git, contract-first workflow trong `CONVENTIONS
 |---|---|---|---|
 | **Phạm Ninh Phương Thảo** | `profile-service`, `matching-service` | `profile`, `matching` | **AI Matching** |
 | **Đinh Quyết Thắng** | `mentoring-service`, `payment-service`, `ai-service/app/interview` | `mentoring`, `payment` | **AI Interview** |
-| **Phạm Ngọc Quang** | `auth-service`, `learning-service`, `ai-service/app/cv` + `app/enrichment` | `auth`, `learning` | **CV Parsing + Chatbot enrichment** (luồng nghiệp vụ tại `mentoring-service/.../CvEnrichmentService`) |
+| **Phạm Ngọc Quang** | `auth-service`, `learning-service`, `ai-service/app/cv` + `app/enrichment` | `auth`, `learning` | **CV Parsing + Chatbot enrichment** (engine, luồng và dữ liệu đều ở `ai-service`) |
 
 Mỗi người sở hữu đúng 1 tính năng AI riêng để có thể tự bảo vệ trước hội đồng (đồ án chấm điểm cá nhân).
 
@@ -347,9 +348,9 @@ Bản đầy đủ theo từng endpoint: [api-reference.md](api-reference.md); s
 | profile-service | 12 | mentor/mentee profile, availability, mentor search, enrichment-chat, rebuild embeddings, internal (summary, mentor, verification, rating, active-mentees) |
 | matching-service | 3 | health, internal embed, matching mentors |
 | learning-service | 18 | courses, enroll, progress, materials, roadmaps, admin CRUD |
-| mentoring-service | 29 | requests, sessions, reviews, notifications, interviews, admin interviews, CV upload/parse, enrichment conversations, internal sessions |
+| mentoring-service | 21 | requests, sessions, reviews, notifications, admin stats, internal sessions, internal notifications |
 | payment-service | 11 | charge, transactions, referrals, admin stats/transactions/referrals, internal referrals/refund |
-| ai-service | 7 | health, internal interview (first-question, evaluate, summarize), internal cv parse, internal enrichment (next-question, summarize) |
+| ai-service | 14 | health, interviews (+ admin interviews, admin stats), CV upload/parse/file, enrichment conversations |
 
 ### 9.1 Sơ đồ gọi API giữa các service
 
@@ -359,9 +360,10 @@ browser ──► frontend (Next.js, proxy /api/<service>/**)
                ├─► profile-service ──────────► matching-service  [POST /internal/embed]
                ├─► matching-service ─────────► profile-db (READ-ONLY, ngoại lệ đã duyệt)
                ├─► learning-service
-               ├─► mentoring-service ────────► profile-service   [/internal/mentor/*, /internal/profile-summary, enrichment-chat]
-               │                    ├────────► payment-service   [POST /internal/payments/refund]
-               │                    └────────► ai-service        [/internal/interview/*, /internal/cv/parse, /internal/enrichment/*]
-               │                                   └──► DeepSeek API (tuỳ chọn)
+               ├─► mentoring-service ────────► profile-service   [/internal/mentor/*, /internal/profile-summary]
+               │                    └────────► payment-service   [POST /internal/payments/refund]
+               ├─► ai-service ───────────────► profile-service   [/internal/mentor/*, enrichment-chat]
+               │              ├──────────────► mentoring-service [POST /internal/notifications]
+               │              └──────────────► DeepSeek API (tuỳ chọn)
                └─► payment-service ──────────► mentoring-service [GET /internal/sessions/{id}, POST .../payment-succeeded]
 ```

@@ -1,20 +1,41 @@
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app import config
+from app.clients.http import close_clients
+from app.db import close_pool, get_pool
+from app.enrichment.service import retry_profile_sync_forever
 from app.errors import AiError
 from app.llm.deepseek import get_client
 from app.routers import cv, enrichment, interview
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        await get_pool()
+    except OSError as e:  # DB chưa sẵn sàng: pool sẽ được tạo lại ở request đầu tiên
+        log.warning("Could not connect to ai_db at startup: %s", e)
+    retry_job = asyncio.create_task(retry_profile_sync_forever())
+    yield
+    retry_job.cancel()
+    await close_clients()
+    await close_pool()
+
 
 app = FastAPI(
     title="ai-service",
-    version="1.0.0",
+    version="2.0.0",
     description="AI Interview, CV Parsing, Chatbot enrichment — DeepSeek + engine rule-based (fallback).",
+    lifespan=lifespan,
 )
 
 
@@ -37,11 +58,17 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
 
 
 @app.get("/health")
-def health() -> dict:
+async def health() -> dict:
     client = get_client()
+    try:
+        pool = await get_pool()
+        db_up = await pool.fetchval("SELECT 1") == 1
+    except Exception:
+        db_up = False
     return {
-        "status": "UP",
+        "status": "UP" if db_up else "DEGRADED",
         "service": "ai-service",
+        "dbConnected": db_up,
         "llmEnabled": client.enabled,
         "llmProvider": "deepseek" if client.enabled else None,
         "model": config.DEEPSEEK_MODEL if client.enabled else None,

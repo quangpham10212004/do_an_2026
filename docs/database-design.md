@@ -12,6 +12,7 @@ và được chạy tự động khi container CSDL khởi tạo lần đầu.
 | `mentoring_db` | mentoring-service | 5435 | |
 | `payment_db` | payment-service | 5436 | |
 | `learning_db` | learning-service | 5437 | Có dữ liệu seed khoá học/roadmap |
+| `ai_db` | ai-service | 5438 | Dữ liệu 3 tính năng AI hội thoại; file CV trên volume `cv-storage` |
 
 Quy ước: tên bảng/cột `snake_case`; khoá chính `UUID DEFAULT gen_random_uuid()`; thời gian
 `TIMESTAMPTZ`; trạng thái là `TEXT` + ràng buộc `CHECK` (ánh xạ `enum` trong Java).
@@ -121,9 +122,6 @@ retry nhận ra (vector cũ vẫn giữ để matching tiếp tục hoạt độ
 erDiagram
     mentoring_requests ||--o{ sessions : "đặt lịch từ"
     sessions ||--o| reviews : "được đánh giá"
-    interviews ||--|{ interview_turns : "gồm"
-    cv_documents ||--o{ enrichment_conversations : "khởi tạo"
-    enrichment_conversations ||--|{ enrichment_messages : "gồm"
 
     mentoring_requests {
         uuid id PK
@@ -165,6 +163,28 @@ erDiagram
         text link
         boolean is_read
     }
+```
+
+| Bảng | Mô tả |
+|---|---|
+| `mentoring_requests` | Yêu cầu mentoring; số yêu cầu `ACCEPTED` phân biệt theo mentee = số mentee đang được hướng dẫn (so với `capacity`) |
+| `sessions` | Phiên mentoring. `PENDING` = chờ thanh toán. Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch |
+| `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE) |
+| `notifications` | Thông báo trong ứng dụng, gửi cho 1 người hoặc cho cả role ADMIN; ai-service tạo thông báo qua `POST /internal/notifications` |
+
+---
+
+## 4. ai_db
+
+ai-service sở hữu trọn vẹn dữ liệu của AI Interview và CV Parsing + Chatbot enrichment (trước đây các
+bảng này nằm trong `mentoring_db` và do mentoring-service điều phối).
+
+```mermaid
+erDiagram
+    interviews ||--|{ interview_turns : "gồm"
+    cv_documents ||--o{ enrichment_conversations : "khởi tạo"
+    enrichment_conversations ||--|{ enrichment_messages : "gồm"
+
     interviews {
         uuid id PK
         uuid mentor_id
@@ -225,18 +245,14 @@ erDiagram
 
 | Bảng | Mô tả |
 |---|---|
-| `mentoring_requests` | Yêu cầu mentoring; số yêu cầu `ACCEPTED` phân biệt theo mentee = số mentee đang được hướng dẫn (so với `capacity`) |
-| `sessions` | Phiên mentoring. `PENDING` = chờ thanh toán. Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch |
-| `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE) |
-| `notifications` | Thông báo trong ứng dụng, gửi cho 1 người hoặc cho cả role ADMIN |
-| `interviews` | Buổi AI Interview + kết quả tổng hợp + quyết định admin. Phần tính toán AI ở ai-service (không có CSDL); `engine` ghi engine đã dùng để các lượt sau nhất quán |
-| `interview_turns` | Từng lượt hỏi-đáp; `UNIQUE (interview_id, turn_no)` chống ghi trùng |
-| `cv_documents` | CV đã upload: văn bản trích xuất + kết quả parse (JSON); file PDF nằm trên volume `cv-storage` |
-| `enrichment_conversations` / `enrichment_messages` | Hội thoại chatbot làm rõ mục tiêu và từng lượt hỏi-đáp theo slot |
+| `interviews` | Buổi AI Interview + kết quả tổng hợp + quyết định admin; `engine` ghi engine đã dùng để các lượt sau nhất quán |
+| `interview_turns` | Từng lượt hỏi-đáp; `UNIQUE (interview_id, turn_no)` chống ghi trùng; ghi câu trả lời bằng `UPDATE ... WHERE answer IS NULL` |
+| `cv_documents` | CV đã upload: văn bản trích xuất + kết quả parse (`JSONB`); file PDF nằm trên volume `cv-storage` |
+| `enrichment_conversations` / `enrichment_messages` | Hội thoại chatbot làm rõ mục tiêu và từng lượt hỏi-đáp theo slot; `profile_synced` = đã đẩy goal sang profile-service (job nền thử lại nếu chưa) |
 
 ---
 
-## 4. payment_db
+## 5. payment_db
 
 ```mermaid
 erDiagram
@@ -287,7 +303,7 @@ erDiagram
 
 ---
 
-## 5. learning_db
+## 6. learning_db
 
 ```mermaid
 erDiagram
@@ -355,10 +371,10 @@ chữ số thập phân), được tính lại mỗi khi người dùng đánh d
 
 ---
 
-## 6. Ánh xạ tham chiếu giữa các CSDL
+## 7. Ánh xạ tham chiếu giữa các CSDL
 
 | Giá trị | Nguồn gốc | Được tham chiếu ở |
 |---|---|---|
-| `users.id` | auth_db | `mentor_profiles.user_id`, `mentee_profiles.user_id`, `mentoring_requests.mentee_id/mentor_id`, `sessions.*_id`, `interviews.mentor_id`, `cv_documents.user_id`, `transactions.payer_id/mentor_id`, `referral_codes.user_id`, `referrals.*_id`, `course_enrollments.user_id`… |
+| `users.id` | auth_db | `mentor_profiles.user_id`, `mentee_profiles.user_id`, `mentoring_requests.mentee_id/mentor_id`, `sessions.*_id`, `interviews.mentor_id` (ai_db), `cv_documents.user_id` (ai_db), `transactions.payer_id/mentor_id`, `referral_codes.user_id`, `referrals.*_id`, `course_enrollments.user_id`… |
 | `sessions.id` | mentoring_db | `transactions.session_id` |
-| `cv_documents.id` | mentoring_db | `mentee_profiles.cv_file_url` (dạng `/api/mentoring/cv/{id}/file`) |
+| `cv_documents.id` | ai_db | `mentee_profiles.cv_file_url` (dạng `/api/ai/cv/{id}/file`) |

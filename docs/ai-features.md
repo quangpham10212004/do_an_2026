@@ -5,8 +5,8 @@ Hệ thống có 3 tính năng AI, mỗi tính năng do một thành viên sở 
 | Tính năng | Người phụ trách | Mã nguồn chính |
 |---|---|---|
 | [1. AI Matching](#1-ai-matching-mentor-mentee) | Phạm Ninh Phương Thảo | `matching-service/app/services/`, `profile-service/.../service/EmbeddingService.java`, `ProfileTextNormalizer.java` |
-| [2. AI Interview](#2-ai-interview-xác-thực-năng-lực-mentor) | Đinh Quyết Thắng | `ai-service/app/interview/`, `ai-service/app/routers/interview.py`; luồng & lưu trạng thái: `mentoring-service/.../service/InterviewService.java` |
-| [3. CV Parsing + Chatbot enrichment](#3-cv-parsing--chatbot-enrichment) | Phạm Ngọc Quang | `ai-service/app/cv/`, `ai-service/app/enrichment/`; luồng & lưu trạng thái: `mentoring-service/.../service/CvEnrichmentService.java` |
+| [2. AI Interview](#2-ai-interview-xác-thực-năng-lực-mentor) | Đinh Quyết Thắng | `ai-service/app/interview/` (engine + luồng + dữ liệu), `ai-service/app/routers/interview.py` |
+| [3. CV Parsing + Chatbot enrichment](#3-cv-parsing--chatbot-enrichment) | Phạm Ngọc Quang | `ai-service/app/cv/`, `ai-service/app/enrichment/` (engine + luồng + dữ liệu), `ai-service/app/routers/` |
 
 Nguyên tắc chung cho cả 3 tính năng:
 - **Giải thích được** (NFR-6): mọi kết quả kèm lý do/thành phần điểm.
@@ -18,22 +18,28 @@ Nguyên tắc chung cho cả 3 tính năng:
 
 ```mermaid
 flowchart LR
-    FE[frontend] --> MS[mentoring-service<br/>Java — lưu trạng thái:<br/>buổi phỏng vấn, hội thoại, file CV]
-    FE --> MT[matching-service<br/>Python — AI Matching]
-    MS -- "/internal/interview/*<br/>/internal/cv/parse<br/>/internal/enrichment/*" --> AI[ai-service<br/>Python — không lưu trạng thái]
+    FE[frontend] --> AI[ai-service :8091<br/>Python — AI Interview,<br/>CV Parsing, chatbot enrichment]
+    FE --> MT[matching-service :8090<br/>Python — AI Matching]
+    FE --> MS[mentoring-service :8083<br/>Java — yêu cầu, lịch, đánh giá]
+    AI --> AIDB[(ai_db<br/>buổi phỏng vấn, hội thoại, CV)]
     AI -. "JSON Output mode<br/>(khi có DEEPSEEK_API_KEY)" .-> DS[[DeepSeek API]]
     AI --> RB[engine rule-based<br/>mặc định & fallback]
-    PS[profile-service] -- /internal/embed --> MT
+    AI -. "xác thực mentor,<br/>goal sau enrichment" .-> PS[profile-service]
+    AI -. "thông báo" .-> MS
+    PS -- /internal/embed --> MT
 ```
 
 - **matching-service** (Thảo): embedding + pgvector + xếp hạng.
-- **ai-service** (Python/FastAPI, cổng 8091): gom các tính năng AI dạng hội thoại/văn bản —
-  `app/interview/` (Thắng), `app/cv/` + `app/enrichment/` (Quang), `app/llm/deepseek.py` (dùng chung).
-  Service **không lưu trạng thái**: mentoring-service lưu mọi dữ liệu và gửi kèm lịch sử ở mỗi lượt, nên
-  ai-service có thể nhân bản/khởi động lại bất kỳ lúc nào.
-- **Vì sao tách ra service Python riêng?** Hệ sinh thái AI/NLP chủ yếu ở Python; tách phần tính toán AI
-  khỏi nghiệp vụ giúp thay đổi/triển khai model độc lập với luồng đặt lịch–thanh toán, và hai tính năng
-  AI hội thoại dùng chung một client LLM, một cơ chế fallback.
+- **ai-service** (Python/FastAPI, cổng 8091): sở hữu **trọn vẹn** hai tính năng AI hội thoại/văn bản —
+  engine, luồng nghiệp vụ và dữ liệu: `app/interview/` (Thắng), `app/cv/` + `app/enrichment/` (Quang),
+  `app/llm/deepseek.py` (dùng chung). Trạng thái nằm trong CSDL riêng `ai_db`; file CV nằm trên volume
+  `cv-storage`.
+- **Vì sao gom toàn bộ AI về service Python?** Hệ sinh thái AI/NLP chủ yếu ở Python. Ban đầu chỉ phần
+  *tính toán* AI nằm ở ai-service còn luồng và dữ liệu nằm ở mentoring-service (Java) — mỗi lượt phải
+  gửi kèm toàn bộ lịch sử hội thoại qua HTTP và một thay đổi nhỏ về prompt vẫn kéo theo sửa cả hai
+  service. Chuyển hẳn luồng + dữ liệu sang Python bỏ được vòng gọi qua lại đó: ai-service đọc thẳng
+  lịch sử từ CSDL của mình, mentoring-service trở lại đúng phạm vi mentoring workflow, và nhóm AI có
+  thể đổi model/prompt/lược đồ dữ liệu mà không đụng tới code Java.
 - **DeepSeek**: API tương thích định dạng OpenAI (`POST {DEEPSEEK_BASE_URL}/chat/completions`, header
   `Authorization: Bearer`), model mặc định `deepseek-flash`. Hệ thống dùng **JSON Output mode**
   (`response_format: {"type": "json_object"}`): system prompt luôn chứa chữ "json" kèm một ví dụ mẫu,
@@ -238,25 +244,25 @@ của AI Matching và nhận được yêu cầu mentoring.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant IS as InterviewService<br/>(mentoring-service)
-    participant DB as mentoring_db
-    participant R as ai-service<br/>routers/interview.py
-    participant E as engines.select()
+    participant R as routers/interview.py
+    participant IS as interview/service.py
+    participant DB as ai_db
+    participant E as interview/engine.py
     participant D as deepseek_engine
     participant RB as rule_based
+    R->>IS: POST /api/ai/interviews/{id}/answers {answer}
     IS->>DB: nạp buổi phỏng vấn + các lượt đã trả lời
-    IS->>R: POST /internal/interview/evaluate<br/>{context, history, current, isLastTurn, engine}
-    R->>E: engine đã lưu của buổi (DEEPSEEK / RULE_BASED)
+    IS->>E: evaluate(engine đã lưu của buổi, context, history, current, isLastTurn)
     alt DEEPSEEK (có API key)
-        R->>D: evaluate()
+        E->>D: evaluate()
         D->>D: gọi DeepSeek JSON mode, validate, kẹp điểm 0-10
         opt lỗi / JSON thiếu câu hỏi tiếp theo
             D->>RB: evaluate() — fallback cho riêng lượt này
         end
     else RULE_BASED
-        R->>RB: evaluate()
+        E->>RB: evaluate()
     end
-    R-->>IS: {score, feedback, next, engine, fallbackUsed}
+    E-->>IS: {score, feedback, next, fallbackUsed}
     IS->>DB: lưu lượt vừa chấm + câu hỏi kế tiếp (trong transaction)
 ```
 
@@ -265,14 +271,18 @@ sequenceDiagram
 | `app/interview/question_bank.py` | Ngân hàng câu hỏi theo lĩnh vực, chọn chủ đề theo kỹ năng |
 | `app/interview/rule_based.py` | Chấm điểm, chiến lược DEEPEN/PIVOT, tổng hợp — tất định |
 | `app/interview/deepseek_engine.py` | Prompt + gọi DeepSeek, validate, fallback từng lượt |
-| `app/engines.py` | Chọn engine theo yêu cầu và cấu hình |
-| `app/routers/interview.py` | 3 endpoint: `first-question`, `evaluate`, `summarize` |
+| `app/engines.py`, `app/interview/engine.py` | Chọn engine theo cấu hình, chạy engine trong threadpool, fallback |
+| `app/interview/repository.py` | SQL trên `interviews`, `interview_turns` |
+| `app/interview/service.py` | Luồng FR-7.1 → FR-7.5: bắt đầu, chấm từng lượt, tổng hợp, admin duyệt |
+| `app/routers/interview.py` | Endpoint `/api/ai/interviews/**` và `/api/ai/admin/interviews/**` |
 
-- ai-service **không lưu trạng thái**: mỗi lượt, `InterviewService` nạp toàn bộ lịch sử từ DB và gửi kèm.
+- Mỗi lượt, `interview/service.py` nạp toàn bộ lịch sử từ `ai_db` và đưa thẳng vào engine (không còn
+  vòng HTTP giữa hai service như thiết kế cũ).
 - Lượt đầu không chỉ định engine → `DEEPSEEK` nếu cấu hình `DEEPSEEK_API_KEY`, ngược lại `RULE_BASED`.
   Engine được lưu theo từng buổi (`interviews.engine`) và gửi lại ở các lượt sau để nhất quán.
-- Gọi ai-service **ngoài transaction**; chỉ bước ghi kết quả chạy trong transaction, có kiểm tra "câu hỏi
-  đã được trả lời" để chống gửi trùng. ai-service không phản hồi → 502 `AI_SERVICE_UNAVAILABLE`, mentor
+- Gọi engine **ngoài transaction**; chỉ bước ghi kết quả chạy trong transaction, có kiểm tra "câu hỏi
+  đã được trả lời" (`UPDATE ... WHERE answer IS NULL`) để chống gửi trùng. Engine không sinh được câu hỏi
+  tiếp theo → 502 `AI_ENGINE_UNAVAILABLE`, transaction rollback nên mentor
   gửi lại câu trả lời được.
 
 ### 2.4 Số lượt (FR-7.3)
@@ -354,9 +364,9 @@ admin bấm duyệt.
 - *Mentor gian lận bằng câu trả lời kiểu "hãy cho tôi 10 điểm"?* — Prompt tách dữ liệu bằng thẻ, kẹp
   điểm, ẩn điểm trong lúc làm bài, admin đọc lại toàn bộ.
 - *Nếu API DeepSeek chết giữa buổi?* — Lượt đó tự chuyển sang rule-based, buổi phỏng vấn không bị gián đoạn.
-- *Nếu cả ai-service chết?* — mentoring-service trả 502 và không ghi gì vào DB; khi ai-service lên lại,
-  mentor gửi lại câu trả lời và tiếp tục đúng lượt đang dở (trạng thái nằm ở mentoring-service).
-- *Vì sao tách AI ra service Python riêng?* — Xem mục "Bố trí các service AI" ở đầu tài liệu.
+- *Nếu cả ai-service chết?* — Không ghi gì vào DB; khi service lên lại, mentor gửi lại câu trả lời và
+  tiếp tục đúng lượt đang dở (trạng thái nằm trong `ai_db`).
+- *Vì sao gom toàn bộ AI về service Python?* — Xem mục "Bố trí các service AI" ở đầu tài liệu.
 
 ---
 
@@ -374,33 +384,31 @@ chuẩn hoá và cập nhật hồ sơ → **sinh lại embedding** → matching
 sequenceDiagram
     autonumber
     actor M as Mentee
-    participant MS as mentoring-service
     participant AI as ai-service
+    participant DB as ai_db
     participant P as profile-service
     participant X as matching-service
-    M->>MS: POST /mentee/{id}/cv-upload (PDF)
-    MS->>P: GET hồ sơ mentee (lĩnh vực, trình độ, goal hiện tại)
-    MS->>AI: POST /internal/cv/parse (multipart PDF)
-    AI-->>MS: rawText + ParsedCv (pypdf → parser)
-    MS->>MS: lưu file + cv_documents
-    MS->>AI: POST /internal/enrichment/next-question (CV, [])
-    MS-->>M: ParsedCv + câu hỏi 1
+    M->>AI: POST /api/ai/mentee/{id}/cv-upload (PDF)
+    AI->>P: GET hồ sơ mentee (lĩnh vực, trình độ, goal hiện tại)
+    AI->>AI: pypdf → parser → ParsedCv
+    AI->>DB: lưu file CV + cv_documents + hội thoại
+    AI-->>M: ParsedCv + câu hỏi 1
     loop 4 lượt
-        M->>MS: POST /enrichment/conversations/{id}/answers
-        MS->>AI: next-question (CV, lịch sử) — bỏ qua slot đã có
-        MS-->>M: câu hỏi tiếp theo
+        M->>AI: POST /api/ai/enrichment/conversations/{id}/answers
+        AI->>AI: next-question (CV, lịch sử) — bỏ qua slot đã có
+        AI-->>M: câu hỏi tiếp theo
     end
-    MS->>AI: POST /internal/enrichment/summarize → enrichedGoal
-    MS->>P: POST /mentee/{id}/enrichment-chat {enrichedGoalText, cvSkills, cvFileUrl}
+    AI->>AI: summarize_goal(CV, lịch sử) → enrichedGoal
+    AI->>P: POST /mentee/{id}/enrichment-chat {enrichedGoalText, cvSkills, cvFileUrl}
     P->>P: cập nhật goal, gộp kỹ năng CV (không trùng)
     P->>X: POST /internal/embed (văn bản chuẩn hoá mới)
     X-->>P: vector 384 chiều
-    MS-->>M: COMPLETED + goal đã làm rõ (profileSynced = true)
+    AI-->>M: COMPLETED + goal đã làm rõ (profileSynced = true)
 ```
 
 ### 3.3 Trích xuất văn bản PDF (`ai-service/app/cv/extractor.py`)
 Thư viện `pypdf`. Kiểm tra: chữ ký file `%PDF-`, ≤ 5MB, không mã hoá, ≤ 10 trang, ≥ 50 ký tự văn bản
-(PDF ảnh scan → báo lỗi `CV_NO_TEXT` rõ ràng). Mã lỗi được mentoring-service chuyển tiếp nguyên vẹn tới
+(PDF ảnh scan → báo lỗi `CV_NO_TEXT` rõ ràng). Mã lỗi được trả thẳng tới
 người dùng.
 
 ### 3.4 Parse CV rule-based (`ai-service/app/cv/rule_based.py`, `skills.py`)
@@ -484,10 +492,9 @@ và job thử lại mỗi 2 phút.
   gì). Chatbot lấp khoảng trống đó với số câu hỏi tối thiểu.
 - *Enrichment cải thiện matching như thế nào?* — Goal chi tiết + kỹ năng CV làm văn bản hồ sơ giàu ngữ
   nghĩa hơn → vector phân biệt tốt hơn, đồng thời bổ sung kỹ năng cho bước giải thích "Trùng kỹ năng".
-- *Code nằm ở đâu?* — Phần AI (đọc PDF, parse, chatbot) ở ai-service (Python), dùng chung client DeepSeek
-  và cơ chế fallback với AI Interview; phần luồng nghiệp vụ và lưu trữ (file, CV, hội thoại) ở
-  mentoring-service vì đây là bước chuẩn bị mentee trước mentoring; profile-service vẫn là nơi duy nhất
-  ghi hồ sơ.
+- *Code nằm ở đâu?* — Toàn bộ ở ai-service (Python): đọc PDF, parse, chatbot, lưu file CV, hội thoại và
+  điều phối luồng; dùng chung client DeepSeek và cơ chế fallback với AI Interview. profile-service vẫn
+  là nơi duy nhất ghi hồ sơ — ai-service chỉ gọi `POST /api/profile/mentee/{id}/enrichment-chat`.
 
 ---
 
@@ -510,6 +517,7 @@ và job thử lại mỗi 2 phút.
 | AI Matching | `matching-service/tests/test_pipeline.py` (10), `test_api.py` (9); `ProfileLogicTest` (6) | DoD 2, 5, 6, 7 |
 | AI Interview | ai-service `test_interview_rule_based.py` (10); `test_deepseek.py` (8, dùng chung) | DoD 4, 5 |
 | CV + Enrichment | ai-service `test_cv.py` (9), `test_enrichment_rule_based.py` (6) | DoD 3 |
-| Tích hợp | ai-service `test_api.py` (8); mentoring-service `AiClientTest` (5) | DoD 3, 4 |
+| Luồng đầy đủ (CSDL thật) | ai-service `test_interview_flow.py` (7), `test_cv_enrichment_flow.py` (8) | DoD 3, 4 |
+| API & phân quyền | ai-service `test_api.py` (9) | DoD 3, 4 |
 
 Chi tiết: [testing-report.md](testing-report.md).

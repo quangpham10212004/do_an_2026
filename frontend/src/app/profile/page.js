@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, StatusBadge } from "@/components/ui";
 import { DOMAINS, profileApi } from "@/features/profile/api";
-import { mentoringApi } from "@/features/mentoring/api";
+import { aiApi } from "@/features/ai/api";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 
 const splitList = (s) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
@@ -81,14 +81,14 @@ function MentorProfile({ user }) {
     setParsing(true);
     setMsg({});
     try {
-      const cv = await mentoringApi.parseCv(file);
+      const cv = await aiApi.parseCv(file);
       const p = cv.parsed;
       setForm((f) => ({
         ...f,
         skills: [...new Set([...splitList(f.skills), ...p.skills])].join(", "),
         yearsExperience: p.yearsExperience ?? f.yearsExperience,
         bio: f.bio || p.summary || "",
-        cvFileUrl: `/api/mentoring/cv/${cv.id}/file`,
+        cvFileUrl: aiApi.cvFileUrl(cv.id),
       }));
       setMsg({ ok: `Đã trích xuất ${p.skills.length} kỹ năng từ CV (engine ${cv.engine}). Kiểm tra lại rồi bấm Lưu.` });
     } catch (err) {

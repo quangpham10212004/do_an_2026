@@ -11,6 +11,7 @@ MENTORING = os.getenv("MENTORING_URL", "http://localhost:8083")
 PAYMENT = os.getenv("PAYMENT_URL", "http://localhost:8084")
 LEARNING = os.getenv("LEARNING_URL", "http://localhost:8085")
 MATCHING = os.getenv("MATCHING_URL", "http://localhost:8090")
+AI = os.getenv("AI_URL", "http://localhost:8091")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-internal-key")
 
 

@@ -12,10 +12,14 @@ Quy tắc: **không sửa code trong service không thuộc quyền sở hữu c
 review từ người phụ trách. Mọi thay đổi contract (mục 3) phải được cả 2 bên liên quan đồng ý trước khi merge.
 
 `ai-service` (8091, Python) có đồng sở hữu theo module: `app/interview/` (Thắng), `app/cv/` và
-`app/enrichment/` (Quang); phần dùng chung (`app/llm/`, `app/engines.py`, `app/main.py`, `app/security.py`)
-cần cả hai review. Luồng nghiệp vụ và dữ liệu của CV enrichment nằm ở `mentoring-service`
-(`CvEnrichmentService`, `CvEnrichmentController`) — thay đổi cần Thắng review; `client/AiClient` là hợp
-đồng giữa hai service, thay đổi phải cập nhật `contracts/ai-service.yaml` trước.
+`app/enrichment/` (Quang); phần dùng chung (`app/llm/`, `app/engines.py`, `app/db.py`, `app/main.py`,
+`app/security.py`, `app/clients/`, `app/storage.py`) cần cả hai review.
+
+**Toàn bộ 3 tính năng AI nằm ở Python** — cả luồng nghiệp vụ lẫn dữ liệu. Không service Java nào
+được thêm lại logic AI: mentoring-service chỉ giữ mentoring workflow, profile-service chỉ giữ hồ sơ.
+ai-service gọi ngược profile-service (trạng thái xác thực mentor, goal sau enrichment) và
+mentoring-service (`POST /internal/notifications`) bằng header `X-Internal-Token`; mọi thay đổi ở các
+endpoint đó phải cập nhật contract trước.
 
 Trang giao diện (`frontend/src/app/**`) thuộc người sở hữu feature mà trang đó gọi API chính.
 
@@ -53,8 +57,9 @@ Trang giao diện (`frontend/src/app/**`) thuộc người sở hữu feature m�
 
 - JWT HS256 ký bằng `JWT_SECRET` dùng chung; claims: `sub` (userId), `email`, `role`, `typ=access`.
   Mỗi service tự xác minh token (package `security/` giống nhau ở các service Java; `app/security.py` ở
-  matching-service). Không tự chọn thuật toán khác HS256.
-- Kiểm tra quyền: role bằng `@PreAuthorize`; quyền sở hữu bằng `CurrentUser.requireAccess(ownerId)`.
+  matching-service và ai-service). Không tự chọn thuật toán khác HS256.
+- Kiểm tra quyền: role bằng `@PreAuthorize` (Java) / `Depends(require_role(...))` (Python); quyền sở hữu
+  bằng `CurrentUser.requireAccess(ownerId)` (Java) / `AuthUser.require_access(owner_id)` (Python).
 - Không commit secret. Mọi cấu hình qua biến môi trường (`.env`, xem `.env.example`).
 - Nội dung do người dùng nhập khi đưa vào prompt LLM phải được bọc trong thẻ (`<answer>`, `<cv>`) và
   system prompt phải yêu cầu coi đó là dữ liệu. `DEEPSEEK_API_KEY` chỉ cấu hình cho ai-service.
@@ -99,9 +104,15 @@ matching-service/
   requirements.txt  requirements-dev.txt  Dockerfile
 ```
 
-ai-service tổ chức theo tính năng: `app/interview/`, `app/cv/`, `app/enrichment/` (mỗi thư mục có
-`models.py`, `rule_based.py`, `deepseek_*.py`), `app/llm/deepseek.py`, `app/routers/`. ai-service
-**không lưu trạng thái** và chỉ có endpoint `/internal/*`; engine LLM luôn phải có fallback rule-based.
+ai-service tổ chức theo tính năng: `app/interview/`, `app/cv/`, `app/enrichment/`. Mỗi thư mục tính năng có
+`models.py` (model của engine), `rule_based.py`, `deepseek_*.py`, `engine.py` (chọn engine + fallback),
+`repository.py` (SQL), `service.py` (luồng nghiệp vụ), `views.py` (model response). Phần dùng chung:
+`app/llm/deepseek.py`, `app/db.py` (pool asyncpg tới `ai_db`), `app/clients/` (gọi service khác),
+`app/storage.py` (file CV), `app/security.py`, `app/routers/`.
+
+Quy ước code: engine LLM luôn phải có fallback rule-based; engine chạy đồng bộ nên được gọi qua
+`run_in_threadpool`; **không gọi engine/mạng bên trong transaction** — gọi xong mới mở transaction ghi
+kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 
 ## 7. Database
 
@@ -112,8 +123,9 @@ ai-service tổ chức theo tính năng: `app/interview/`, `app/cv/`, `app/enric
   `matching_reader` chỉ có quyền `SELECT` (tạo trong `db/init/profile-service.sql`). Mọi thao tác WRITE
   vào các bảng này chỉ do `profile-service` thực hiện. Ngoại lệ khác phải được cả nhóm thống nhất và ghi
   chú tại đây trước khi code.
-- Dữ liệu mà service khác cần để lọc/xếp hạng (trạng thái xác thực mentor, số mentee đang hướng dẫn,
-  rating) được mentoring-service **đồng bộ chủ động** sang profile-service qua `/internal/mentor/**`.
+- Dữ liệu mà service khác cần để lọc/xếp hạng được **đồng bộ chủ động** sang profile-service qua
+  `/internal/mentor/**`: số mentee đang hướng dẫn và rating do mentoring-service đẩy; trạng thái xác thực
+  mentor do ai-service đẩy sau mỗi bước của AI Interview.
 - Schema nằm trong `db/init/<service-name>.sql`, chạy tự động khi volume CSDL được tạo lần đầu
   (`docker compose down -v` để khởi tạo lại). Hibernate đặt `ddl-auto: none` — file SQL là nguồn sự thật.
 - Khoá chính `UUID`; thời gian `TIMESTAMPTZ`; trạng thái `TEXT` + `CHECK`.
@@ -128,7 +140,7 @@ ai-service tổ chức theo tính năng: `app/interview/`, `app/cv/`, `app/enric
 | payment-service | 8084 | 5436 |
 | learning-service | 8085 | 5437 |
 | matching-service | 8090 | (đọc DB 5434 của profile-service bằng role `matching_reader`) |
-| ai-service | 8091 | — (không lưu trạng thái) |
+| ai-service | 8091 | 5438 |
 | frontend (Next.js) | 3000 | — |
 | Redis | 6379 | — |
 
@@ -145,7 +157,7 @@ ai-service tổ chức theo tính năng: `app/interview/`, `app/cv/`, `app/enric
   CV Parsing + Chatbot enrichment, Mentoring workflow, Payment (sandbox) + Referral.
 - Ngoài scope: chatbot trợ lý học tập độc lập (chỉ giữ chatbot enrichment hẹp phục vụ matching),
   chatbot A2A, WebRTC video call, AI phân tích giọng nói, SMTP thật, cổng thanh toán thật.
-- AI Interview do **Thắng** phụ trách: tính toán AI ở `ai-service/app/interview`, luồng & dữ liệu ở `mentoring-service`.
-- CV Parsing + Chatbot enrichment do **Quang** phụ trách: tính toán AI ở `ai-service/app/cv`, `app/enrichment`;
-  luồng & dữ liệu ở `mentoring-service`; cập nhật hồ sơ qua `POST /api/profile/mentee/{userId}/enrichment-chat`.
+- AI Interview do **Thắng** phụ trách: toàn bộ ở `ai-service/app/interview` (luồng + dữ liệu).
+- CV Parsing + Chatbot enrichment do **Quang** phụ trách: toàn bộ ở `ai-service/app/cv`, `app/enrichment`;
+  cập nhật hồ sơ qua `POST /api/profile/mentee/{userId}/enrichment-chat`.
 - Nhà cung cấp LLM: **DeepSeek API** (JSON Output mode), cấu hình bằng `DEEPSEEK_*` chỉ ở ai-service.
