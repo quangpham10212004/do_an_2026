@@ -153,7 +153,7 @@ WHERE m.user_id = ANY($1::uuid[])
 | Mã lý do | Điều kiện loại | Ý nghĩa nghiệp vụ |
 |---|---|---|
 | `notVerified` | `verification_status ≠ APPROVED` | Chưa qua AI Interview hoặc chưa được admin duyệt (DoD 5) |
-| `unavailable` | `is_available = false` | Mentor tạm ngưng nhận mentee |
+| `unavailable` | Trạng thái hiệu lực ≠ `ACCEPTING` (US-08: `PAUSED`, `ON_LEAVE` chưa hết hạn, `SUSPENDED`) | Mentor tạm ngưng / nghỉ phép / bị đình chỉ |
 | `noSchedule` | Không có khung lịch rảnh nào | Không thể đặt lịch |
 | `fullCapacity` | `active_mentee_count ≥ capacity` | Đã đủ số mentee tối đa |
 | `domainMismatch` | `lower(domain) ≠ lower(mentee.domain)` | Khác lĩnh vực mentee chọn |

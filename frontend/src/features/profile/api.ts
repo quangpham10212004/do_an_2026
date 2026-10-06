@@ -10,6 +10,8 @@ import type {
   MentorProfile,
   MentorProfileInput,
   MentorSearchParams,
+  MentorStatus,
+  MentorStatusInput,
   PageResponse,
   Uuid,
 } from "@/types";
@@ -21,6 +23,9 @@ export const profileApi = {
   getAvailability: (id: Uuid) => api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`),
   saveAvailability: (id: Uuid, slots: AvailabilitySlot[]) =>
     api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`, { method: "PUT", body: { slots } }),
+  // US-08 — trạng thái nhận mentee
+  changeStatus: (id: Uuid, body: MentorStatusInput) =>
+    api<MentorProfile>(`/api/profile/mentor/${id}/status`, { method: "PUT", body }),
   // US-07 — ngoại lệ lịch rảnh
   getExceptions: (id: Uuid) => api<AvailabilityException[]>(`/api/profile/mentor/${id}/exceptions`),
   createException: (id: Uuid, body: AvailabilityExceptionInput) =>
@@ -59,3 +64,16 @@ export function formatLocalDate(value: string): string {
 
 export const exceptionTimeLabel = (e: { startTime: string | null; endTime: string | null }): string =>
   e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : "Nghỉ cả ngày";
+
+export const MENTOR_STATUS_LABELS: Record<MentorStatus, string> = {
+  ACCEPTING: "Đang nhận mentee",
+  PAUSED: "Tạm ngưng nhận",
+  ON_LEAVE: "Đang nghỉ phép",
+  SUSPENDED: "Bị đình chỉ",
+};
+
+/** Nhãn trạng thái kèm ngày hết nghỉ phép nếu có. */
+export function mentorStatusText(status: MentorStatus, onLeaveUntil: string | null): string {
+  if (status === "ON_LEAVE" && onLeaveUntil) return `Nghỉ phép đến hết ${formatLocalDate(onLeaveUntil)}`;
+  return MENTOR_STATUS_LABELS[status];
+}

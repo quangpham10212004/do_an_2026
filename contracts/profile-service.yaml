@@ -60,6 +60,13 @@ components:
             Lưu thành công nhưng mentor cần tự kiểm tra. Hiện LUÔN có giá trị: profile-service không
             xem được phiên của mentoring-service nên không kiểm tra trùng với phiên CONFIRMED; phiên đã
             xác nhận không bị tự huỷ. mentoring-service tôn trọng ngoại lệ cho các lần đặt lịch MỚI.
+    MentorStatus:
+      type: string
+      enum: [ACCEPTING, PAUSED, ON_LEAVE, SUSPENDED]
+      description: >
+        US-08 (PRD-PROF-5). Trạng thái HIỆU LỰC: ON_LEAVE tự về ACCEPTING sau ngày onLeaveUntil (tính khi
+        đọc + job ghi lại DB mỗi 10 phút). Chỉ ACCEPTING được gợi ý trong AI Matching và nhận yêu cầu mới.
+        SUSPENDED chỉ đặt/gỡ bởi ADMIN (US-27) hoặc mentoring-service (PUT /internal/mentor/{id}/status).
     MentorProfileInput:
       type: object
       required: [displayName, skills, domain, bio]
@@ -73,7 +80,12 @@ components:
         portfolioLinks: { type: array, items: { type: string } }
         hourlyRate: { type: number, description: "VNĐ/giờ, 0 = miễn phí" }
         capacity: { type: integer, minimum: 1, maximum: 50, description: Số mentee tối đa cùng lúc }
-        isAvailable: { type: boolean }
+        isAvailable:
+          type: boolean
+          deprecated: true
+          description: >
+            US-08: thay bằng PUT /api/profile/mentor/{userId}/status. Vẫn nhận để tương thích:
+            true → ACCEPTING, false → PAUSED; bỏ qua nếu trùng trạng thái hiện tại hoặc mentor đang SUSPENDED.
     MentorProfile:
       allOf:
         - $ref: "#/components/schemas/MentorProfileInput"
@@ -84,6 +96,10 @@ components:
             rating: { type: number, format: float }
             ratingCount: { type: integer }
             verificationStatus: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
+            isAvailable: { type: boolean, description: "Chỉ đọc — = (status == ACCEPTING). Giữ cho bên gọi cũ." }
+            status: { $ref: "#/components/schemas/MentorStatus" }
+            onLeaveUntil: { type: string, format: date, nullable: true, description: "Chỉ có khi status = ON_LEAVE (nghỉ đến hết ngày này, giờ mentor)" }
+            statusReason: { type: string, nullable: true, description: Lý do của lần đổi trạng thái gần nhất (vd. lý do đình chỉ) }
             availability: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
             exceptions:
               type: array
@@ -117,9 +133,11 @@ components:
         rating: { type: number }
         ratingCount: { type: integer }
         hourlyRate: { type: number }
-        isAvailable: { type: boolean }
+        isAvailable: { type: boolean, description: "= (status == ACCEPTING)" }
         hasCapacity: { type: boolean }
         verificationStatus: { type: string }
+        status: { $ref: "#/components/schemas/MentorStatus" }
+        onLeaveUntil: { type: string, format: date, nullable: true }
     ProfileSummary:
       type: object
       properties:
@@ -189,6 +207,32 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MentorProfile" }
         "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
+
+  /api/profile/mentor/{userId}/status:
+    put:
+      summary: >
+        US-08 Mentor đổi trạng thái nhận mentee (chủ hồ sơ MENTOR hoặc ADMIN). Không đặt/gỡ được SUSPENDED
+        qua endpoint này (dùng /api/profile/admin/mentors/{id}/suspend|unsuspend).
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [ACCEPTING, PAUSED, ON_LEAVE] }
+                onLeaveUntil: { type: string, format: date, description: "Bắt buộc khi ON_LEAVE; từ hôm nay tới tối đa 365 ngày" }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Hồ sơ sau khi đổi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "400": { description: "VALIDATION_ERROR (status = SUSPENDED/khác) · INVALID_STATUS (thiếu/sai onLeaveUntil)" }
+        "409": { description: MENTOR_SUSPENDED — mentor đang bị đình chỉ }
 
   /api/profile/mentor/{userId}/availability:
     get:
@@ -374,6 +418,33 @@ paths:
                 status: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
       responses:
         "200": { description: Hồ sơ mentor sau cập nhật }
+
+  /internal/mentor/{userId}/status:
+    put:
+      summary: >
+        Nội bộ (interface 2) — mentoring-service đặt trạng thái mentor: PAUSED sau 3 lần vi phạm,
+        SUSPENDED khi tranh chấp, ACCEPTING để gỡ (gỡ được cả SUSPENDED). profile-service KHÔNG gọi lại
+        mentoring-service ở luồng này và không ghi audit (bên gọi tự chịu trách nhiệm).
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [PAUSED, SUSPENDED, ACCEPTING] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Hồ sơ mentor sau cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "400": { description: VALIDATION_ERROR }
+        "404": { description: PROFILE_NOT_FOUND }
 
   /internal/mentor/{userId}/rating:
     put:

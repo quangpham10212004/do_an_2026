@@ -30,7 +30,8 @@ public final class ProfileDtos {
             @Size(max = 10) List<@Size(max = 300) String> portfolioLinks,
             @DecimalMin("0") @DecimalMax("100000000") BigDecimal hourlyRate,
             @Min(1) @Max(50) Integer capacity,
-            Boolean isAvailable) {
+            /** Đã thay bằng status (US-08) — vẫn nhận để tương thích: true → ACCEPTING, false → PAUSED. */
+            @Deprecated Boolean isAvailable) {
     }
 
     public record MentorProfileResponse(
@@ -49,17 +50,25 @@ public final class ProfileDtos {
             float rating,
             int ratingCount,
             String verificationStatus,
+            String status,
+            LocalDate onLeaveUntil,
+            String statusReason,
             List<AvailabilitySlot> availability,
             List<AvailabilityExceptionDto> exceptions) {
 
-        /** exceptions = ngoại lệ lịch rảnh từ hôm nay tới {@link MentorRules#EXCEPTION_HORIZON_DAYS} ngày tới. */
-        public static MentorProfileResponse from(MentorProfile p, List<AvailabilitySlot> slots,
-                                                 List<AvailabilityExceptionDto> exceptions) {
+        /**
+         * status = trạng thái HIỆU LỰC (nghỉ phép đã hết hạn tính là ACCEPTING); isAvailable = status == ACCEPTING.
+         * exceptions = ngoại lệ lịch rảnh từ hôm nay tới {@link MentorRules#EXCEPTION_HORIZON_DAYS} ngày tới.
+         */
+        public static MentorProfileResponse from(MentorProfile p, MentorProfile.Status effective,
+                                                 List<AvailabilitySlot> slots, List<AvailabilityExceptionDto> exceptions) {
+            boolean onLeave = effective == MentorProfile.Status.ON_LEAVE;
             return new MentorProfileResponse(p.getUserId(), p.getDisplayName(), Arrays.asList(p.getSkills()),
                     p.getDomain(), p.getBio(), p.getYearsExperience(), p.getCvFileUrl(),
                     Arrays.asList(p.getPortfolioLinks()), p.getHourlyRate(), p.getCapacity(),
-                    p.getActiveMenteeCount(), p.isAvailable(), p.getRating(), p.getRatingCount(),
-                    p.getVerificationStatus().name(), slots, exceptions);
+                    p.getActiveMenteeCount(), effective == MentorProfile.Status.ACCEPTING, p.getRating(), p.getRatingCount(),
+                    p.getVerificationStatus().name(), effective.name(), onLeave ? p.getOnLeaveUntil() : null,
+                    effective == p.getStatus() ? p.getStatusReason() : null, slots, exceptions);
         }
     }
 
@@ -145,13 +154,30 @@ public final class ProfileDtos {
             BigDecimal hourlyRate,
             boolean isAvailable,
             boolean hasCapacity,
-            String verificationStatus) {
+            String verificationStatus,
+            String status,
+            LocalDate onLeaveUntil) {
 
-        public static MentorCard from(MentorProfile p) {
+        public static MentorCard from(MentorProfile p, MentorProfile.Status effective) {
             return new MentorCard(p.getUserId(), p.getDisplayName(), p.getDomain(), Arrays.asList(p.getSkills()),
-                    p.getYearsExperience(), p.getRating(), p.getRatingCount(), p.getHourlyRate(), p.isAvailable(),
-                    p.getActiveMenteeCount() < p.getCapacity(), p.getVerificationStatus().name());
+                    p.getYearsExperience(), p.getRating(), p.getRatingCount(), p.getHourlyRate(),
+                    effective == MentorProfile.Status.ACCEPTING, p.getActiveMenteeCount() < p.getCapacity(),
+                    p.getVerificationStatus().name(), effective.name(),
+                    effective == MentorProfile.Status.ON_LEAVE ? p.getOnLeaveUntil() : null);
         }
+    }
+
+    /** US-08 — mentor tự đổi trạng thái (không đặt/gỡ được SUSPENDED). */
+    public record MentorStatusInput(
+            @NotNull @Pattern(regexp = "ACCEPTING|PAUSED|ON_LEAVE", message = "chỉ nhận ACCEPTING, PAUSED, ON_LEAVE") String status,
+            LocalDate onLeaveUntil,
+            @Size(max = 500) String reason) {
+    }
+
+    /** Interface 2 — mentoring-service đặt trạng thái (sau 3 lần vi phạm / tranh chấp). */
+    public record InternalStatusUpdate(
+            @NotNull @Pattern(regexp = "ACCEPTING|PAUSED|SUSPENDED", message = "chỉ nhận ACCEPTING, PAUSED, SUSPENDED") String status,
+            @Size(max = 500) String reason) {
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {

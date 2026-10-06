@@ -34,6 +34,15 @@ public class InternalProfileController {
         return profileService.updateVerification(mentorId, body.status());
     }
 
+    /**
+     * Interface 2 — mentoring-service đặt PAUSED (3 lần vi phạm) / SUSPENDED (tranh chấp) / ACCEPTING.
+     * profile-service KHÔNG gọi lại mentoring-service ở luồng này (bên gọi tự huỷ phiên nếu cần).
+     */
+    @PutMapping("/mentor/{mentorId}/status")
+    public MentorProfileResponse status(@PathVariable UUID mentorId, @Valid @RequestBody InternalStatusUpdate body) {
+        return profileService.setStatusInternal(mentorId, body);
+    }
+
     @PutMapping("/mentor/{mentorId}/rating")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void rating(@PathVariable UUID mentorId, @Valid @RequestBody RatingUpdate body) {

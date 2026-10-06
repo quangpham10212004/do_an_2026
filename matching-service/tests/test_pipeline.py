@@ -19,7 +19,7 @@ def mentor(**overrides) -> dict:
         "skills": ["Java", "Spring Boot"],
         "capacity": 3,
         "active_mentee_count": 0,
-        "is_available": True,
+        "is_accepting": True,
         "has_schedule": True,
         "verification_status": "APPROVED",
         "rating": 4.5,
@@ -35,7 +35,7 @@ def test_hard_filter_keeps_only_eligible_mentors_and_counts_reasons():
     candidates = [
         mentor(mentor_id="ok"),
         mentor(mentor_id="full", active_mentee_count=3),
-        mentor(mentor_id="busy", is_available=False),
+        mentor(mentor_id="busy", is_accepting=False),
         mentor(mentor_id="no-schedule", has_schedule=False),
         mentor(mentor_id="interview", verification_status="PENDING_REVIEW"),
         mentor(mentor_id="rejected", verification_status="REJECTED"),

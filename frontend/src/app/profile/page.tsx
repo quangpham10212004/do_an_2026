@@ -8,6 +8,7 @@ import { matchingApi } from "@/features/matching/api";
 import { aiApi } from "@/features/ai/api";
 import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
 import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
+import MentorStatusControl from "@/features/profile/MentorStatusControl";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
@@ -73,7 +74,6 @@ interface MentorForm {
   yearsExperience: number | string;
   hourlyRate: number | string;
   capacity: number | string;
-  isAvailable: boolean;
   portfolioLinks: string;
   cvFileUrl?: string | null;
 }
@@ -84,7 +84,7 @@ const trimSlot = (s: AvailabilitySlot): SlotForm => ({ ...s, startTime: s.startT
 
 function MentorProfileForm({ user }: { user: SessionUser }) {
   const [profile, setProfile] = useState<MentorProfile | null | undefined>(undefined);
-  const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, isAvailable: true, portfolioLinks: "" });
+  const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, portfolioLinks: "" });
   const [slots, setSlots] = useState<SlotForm[]>([]);
   const [msg, setMsg] = useState<Flash>({});
   const [parsing, setParsing] = useState(false);
@@ -108,7 +108,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
   useEffect(() => {
     profileApi.getMentor(user.userId).then((p) => {
       setProfile(p);
-      setForm({ displayName: p.displayName, skills: p.skills.join(", "), domain: p.domain, bio: p.bio || "", yearsExperience: p.yearsExperience, hourlyRate: p.hourlyRate, capacity: p.capacity, isAvailable: p.isAvailable, portfolioLinks: p.portfolioLinks.join("\n"), cvFileUrl: p.cvFileUrl });
+      setForm({ displayName: p.displayName, skills: p.skills.join(", "), domain: p.domain, bio: p.bio || "", yearsExperience: p.yearsExperience, hourlyRate: p.hourlyRate, capacity: p.capacity, portfolioLinks: p.portfolioLinks.join("\n"), cvFileUrl: p.cvFileUrl });
       setSlots(p.availability.map(trimSlot));
     }).catch(() => setProfile(null));
   }, [user]);
@@ -204,11 +204,15 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
             <div className="field"><label>Sức chứa (số mentee tối đa)</label><input type="number" min={1} max={50} value={form.capacity} onChange={set("capacity")} /></div>
           </div>
           <div className="field"><label>Portfolio / liên kết</label><textarea style={{ minHeight: 60 }} value={form.portfolioLinks} onChange={set("portfolioLinks")} placeholder="Mỗi dòng một liên kết" /></div>
-          <div className="field"><label><input type="checkbox" checked={form.isAvailable} onChange={set("isAvailable")} /> Đang nhận mentee mới</label></div>
           <button className="btn">Lưu hồ sơ</button>
         </form>
 
         <div className="stack">
+        {profile && (
+          <div className="card" id="status">
+            <MentorStatusControl profile={profile} onChange={setProfile} />
+          </div>
+        )}
         <div className="card" id="availability">
           <h2>Lịch rảnh hằng tuần</h2>
           {!profile && <Alert type="info">Hãy lưu hồ sơ trước khi khai báo lịch rảnh.</Alert>}

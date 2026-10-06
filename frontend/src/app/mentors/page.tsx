@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead, Stars, StatusBadge } from "@/components/ui";
-import { DOMAINS, domainLabel, profileApi } from "@/features/profile/api";
+import { DOMAINS, domainLabel, mentorStatusText, profileApi } from "@/features/profile/api";
 import { errorMessage } from "@/lib/api";
 import { formatRate } from "@/lib/format";
 import type { MentorCard, PageResponse, SessionUser } from "@/types";
@@ -41,7 +41,7 @@ function MentorCardView({ m, showStatus }: { m: MentorCard; showStatus: boolean 
         <div className="row" style={{ gap: 6 }}>
           {showStatus && <StatusBadge status={m.verificationStatus} />}
           {available === false ? (
-            <span className="badge">Tạm ngưng nhận</span>
+            <span className={`badge ${m.status === "SUSPENDED" ? "bad" : ""}`}>{mentorStatusText(m.status, m.onLeaveUntil)}</span>
           ) : m.hasCapacity === false ? (
             <span className="badge warn">Đã đủ mentee</span>
           ) : (

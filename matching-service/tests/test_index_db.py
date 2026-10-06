@@ -195,6 +195,37 @@ async def test_reconcile_keeps_old_vector_on_failure_and_retries_next_round(dbs,
     assert row["attempts"] == 0 and row["last_error"] is None
 
 
+async def test_matching_hides_paused_on_leave_and_suspended_mentors(dbs):
+    """US-08 — chỉ mentor có trạng thái HIỆU LỰC ACCEPTING được gợi ý (SQL thật trên schema Flyway)."""
+    from app.services import matching_pipeline
+
+    conn = dbs["profile"]
+    ids = {}
+    for name in ("accepting", "paused", "on_leave", "suspended", "leave_expired"):
+        ids[name] = await _add_mentor(conn, bio=f"Kỹ sư backend {name}")
+        await conn.execute(
+            "UPDATE mentor_profiles SET verification_status = 'APPROVED' WHERE user_id = $1::uuid", ids[name])
+        await conn.execute(
+            "INSERT INTO mentor_availability (mentor_id, day_of_week, start_time, end_time) "
+            "VALUES ($1::uuid, 1, '19:00', '21:00')", ids[name])
+    await conn.execute("UPDATE mentor_profiles SET status = 'PAUSED' WHERE user_id = $1::uuid", ids["paused"])
+    await conn.execute("UPDATE mentor_profiles SET status = 'SUSPENDED' WHERE user_id = $1::uuid", ids["suspended"])
+    await conn.execute("UPDATE mentor_profiles SET status = 'ON_LEAVE', on_leave_until = current_date + 3 "
+                       "WHERE user_id = $1::uuid", ids["on_leave"])
+    # Nghỉ phép đã hết hạn (job chưa kịp chạy) vẫn phải được tính là ACCEPTING.
+    await conn.execute("UPDATE mentor_profiles SET status = 'ON_LEAVE', on_leave_until = current_date - 3 "
+                       "WHERE user_id = $1::uuid", ids["leave_expired"])
+    # Cột tương thích is_available là cột sinh tự động từ status.
+    assert await conn.fetchval("SELECT is_available FROM mentor_profiles WHERE user_id = $1::uuid", ids["paused"]) is False
+    mentee_id = await _add_mentee(conn)
+    await index_service.reconcile(batch=100)
+
+    result = await matching_pipeline.match_mentors_for_mentee(mentee_id, limit=10)
+    returned = {str(m["mentor_id"]) for m in result["mentors"]}
+    assert returned == {ids["accepting"], ids["leave_expired"]}
+    assert result["stats"]["excluded"] == {"unavailable": 3}
+
+
 async def test_profile_pool_is_read_only(dbs):
     """Ngoại lệ kiến trúc (CONVENTIONS.md mục 7): role matching_reader chỉ được SELECT."""
     pool = await db.get_profile_pool()

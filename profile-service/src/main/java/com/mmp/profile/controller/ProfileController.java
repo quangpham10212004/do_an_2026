@@ -56,6 +56,13 @@ public class ProfileController {
         return profileService.replaceAvailability(userId, input);
     }
 
+    /** US-08 — mentor đổi trạng thái nhận mentee (ACCEPTING / PAUSED / ON_LEAVE). */
+    @PutMapping("/mentor/{userId}/status")
+    public MentorProfileResponse changeStatus(@PathVariable UUID userId, @Valid @RequestBody MentorStatusInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.changeOwnStatus(userId, input);
+    }
+
     // ---- US-07: ngoại lệ lịch rảnh ----
 
     @GetMapping("/mentor/{userId}/exceptions")

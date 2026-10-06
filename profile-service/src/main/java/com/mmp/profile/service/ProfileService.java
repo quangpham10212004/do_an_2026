@@ -70,8 +70,13 @@ public class ProfileService {
 
     private MentorProfileResponse toResponse(MentorProfile p) {
         LocalDate today = today(p);
-        return MentorProfileResponse.from(p, availability(p.getUserId()),
+        return MentorProfileResponse.from(p, effectiveStatus(p), availability(p.getUserId()),
                 exceptions(p.getUserId(), today, today.plusDays(MentorRules.EXCEPTION_HORIZON_DAYS - 1)));
+    }
+
+    /** US-08 — trạng thái hiệu lực (nghỉ phép hết hạn = ACCEPTING), tính khi đọc. */
+    MentorProfile.Status effectiveStatus(MentorProfile p) {
+        return MentorRules.effectiveStatus(p.getStatus(), p.getOnLeaveUntil(), today(p));
     }
 
     /** "Hôm nay" theo múi giờ của mentor. */
@@ -99,7 +104,11 @@ public class ProfileService {
             p.setPortfolioLinks(normalizeList(in.portfolioLinks()));
             p.setHourlyRate(Optional.ofNullable(in.hourlyRate()).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO)));
             p.setCapacity(Optional.ofNullable(in.capacity()).orElse(p.getCapacity()));
-            p.setAvailable(Optional.ofNullable(in.isAvailable()).orElse(p.isAvailable()));
+            // Cờ isAvailable cũ (US-08): chỉ đổi giữa ACCEPTING/PAUSED, không bao giờ gỡ SUSPENDED.
+            MentorProfile.Status legacy = MentorRules.statusFromLegacyFlag(in.isAvailable(), effectiveStatus(p));
+            if (legacy != null) {
+                p.changeStatus(legacy, null, null);
+            }
             return mentorRepo.save(p);
         });
         matchingIndexClient.reindexAsync(ROLE_MENTOR, saved.getUserId());
@@ -204,8 +213,38 @@ public class ProfileService {
                 includeUnverified ? null : MentorProfile.VerificationStatus.APPROVED,
                 blankToNull(q),
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 50)));
-        return new PageResponse<>(result.map(MentorCard::from).getContent(), result.getNumber(), result.getSize(),
-                result.getTotalElements(), result.getTotalPages());
+        return new PageResponse<>(result.map(m -> MentorCard.from(m, effectiveStatus(m))).getContent(),
+                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
+    }
+
+    // ---------------- US-08: trạng thái mentor ----------------
+
+    /** Mentor tự đổi ACCEPTING / PAUSED / ON_LEAVE (không đặt/gỡ được SUSPENDED). */
+    public MentorProfileResponse changeOwnStatus(UUID mentorId, MentorStatusInput in) {
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            MentorProfile.Status requested = MentorProfile.Status.valueOf(in.status());
+            MentorRules.validateSelfStatusChange(effectiveStatus(p), requested, in.onLeaveUntil(), today(p));
+            p.changeStatus(requested, in.onLeaveUntil(), MentorRules.trimToNull(in.reason()));
+            mentorRepo.save(p);
+        });
+        return getMentor(mentorId);
+    }
+
+    /** Interface 2 — mentoring-service đặt PAUSED / SUSPENDED / ACCEPTING (ACCEPTING gỡ cả đình chỉ). */
+    public MentorProfileResponse setStatusInternal(UUID mentorId, InternalStatusUpdate in) {
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            p.changeStatus(MentorProfile.Status.valueOf(in.status()), null, MentorRules.trimToNull(in.reason()));
+            mentorRepo.save(p);
+        });
+        return getMentor(mentorId);
+    }
+
+    /** MentorStatusJob — ghi lại vào DB các kỳ nghỉ phép đã hết hạn (đọc vốn đã tính đúng không cần job). */
+    public int returnExpiredLeaves() {
+        Integer n = tx.execute(s -> mentorRepo.returnExpiredLeaves());
+        return n == null ? 0 : n;
     }
 
     public MentorProfileResponse updateVerification(UUID mentorId, String status) {

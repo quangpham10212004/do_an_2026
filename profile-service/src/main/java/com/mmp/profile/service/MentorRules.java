@@ -1,6 +1,7 @@
 package com.mmp.profile.service;
 
 import com.mmp.profile.entity.MentorAvailabilityException;
+import com.mmp.profile.entity.MentorProfile.Status;
 import com.mmp.profile.exception.ApiException;
 
 import java.time.LocalDate;
@@ -71,5 +72,53 @@ public final class MentorRules {
         if (s == null) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    // ---------------- US-08: trạng thái mentor ----------------
+
+    /** Nghỉ phép tối đa 1 năm. */
+    public static final int MAX_LEAVE_DAYS = 365;
+
+    /**
+     * Trạng thái hiệu lực: ON_LEAVE tự về ACCEPTING khi đã qua hết ngày on_leave_until (theo giờ mentor).
+     * MentorStatusJob ghi lại kết quả này vào DB định kỳ; đọc luôn đi qua hàm này nên không phụ thuộc job.
+     */
+    public static Status effectiveStatus(Status stored, LocalDate onLeaveUntil, LocalDate today) {
+        if (stored == Status.ON_LEAVE && onLeaveUntil != null && today.isAfter(onLeaveUntil)) {
+            return Status.ACCEPTING;
+        }
+        return stored;
+    }
+
+    /** Mentor (hoặc admin qua cùng endpoint) đổi trạng thái — SUSPENDED chỉ đặt/gỡ qua luồng đình chỉ. */
+    public static void validateSelfStatusChange(Status current, Status requested, LocalDate onLeaveUntil, LocalDate today) {
+        if (current == Status.SUSPENDED) {
+            throw ApiException.conflict("MENTOR_SUSPENDED",
+                    "Tài khoản mentor đang bị đình chỉ — chỉ quản trị viên mới gỡ được");
+        }
+        if (requested == Status.SUSPENDED) {
+            throw ApiException.forbidden("Chỉ quản trị viên mới đình chỉ được mentor");
+        }
+        if (requested == Status.ON_LEAVE) {
+            if (onLeaveUntil == null) {
+                throw ApiException.badRequest("INVALID_STATUS", "Cần chọn ngày kết thúc nghỉ phép");
+            }
+            if (onLeaveUntil.isBefore(today)) {
+                throw ApiException.badRequest("INVALID_STATUS", "Ngày kết thúc nghỉ phép phải từ hôm nay trở đi");
+            }
+            if (onLeaveUntil.isAfter(today.plusDays(MAX_LEAVE_DAYS))) {
+                throw ApiException.badRequest("INVALID_STATUS", "Chỉ nghỉ phép tối đa 1 năm");
+            }
+        }
+    }
+
+    /**
+     * Cờ isAvailable cũ trong PUT hồ sơ (tương thích seed/e2e): true → ACCEPTING, false → PAUSED. Trả về
+     * null (không đổi) nếu cờ trùng với trạng thái hiệu lực hiện tại hoặc mentor đang bị đình chỉ.
+     */
+    public static Status statusFromLegacyFlag(Boolean isAvailable, Status effective) {
+        if (isAvailable == null || effective == Status.SUSPENDED) return null;
+        if (isAvailable == (effective == Status.ACCEPTING)) return null;
+        return isAvailable ? Status.ACCEPTING : Status.PAUSED;
     }
 }

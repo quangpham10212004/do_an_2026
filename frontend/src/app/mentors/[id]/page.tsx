@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, Stars, StatusBadge, Flash } from "@/components/ui";
-import { exceptionTimeLabel, formatLocalDate, profileApi } from "@/features/profile/api";
+import { exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { DAY_NAMES, formatDate, formatDateTime, formatMoney, formatRate } from "@/lib/format";
@@ -82,6 +82,7 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
     <>
       <PageHead title={mentor.displayName} subtitle={`${mentor.domain} · ${mentor.yearsExperience} năm kinh nghiệm · ${formatRate(mentor.hourlyRate)}`}>
         <StatusBadge status={mentor.verificationStatus} />
+        <span className={`badge ${mentor.status === "ACCEPTING" ? "good" : mentor.status === "SUSPENDED" ? "bad" : ""}`}>{mentorStatusText(mentor.status, mentor.onLeaveUntil)}</span>
       </PageHead>
       <Alert type="success">{msg.ok}</Alert>
       <Alert>{msg.error}</Alert>

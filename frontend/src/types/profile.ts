@@ -3,6 +3,8 @@ import type { Uuid } from "./common";
 // contracts/profile-service.yaml
 export type VerificationStatus = "PENDING_INTERVIEW" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 export type Level = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+/** US-08 — trạng thái nhận mentee (thay cho isAvailable). SUSPENDED chỉ do admin/hệ thống đặt. */
+export type MentorStatus = "ACCEPTING" | "PAUSED" | "ON_LEAVE" | "SUSPENDED";
 
 export interface AvailabilitySlot {
   id?: Uuid;
@@ -45,7 +47,15 @@ export interface MentorProfileInput {
   portfolioLinks?: string[];
   hourlyRate?: number;
   capacity?: number;
+  /** @deprecated dùng PUT /status (US-08); true → ACCEPTING, false → PAUSED. */
   isAvailable?: boolean;
+}
+
+export interface MentorStatusInput {
+  status: Exclude<MentorStatus, "SUSPENDED">;
+  /** YYYY-MM-DD, bắt buộc khi ON_LEAVE (nghỉ hết ngày này). */
+  onLeaveUntil?: string | null;
+  reason?: string | null;
 }
 
 export interface MentorProfile {
@@ -60,10 +70,15 @@ export interface MentorProfile {
   hourlyRate: number;
   capacity: number;
   activeMenteeCount: number;
+  /** = status === "ACCEPTING" */
   isAvailable: boolean;
   rating: number;
   ratingCount: number;
   verificationStatus: VerificationStatus;
+  /** Trạng thái hiệu lực (nghỉ phép đã hết hạn tính là ACCEPTING). */
+  status: MentorStatus;
+  onLeaveUntil: string | null;
+  statusReason: string | null;
   availability: AvailabilitySlot[];
   /** Ngoại lệ lịch rảnh 60 ngày tới. */
   exceptions: AvailabilityException[];
@@ -103,6 +118,8 @@ export interface MentorCard {
   isAvailable: boolean;
   hasCapacity: boolean;
   verificationStatus: VerificationStatus;
+  status: MentorStatus;
+  onLeaveUntil: string | null;
 }
 
 export interface MentorSearchParams {

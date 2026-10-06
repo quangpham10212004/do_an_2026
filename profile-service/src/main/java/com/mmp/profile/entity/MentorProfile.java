@@ -3,6 +3,7 @@ package com.mmp.profile.entity;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -16,6 +17,9 @@ import java.util.UUID;
 public class MentorProfile {
 
     public enum VerificationStatus { PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED }
+
+    /** US-08 — trạng thái nhận mentee (thay cho cờ is_available cũ, nay là cột sinh tự động). */
+    public enum Status { ACCEPTING, PAUSED, ON_LEAVE, SUSPENDED }
 
     @Id
     @Column(name = "user_id")
@@ -50,8 +54,19 @@ public class MentorProfile {
     @Column(name = "active_mentee_count", nullable = false)
     private int activeMenteeCount;
 
-    @Column(name = "is_available", nullable = false)
-    private boolean available = true;
+    // is_available là cột GENERATED (status = 'ACCEPTING') — không map để Hibernate không ghi vào.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Status status = Status.ACCEPTING;
+
+    @Column(name = "on_leave_until")
+    private LocalDate onLeaveUntil;
+
+    @Column(name = "status_reason")
+    private String statusReason;
+
+    @Column(name = "status_changed_at")
+    private OffsetDateTime statusChangedAt;
 
     @Column(nullable = false)
     private float rating;
@@ -102,8 +117,18 @@ public class MentorProfile {
     public void setCapacity(int capacity) { this.capacity = capacity; }
     public int getActiveMenteeCount() { return activeMenteeCount; }
     public void setActiveMenteeCount(int activeMenteeCount) { this.activeMenteeCount = activeMenteeCount; }
-    public boolean isAvailable() { return available; }
-    public void setAvailable(boolean available) { this.available = available; }
+    /** Trạng thái đã lưu (chưa áp dụng nghỉ phép hết hạn — dùng MentorRules.effectiveStatus). */
+    public Status getStatus() { return status; }
+    public LocalDate getOnLeaveUntil() { return onLeaveUntil; }
+    public String getStatusReason() { return statusReason; }
+    public OffsetDateTime getStatusChangedAt() { return statusChangedAt; }
+
+    public void changeStatus(Status status, LocalDate onLeaveUntil, String reason) {
+        this.status = status;
+        this.onLeaveUntil = status == Status.ON_LEAVE ? onLeaveUntil : null;
+        this.statusReason = reason;
+        this.statusChangedAt = OffsetDateTime.now();
+    }
     public float getRating() { return rating; }
     public void setRating(float rating) { this.rating = rating; }
     public int getRatingCount() { return ratingCount; }
