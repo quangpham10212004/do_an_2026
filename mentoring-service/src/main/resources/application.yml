@@ -46,6 +46,9 @@ app:
     free-block-threshold: 3         # 3 lần huỷ muộn ...
     free-block-window: P30D         # ... trong 30 ngày ...
     free-block-duration: P14D       # ... → chặn đặt phiên miễn phí 14 ngày (409 FREE_BOOKING_BLOCKED)
+  strikes:                         # US-02 — strike thứ 3 trong 30 ngày → PAUSED (profile-service) + báo admin
+    threshold: 3
+    window: P30D
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:

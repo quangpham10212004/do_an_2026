@@ -221,6 +221,9 @@ paths:
                   rewardPoints: { type: integer, description: "Điểm xin lỗi mentee được cộng (mentor huỷ)" }
                   lateFreeCancel: { type: boolean, description: "Huỷ phiên miễn phí < 2 giờ trước giờ bắt đầu → ghi nhận huỷ muộn" }
         "409": { description: SESSION_NOT_CANCELLABLE / SESSION_ALREADY_STARTED }
+  # US-02: mentor huỷ phiên → bảng mentor_strikes; strike thứ 3 trong 30 ngày (app.strikes.*) → gọi
+  # profile-service PUT /internal/mentor/{id}/status {"status":"PAUSED","reason":"STRIKES"} (best-effort,
+  # 404 được bỏ qua) + thông báo cho toàn bộ ADMIN (type MENTOR_PAUSED_STRIKES) và cho mentor.
   /api/mentoring/sessions/{id}/cancel:
     post:
       summary: >

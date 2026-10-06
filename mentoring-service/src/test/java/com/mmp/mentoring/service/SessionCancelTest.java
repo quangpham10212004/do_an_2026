@@ -79,6 +79,14 @@ class SessionCancelTest {
         verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTOR"), eq(100));
         verify(f.outbox).enqueueReward(eq(menteeId), eq(20), eq(PaymentOutboxService.MENTOR_CANCEL_APOLOGY), any());
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
+        verify(f.strikes).record(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL); // US-02
+    }
+
+    @Test
+    void menteeOrSystemCancelGivesNoStrike() {
+        session.setScheduledAt(OffsetDateTime.now().plusDays(4));
+        f.service().cancel(mentee, id, null);
+        verify(f.strikes, never()).record(any(), any(), any());
     }
 
     @Test

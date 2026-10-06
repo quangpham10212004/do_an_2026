@@ -137,6 +137,21 @@ public class ProfileClient {
         }
     }
 
+    /**
+     * Interface 2 (profile-service, Team B) — đổi trạng thái nhận mentee của mentor, ví dụ
+     * {"status":"PAUSED","reason":"STRIKES"}. Best-effort: profile-service chưa có endpoint (404) hoặc lỗi chỉ log.
+     */
+    public boolean updateMentorStatus(UUID mentorId, String status, String reason) {
+        try {
+            restClient.put().uri("/internal/mentor/{id}/status", mentorId)
+                    .body(Map.of("status", status, "reason", reason)).retrieve().toBodilessEntity();
+            return true;
+        } catch (RestClientException e) {
+            log.warn("Could not set status {} ({}) for mentor {}: {}", status, reason, mentorId, e.getMessage());
+            return false;
+        }
+    }
+
     private static ApiException unavailable(RestClientException e) {
         log.warn("profile-service call failed: {}", e.getMessage());
         return new ApiException(HttpStatus.BAD_GATEWAY, "PROFILE_SERVICE_UNAVAILABLE", "Không thể kết nối tới dịch vụ hồ sơ");

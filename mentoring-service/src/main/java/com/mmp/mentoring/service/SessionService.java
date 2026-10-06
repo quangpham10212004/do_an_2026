@@ -4,6 +4,7 @@ import com.mmp.mentoring.client.PaymentClient;
 import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.entity.LateCancellation;
+import com.mmp.mentoring.entity.MentorStrike;
 import com.mmp.mentoring.entity.MentoringRequest;
 import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.entity.Review;
@@ -42,6 +43,7 @@ public class SessionService {
     private final LateCancellationRepository lateCancelRepo;
     private final CancellationPolicy policy;
     private final PaymentOutboxService outbox;
+    private final StrikeService strikes;
     private final ProfileClient profileClient;
     private final PaymentClient paymentClient;
     private final NotificationService notifications;
@@ -52,6 +54,7 @@ public class SessionService {
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
                           LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
+                          StrikeService strikes,
                           ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
@@ -63,6 +66,7 @@ public class SessionService {
         this.lateCancelRepo = lateCancelRepo;
         this.policy = policy;
         this.outbox = outbox;
+        this.strikes = strikes;
         this.profileClient = profileClient;
         this.paymentClient = paymentClient;
         this.notifications = notifications;
@@ -320,8 +324,11 @@ public class SessionService {
         return session;
     }
 
-    /** Điểm mở rộng sau khi huỷ (US-02: strike cho mentor). */
+    /** US-02 — mentor huỷ phiên bị ghi 1 strike (3 strike / 30 ngày → PAUSED). */
     void afterCancel(MentoringSession session, CancellationPolicy.Decision d) {
+        if (d.strike()) {
+            strikes.record(session.getMentorId(), session.getId(), MentorStrike.Reason.MENTOR_CANCEL);
+        }
     }
 
     private CancellationPolicy.Decision decide(MentoringSession s, CancellationPolicy.Actor actor, OffsetDateTime now) {
