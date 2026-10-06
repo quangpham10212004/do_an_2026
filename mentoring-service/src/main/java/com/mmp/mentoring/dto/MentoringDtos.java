@@ -1,5 +1,6 @@
 package com.mmp.mentoring.dto;
 
+import com.mmp.mentoring.entity.SessionType;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
@@ -26,11 +27,19 @@ public final class MentoringDtos {
 
     // ---------- Sessions ----------
 
+    /**
+     * US-03 (PRD-SES-2) — form đặt lịch. durationMinutes ∈ {30, 45, 60, 90, 120} (mặc định 60);
+     * agenda bắt buộc 20–500 ký tự (sau khi trim); preReadLink tuỳ chọn (http/https).
+     * topic giữ lại để tương thích client cũ (hiển thị như tiêu đề ngắn).
+     */
     public record BookSessionInput(
             @NotNull UUID menteeId,
             @NotNull UUID mentorId,
             @NotNull @Future OffsetDateTime scheduledAt,
-            @Min(30) @Max(180) Integer durationMinutes,
+            Integer durationMinutes,
+            @NotNull SessionType sessionType,
+            @NotBlank @Size(max = 500) String agenda,
+            @Size(max = 500) String preReadLink,
             @Size(max = 300) String topic) {
     }
 
@@ -44,7 +53,8 @@ public final class MentoringDtos {
     }
 
     public record SessionView(UUID id, UUID requestId, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
-                              OffsetDateTime scheduledAt, int durationMinutes, BigDecimal price, String topic,
+                              OffsetDateTime scheduledAt, OffsetDateTime endsAt, int durationMinutes, BigDecimal price,
+                              String topic, String sessionType, String agenda, String preReadLink,
                               String status, boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
     }
 

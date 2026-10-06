@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import type {
   AvailableSlots,
   BookSessionInput,
+  LegacyBookSessionInput,
   MentoringRequest,
   MentoringSession,
   MentoringStats,
@@ -24,7 +25,9 @@ export const mentoringApi = {
   // Phiên mentoring
   sessions: (status: SessionStatus | "" = "") => api<MentoringSession[]>(`/api/mentoring/sessions?status=${status}`),
   session: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}`),
-  book: (body: BookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
+  bookSession: (body: BookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
+  /** @deprecated thiếu sessionType/agenda (US-03) — dùng bookSession hoặc chuyển tới /mentoring/book/{mentorId}. */
+  book: (body: LegacyBookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
   cancelSession: (id: Uuid, reason: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
   completeSession: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/complete`, { method: "POST" }),

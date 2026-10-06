@@ -3,6 +3,9 @@ import type { IsoDateTime, Uuid } from "./common";
 // contracts/mentoring-service.yaml
 export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 export type SessionStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+export type SessionType = "CAREER_ADVICE" | "CODE_REVIEW" | "MOCK_INTERVIEW" | "PROJECT_GUIDANCE";
+/** US-03 — thời lượng phiên được phép (phút). */
+export type SessionDuration = 30 | 45 | 60 | 90 | 120;
 
 export interface MentoringRequest {
   id: Uuid;
@@ -25,9 +28,13 @@ export interface MentoringSession {
   mentorId: Uuid;
   mentorName: string;
   scheduledAt: IsoDateTime;
+  endsAt: IsoDateTime;
   durationMinutes: number;
   price: number;
   topic: string | null;
+  sessionType: SessionType | null;
+  agenda: string | null;
+  preReadLink: string | null;
   status: SessionStatus;
   reviewed: boolean;
   reviewRating: number | null;
@@ -35,6 +42,21 @@ export interface MentoringSession {
 }
 
 export interface BookSessionInput {
+  menteeId: Uuid;
+  mentorId: Uuid;
+  scheduledAt: IsoDateTime;
+  durationMinutes: SessionDuration;
+  sessionType: SessionType;
+  agenda: string;
+  preReadLink?: string;
+  topic?: string;
+}
+
+/**
+ * @deprecated Dạng cũ (trước US-03) — mentoring-service nay bắt buộc sessionType + agenda nên request dạng
+ * này bị từ chối 400. Chỉ giữ để trang chưa cập nhật vẫn biên dịch; dùng BookSessionInput / trang /mentoring/book.
+ */
+export interface LegacyBookSessionInput {
   menteeId: Uuid;
   mentorId: Uuid;
   scheduledAt: IsoDateTime;

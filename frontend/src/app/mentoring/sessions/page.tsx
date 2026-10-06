@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead, Stars, StatusBadge, useDialog, Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
+import { SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { MentoringSession, SessionStatus, SessionUser } from "@/types";
@@ -105,8 +106,11 @@ function Sessions({ user }: { user: SessionUser }) {
                     </div>
                     <div className="muted small">
                       {formatDateTime(s.scheduledAt)} · {s.durationMinutes} phút · {formatMoney(s.price)}
+                      {s.sessionType && ` · ${SESSION_TYPE_LABELS[s.sessionType]}`}
                       {s.topic && ` · ${s.topic}`}
                     </div>
+                    {s.agenda && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{s.agenda}</div>}
+                    {s.preReadLink && <div className="small"><a href={s.preReadLink} target="_blank" rel="noreferrer">Tài liệu đọc trước</a></div>}
                   </div>
                   <div className="row">
                     {!isMentor && s.status === "PENDING" && <Link className="btn sm" href={`/payment/${s.id}`}>Thanh toán</Link>}

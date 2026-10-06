@@ -39,13 +39,21 @@ components:
         mentorId: { type: string, format: uuid }
         mentorName: { type: string }
         scheduledAt: { type: string, format: date-time }
-        durationMinutes: { type: integer }
+        endsAt: { type: string, format: date-time, description: "scheduledAt + durationMinutes" }
+        durationMinutes: { type: integer, enum: [30, 45, 60, 90, 120] }
         price: { type: number, description: "hourlyRate × duration/60, làm tròn 1.000đ" }
-        topic: { type: string, nullable: true }
+        topic: { type: string, nullable: true, description: "Tiêu đề ngắn (tuỳ chọn, client cũ)" }
+        sessionType: { $ref: "#/components/schemas/SessionType" }
+        agenda: { type: string, nullable: true, description: "US-03 — nội dung muốn trao đổi (phiên tạo trước US-03 có thể null)" }
+        preReadLink: { type: string, nullable: true }
         status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED], description: "PENDING = chờ thanh toán" }
         reviewed: { type: boolean }
         reviewRating: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
+    SessionType:
+      type: string
+      nullable: true
+      enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE]
     AvailableSlots:
       type: object
       properties:
@@ -153,12 +161,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [menteeId, mentorId, scheduledAt]
+              required: [menteeId, mentorId, scheduledAt, sessionType, agenda]
               properties:
                 menteeId: { type: string, format: uuid }
                 mentorId: { type: string, format: uuid }
                 scheduledAt: { type: string, format: date-time }
-                durationMinutes: { type: integer, minimum: 30, maximum: 180, default: 60 }
+                durationMinutes: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 }
+                sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] }
+                agenda: { type: string, minLength: 20, maxLength: 500, description: "Bắt buộc, 20–500 ký tự sau khi trim" }
+                preReadLink: { type: string, maxLength: 500, nullable: true, description: "Tuỳ chọn, URL http(s)" }
                 topic: { type: string, maxLength: 300 }
       responses:
         "201":
@@ -166,7 +177,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
-        "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR }
+        "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
         "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
   /api/mentoring/sessions/{id}:
     get:
@@ -224,7 +235,7 @@ paths:
         min-lead-time và max-advance. Chỉ trả thời điểm, không lộ thông tin phiên của người khác.
       parameters:
         - { $ref: "#/components/parameters/Id" }
-        - { name: durationMinutes, in: query, schema: { type: integer, minimum: 30, maximum: 180, default: 60 } }
+        - { name: durationMinutes, in: query, schema: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 } }
         - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 28, default: 14 } }
       responses:
         "200":

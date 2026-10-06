@@ -31,7 +31,7 @@ public class SessionService {
 
     private static final Logger log = LoggerFactory.getLogger(SessionService.class);
     private static final DateTimeFormatter DISPLAY = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
-    private static final int MAX_DURATION_MINUTES = 180;
+    private static final int MAX_DURATION_MINUTES = BookingRules.MAX_DURATION_MINUTES;
 
     private final SessionRepository sessionRepo;
     private final MentoringRequestRepository requestRepo;
@@ -75,6 +75,18 @@ public class SessionService {
             throw ApiException.forbidden("Bạn chỉ có thể đặt lịch cho chính mình");
         }
         int duration = Optional.ofNullable(in.durationMinutes()).orElse(60);
+        if (!BookingRules.isAllowedDuration(duration)) {
+            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải là 30, 45, 60, 90 hoặc 120 phút");
+        }
+        String agenda = MentoringRequestService.trimToNull(in.agenda());
+        if (agenda == null || agenda.length() < BookingRules.AGENDA_MIN || agenda.length() > BookingRules.AGENDA_MAX) {
+            throw ApiException.badRequest("INVALID_AGENDA", "Agenda phải dài từ " + BookingRules.AGENDA_MIN + " đến "
+                    + BookingRules.AGENDA_MAX + " ký tự");
+        }
+        String preReadLink = MentoringRequestService.trimToNull(in.preReadLink());
+        if (preReadLink != null && !BookingRules.isHttpUrl(preReadLink)) {
+            throw ApiException.badRequest("INVALID_PRE_READ_LINK", "Link tài liệu đọc trước phải là URL http(s) hợp lệ");
+        }
         OffsetDateTime start = in.scheduledAt();
         OffsetDateTime now = OffsetDateTime.now();
         if (start.isBefore(now.plus(minLeadTime))) {
@@ -111,6 +123,9 @@ public class SessionService {
             session.setScheduledAt(start);
             session.setDurationMinutes(duration);
             session.setTopic(MentoringRequestService.trimToNull(in.topic()));
+            session.setSessionType(in.sessionType());
+            session.setAgenda(agenda);
+            session.setPreReadLink(preReadLink);
             session.setPrice(BookingRules.price(mentor.hourlyRate(), duration));
             // Phiên miễn phí được xác nhận ngay; phiên có phí chờ thanh toán (FR-6.2)
             session.setStatus(session.getPrice().signum() == 0 ? MentoringSession.Status.CONFIRMED : MentoringSession.Status.PENDING);
@@ -132,8 +147,8 @@ public class SessionService {
      * của mentor và của người gọi. Chỉ trả thời điểm, không lộ phiên của người khác.
      */
     public AvailableSlotsView availableSlots(AuthUser caller, UUID mentorId, int durationMinutes, int days) {
-        if (durationMinutes < 30 || durationMinutes > MAX_DURATION_MINUTES) {
-            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải từ 30 đến " + MAX_DURATION_MINUTES + " phút");
+        if (!BookingRules.isAllowedDuration(durationMinutes)) {
+            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải là 30, 45, 60, 90 hoặc 120 phút");
         }
         if (days < 1 || days > 28) {
             throw ApiException.badRequest("INVALID_RANGE", "Chỉ xem được lịch trong 1–28 ngày tới");
@@ -307,7 +322,8 @@ public class SessionService {
         return sessions.stream().map(s -> {
             Review r = reviews.get(s.getId());
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
-                    names.get(s.getMentorId()), s.getScheduledAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
+                    names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
+                    s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
                     s.getStatus().name(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
         }).toList();
     }

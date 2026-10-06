@@ -38,6 +38,15 @@ public class MentoringSession {
     private String topic;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "session_type")
+    private SessionType sessionType;
+
+    private String agenda;
+
+    @Column(name = "pre_read_link")
+    private String preReadLink;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
 
@@ -80,6 +89,12 @@ public class MentoringSession {
     public void setPrice(BigDecimal price) { this.price = price; }
     public String getTopic() { return topic; }
     public void setTopic(String topic) { this.topic = topic; }
+    public SessionType getSessionType() { return sessionType; }
+    public void setSessionType(SessionType sessionType) { this.sessionType = sessionType; }
+    public String getAgenda() { return agenda; }
+    public void setAgenda(String agenda) { this.agenda = agenda; }
+    public String getPreReadLink() { return preReadLink; }
+    public void setPreReadLink(String preReadLink) { this.preReadLink = preReadLink; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public boolean isReminderSent() { return reminderSent; }

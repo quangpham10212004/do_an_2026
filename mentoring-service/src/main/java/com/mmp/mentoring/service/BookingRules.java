@@ -5,11 +5,14 @@ import com.mmp.mentoring.entity.MentoringSession;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.*;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -17,7 +20,29 @@ import java.util.UUID;
  */
 public final class BookingRules {
 
+    /** US-03 — các thời lượng phiên được phép (phút). */
+    public static final Set<Integer> ALLOWED_DURATIONS = Set.of(30, 45, 60, 90, 120);
+    public static final int MAX_DURATION_MINUTES = 120;
+    public static final int AGENDA_MIN = 20;
+    public static final int AGENDA_MAX = 500;
+
     private BookingRules() {
+    }
+
+    public static boolean isAllowedDuration(Integer minutes) {
+        return minutes != null && ALLOWED_DURATIONS.contains(minutes);
+    }
+
+    /** URL tuyệt đối http/https có host. */
+    public static boolean isHttpUrl(String value) {
+        if (value == null) return false;
+        try {
+            URI uri = new URI(value.trim());
+            String scheme = uri.getScheme();
+            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) && uri.getHost() != null;
+        } catch (URISyntaxException e) {
+            return false;
+        }
     }
 
     /**

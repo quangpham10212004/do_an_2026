@@ -91,6 +91,23 @@ class BookingRulesTest {
         assertThat(BookingRules.price(BigDecimal.ZERO, 60)).isEqualByComparingTo("0");
     }
 
+    @Test
+    void onlyStandardDurationsAreAllowed() {
+        assertThat(List.of(30, 45, 60, 90, 120)).allMatch(BookingRules::isAllowedDuration);
+        assertThat(List.of(15, 40, 75, 150, 180)).noneMatch(BookingRules::isAllowedDuration);
+        assertThat(BookingRules.isAllowedDuration(null)).isFalse();
+    }
+
+    @Test
+    void preReadLinkMustBeAbsoluteHttpUrl() {
+        assertThat(BookingRules.isHttpUrl("https://github.com/me/repo")).isTrue();
+        assertThat(BookingRules.isHttpUrl("http://example.com/doc.pdf")).isTrue();
+        assertThat(BookingRules.isHttpUrl("ftp://example.com/file")).isFalse();
+        assertThat(BookingRules.isHttpUrl("javascript:alert(1)")).isFalse();
+        assertThat(BookingRules.isHttpUrl("not a url")).isFalse();
+        assertThat(BookingRules.isHttpUrl("/relative/path")).isFalse();
+    }
+
     private static MentoringSession session(OffsetDateTime start, MentoringSession.Status status) {
         MentoringSession s = new MentoringSession();
         s.setScheduledAt(start);
