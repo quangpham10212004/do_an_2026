@@ -2,11 +2,14 @@ package com.mmp.profile.dto;
 
 import com.mmp.profile.entity.MenteeProfile;
 import com.mmp.profile.entity.MentorAvailability;
+import com.mmp.profile.entity.MentorAvailabilityException;
+import com.mmp.profile.service.MentorRules;
 import com.mmp.profile.entity.MentorProfile;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
@@ -46,14 +49,17 @@ public final class ProfileDtos {
             float rating,
             int ratingCount,
             String verificationStatus,
-            List<AvailabilitySlot> availability) {
+            List<AvailabilitySlot> availability,
+            List<AvailabilityExceptionDto> exceptions) {
 
-        public static MentorProfileResponse from(MentorProfile p, List<AvailabilitySlot> slots) {
+        /** exceptions = ngoại lệ lịch rảnh từ hôm nay tới {@link MentorRules#EXCEPTION_HORIZON_DAYS} ngày tới. */
+        public static MentorProfileResponse from(MentorProfile p, List<AvailabilitySlot> slots,
+                                                 List<AvailabilityExceptionDto> exceptions) {
             return new MentorProfileResponse(p.getUserId(), p.getDisplayName(), Arrays.asList(p.getSkills()),
                     p.getDomain(), p.getBio(), p.getYearsExperience(), p.getCvFileUrl(),
                     Arrays.asList(p.getPortfolioLinks()), p.getHourlyRate(), p.getCapacity(),
                     p.getActiveMenteeCount(), p.isAvailable(), p.getRating(), p.getRatingCount(),
-                    p.getVerificationStatus().name(), slots);
+                    p.getVerificationStatus().name(), slots, exceptions);
         }
     }
 
@@ -93,6 +99,27 @@ public final class ProfileDtos {
         public static AvailabilitySlot from(MentorAvailability a) {
             return new AvailabilitySlot(a.getId(), a.getDayOfWeek(), a.getStartTime(), a.getEndTime());
         }
+    }
+
+    /** US-07 — startTime/endTime cùng null = nghỉ cả ngày. */
+    public record AvailabilityExceptionInput(
+            @NotNull LocalDate date,
+            LocalTime startTime,
+            LocalTime endTime,
+            @Size(max = 300) String reason) {
+    }
+
+    /** Giờ trả về dạng "HH:mm" (null khi nghỉ cả ngày), ngày dạng "YYYY-MM-DD". */
+    public record AvailabilityExceptionDto(UUID id, LocalDate date, String startTime, String endTime, String reason) {
+
+        public static AvailabilityExceptionDto from(MentorAvailabilityException e) {
+            return new AvailabilityExceptionDto(e.getId(), e.getDate(), MentorRules.formatTime(e.getStartTime()),
+                    MentorRules.formatTime(e.getEndTime()), e.getReason());
+        }
+    }
+
+    /** warning != null: lưu thành công nhưng có điều mentor cần tự kiểm tra (vd. phiên đã xác nhận). */
+    public record AvailabilityExceptionResult(AvailabilityExceptionDto exception, String warning) {
     }
 
     public record AvailabilityInput(@NotNull @Size(max = 50) List<@Valid AvailabilitySlot> slots) {

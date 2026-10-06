@@ -30,6 +30,36 @@ components:
         dayOfWeek: { type: integer, minimum: 1, maximum: 7, description: "ISO-8601: 1 = Thứ Hai … 7 = Chủ Nhật" }
         startTime: { type: string, example: "19:00" }
         endTime: { type: string, example: "21:00" }
+    AvailabilityException:
+      type: object
+      description: >
+        US-07 (PRD-PROF-4) — ngoại lệ lịch rảnh trong một ngày cụ thể, giờ theo múi giờ của mentor.
+        startTime = endTime = null nghĩa là nghỉ cả ngày.
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        date: { type: string, format: date, example: "2026-10-20" }
+        startTime: { type: string, nullable: true, example: "09:00", description: "HH:mm; null = cả ngày" }
+        endTime: { type: string, nullable: true, example: "12:00", description: "HH:mm; null = cả ngày" }
+        reason: { type: string, nullable: true, maxLength: 300 }
+    AvailabilityExceptionInput:
+      type: object
+      required: [date]
+      properties:
+        date: { type: string, format: date, description: "Từ hôm nay (giờ mentor) tới tối đa 365 ngày tới" }
+        startTime: { type: string, nullable: true, example: "09:00", description: "Nhập cả hai giờ, hoặc bỏ trống cả hai (cả ngày)" }
+        endTime: { type: string, nullable: true, example: "12:00" }
+        reason: { type: string, nullable: true, maxLength: 300 }
+    AvailabilityExceptionResult:
+      type: object
+      properties:
+        exception: { $ref: "#/components/schemas/AvailabilityException" }
+        warning:
+          type: string
+          nullable: true
+          description: >
+            Lưu thành công nhưng mentor cần tự kiểm tra. Hiện LUÔN có giá trị: profile-service không
+            xem được phiên của mentoring-service nên không kiểm tra trùng với phiên CONFIRMED; phiên đã
+            xác nhận không bị tự huỷ. mentoring-service tôn trọng ngoại lệ cho các lần đặt lịch MỚI.
     MentorProfileInput:
       type: object
       required: [displayName, skills, domain, bio]
@@ -55,6 +85,10 @@ components:
             ratingCount: { type: integer }
             verificationStatus: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
             availability: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
+            exceptions:
+              type: array
+              description: US-07 — ngoại lệ lịch rảnh từ hôm nay (giờ mentor) tới 60 ngày tới (gồm hôm nay)
+              items: { $ref: "#/components/schemas/AvailabilityException" }
     MenteeProfileInput:
       type: object
       required: [displayName, goal, domain]
@@ -186,6 +220,63 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
         "400": { description: INVALID_SLOT / OVERLAPPING_SLOTS }
 
+  /api/profile/mentor/{userId}/exceptions:
+    get:
+      summary: US-07 Ngoại lệ lịch rảnh chưa qua của mentor (người dùng đã đăng nhập)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: Theo ngày tăng dần; trong cùng ngày, nghỉ cả ngày đứng trước
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AvailabilityException" } }
+        "404": { description: PROFILE_NOT_FOUND }
+    post:
+      summary: US-07 Thêm ngoại lệ (chủ hồ sơ MENTOR hoặc ADMIN)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityExceptionInput" }
+      responses:
+        "201":
+          description: Đã lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AvailabilityExceptionResult" }
+        "400": { description: "INVALID_EXCEPTION (ngày đã qua / quá 1 năm / chỉ nhập 1 giờ) · INVALID_SLOT · TOO_MANY_EXCEPTIONS (tối đa 100 ngoại lệ sắp tới)" }
+        "409": { description: OVERLAPPING_EXCEPTION — trùng ngoại lệ khác trong cùng ngày }
+
+  /api/profile/mentor/{userId}/exceptions/{exceptionId}:
+    put:
+      summary: US-07 Sửa ngoại lệ (chủ hồ sơ hoặc ADMIN) — không sửa được ngoại lệ của ngày đã qua
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - { name: exceptionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityExceptionInput" }
+      responses:
+        "200":
+          description: Đã lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AvailabilityExceptionResult" }
+        "400": { description: INVALID_EXCEPTION / INVALID_SLOT }
+        "404": { description: EXCEPTION_NOT_FOUND }
+        "409": { description: OVERLAPPING_EXCEPTION }
+    delete:
+      summary: US-07 Xoá ngoại lệ (chủ hồ sơ hoặc ADMIN)
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - { name: exceptionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Đã xoá }
+        "404": { description: EXCEPTION_NOT_FOUND }
+
   /api/profile/mentee/{userId}:
     get:
       summary: Lấy hồ sơ mentee (mentee chỉ xem được hồ sơ của chính mình; mentor/admin xem được)
@@ -255,7 +346,9 @@ paths:
 
   /internal/mentor/{userId}:
     get:
-      summary: Nội bộ — hồ sơ mentor đầy đủ (giá, sức chứa, lịch rảnh) cho mentoring-service
+      summary: >
+        Nội bộ — hồ sơ mentor đầy đủ (giá, sức chứa, lịch rảnh, ngoại lệ lịch 60 ngày tới) cho
+        mentoring-service. mentoring-service phải chặn đặt lịch mới rơi vào `exceptions`.
       security: [{ internalToken: [] }]
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:

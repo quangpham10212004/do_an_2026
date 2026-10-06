@@ -12,6 +12,29 @@ export interface AvailabilitySlot {
   endTime: string;
 }
 
+/** US-07 — ngoại lệ lịch rảnh; startTime = endTime = null nghĩa là nghỉ cả ngày. */
+export interface AvailabilityException {
+  id: Uuid;
+  /** YYYY-MM-DD */
+  date: string;
+  /** HH:mm */
+  startTime: string | null;
+  endTime: string | null;
+  reason: string | null;
+}
+
+export interface AvailabilityExceptionInput {
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  reason?: string | null;
+}
+
+export interface AvailabilityExceptionResult {
+  exception: AvailabilityException;
+  warning: string | null;
+}
+
 export interface MentorProfileInput {
   displayName: string;
   skills: string[];
@@ -42,6 +65,8 @@ export interface MentorProfile {
   ratingCount: number;
   verificationStatus: VerificationStatus;
   availability: AvailabilitySlot[];
+  /** Ngoại lệ lịch rảnh 60 ngày tới. */
+  exceptions: AvailabilityException[];
 }
 
 export interface MenteeProfileInput {

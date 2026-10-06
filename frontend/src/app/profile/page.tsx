@@ -7,6 +7,7 @@ import { DOMAINS, profileApi } from "@/features/profile/api";
 import { matchingApi } from "@/features/matching/api";
 import { aiApi } from "@/features/ai/api";
 import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
+import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
@@ -229,6 +230,8 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
                 <span className="spacer" />
                 <button type="button" className="btn" onClick={saveSlots}>Lưu lịch rảnh</button>
               </div>
+              <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
+              <AvailabilityExceptions mentorId={user.userId} />
               <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
               <div className="row between small">
                 <span>Mentee đang hướng dẫn: <strong>{profile.activeMenteeCount}/{profile.capacity}</strong></span>

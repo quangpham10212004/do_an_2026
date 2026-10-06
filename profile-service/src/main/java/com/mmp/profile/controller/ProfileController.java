@@ -6,6 +6,7 @@ import com.mmp.profile.security.AuthUser;
 import com.mmp.profile.security.CurrentUser;
 import com.mmp.profile.service.ProfileService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -53,6 +54,35 @@ public class ProfileController {
     public List<AvailabilitySlot> replaceAvailability(@PathVariable UUID userId, @Valid @RequestBody AvailabilityInput input) {
         requireOwnerWithRole(userId, "MENTOR");
         return profileService.replaceAvailability(userId, input);
+    }
+
+    // ---- US-07: ngoại lệ lịch rảnh ----
+
+    @GetMapping("/mentor/{userId}/exceptions")
+    public List<AvailabilityExceptionDto> listExceptions(@PathVariable UUID userId) {
+        return profileService.upcomingExceptions(userId);
+    }
+
+    @PostMapping("/mentor/{userId}/exceptions")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AvailabilityExceptionResult createException(@PathVariable UUID userId,
+                                                       @Valid @RequestBody AvailabilityExceptionInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.createException(userId, input);
+    }
+
+    @PutMapping("/mentor/{userId}/exceptions/{exceptionId}")
+    public AvailabilityExceptionResult updateException(@PathVariable UUID userId, @PathVariable UUID exceptionId,
+                                                       @Valid @RequestBody AvailabilityExceptionInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.updateException(userId, exceptionId, input);
+    }
+
+    @DeleteMapping("/mentor/{userId}/exceptions/{exceptionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteException(@PathVariable UUID userId, @PathVariable UUID exceptionId) {
+        requireOwnerWithRole(userId, "MENTOR");
+        profileService.deleteException(userId, exceptionId);
     }
 
     // ---- Mentee ----

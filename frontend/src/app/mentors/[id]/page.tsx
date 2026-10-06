@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, Stars, StatusBadge, Flash } from "@/components/ui";
-import { profileApi } from "@/features/profile/api";
+import { exceptionTimeLabel, formatLocalDate, profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { DAY_NAMES, formatDate, formatDateTime, formatMoney, formatRate } from "@/lib/format";
@@ -106,6 +106,17 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
                 <span>{s.startTime.slice(0, 5)} – {s.endTime.slice(0, 5)}</span>
               </div>
             ))}
+            {mentor.exceptions.length > 0 && (
+              <>
+                <h3 style={{ marginTop: "1rem" }}>Ngày nghỉ / bận sắp tới</h3>
+                {mentor.exceptions.map((x) => (
+                  <div key={x.id} className="row between small list-item">
+                    <span>{formatLocalDate(x.date)}</span>
+                    <span>{exceptionTimeLabel(x)}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
           <div className="card">
             <h2>Đánh giá ({mentor.ratingCount})</h2>

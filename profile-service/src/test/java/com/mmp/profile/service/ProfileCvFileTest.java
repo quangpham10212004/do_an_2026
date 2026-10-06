@@ -4,6 +4,7 @@ import com.mmp.profile.client.MatchingIndexClient;
 import com.mmp.profile.entity.MenteeProfile;
 import com.mmp.profile.entity.MentorProfile;
 import com.mmp.profile.repository.MenteeProfileRepository;
+import com.mmp.profile.repository.MentorAvailabilityExceptionRepository;
 import com.mmp.profile.repository.MentorAvailabilityRepository;
 import com.mmp.profile.repository.MentorProfileRepository;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,8 @@ class ProfileCvFileTest {
     private final MatchingIndexClient matching = mock(MatchingIndexClient.class);
     private final TransactionTemplate tx = mock(TransactionTemplate.class);
     private final ProfileService service = new ProfileService(
-            mentorRepo, menteeRepo, mock(MentorAvailabilityRepository.class), matching, tx);
+            mentorRepo, menteeRepo, mock(MentorAvailabilityRepository.class),
+            mock(MentorAvailabilityExceptionRepository.class), matching, tx, java.time.Clock.systemUTC());
     private final UUID userId = UUID.randomUUID();
 
     @SuppressWarnings("unchecked")
