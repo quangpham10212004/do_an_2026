@@ -39,7 +39,7 @@ app:
   security:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
-    public-paths: /api/auth/register,/api/auth/login,/api/auth/refresh,/api/auth/logout,/api/auth/verify-email,/api/auth/verify-token
+    public-paths: /api/auth/register,/api/auth/login,/api/auth/refresh,/api/auth/logout,/api/auth/verify-email,/api/auth/verify-token,/api/auth/forgot-password,/api/auth/reset-password
   jwt:
     access-token-ttl: ${ACCESS_TOKEN_TTL:PT30M}
     refresh-token-ttl: ${REFRESH_TOKEN_TTL:P7D}

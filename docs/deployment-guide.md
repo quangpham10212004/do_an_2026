@@ -210,7 +210,7 @@ Migration hiện có:
 
 | Service | Migration |
 |---|---|
-| auth-service | `V1__baseline` |
+| auth-service | `V1__baseline`, `V2__password_reset_tokens` (US-09) |
 | learning-service | `V1__baseline` |
 | ai-service | `001_baseline` |
 

@@ -3,6 +3,7 @@ package com.mmp.auth.controller;
 import com.mmp.auth.dto.AuthDtos.*;
 import com.mmp.auth.security.CurrentUser;
 import com.mmp.auth.service.AuthService;
+import com.mmp.auth.service.PasswordResetService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -12,9 +13,24 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, PasswordResetService passwordResetService) {
         this.authService = authService;
+        this.passwordResetService = passwordResetService;
+    }
+
+    /** US-09 — luôn 202 (không tiết lộ email có tồn tại hay không). */
+    @PostMapping("/forgot-password")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest req) {
+        passwordResetService.requestReset(req.email());
+    }
+
+    @PostMapping("/reset-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
+        passwordResetService.resetPassword(req.token(), req.newPassword());
     }
 
     @PostMapping("/register")
