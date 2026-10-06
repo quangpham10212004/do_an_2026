@@ -53,8 +53,22 @@ public final class ProfileDtos {
             String status,
             LocalDate onLeaveUntil,
             String statusReason,
+            String meetingLink,
+            int bufferMinutes,
+            int minNoticeHours,
+            List<String> languages,
+            List<String> sessionTypes,
+            String timezone,
             List<AvailabilitySlot> availability,
             List<AvailabilityExceptionDto> exceptions) {
+
+        /** Link họp chỉ cho chủ hồ sơ, admin và service nội bộ (mentoring-service gửi cho mentee khi phiên CONFIRMED). */
+        public MentorProfileResponse withoutMeetingLink() {
+            return new MentorProfileResponse(userId, displayName, skills, domain, bio, yearsExperience, cvFileUrl,
+                    portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
+                    verificationStatus, status, onLeaveUntil, statusReason, null, bufferMinutes, minNoticeHours,
+                    languages, sessionTypes, timezone, availability, exceptions);
+        }
 
         /**
          * status = trạng thái HIỆU LỰC (nghỉ phép đã hết hạn tính là ACCEPTING); isAvailable = status == ACCEPTING.
@@ -68,7 +82,9 @@ public final class ProfileDtos {
                     Arrays.asList(p.getPortfolioLinks()), p.getHourlyRate(), p.getCapacity(),
                     p.getActiveMenteeCount(), effective == MentorProfile.Status.ACCEPTING, p.getRating(), p.getRatingCount(),
                     p.getVerificationStatus().name(), effective.name(), onLeave ? p.getOnLeaveUntil() : null,
-                    effective == p.getStatus() ? p.getStatusReason() : null, slots, exceptions);
+                    effective == p.getStatus() ? p.getStatusReason() : null, p.getMeetingLink(), p.getBufferMinutes(),
+                    p.getMinNoticeHours(), Arrays.asList(p.getLanguages()), Arrays.asList(p.getSessionTypes()),
+                    p.getTimezone(), slots, exceptions);
         }
     }
 
@@ -165,6 +181,16 @@ public final class ProfileDtos {
                     p.getVerificationStatus().name(), effective.name(),
                     effective == MentorProfile.Status.ON_LEAVE ? p.getOnLeaveUntil() : null);
         }
+    }
+
+    /** US-04 — cài đặt đặt lịch, thay toàn bộ (meetingLink rỗng/null = xoá link). */
+    public record BookingSettingsInput(
+            @Size(max = 500) String meetingLink,
+            @NotNull Integer bufferMinutes,
+            @NotNull Integer minNoticeHours,
+            @NotNull @Size(max = 5) List<String> languages,
+            @NotNull @Size(max = 10) List<String> sessionTypes,
+            @Size(max = 64) String timezone) {
     }
 
     /** US-08 — mentor tự đổi trạng thái (không đặt/gỡ được SUSPENDED). */

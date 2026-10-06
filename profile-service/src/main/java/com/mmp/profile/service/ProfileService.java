@@ -81,7 +81,7 @@ public class ProfileService {
 
     /** "Hôm nay" theo múi giờ của mentor. */
     LocalDate today(MentorProfile p) {
-        return LocalDate.now(clock.withZone(MentorRules.DEFAULT_ZONE));
+        return LocalDate.now(clock.withZone(MentorRules.zoneOf(p.getTimezone())));
     }
 
     /**
@@ -215,6 +215,22 @@ public class ProfileService {
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 50)));
         return new PageResponse<>(result.map(m -> MentorCard.from(m, effectiveStatus(m))).getContent(),
                 result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
+    }
+
+    // ---------------- US-04: cài đặt đặt lịch ----------------
+
+    public MentorProfileResponse updateBookingSettings(UUID mentorId, BookingSettingsInput in) {
+        String link = MentorRules.normalizeMeetingLink(in.meetingLink());
+        MentorRules.validateBufferAndNotice(in.bufferMinutes(), in.minNoticeHours());
+        String[] languages = MentorRules.normalizeCodes(in.languages(), MentorRules.LANGUAGES, false, "Ngôn ngữ");
+        String[] types = MentorRules.normalizeCodes(in.sessionTypes(), MentorRules.SESSION_TYPES, true, "Loại phiên");
+        String timezone = MentorRules.normalizeTimezone(in.timezone());
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            p.updateBookingSettings(link, in.bufferMinutes(), in.minNoticeHours(), languages, types, timezone);
+            mentorRepo.save(p);
+        });
+        return getMentor(mentorId);
     }
 
     // ---------------- US-08: trạng thái mentor ----------------

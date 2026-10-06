@@ -51,6 +51,19 @@ export interface MentorProfileInput {
   isAvailable?: boolean;
 }
 
+/** US-04 */
+export type SessionType = "CAREER_ADVICE" | "CODE_REVIEW" | "MOCK_INTERVIEW" | "PROJECT_GUIDANCE";
+export type LanguageCode = "vi" | "en";
+
+export interface BookingSettingsInput {
+  meetingLink: string | null;
+  bufferMinutes: 0 | 15 | 30;
+  minNoticeHours: number;
+  languages: LanguageCode[];
+  sessionTypes: SessionType[];
+  timezone: string | null;
+}
+
 export interface MentorStatusInput {
   status: Exclude<MentorStatus, "SUSPENDED">;
   /** YYYY-MM-DD, bắt buộc khi ON_LEAVE (nghỉ hết ngày này). */
@@ -79,6 +92,13 @@ export interface MentorProfile {
   status: MentorStatus;
   onLeaveUntil: string | null;
   statusReason: string | null;
+  /** US-04 — chỉ chủ hồ sơ/admin thấy, người khác nhận null. */
+  meetingLink: string | null;
+  bufferMinutes: 0 | 15 | 30;
+  minNoticeHours: number;
+  languages: LanguageCode[];
+  sessionTypes: SessionType[];
+  timezone: string;
   availability: AvailabilitySlot[];
   /** Ngoại lệ lịch rảnh 60 ngày tới. */
   exceptions: AvailabilityException[];

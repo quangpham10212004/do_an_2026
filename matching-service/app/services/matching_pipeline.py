@@ -82,7 +82,7 @@ async def top_k_retrieval(mentee_id: str, k: int = DEFAULT_K) -> list[dict]:
                m.capacity, m.active_mentee_count, m.status, m.rating, m.rating_count,
                -- US-08: trạng thái hiệu lực — ON_LEAVE đã qua hết on_leave_until tính là ACCEPTING.
                (m.status = 'ACCEPTING' OR (m.status = 'ON_LEAVE'
-                   AND m.on_leave_until < (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)) AS is_accepting,
+                   AND m.on_leave_until < (now() AT TIME ZONE m.timezone)::date)) AS is_accepting,
                m.years_experience, m.hourly_rate, m.verification_status,
                EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule
         FROM mentor_profiles m

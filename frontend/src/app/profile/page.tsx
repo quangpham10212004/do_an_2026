@@ -9,6 +9,7 @@ import { aiApi } from "@/features/ai/api";
 import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
 import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
 import MentorStatusControl from "@/features/profile/MentorStatusControl";
+import BookingSettings from "@/features/profile/BookingSettings";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
@@ -213,12 +214,17 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
             <MentorStatusControl profile={profile} onChange={setProfile} />
           </div>
         )}
+        {profile && (
+          <div className="card" id="booking-settings">
+            <BookingSettings key={profile.userId} profile={profile} onChange={setProfile} />
+          </div>
+        )}
         <div className="card" id="availability">
           <h2>Lịch rảnh hằng tuần</h2>
           {!profile && <Alert type="info">Hãy lưu hồ sơ trước khi khai báo lịch rảnh.</Alert>}
           {profile && (
             <>
-              <p className="muted small">Giờ Việt Nam (GMT+7). Mentee chỉ đặt được phiên nằm trọn trong các khung giờ này.</p>
+              <p className="muted small">Theo múi giờ {profile.timezone}. Mentee chỉ đặt được phiên nằm trọn trong các khung giờ này.</p>
               {slots.map((s, i) => (
                 <div className="slot-row" key={i}>
                   <select value={s.dayOfWeek} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, dayOfWeek: e.target.value } : x)))}>

@@ -36,7 +36,16 @@ public class ProfileController {
 
     @GetMapping("/mentor/{userId}")
     public MentorProfileResponse getMentor(@PathVariable UUID userId) {
-        return profileService.getMentor(userId);
+        MentorProfileResponse res = profileService.getMentor(userId);
+        // US-04: link họp chỉ chủ hồ sơ/admin thấy; mentee nhận link qua phiên đã xác nhận (mentoring-service).
+        return CurrentUser.get().canAccess(userId) ? res : res.withoutMeetingLink();
+    }
+
+    /** US-04 — cài đặt đặt lịch (link họp, buffer, báo trước, ngôn ngữ, loại phiên, múi giờ). */
+    @PutMapping("/mentor/{userId}/booking-settings")
+    public MentorProfileResponse updateBookingSettings(@PathVariable UUID userId, @Valid @RequestBody BookingSettingsInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.updateBookingSettings(userId, input);
     }
 
     @PutMapping("/mentor/{userId}")

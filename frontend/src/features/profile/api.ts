@@ -1,5 +1,8 @@
 import { api } from "@/lib/api";
 import type {
+  BookingSettingsInput,
+  LanguageCode,
+  SessionType,
   AvailabilityException,
   AvailabilityExceptionInput,
   AvailabilityExceptionResult,
@@ -23,6 +26,9 @@ export const profileApi = {
   getAvailability: (id: Uuid) => api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`),
   saveAvailability: (id: Uuid, slots: AvailabilitySlot[]) =>
     api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`, { method: "PUT", body: { slots } }),
+  // US-04 — cài đặt đặt lịch
+  saveBookingSettings: (id: Uuid, body: BookingSettingsInput) =>
+    api<MentorProfile>(`/api/profile/mentor/${id}/booking-settings`, { method: "PUT", body }),
   // US-08 — trạng thái nhận mentee
   changeStatus: (id: Uuid, body: MentorStatusInput) =>
     api<MentorProfile>(`/api/profile/mentor/${id}/status`, { method: "PUT", body }),
@@ -77,3 +83,12 @@ export function mentorStatusText(status: MentorStatus, onLeaveUntil: string | nu
   if (status === "ON_LEAVE" && onLeaveUntil) return `Nghỉ phép đến hết ${formatLocalDate(onLeaveUntil)}`;
   return MENTOR_STATUS_LABELS[status];
 }
+
+export const SESSION_TYPE_LABELS: Record<SessionType, string> = {
+  CAREER_ADVICE: "Tư vấn nghề nghiệp",
+  CODE_REVIEW: "Review code",
+  MOCK_INTERVIEW: "Phỏng vấn thử",
+  PROJECT_GUIDANCE: "Hướng dẫn dự án",
+};
+
+export const LANGUAGE_LABELS: Record<LanguageCode, string> = { vi: "Tiếng Việt", en: "Tiếng Anh" };

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, Stars, StatusBadge, Flash } from "@/components/ui";
-import { exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi } from "@/features/profile/api";
+import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { DAY_NAMES, formatDate, formatDateTime, formatMoney, formatRate } from "@/lib/format";
@@ -92,6 +92,10 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
             <h2>Giới thiệu</h2>
             <p style={{ whiteSpace: "pre-wrap" }}>{mentor.bio}</p>
             <div className="chips">{mentor.skills.map((s) => <span className="chip" key={s}>{s}</span>)}</div>
+            <p className="small muted" style={{ marginTop: "0.75rem" }}>
+              Ngôn ngữ: {mentor.languages.map((l) => LANGUAGE_LABELS[l]).join(", ")} · Nhận: {mentor.sessionTypes.map((t) => SESSION_TYPE_LABELS[t]).join(", ")}
+              <br />Đặt trước tối thiểu {mentor.minNoticeHours} giờ · Múi giờ {mentor.timezone}
+            </p>
             {mentor.portfolioLinks.length > 0 && (
               <ul className="small" style={{ marginTop: "0.75rem" }}>
                 {mentor.portfolioLinks.map((l) => <li key={l}><a href={l} target="_blank" rel="noreferrer">{l}</a></li>)}

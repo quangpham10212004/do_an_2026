@@ -68,6 +68,25 @@ public class MentorProfile {
     @Column(name = "status_changed_at")
     private OffsetDateTime statusChangedAt;
 
+    // US-04 — cài đặt đặt lịch
+    @Column(name = "meeting_link")
+    private String meetingLink;
+
+    @Column(name = "buffer_minutes", nullable = false)
+    private int bufferMinutes = 15;
+
+    @Column(name = "min_notice_hours", nullable = false)
+    private int minNoticeHours = 12;
+
+    @Column(columnDefinition = "text[]", nullable = false)
+    private String[] languages = {"vi"};
+
+    @Column(name = "session_types", columnDefinition = "text[]", nullable = false)
+    private String[] sessionTypes = {"CAREER_ADVICE", "CODE_REVIEW", "MOCK_INTERVIEW", "PROJECT_GUIDANCE"};
+
+    @Column(nullable = false)
+    private String timezone = "Asia/Ho_Chi_Minh";
+
     @Column(nullable = false)
     private float rating;
 
@@ -122,6 +141,23 @@ public class MentorProfile {
     public LocalDate getOnLeaveUntil() { return onLeaveUntil; }
     public String getStatusReason() { return statusReason; }
     public OffsetDateTime getStatusChangedAt() { return statusChangedAt; }
+
+    public String getMeetingLink() { return meetingLink; }
+    public int getBufferMinutes() { return bufferMinutes; }
+    public int getMinNoticeHours() { return minNoticeHours; }
+    public String[] getLanguages() { return languages; }
+    public String[] getSessionTypes() { return sessionTypes; }
+    public String getTimezone() { return timezone; }
+
+    public void updateBookingSettings(String meetingLink, int bufferMinutes, int minNoticeHours,
+                                      String[] languages, String[] sessionTypes, String timezone) {
+        this.meetingLink = meetingLink;
+        this.bufferMinutes = bufferMinutes;
+        this.minNoticeHours = minNoticeHours;
+        this.languages = languages;
+        this.sessionTypes = sessionTypes;
+        this.timezone = timezone;
+    }
 
     public void changeStatus(Status status, LocalDate onLeaveUntil, String reason) {
         this.status = status;

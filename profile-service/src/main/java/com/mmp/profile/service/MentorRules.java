@@ -4,11 +4,16 @@ import com.mmp.profile.entity.MentorAvailabilityException;
 import com.mmp.profile.entity.MentorProfile.Status;
 import com.mmp.profile.exception.ApiException;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -120,5 +125,86 @@ public final class MentorRules {
         if (isAvailable == null || effective == Status.SUSPENDED) return null;
         if (isAvailable == (effective == Status.ACCEPTING)) return null;
         return isAvailable ? Status.ACCEPTING : Status.PAUSED;
+    }
+
+    // ---------------- US-04: cài đặt đặt lịch ----------------
+
+    public static final Set<Integer> BUFFER_OPTIONS = Set.of(0, 15, 30);
+    public static final int MIN_NOTICE_MIN = 1;
+    public static final int MIN_NOTICE_MAX = 72;
+    public static final List<String> LANGUAGES = List.of("vi", "en");
+    public static final List<String> SESSION_TYPES = List.of("CAREER_ADVICE", "CODE_REVIEW", "MOCK_INTERVIEW", "PROJECT_GUIDANCE");
+    private static final Set<String> MEETING_HOSTS = Set.of("meet.google.com", "zoom.us", "teams.microsoft.com");
+
+    /** Múi giờ IANA của mentor; giá trị lạ/rỗng (dữ liệu cũ) quay về Asia/Ho_Chi_Minh. */
+    public static ZoneId zoneOf(String timezone) {
+        try {
+            return timezone == null ? DEFAULT_ZONE : ZoneId.of(timezone);
+        } catch (RuntimeException e) {
+            return DEFAULT_ZONE;
+        }
+    }
+
+    /**
+     * Link họp: rỗng => null; ngược lại bắt buộc https, không kèm user:password, host là meet.google.com,
+     * zoom.us, *.zoom.us hoặc teams.microsoft.com (không phân biệt hoa thường).
+     */
+    public static String normalizeMeetingLink(String link) {
+        String value = trimToNull(link);
+        if (value == null) return null;
+        if (value.length() > 500) {
+            throw ApiException.badRequest("INVALID_MEETING_LINK", "Link họp quá dài (tối đa 500 ký tự)");
+        }
+        URI uri;
+        try {
+            uri = new URI(value);
+        } catch (URISyntaxException e) {
+            throw ApiException.badRequest("INVALID_MEETING_LINK", "Link họp không hợp lệ");
+        }
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+        boolean allowedHost = MEETING_HOSTS.contains(host) || host.endsWith(".zoom.us");
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getRawUserInfo() != null || !allowedHost) {
+            throw ApiException.badRequest("INVALID_MEETING_LINK",
+                    "Link họp phải là https trên Google Meet, Zoom hoặc Microsoft Teams");
+        }
+        return value;
+    }
+
+    public static void validateBufferAndNotice(Integer bufferMinutes, Integer minNoticeHours) {
+        if (bufferMinutes == null || !BUFFER_OPTIONS.contains(bufferMinutes)) {
+            throw ApiException.badRequest("INVALID_BOOKING_SETTINGS", "Thời gian nghỉ giữa các phiên chỉ được 0, 15 hoặc 30 phút");
+        }
+        if (minNoticeHours == null || minNoticeHours < MIN_NOTICE_MIN || minNoticeHours > MIN_NOTICE_MAX) {
+            throw ApiException.badRequest("INVALID_BOOKING_SETTINGS", "Thời gian báo trước phải từ 1 đến 72 giờ");
+        }
+    }
+
+    /** Chuẩn hoá danh sách mã (bỏ trùng, giữ thứ tự) và bắt buộc ít nhất 1 giá trị hợp lệ. */
+    public static String[] normalizeCodes(List<String> values, List<String> allowed, boolean upper, String label) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (values != null) {
+            for (String v : values) {
+                if (v == null || v.isBlank()) continue;
+                String code = upper ? v.trim().toUpperCase(Locale.ROOT) : v.trim().toLowerCase(Locale.ROOT);
+                if (!allowed.contains(code)) {
+                    throw ApiException.badRequest("INVALID_BOOKING_SETTINGS", label + " không hợp lệ: " + v.trim());
+                }
+                out.add(code);
+            }
+        }
+        if (out.isEmpty()) {
+            throw ApiException.badRequest("INVALID_BOOKING_SETTINGS", "Cần chọn ít nhất một " + label.toLowerCase(Locale.ROOT));
+        }
+        return out.toArray(String[]::new);
+    }
+
+    /** Null/rỗng => Asia/Ho_Chi_Minh; phải là múi giờ IANA dạng vùng (vd. Asia/Tokyo), không nhận offset "+07:00". */
+    public static String normalizeTimezone(String timezone) {
+        String tz = trimToNull(timezone);
+        if (tz == null) return DEFAULT_ZONE.getId();
+        if (!ZoneId.getAvailableZoneIds().contains(tz)) {
+            throw ApiException.badRequest("INVALID_TIMEZONE", "Múi giờ không hợp lệ: " + tz);
+        }
+        return tz;
     }
 }

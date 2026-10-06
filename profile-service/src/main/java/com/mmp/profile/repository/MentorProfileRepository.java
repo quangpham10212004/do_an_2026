@@ -26,7 +26,7 @@ public interface MentorProfileRepository extends JpaRepository<MentorProfile, UU
                                Pageable pageable);
 
     /**
-     * US-08 — ON_LEAVE tự về ACCEPTING khi đã qua hết ngày on_leave_until theo giờ Việt Nam
+     * US-08 — ON_LEAVE tự về ACCEPTING khi đã qua hết ngày on_leave_until theo múi giờ của mentor
      * (cùng quy tắc với MentorRules.effectiveStatus).
      */
     @Modifying
@@ -35,7 +35,7 @@ public interface MentorProfileRepository extends JpaRepository<MentorProfile, UU
                SET status = 'ACCEPTING', on_leave_until = NULL, status_reason = NULL,
                    status_changed_at = now(), updated_at = now()
              WHERE status = 'ON_LEAVE'
-               AND on_leave_until < (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+               AND on_leave_until < (now() AT TIME ZONE timezone)::date
             """, nativeQuery = true)
     int returnExpiredLeaves();
 }
