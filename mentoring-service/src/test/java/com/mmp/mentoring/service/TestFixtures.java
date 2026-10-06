@@ -26,6 +26,7 @@ class TestFixtures {
     final com.mmp.mentoring.repository.LateCancellationRepository lateCancelRepo = mock(com.mmp.mentoring.repository.LateCancellationRepository.class);
     final PaymentOutboxService outbox = mock(PaymentOutboxService.class);
     final StrikeService strikes = mock(StrikeService.class);
+    final com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo = mock(com.mmp.mentoring.repository.RescheduleProposalRepository.class);
     CancellationPolicy policy = CancellationPolicy.defaults();
 
     TestFixtures() {
@@ -40,7 +41,7 @@ class TestFixtures {
     }
 
     SessionService service() {
-        return new SessionService(sessionRepo, requestRepo, reviewRepo, lateCancelRepo, policy, outbox, strikes,
+        return new SessionService(sessionRepo, requestRepo, reviewRepo, lateCancelRepo, policy, outbox, strikes, proposalRepo,
                 profileClient, paymentClient, notifications, tx,
                 "Asia/Ho_Chi_Minh", Duration.ofHours(1), Duration.ofDays(60));
     }

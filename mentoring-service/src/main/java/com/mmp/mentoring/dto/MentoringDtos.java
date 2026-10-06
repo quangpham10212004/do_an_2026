@@ -60,7 +60,16 @@ public final class MentoringDtos {
                               OffsetDateTime scheduledAt, OffsetDateTime endsAt, int durationMinutes, BigDecimal price,
                               String topic, String sessionType, String agenda, String preReadLink,
                               String meetingLink, String status, String cancelledBy, String cancelReason, Integer refundPercent,
+                              int rescheduleCount, RescheduleView pendingReschedule,
                               boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
+    }
+
+    /** US-06 — đề xuất dời lịch. */
+    public record RescheduleInput(@NotNull @Future OffsetDateTime newStart) {
+    }
+
+    public record RescheduleView(UUID id, UUID sessionId, UUID proposedBy, OffsetDateTime newStart, OffsetDateTime expiresAt,
+                                 String status, OffsetDateTime createdAt) {
     }
 
     /** US-01 — xem trước khi huỷ: % và số tiền được hoàn, nội dung chính sách áp dụng. */

@@ -7,6 +7,7 @@ import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead, Stars, StatusBadge, useDialog, Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import { SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
+import SlotPicker from "@/features/mentoring/SlotPicker";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
@@ -58,11 +59,43 @@ const FILTERS: [SessionStatus | "", string][] = [
   ["CANCELLED", "Đã huỷ"],
 ];
 
+/** US-06 — chọn giờ mới để đề xuất dời lịch. */
+function RescheduleForm({ session, onDone }: { session: MentoringSession; onDone: (ok: string) => void }) {
+  const [newStart, setNewStart] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+  const pick = useCallback((v: string | null) => setNewStart(v), []);
+  return (
+    <div className="card" style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8 }}>
+      <Alert>{error}</Alert>
+      <p className="small muted">Chọn giờ mới ({session.durationMinutes} phút, giữ nguyên chi phí). Bên còn lại cần đồng ý trong 24 giờ (và trước giờ bắt đầu cũ 1 giờ).</p>
+      <SlotPicker mentorId={session.mentorId} durationMinutes={session.durationMinutes} value={newStart} onChange={pick}
+        refreshKey={version} excludeSessionId={session.id} />
+      <button className="btn sm" style={{ marginTop: 6 }} disabled={!newStart || busy} onClick={async () => {
+        if (!newStart) return;
+        setBusy(true);
+        setError("");
+        try {
+          await mentoringApi.proposeReschedule(session.id, newStart);
+          onDone(`Đã gửi đề xuất dời lịch sang ${formatDateTime(newStart)}.`);
+        } catch (e) {
+          setError(errorMessage(e));
+          setVersion((v) => v + 1);
+        } finally {
+          setBusy(false);
+        }
+      }}>Gửi đề xuất dời lịch</button>
+    </div>
+  );
+}
+
 function Sessions({ user }: { user: SessionUser }) {
   const params = useSearchParams();
   const [items, setItems] = useState<MentoringSession[] | undefined>(undefined);
   const [filter, setFilter] = useState<SessionStatus | "">("");
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const [rescheduling, setRescheduling] = useState<string | null>(null);
   const [dialog, ask] = useDialog();
   const [msg, setMsg] = useState<Flash>(params.get("booked") ? { ok: "Đặt lịch thành công!" } : params.get("paid") ? { ok: "Thanh toán thành công, phiên đã được xác nhận." } : {});
   const isMentor = user.role === "MENTOR";
@@ -159,11 +192,35 @@ function Sessions({ user }: { user: SessionUser }) {
                         if (reason !== null) act(() => mentoringApi.cancelSession(s.id, reason), Number(preview.refundAmount) > 0 ? `Đã huỷ phiên, ${formatMoney(preview.refundAmount)} sẽ được hoàn lại.` : "Đã huỷ phiên");
                       }}>Huỷ</button>
                     )}
+                    {s.status === "CONFIRMED" && !s.pendingReschedule && s.rescheduleCount < 2
+                      && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
+                      <button className="btn secondary sm" onClick={() => setRescheduling(rescheduling === s.id ? null : s.id)}>Dời lịch</button>
+                    )}
                     {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
                       <button className="btn sm" onClick={() => setReviewing(reviewing === s.id ? null : s.id)}>Đánh giá</button>
                     )}
                   </div>
                 </div>
+                {s.pendingReschedule && (
+                  <div className="alert info" style={{ width: "100%", marginTop: 8 }}>
+                    Đề xuất dời sang <strong>{formatDateTime(s.pendingReschedule.newStart)}</strong> · hết hạn {formatDateTime(s.pendingReschedule.expiresAt)}
+                    <div className="row" style={{ marginTop: 6 }}>
+                      {s.pendingReschedule.proposedBy === user.userId ? (
+                        <button className="btn secondary sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.declineReschedule(s.pendingReschedule!.id), "Đã rút lại đề xuất dời lịch")}>Rút lại đề xuất</button>
+                      ) : (
+                        <>
+                          <button className="btn good sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.acceptReschedule(s.pendingReschedule!.id), "Đã đồng ý dời lịch")}>Đồng ý</button>
+                          <button className="btn danger sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.declineReschedule(s.pendingReschedule!.id), "Đã từ chối đề xuất dời lịch")}>Từ chối</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {rescheduling === s.id && (
+                  <div style={{ width: "100%" }}>
+                    <RescheduleForm session={s} onDone={(ok) => { setRescheduling(null); setMsg({ ok }); load(); }} />
+                  </div>
+                )}
                 {reviewing === s.id && (
                   <div style={{ width: "100%" }}>
                     <ReviewForm session={s} onDone={() => { setReviewing(null); setMsg({ ok: "Cảm ơn bạn đã đánh giá!" }); load(); }} />

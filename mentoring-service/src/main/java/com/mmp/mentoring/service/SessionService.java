@@ -7,10 +7,12 @@ import com.mmp.mentoring.entity.LateCancellation;
 import com.mmp.mentoring.entity.MentorStrike;
 import com.mmp.mentoring.entity.MentoringRequest;
 import com.mmp.mentoring.entity.MentoringSession;
+import com.mmp.mentoring.entity.RescheduleProposal;
 import com.mmp.mentoring.entity.Review;
 import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.repository.LateCancellationRepository;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
+import com.mmp.mentoring.repository.RescheduleProposalRepository;
 import com.mmp.mentoring.repository.ReviewRepository;
 import com.mmp.mentoring.repository.SessionRepository;
 import com.mmp.mentoring.security.AuthUser;
@@ -44,6 +46,7 @@ public class SessionService {
     private final CancellationPolicy policy;
     private final PaymentOutboxService outbox;
     private final StrikeService strikes;
+    private final RescheduleProposalRepository proposalRepo;
     private final ProfileClient profileClient;
     private final PaymentClient paymentClient;
     private final NotificationService notifications;
@@ -54,7 +57,7 @@ public class SessionService {
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
                           LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
-                          StrikeService strikes,
+                          StrikeService strikes, RescheduleProposalRepository proposalRepo,
                           ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
@@ -67,6 +70,7 @@ public class SessionService {
         this.policy = policy;
         this.outbox = outbox;
         this.strikes = strikes;
+        this.proposalRepo = proposalRepo;
         this.profileClient = profileClient;
         this.paymentClient = paymentClient;
         this.notifications = notifications;
@@ -200,9 +204,42 @@ public class SessionService {
                 });
     }
 
-    /** Khoảng bận của 1 người trong cửa sổ thời gian: phiên đang giữ chỗ. */
+    /**
+     * Khoảng bận của 1 người trong cửa sổ thời gian: phiên đang giữ chỗ + khung giờ của đề xuất dời lịch còn
+     * PENDING (US-06, khoảng bận mang sessionId của phiên được dời, thời lượng = thời lượng phiên).
+     */
     List<BookingRules.Block> busyBlocks(UUID userId, OffsetDateTime from, OffsetDateTime to) {
-        return new ArrayList<>(BookingRules.blocksOf(sessionRepo.findActiveAround(userId, from, to)));
+        List<BookingRules.Block> blocks = new ArrayList<>(BookingRules.blocksOf(sessionRepo.findActiveAround(userId, from, to)));
+        List<RescheduleProposal> open = proposalRepo.findPendingAround(userId, from, to);
+        if (!open.isEmpty()) {
+            Map<UUID, MentoringSession> byId = sessionRepo.findAllById(open.stream().map(RescheduleProposal::getSessionId).toList())
+                    .stream().collect(Collectors.toMap(MentoringSession::getId, x -> x));
+            for (RescheduleProposal p : open) {
+                MentoringSession owner = byId.get(p.getSessionId());
+                if (owner != null) blocks.add(new BookingRules.Block(owner.getId(), p.getNewStart(), owner.getDurationMinutes()));
+            }
+        }
+        return blocks;
+    }
+
+    // ---- dùng chung với RescheduleService ----
+
+    MentoringSession load(UUID id) {
+        return find(id);
+    }
+
+    SessionView view(MentoringSession s) {
+        return toView(s);
+    }
+
+    void lockMentor(UUID mentorId) {
+        sessionRepo.lockMentorSchedule(mentorId);
+    }
+
+    void checkWindow(OffsetDateTime start, OffsetDateTime now) {
+        if (start.isAfter(now.plus(maxAdvance))) {
+            throw ApiException.badRequest("TOO_FAR", "Chỉ được đặt lịch trong vòng " + maxAdvance.toDays() + " ngày tới");
+        }
     }
 
     /**
@@ -211,6 +248,14 @@ public class SessionService {
      * báo trước. Chỉ trả thời điểm, không lộ phiên của người khác.
      */
     public AvailableSlotsView availableSlots(AuthUser caller, UUID mentorId, int durationMinutes, int days) {
+        return availableSlots(caller, mentorId, durationMinutes, days, null);
+    }
+
+    /**
+     * {@code excludeSessionId} (US-06): khi dời lịch, bỏ qua khoảng bận của chính phiên đó — chỉ áp dụng nếu người
+     * gọi tham gia phiên.
+     */
+    public AvailableSlotsView availableSlots(AuthUser caller, UUID mentorId, int durationMinutes, int days, UUID excludeSessionId) {
         if (!BookingRules.isAllowedDuration(durationMinutes)) {
             throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải là 30, 45, 60, 90 hoặc 120 phút");
         }
@@ -230,7 +275,11 @@ public class SessionService {
                 : busyBlocks(caller.userId(), windowStart, windowEnd);
         BookingRules.MentorCalendar calendar = new BookingRules.MentorCalendar(mentor.availabilityOrEmpty(),
                 mentor.exceptionsOrEmpty(), buffer, mentor.effectiveStatus(), mentor.onLeaveUntil());
-        List<SlotView> slots = BookingRules.availableStarts(earliest, latest, durationMinutes, 30, calendar, mentorBusy, callerBusy, null, zone)
+        UUID exclude = excludeSessionId == null ? null : sessionRepo.findById(excludeSessionId)
+                .filter(s -> s.getMentorId().equals(mentorId) && caller.userId() != null
+                        && (caller.userId().equals(s.getMentorId()) || caller.userId().equals(s.getMenteeId())))
+                .map(MentoringSession::getId).orElse(null);
+        List<SlotView> slots = BookingRules.availableStarts(earliest, latest, durationMinutes, 30, calendar, mentorBusy, callerBusy, exclude, zone)
                 .stream()
                 .map(start -> new SlotView(start, start.plusMinutes(durationMinutes)))
                 .toList();
@@ -296,6 +345,8 @@ public class SessionService {
             ss.setCancelReason(reason);
             ss.setRefundPercent(d.refundPercent());
             ss.setCancelledAt(OffsetDateTime.now());
+            proposalRepo.findFirstBySessionIdAndStatus(ss.getId(), RescheduleProposal.Status.PENDING)
+                    .ifPresent(p -> p.close(RescheduleProposal.Status.EXPIRED));
             if (d.lateFreeCancel()) {
                 lateCancelRepo.save(new LateCancellation(ss.getMenteeId(), ss.getId()));
             }
@@ -481,13 +532,18 @@ public class SessionService {
         Map<UUID, Review> reviews = sessions.isEmpty() ? Map.of()
                 : reviewRepo.findBySessionIdIn(sessions.stream().map(MentoringSession::getId).toList()).stream()
                 .collect(Collectors.toMap(Review::getSessionId, r -> r));
+        Map<UUID, RescheduleProposal> pending = sessions.isEmpty() ? Map.of()
+                : proposalRepo.findBySessionIdInAndStatus(sessions.stream().map(MentoringSession::getId).toList(),
+                        RescheduleProposal.Status.PENDING).stream()
+                .collect(Collectors.toMap(RescheduleProposal::getSessionId, p -> p, (a, b) -> a));
         return sessions.stream().map(s -> {
             Review r = reviews.get(s.getId());
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
                     names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
                     s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
                     MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(),
-                    s.getCancelledBy(), s.getCancelReason(), s.getRefundPercent(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
+                    s.getCancelledBy(), s.getCancelReason(), s.getRefundPercent(),
+                    s.getRescheduleCount(), pending.containsKey(s.getId()) ? RescheduleService.toView(pending.get(s.getId())) : null, r != null, r == null ? null : r.getRating(), s.getCreatedAt());
         }).toList();
     }
 

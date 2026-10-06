@@ -4,6 +4,7 @@ import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.security.CurrentUser;
 import com.mmp.mentoring.service.MentoringRequestService;
 import com.mmp.mentoring.service.NotificationService;
+import com.mmp.mentoring.service.RescheduleService;
 import com.mmp.mentoring.service.SessionService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -20,12 +21,14 @@ public class MentoringController {
     private final MentoringRequestService requestService;
     private final SessionService sessionService;
     private final NotificationService notificationService;
+    private final RescheduleService rescheduleService;
 
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
-                               NotificationService notificationService) {
+                               NotificationService notificationService, RescheduleService rescheduleService) {
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
+        this.rescheduleService = rescheduleService;
     }
 
     // ---- Mentoring requests (FR-5.2, FR-5.3) ----
@@ -94,6 +97,27 @@ public class MentoringController {
         return sessionService.updateMeetingLink(CurrentUser.get(), id, in);
     }
 
+    // ---- US-06: dời lịch ----
+
+    @PostMapping("/sessions/{id}/reschedule")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")
+    public RescheduleView proposeReschedule(@PathVariable UUID id, @Valid @RequestBody RescheduleInput in) {
+        return rescheduleService.propose(CurrentUser.get(), id, in);
+    }
+
+    @PostMapping("/reschedules/{id}/accept")
+    @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")
+    public SessionView acceptReschedule(@PathVariable UUID id) {
+        return rescheduleService.accept(CurrentUser.get(), id);
+    }
+
+    @PostMapping("/reschedules/{id}/decline")
+    @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")
+    public RescheduleView declineReschedule(@PathVariable UUID id) {
+        return rescheduleService.decline(CurrentUser.get(), id);
+    }
+
     @PostMapping("/sessions/{id}/complete")
     @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
     public SessionView complete(@PathVariable UUID id) {
@@ -115,8 +139,9 @@ public class MentoringController {
     @GetMapping("/mentors/{mentorId}/available-slots")
     public AvailableSlotsView availableSlots(@PathVariable UUID mentorId,
                                              @RequestParam(defaultValue = "60") int durationMinutes,
-                                             @RequestParam(defaultValue = "14") int days) {
-        return sessionService.availableSlots(CurrentUser.get(), mentorId, durationMinutes, days);
+                                             @RequestParam(defaultValue = "14") int days,
+                                             @RequestParam(required = false) UUID excludeSessionId) {
+        return sessionService.availableSlots(CurrentUser.get(), mentorId, durationMinutes, days, excludeSessionId);
     }
 
     // ---- Notifications (FR-5.5) ----

@@ -62,6 +62,10 @@ public class MentoringSession {
     @Column(name = "cancelled_at")
     private OffsetDateTime cancelledAt;
 
+    /** US-06 — số lần đã dời lịch (tối đa 2). */
+    @Column(name = "reschedule_count", nullable = false)
+    private int rescheduleCount;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
@@ -121,6 +125,8 @@ public class MentoringSession {
     public void setRefundPercent(Integer refundPercent) { this.refundPercent = refundPercent; }
     public OffsetDateTime getCancelledAt() { return cancelledAt; }
     public void setCancelledAt(OffsetDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
+    public int getRescheduleCount() { return rescheduleCount; }
+    public void setRescheduleCount(int rescheduleCount) { this.rescheduleCount = rescheduleCount; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public boolean isReminderSent() { return reminderSent; }

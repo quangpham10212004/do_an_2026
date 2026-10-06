@@ -41,6 +41,8 @@ export interface MentoringSession {
   cancelledBy: CancelActor | null;
   cancelReason: string | null;
   refundPercent: number | null;
+  rescheduleCount: number;
+  pendingReschedule: RescheduleProposal | null;
   reviewed: boolean;
   reviewRating: number | null;
   createdAt: IsoDateTime;
@@ -67,6 +69,19 @@ export interface LegacyBookSessionInput {
   scheduledAt: IsoDateTime;
   durationMinutes: number;
   topic?: string;
+}
+
+export type RescheduleStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";
+
+/** US-06 — đề xuất dời lịch. */
+export interface RescheduleProposal {
+  id: Uuid;
+  sessionId: Uuid;
+  proposedBy: Uuid;
+  newStart: IsoDateTime;
+  expiresAt: IsoDateTime;
+  status: RescheduleStatus;
+  createdAt: IsoDateTime;
 }
 
 export type CancelActor = "MENTEE" | "MENTOR" | "SYSTEM";

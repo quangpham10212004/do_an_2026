@@ -49,6 +49,12 @@ app:
   strikes:                         # US-02 — strike thứ 3 trong 30 ngày → PAUSED (profile-service) + báo admin
     threshold: 3
     window: P30D
+  reschedule:                      # US-06 — dời lịch phiên CONFIRMED
+    max-per-session: 2              # tối đa 2 lần dời / phiên (409 RESCHEDULE_LIMIT)
+    min-before-start: PT2H          # đề xuất trước giờ bắt đầu ≥ 2 giờ
+    proposal-ttl: PT24H             # đề xuất hết hạn sau 24 giờ ...
+    expire-before-start: PT1H       # ... hoặc 1 giờ trước giờ bắt đầu gốc (lấy mốc sớm hơn)
+    expire-interval: PT1M
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:
