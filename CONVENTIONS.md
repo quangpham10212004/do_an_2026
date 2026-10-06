@@ -141,7 +141,9 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
   mentor do ai-service đẩy sau mỗi bước của AI Interview.
 - Schema nằm trong `db/init/<service-name>.sql`, chạy tự động khi volume CSDL được tạo lần đầu
   (`docker compose down -v` để khởi tạo lại — **xoá dữ liệu**). Hibernate đặt `ddl-auto: none` — file SQL là
-  nguồn sự thật. Không có Flyway/Liquibase: PR đổi schema phải ghi "cần `down -v`" trong mô tả; quy trình
+  nguồn sự thật.
+  **Ngoại lệ (US-11)**: `mentoring-service` và `payment-service` dùng **Flyway** — `src/main/resources/db/migration/V1__baseline.sql`
+  = nội dung `db/init/<service>.sql` (CSDL cũ được baseline ở version 1), mọi thay đổi schema là `V2+`; không cần `down -v`. Không có Flyway/Liquibase: PR đổi schema phải ghi "cần `down -v`" trong mô tả; quy trình
   nâng cấp và kiểm chứng ở `docs/deployment-guide.md` mục 8.
 - Khoá chính `UUID`; thời gian `TIMESTAMPTZ`; trạng thái `TEXT` + `CHECK`.
 
