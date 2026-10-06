@@ -35,6 +35,8 @@ export interface MentoringSession {
   sessionType: SessionType | null;
   agenda: string | null;
   preReadLink: string | null;
+  /** US-04 — chỉ có giá trị khi phiên đã CONFIRMED (hoặc sau đó). */
+  meetingLink: string | null;
   status: SessionStatus;
   reviewed: boolean;
   reviewRating: number | null;

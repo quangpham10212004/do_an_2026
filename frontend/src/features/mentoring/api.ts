@@ -30,6 +30,8 @@ export const mentoringApi = {
   book: (body: LegacyBookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
   cancelSession: (id: Uuid, reason: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
+  updateMeetingLink: (id: Uuid, meetingLink: string) =>
+    api<MentoringSession>(`/api/mentoring/sessions/${id}/meeting-link`, { method: "PUT", body: { meetingLink } }),
   completeSession: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/complete`, { method: "POST" }),
   review: (id: Uuid, rating: number, comment: string) =>
     api<Review>(`/api/mentoring/sessions/${id}/review`, { method: "POST", body: { rating, comment } }),

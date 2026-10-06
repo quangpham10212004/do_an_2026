@@ -46,6 +46,12 @@ components:
         sessionType: { $ref: "#/components/schemas/SessionType" }
         agenda: { type: string, nullable: true, description: "US-03 — nội dung muốn trao đổi (phiên tạo trước US-03 có thể null)" }
         preReadLink: { type: string, nullable: true }
+        meetingLink:
+          type: string
+          nullable: true
+          description: >
+            US-04 — link phòng họp (sao chép từ meetingLink của hồ sơ mentor lúc đặt lịch, mentor có thể đổi).
+            Chỉ trả khi status là CONFIRMED hoặc trạng thái sau đó; PENDING/CANCELLED luôn null.
         status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED], description: "PENDING = chờ thanh toán" }
         reviewed: { type: boolean }
         reviewRating: { type: integer, nullable: true }
@@ -203,6 +209,30 @@ paths:
                 reason: { type: string }
       responses:
         "200": { description: Session }
+  /api/mentoring/sessions/{id}/meeting-link:
+    put:
+      summary: >
+        US-04 (MENTOR của phiên / ADMIN) Đổi link phòng họp cho 1 phiên PENDING/CONFIRMED chưa kết thúc.
+        Chỉ chấp nhận https trên meet.google.com, zoom.us, *.zoom.us, teams.microsoft.com.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [meetingLink]
+              properties:
+                meetingLink: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Phiên sau cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { description: INVALID_MEETING_LINK }
+        "403": { description: Không phải mentor của phiên }
+        "409": { description: SESSION_NOT_EDITABLE }
   /api/mentoring/sessions/{id}/complete:
     post:
       summary: (MENTOR) Đánh dấu phiên CONFIRMED đã diễn ra

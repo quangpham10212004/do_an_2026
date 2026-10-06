@@ -44,6 +44,12 @@ function ReviewForm({ session, onDone }: { session: MentoringSession; onDone: ()
   );
 }
 
+/** US-04 — nút "Tham gia" hiện từ 15 phút trước giờ bắt đầu tới khi phiên kết thúc. */
+const JOIN_EARLY_MS = 15 * 60 * 1000;
+function canJoin(s: MentoringSession, now = Date.now()): boolean {
+  return now >= new Date(s.scheduledAt).getTime() - JOIN_EARLY_MS && now <= new Date(s.endsAt).getTime();
+}
+
 const FILTERS: [SessionStatus | "", string][] = [
   ["", "Tất cả"],
   ["PENDING", "Chờ thanh toán"],
@@ -109,11 +115,23 @@ function Sessions({ user }: { user: SessionUser }) {
                       {s.sessionType && ` · ${SESSION_TYPE_LABELS[s.sessionType]}`}
                       {s.topic && ` · ${s.topic}`}
                     </div>
+                    {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
+                      <div className="small muted">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
+                    )}
                     {s.agenda && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{s.agenda}</div>}
                     {s.preReadLink && <div className="small"><a href={s.preReadLink} target="_blank" rel="noreferrer">Tài liệu đọc trước</a></div>}
                   </div>
                   <div className="row">
                     {!isMentor && s.status === "PENDING" && <Link className="btn sm" href={`/payment/${s.id}`}>Thanh toán</Link>}
+                    {s.status === "CONFIRMED" && s.meetingLink && canJoin(s) && (
+                      <a className="btn good sm" href={s.meetingLink} target="_blank" rel="noreferrer">Tham gia</a>
+                    )}
+                    {isMentor && ["PENDING", "CONFIRMED"].includes(s.status) && future && (
+                      <button className="btn secondary sm" onClick={async () => {
+                        const link = await ask({ title: "Link phòng họp cho phiên này", message: "Hỗ trợ https Google Meet, Zoom hoặc Microsoft Teams.", input: { label: "Link phòng họp", defaultValue: s.meetingLink || "", maxLength: 500, placeholder: "https://meet.google.com/..." }, confirmText: "Lưu link" });
+                        if (link) act(() => mentoringApi.updateMeetingLink(s.id, link.trim()), "Đã cập nhật link phòng họp");
+                      }}>Link họp</button>
+                    )}
                     {isMentor && s.status === "CONFIRMED" && (
                       <button className="btn good sm" onClick={() => act(() => mentoringApi.completeSession(s.id), "Đã đánh dấu hoàn thành")}>Đánh dấu hoàn thành</button>
                     )}

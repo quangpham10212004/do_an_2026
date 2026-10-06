@@ -83,6 +83,12 @@ public class MentoringController {
         return sessionService.cancel(CurrentUser.get(), id, in);
     }
 
+    @PutMapping("/sessions/{id}/meeting-link")
+    @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
+    public SessionView updateMeetingLink(@PathVariable UUID id, @Valid @RequestBody MeetingLinkInput in) {
+        return sessionService.updateMeetingLink(CurrentUser.get(), id, in);
+    }
+
     @PostMapping("/sessions/{id}/complete")
     @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
     public SessionView complete(@PathVariable UUID id) {

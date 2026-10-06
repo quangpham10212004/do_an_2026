@@ -46,6 +46,9 @@ public class MentoringSession {
     @Column(name = "pre_read_link")
     private String preReadLink;
 
+    @Column(name = "meeting_link")
+    private String meetingLink;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
@@ -95,6 +98,8 @@ public class MentoringSession {
     public void setAgenda(String agenda) { this.agenda = agenda; }
     public String getPreReadLink() { return preReadLink; }
     public void setPreReadLink(String preReadLink) { this.preReadLink = preReadLink; }
+    public String getMeetingLink() { return meetingLink; }
+    public void setMeetingLink(String meetingLink) { this.meetingLink = meetingLink; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public boolean isReminderSent() { return reminderSent; }

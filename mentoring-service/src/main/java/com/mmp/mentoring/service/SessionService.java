@@ -119,6 +119,7 @@ public class SessionService {
             session.setSessionType(in.sessionType());
             session.setAgenda(agenda);
             session.setPreReadLink(preReadLink);
+            session.setMeetingLink(MeetingLinks.sanitize(mentor.meetingLink()));
             session.setPrice(BookingRules.price(mentor.hourlyRate(), duration));
             // Phiên miễn phí được xác nhận ngay; phiên có phí chờ thanh toán (FR-6.2)
             session.setStatus(session.getPrice().signum() == 0 ? MentoringSession.Status.CONFIRMED : MentoringSession.Status.PENDING);
@@ -284,6 +285,32 @@ public class SessionService {
         return toView(session);
     }
 
+    /** US-04 — mentor (hoặc admin) đặt link phòng họp riêng cho phiên chưa kết thúc. */
+    public SessionView updateMeetingLink(AuthUser user, UUID sessionId, MeetingLinkInput in) {
+        String link = in.meetingLink().trim();
+        if (!MeetingLinks.isAllowed(link)) {
+            throw ApiException.badRequest("INVALID_MEETING_LINK",
+                    "Link phòng họp phải là https trên meet.google.com, zoom.us hoặc teams.microsoft.com");
+        }
+        MentoringSession session = tx.execute(s -> {
+            MentoringSession ss = find(sessionId);
+            if (!user.isAdmin() && !ss.getMentorId().equals(user.userId())) {
+                throw ApiException.forbidden("Chỉ mentor của phiên mới được đổi link phòng họp");
+            }
+            if (!BookingRules.HOLDING_STATUSES.contains(ss.getStatus()) || !ss.endsAt().isAfter(OffsetDateTime.now())) {
+                throw ApiException.conflict("SESSION_NOT_EDITABLE", "Chỉ đổi được link của phiên sắp diễn ra");
+            }
+            ss.setMeetingLink(link);
+            return ss;
+        });
+        if (session.getStatus() == MentoringSession.Status.CONFIRMED) {
+            notifications.notifyUser(session.getMenteeId(), "MEETING_LINK_UPDATED", "Link phòng họp đã thay đổi",
+                    "Mentor đã cập nhật link phòng họp cho phiên lúc "
+                            + session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY) + ".", "/mentoring/sessions");
+        }
+        return toView(session);
+    }
+
     /** FR-5.6 — mentee đánh giá mentor sau phiên; điểm trung bình được đồng bộ sang profile-service. */
     public ReviewView review(AuthUser mentee, UUID sessionId, ReviewInput in) {
         Review saved = tx.execute(s -> {
@@ -367,7 +394,7 @@ public class SessionService {
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
                     names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
                     s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
-                    s.getStatus().name(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
+                    MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
         }).toList();
     }
 

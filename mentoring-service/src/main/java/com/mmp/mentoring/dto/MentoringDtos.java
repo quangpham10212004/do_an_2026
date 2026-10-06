@@ -52,10 +52,14 @@ public final class MentoringDtos {
     public record CancelSessionInput(@Size(max = 300) String reason) {
     }
 
+    /** US-04 — mentor đổi link phòng họp riêng cho 1 phiên (https Google Meet / Zoom / Teams). */
+    public record MeetingLinkInput(@NotBlank @Size(max = 500) String meetingLink) {
+    }
+
     public record SessionView(UUID id, UUID requestId, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
                               OffsetDateTime scheduledAt, OffsetDateTime endsAt, int durationMinutes, BigDecimal price,
                               String topic, String sessionType, String agenda, String preReadLink,
-                              String status, boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
+                              String meetingLink, String status, boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
     }
 
     /** Dạng rút gọn cho payment-service gọi nội bộ. */
