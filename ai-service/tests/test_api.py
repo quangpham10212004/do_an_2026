@@ -73,3 +73,29 @@ def test_dev_secret_fallbacks_are_flagged(monkeypatch):
     monkeypatch.setattr(config, "JWT_SECRET", "x" * 64)
     monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-noi-bo-that")
     assert config.dev_secret_warnings() == []
+
+
+@pytest.mark.parametrize("jwt_dev, key_dev, expected", [
+    (True, False, "JWT_SECRET"), (False, True, "INTERNAL_API_KEY"), (True, True, "JWT_SECRET, INTERNAL_API_KEY")])
+def test_prod_refuses_dev_secrets(monkeypatch, jwt_dev, key_dev, expected):
+    """US-10 / NFR-9 — APP_ENV=prod với khoá dev mặc định thì không khởi động (kể cả qua lifespan)."""
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET if jwt_dev else "x" * 64)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", config._DEV_INTERNAL_API_KEY if key_dev else "khoa-that")
+    with pytest.raises(RuntimeError, match=expected):
+        config.enforce_prod_secrets()
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with pytest.raises(RuntimeError):
+        with TestClient(app):
+            pass
+
+
+def test_prod_with_real_secrets_and_dev_env_with_dev_secrets_start(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setattr(config, "JWT_SECRET", "x" * 64)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-that")
+    config.enforce_prod_secrets()
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET)
+    config.enforce_prod_secrets()  # dev: chỉ cảnh báo

@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    config.enforce_prod_secrets()  # APP_ENV=prod + bí mật dev => dừng khởi động (NFR-9)
     for warning in config.dev_secret_warnings():
         log.warning(warning)
     try:
