@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import type {
   AvailableSlots,
   BookSessionInput,
+  CancelPreview,
   LegacyBookSessionInput,
   MentoringRequest,
   MentoringSession,
@@ -28,6 +29,7 @@ export const mentoringApi = {
   bookSession: (body: BookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
   /** @deprecated thiếu sessionType/agenda (US-03) — dùng bookSession hoặc chuyển tới /mentoring/book/{mentorId}. */
   book: (body: LegacyBookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
+  cancelPreview: (id: Uuid) => api<CancelPreview>(`/api/mentoring/sessions/${id}/cancel-preview`),
   cancelSession: (id: Uuid, reason: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
   updateMeetingLink: (id: Uuid, meetingLink: string) =>

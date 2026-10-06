@@ -23,6 +23,9 @@ class TestFixtures {
     final PaymentClient paymentClient = mock(PaymentClient.class);
     final NotificationService notifications = mock(NotificationService.class);
     final TransactionTemplate tx = mock(TransactionTemplate.class);
+    final com.mmp.mentoring.repository.LateCancellationRepository lateCancelRepo = mock(com.mmp.mentoring.repository.LateCancellationRepository.class);
+    final PaymentOutboxService outbox = mock(PaymentOutboxService.class);
+    CancellationPolicy policy = CancellationPolicy.defaults();
 
     TestFixtures() {
         when(tx.execute(any())).thenAnswer(inv -> inv.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
@@ -36,7 +39,8 @@ class TestFixtures {
     }
 
     SessionService service() {
-        return new SessionService(sessionRepo, requestRepo, reviewRepo, profileClient, paymentClient, notifications, tx,
+        return new SessionService(sessionRepo, requestRepo, reviewRepo, lateCancelRepo, policy, outbox,
+                profileClient, paymentClient, notifications, tx,
                 "Asia/Ho_Chi_Minh", Duration.ofHours(1), Duration.ofDays(60));
     }
 }

@@ -139,6 +139,26 @@ class SessionBookingTest {
         assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 11).plusMinutes(15), 30, AGENDA)))).isEqualTo("OK");
     }
 
+    @Test
+    void freeBookingBlockedAfterThreeLateCancels() {
+        ProfileClient.MentorInfo free = new ProfileClient.MentorInfo(mentorId, "Mentor", List.of(), "backend", "", 5, BigDecimal.ZERO,
+                3, 0, true, 0, 0, "APPROVED", allWeek(), null, null, null, null, null, null, null);
+        givenMentor(free);
+        OffsetDateTime now = OffsetDateTime.now();
+        var lates = List.of(late(now.minusDays(9)), late(now.minusDays(5)), late(now.minusDays(1)));
+        when(f.lateCancelRepo.findByMenteeIdAndCreatedAtAfter(eq(menteeId), any())).thenReturn(lates);
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("FREE_BOOKING_BLOCKED");
+        // phiên có phí không bị chặn
+        givenMentor(mentor(null, null, null, null));
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("OK");
+    }
+
+    private com.mmp.mentoring.entity.LateCancellation late(OffsetDateTime at) {
+        com.mmp.mentoring.entity.LateCancellation lc = mock(com.mmp.mentoring.entity.LateCancellation.class);
+        when(lc.getCreatedAt()).thenReturn(at);
+        return lc;
+    }
+
     private static MentoringSession argThatSession(java.util.function.Predicate<MentoringSession> p) {
         return org.mockito.ArgumentMatchers.argThat(p::test);
     }

@@ -38,6 +38,9 @@ export interface MentoringSession {
   /** US-04 — chỉ có giá trị khi phiên đã CONFIRMED (hoặc sau đó). */
   meetingLink: string | null;
   status: SessionStatus;
+  cancelledBy: CancelActor | null;
+  cancelReason: string | null;
+  refundPercent: number | null;
   reviewed: boolean;
   reviewRating: number | null;
   createdAt: IsoDateTime;
@@ -64,6 +67,18 @@ export interface LegacyBookSessionInput {
   scheduledAt: IsoDateTime;
   durationMinutes: number;
   topic?: string;
+}
+
+export type CancelActor = "MENTEE" | "MENTOR" | "SYSTEM";
+
+/** US-01 — GET /api/mentoring/sessions/{id}/cancel-preview */
+export interface CancelPreview {
+  cancelledBy: CancelActor;
+  refundPercent: number;
+  refundAmount: number;
+  policyText: string;
+  rewardPoints: number;
+  lateFreeCancel: boolean;
 }
 
 export interface Review {

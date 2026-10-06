@@ -303,7 +303,7 @@ def main():
     # ---------------- Refund flow ----------------
     print("\nBổ sung — Huỷ phiên đã thanh toán → hoàn tiền; sức chứa")
     s2 = call("POST", f"{MENTORING}/api/mentoring/sessions", {
-        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=1)).isoformat(),
+        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=4)).isoformat(),
         "durationMinutes": 60, **BOOKING_FORM}, token=referred_token)
     call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": s2["id"], "card": {
         "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}}, token=referred_token)

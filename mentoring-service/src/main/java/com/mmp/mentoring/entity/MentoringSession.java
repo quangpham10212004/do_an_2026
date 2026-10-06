@@ -49,6 +49,19 @@ public class MentoringSession {
     @Column(name = "meeting_link")
     private String meetingLink;
 
+    /** US-01 — MENTEE | MENTOR | SYSTEM */
+    @Column(name = "cancelled_by")
+    private String cancelledBy;
+
+    @Column(name = "cancel_reason")
+    private String cancelReason;
+
+    @Column(name = "refund_percent")
+    private Integer refundPercent;
+
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
@@ -100,6 +113,14 @@ public class MentoringSession {
     public void setPreReadLink(String preReadLink) { this.preReadLink = preReadLink; }
     public String getMeetingLink() { return meetingLink; }
     public void setMeetingLink(String meetingLink) { this.meetingLink = meetingLink; }
+    public String getCancelledBy() { return cancelledBy; }
+    public void setCancelledBy(String cancelledBy) { this.cancelledBy = cancelledBy; }
+    public String getCancelReason() { return cancelReason; }
+    public void setCancelReason(String cancelReason) { this.cancelReason = cancelReason; }
+    public Integer getRefundPercent() { return refundPercent; }
+    public void setRefundPercent(Integer refundPercent) { this.refundPercent = refundPercent; }
+    public OffsetDateTime getCancelledAt() { return cancelledAt; }
+    public void setCancelledAt(OffsetDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public boolean isReminderSent() { return reminderSent; }

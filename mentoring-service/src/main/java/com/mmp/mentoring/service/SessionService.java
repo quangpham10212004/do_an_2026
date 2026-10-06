@@ -3,10 +3,12 @@ package com.mmp.mentoring.service;
 import com.mmp.mentoring.client.PaymentClient;
 import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.dto.MentoringDtos.*;
+import com.mmp.mentoring.entity.LateCancellation;
 import com.mmp.mentoring.entity.MentoringRequest;
 import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.entity.Review;
 import com.mmp.mentoring.exception.ApiException;
+import com.mmp.mentoring.repository.LateCancellationRepository;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
 import com.mmp.mentoring.repository.ReviewRepository;
 import com.mmp.mentoring.repository.SessionRepository;
@@ -37,6 +39,9 @@ public class SessionService {
     private final SessionRepository sessionRepo;
     private final MentoringRequestRepository requestRepo;
     private final ReviewRepository reviewRepo;
+    private final LateCancellationRepository lateCancelRepo;
+    private final CancellationPolicy policy;
+    private final PaymentOutboxService outbox;
     private final ProfileClient profileClient;
     private final PaymentClient paymentClient;
     private final NotificationService notifications;
@@ -46,6 +51,7 @@ public class SessionService {
     private final Duration maxAdvance;
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
+                          LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
                           ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
@@ -54,6 +60,9 @@ public class SessionService {
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.reviewRepo = reviewRepo;
+        this.lateCancelRepo = lateCancelRepo;
+        this.policy = policy;
+        this.outbox = outbox;
         this.profileClient = profileClient;
         this.paymentClient = paymentClient;
         this.notifications = notifications;
@@ -104,6 +113,15 @@ public class SessionService {
         ProfileClient.MentorInfo mentor = profileClient.findMentor(in.mentorId())
                 .orElseThrow(() -> ApiException.notFound("MENTOR_NOT_FOUND", "Không tìm thấy mentor"));
         checkSlot(mentor, start, duration, now);
+        if (BookingRules.price(mentor.hourlyRate(), duration).signum() == 0) {
+            // US-01 — 3 lần huỷ muộn phiên miễn phí trong 30 ngày → chặn đặt phiên miễn phí 14 ngày
+            List<OffsetDateTime> late = lateCancelRepo.findByMenteeIdAndCreatedAtAfter(in.menteeId(), now.minus(policy.lookback()))
+                    .stream().map(LateCancellation::getCreatedAt).toList();
+            policy.freeBookingBlockedUntil(late, now).ifPresent(until -> {
+                throw ApiException.conflict("FREE_BOOKING_BLOCKED", "Bạn đã huỷ muộn phiên miễn phí nhiều lần nên tạm thời không đặt được phiên miễn phí tới "
+                        + until.atZoneSameInstant(zone).format(DISPLAY));
+            });
+        }
         int buffer = mentor.effectiveBufferMinutes();
 
         MentoringSession saved = tx.execute(s -> {
@@ -238,30 +256,97 @@ public class SessionService {
         return toInternal(session);
     }
 
+    /** US-01 — người gọi xem trước số tiền được hoàn nếu huỷ phiên ngay bây giờ. */
+    public CancelPreviewView cancelPreview(AuthUser user, UUID sessionId) {
+        MentoringSession s = find(sessionId);
+        requireParticipant(user, s);
+        requireCancellable(s);
+        CancellationPolicy.Decision d = decide(s, actorOf(user, s), OffsetDateTime.now());
+        return new CancelPreviewView(d.actor().name(), d.refundPercent(), d.refundAmount(), d.policyText(), d.rewardPoints(),
+                d.lateFreeCancel());
+    }
+
     public SessionView cancel(AuthUser user, UUID sessionId, CancelSessionInput in) {
         MentoringSession before = find(sessionId);
         requireParticipant(user, before);
-        if (before.getStatus() != MentoringSession.Status.PENDING && before.getStatus() != MentoringSession.Status.CONFIRMED) {
-            throw ApiException.conflict("SESSION_NOT_CANCELLABLE", "Phiên không thể huỷ ở trạng thái hiện tại");
-        }
-        if (!before.getScheduledAt().isAfter(OffsetDateTime.now())) {
-            throw ApiException.conflict("SESSION_ALREADY_STARTED", "Không thể huỷ phiên đã bắt đầu");
-        }
-        boolean refund = before.getStatus() == MentoringSession.Status.CONFIRMED && before.getPrice().signum() > 0;
-        if (refund) {
-            paymentClient.refund(sessionId, "SESSION_CANCELLED");
+        return toView(cancelWithPolicy(before, actorOf(user, before), in == null ? null : in.reason()));
+    }
+
+    /**
+     * US-01 — huỷ phiên theo chính sách. Thứ tự: (1) gọi payment-service hoàn tiền (ngoài transaction; lỗi → 502,
+     * phiên không bị huỷ); (2) transaction: chuyển CANCELLED, lưu người huỷ / lý do / % hoàn, ghi huỷ muộn phiên
+     * miễn phí, xếp hàng điểm thưởng xin lỗi vào outbox; (3) strike cho mentor (US-02) và thông báo.
+     */
+    MentoringSession cancelWithPolicy(MentoringSession before, CancellationPolicy.Actor actor, String rawReason) {
+        requireCancellable(before);
+        String reason = MentoringRequestService.trimToNull(rawReason);
+        CancellationPolicy.Decision d = decide(before, actor, OffsetDateTime.now());
+        if (d.refundPercent() > 0 && d.refundAmount().signum() > 0) {
+            paymentClient.refund(before.getId(), "SESSION_CANCELLED_BY_" + actor.name(), d.refundPercent());
         }
         MentoringSession session = tx.execute(s -> {
-            MentoringSession ss = find(sessionId);
+            MentoringSession ss = find(before.getId());
+            requireCancellable(ss);
             ss.setStatus(MentoringSession.Status.CANCELLED);
+            ss.setCancelledBy(actor.name());
+            ss.setCancelReason(reason);
+            ss.setRefundPercent(d.refundPercent());
+            ss.setCancelledAt(OffsetDateTime.now());
+            if (d.lateFreeCancel()) {
+                lateCancelRepo.save(new LateCancellation(ss.getMenteeId(), ss.getId()));
+            }
+            if (d.rewardPoints() > 0) {
+                outbox.enqueueReward(ss.getMenteeId(), d.rewardPoints(), PaymentOutboxService.MENTOR_CANCEL_APOLOGY, ss.getId());
+            }
             return ss;
         });
-        UUID other = user.userId() != null && user.userId().equals(session.getMentorId()) ? session.getMenteeId() : session.getMentorId();
+        afterCancel(session, d);
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
-        notifications.notifyUser(other, "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
-                "Phiên lúc " + when + " đã bị huỷ." + (in != null && in.reason() != null ? " Lý do: " + in.reason() : "")
-                        + (refund ? " Khoản thanh toán sẽ được hoàn lại." : ""), "/mentoring/sessions");
-        return toView(session);
+        String suffix = (reason != null ? " Lý do: " + reason + "." : "")
+                + (d.refundAmount().signum() > 0 ? " Khoản hoàn " + money(d.refundAmount()) + " (" + d.refundPercent() + "%) đang được xử lý." : "")
+                + (d.rewardPoints() > 0 ? " Bạn được cộng " + d.rewardPoints() + " điểm thưởng xin lỗi." : "");
+        switch (actor) {
+            case MENTEE -> notifications.notifyUser(session.getMentorId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                    "Mentee đã huỷ phiên lúc " + when + "." + (reason != null ? " Lý do: " + reason + "." : ""), "/mentoring/sessions");
+            case MENTOR -> notifications.notifyUser(session.getMenteeId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                    "Mentor đã huỷ phiên lúc " + when + "." + suffix, "/mentoring/sessions");
+            case SYSTEM -> {
+                notifications.notifyUser(session.getMenteeId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                        "Hệ thống đã huỷ phiên lúc " + when + "." + suffix, "/mentoring/sessions");
+                notifications.notifyUser(session.getMentorId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                        "Hệ thống đã huỷ phiên lúc " + when + ".", "/mentoring/sessions");
+            }
+        }
+        return session;
+    }
+
+    /** Điểm mở rộng sau khi huỷ (US-02: strike cho mentor). */
+    void afterCancel(MentoringSession session, CancellationPolicy.Decision d) {
+    }
+
+    private CancellationPolicy.Decision decide(MentoringSession s, CancellationPolicy.Actor actor, OffsetDateTime now) {
+        boolean paid = s.getStatus() == MentoringSession.Status.CONFIRMED && s.getPrice().signum() > 0;
+        return policy.evaluate(actor, s.getPrice(), paid, s.getScheduledAt(), now);
+    }
+
+    private static void requireCancellable(MentoringSession s) {
+        if (!BookingRules.HOLDING_STATUSES.contains(s.getStatus())) {
+            throw ApiException.conflict("SESSION_NOT_CANCELLABLE", "Phiên không thể huỷ ở trạng thái hiện tại");
+        }
+        if (!s.getScheduledAt().isAfter(OffsetDateTime.now())) {
+            throw ApiException.conflict("SESSION_ALREADY_STARTED", "Không thể huỷ phiên đã bắt đầu");
+        }
+    }
+
+    /** Mentor của phiên → MENTOR, mentee → MENTEE, admin/nội bộ → SYSTEM. */
+    static CancellationPolicy.Actor actorOf(AuthUser user, MentoringSession s) {
+        if (user.userId() != null && user.userId().equals(s.getMentorId())) return CancellationPolicy.Actor.MENTOR;
+        if (user.userId() != null && user.userId().equals(s.getMenteeId())) return CancellationPolicy.Actor.MENTEE;
+        return CancellationPolicy.Actor.SYSTEM;
+    }
+
+    private static String money(java.math.BigDecimal amount) {
+        return String.format("%,d", amount.longValue()).replace(',', '.') + "đ";
     }
 
     /**
@@ -394,7 +479,8 @@ public class SessionService {
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
                     names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
                     s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
-                    MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
+                    MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(),
+                    s.getCancelledBy(), s.getCancelReason(), s.getRefundPercent(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
         }).toList();
     }
 

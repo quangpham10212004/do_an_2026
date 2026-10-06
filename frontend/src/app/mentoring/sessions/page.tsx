@@ -9,7 +9,7 @@ import { mentoringApi } from "@/features/mentoring/api";
 import { SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { MentoringSession, SessionStatus, SessionUser } from "@/types";
+import type { CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
 
 function ReviewForm({ session, onDone }: { session: MentoringSession; onDone: () => void }) {
   const [rating, setRating] = useState(5);
@@ -118,6 +118,14 @@ function Sessions({ user }: { user: SessionUser }) {
                     {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
                       <div className="small muted">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
                     )}
+                    {s.status === "CANCELLED" && s.cancelledBy && (
+                      <div className="small muted">
+                        Huỷ bởi {s.cancelledBy === "MENTEE" ? "mentee" : s.cancelledBy === "MENTOR" ? "mentor" : "hệ thống"}
+                        {s.refundPercent !== null && Number(s.price) > 0 && ` · hoàn ${s.refundPercent}%`}
+                        {s.cancelReason && s.cancelReason !== "PAYMENT_TIMEOUT" && ` · ${s.cancelReason}`}
+                        {s.cancelReason === "PAYMENT_TIMEOUT" && " · quá hạn thanh toán"}
+                      </div>
+                    )}
                     {s.agenda && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{s.agenda}</div>}
                     {s.preReadLink && <div className="small"><a href={s.preReadLink} target="_blank" rel="noreferrer">Tài liệu đọc trước</a></div>}
                   </div>
@@ -137,9 +145,18 @@ function Sessions({ user }: { user: SessionUser }) {
                     )}
                     {["PENDING", "CONFIRMED"].includes(s.status) && future && (
                       <button className="btn secondary sm" onClick={async () => {
-                        const refund = s.status === "CONFIRMED" && Number(s.price) > 0;
-                        const reason = await ask({ title: "Huỷ phiên mentoring?", message: refund ? `Khoản thanh toán ${formatMoney(s.price)} sẽ được hoàn lại.` : undefined, input: { label: "Lý do huỷ (tuỳ chọn)", maxLength: 300 }, confirmText: "Huỷ phiên", cancelText: "Giữ phiên", danger: true });
-                        if (reason !== null) act(() => mentoringApi.cancelSession(s.id, reason), refund ? "Đã huỷ phiên, khoản thanh toán được hoàn lại." : "Đã huỷ phiên");
+                        setMsg({});
+                        let preview: CancelPreview;
+                        try {
+                          preview = await mentoringApi.cancelPreview(s.id);
+                        } catch (e) {
+                          setMsg({ error: errorMessage(e) });
+                          return;
+                        }
+                        const paid = s.status === "CONFIRMED" && Number(s.price) > 0;
+                        const refundLine = paid ? `Số tiền được hoàn: ${Number(preview.refundAmount) > 0 ? formatMoney(preview.refundAmount) : "0 đ"} (${preview.refundPercent}%).` : "";
+                        const reason = await ask({ title: "Huỷ phiên mentoring?", message: <>{refundLine && <strong>{refundLine}<br /></strong>}{preview.policyText}</>, input: { label: "Lý do huỷ (tuỳ chọn)", maxLength: 300 }, confirmText: "Huỷ phiên", cancelText: "Giữ phiên", danger: true });
+                        if (reason !== null) act(() => mentoringApi.cancelSession(s.id, reason), Number(preview.refundAmount) > 0 ? `Đã huỷ phiên, ${formatMoney(preview.refundAmount)} sẽ được hoàn lại.` : "Đã huỷ phiên");
                       }}>Huỷ</button>
                     )}
                     {!isMentor && s.status === "COMPLETED" && !s.reviewed && (

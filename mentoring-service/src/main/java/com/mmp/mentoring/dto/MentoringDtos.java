@@ -59,7 +59,13 @@ public final class MentoringDtos {
     public record SessionView(UUID id, UUID requestId, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
                               OffsetDateTime scheduledAt, OffsetDateTime endsAt, int durationMinutes, BigDecimal price,
                               String topic, String sessionType, String agenda, String preReadLink,
-                              String meetingLink, String status, boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
+                              String meetingLink, String status, String cancelledBy, String cancelReason, Integer refundPercent,
+                              boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
+    }
+
+    /** US-01 — xem trước khi huỷ: % và số tiền được hoàn, nội dung chính sách áp dụng. */
+    public record CancelPreviewView(String cancelledBy, int refundPercent, BigDecimal refundAmount, String policyText,
+                                    int rewardPoints, boolean lateFreeCancel) {
     }
 
     /** Dạng rút gọn cho payment-service gọi nội bộ. */

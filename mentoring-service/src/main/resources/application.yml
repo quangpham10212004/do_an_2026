@@ -39,5 +39,14 @@ app:
     min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
     max-advance: P60D             # chỉ đặt lịch trong vòng 60 ngày tới
     payment-hold: PT30M           # phiên chưa thanh toán sau 30 phút sẽ tự huỷ để giải phóng khung giờ
+  cancellation:                    # US-01 — chính sách huỷ phiên
+    full-refund-before: PT72H       # mentee huỷ trước ≥ 72 giờ → hoàn 100%, muộn hơn → 0%
+    free-late-window: PT2H          # phiên miễn phí huỷ < 2 giờ trước giờ bắt đầu = huỷ muộn
+    mentor-apology-points: 20       # mentor huỷ → mentee được cộng điểm thưởng (reward_ledger MENTOR_CANCEL_APOLOGY)
+    free-block-threshold: 3         # 3 lần huỷ muộn ...
+    free-block-window: P30D         # ... trong 30 ngày ...
+    free-block-duration: P14D       # ... → chặn đặt phiên miễn phí 14 ngày (409 FREE_BOOKING_BLOCKED)
+  outbox:
+    interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:
     before: ${REMINDER_BEFORE:PT24H}   # FR-5.5 — nhắc lịch trước giờ bắt đầu

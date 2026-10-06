@@ -78,6 +78,11 @@ public class MentoringController {
         return sessionService.get(CurrentUser.get(), id);
     }
 
+    @GetMapping("/sessions/{id}/cancel-preview")
+    public CancelPreviewView cancelPreview(@PathVariable UUID id) {
+        return sessionService.cancelPreview(CurrentUser.get(), id);
+    }
+
     @PostMapping("/sessions/{id}/cancel")
     public SessionView cancel(@PathVariable UUID id, @Valid @RequestBody(required = false) CancelSessionInput in) {
         return sessionService.cancel(CurrentUser.get(), id, in);

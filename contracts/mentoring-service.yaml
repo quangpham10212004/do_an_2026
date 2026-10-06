@@ -53,6 +53,9 @@ components:
             US-04 — link phòng họp (sao chép từ meetingLink của hồ sơ mentor lúc đặt lịch, mentor có thể đổi).
             Chỉ trả khi status là CONFIRMED hoặc trạng thái sau đó; PENDING/CANCELLED luôn null.
         status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED], description: "PENDING = chờ thanh toán" }
+        cancelledBy: { type: string, nullable: true, enum: [MENTEE, MENTOR, SYSTEM] }
+        cancelReason: { type: string, nullable: true, description: "Lý do người huỷ nhập; huỷ do quá hạn thanh toán = PAYMENT_TIMEOUT" }
+        refundPercent: { type: integer, nullable: true, minimum: 0, maximum: 100 }
         reviewed: { type: boolean }
         reviewRating: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
@@ -189,16 +192,43 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
         "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
-        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED }
+        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED / FREE_BOOKING_BLOCKED }
   /api/mentoring/sessions/{id}:
     get:
       summary: Chi tiết phiên (người tham gia / admin)
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Session }
+  /api/mentoring/sessions/{id}/cancel-preview:
+    get:
+      summary: >
+        US-01 (người tham gia / admin) Xem trước kết quả nếu huỷ phiên ngay bây giờ theo chính sách:
+        mentee huỷ ≥ 72 giờ trước → hoàn 100%, < 72 giờ → 0%; mentor huỷ → hoàn 100% + 20 điểm cho mentee +
+        1 strike; admin/hệ thống → 100%. Phiên chưa thanh toán / miễn phí → 0đ. Ngưỡng cấu hình app.cancellation.*.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelledBy: { type: string, enum: [MENTEE, MENTOR, SYSTEM] }
+                  refundPercent: { type: integer }
+                  refundAmount: { type: number, description: "VND, 0 nếu chưa thanh toán" }
+                  policyText: { type: string }
+                  rewardPoints: { type: integer, description: "Điểm xin lỗi mentee được cộng (mentor huỷ)" }
+                  lateFreeCancel: { type: boolean, description: "Huỷ phiên miễn phí < 2 giờ trước giờ bắt đầu → ghi nhận huỷ muộn" }
+        "409": { description: SESSION_NOT_CANCELLABLE / SESSION_ALREADY_STARTED }
   /api/mentoring/sessions/{id}/cancel:
     post:
-      summary: Huỷ phiên chưa bắt đầu; phiên đã thanh toán được hoàn tiền (gọi payment-service)
+      summary: >
+        Huỷ phiên chưa bắt đầu theo chính sách US-01 (xem cancel-preview). Phiên đã thanh toán và được hoàn > 0%
+        → gọi payment-service hoàn tiền TRƯỚC (lỗi → 502 REFUND_FAILED, phiên không bị huỷ). Lưu cancelledBy,
+        cancelReason, refundPercent. Mentor huỷ → điểm xin lỗi (POST /internal/rewards qua outbox) + strike.
+        Mentee huỷ phiên miễn phí < 2 giờ trước → ghi nhận huỷ muộn; 3 lần trong 30 ngày → đặt phiên miễn phí
+        bị chặn 14 ngày (409 FREE_BOOKING_BLOCKED ở POST /api/mentoring/sessions).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         content:
