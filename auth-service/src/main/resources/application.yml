@@ -11,8 +11,15 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      # Schema do db/init/*.sql quản lý (nguồn sự thật duy nhất), không để Hibernate tự sinh
+      # Schema do Flyway quản lý (src/main/resources/db/migration), không để Hibernate tự sinh
       ddl-auto: none
+  flyway:
+    # V1__baseline.sql = db/init/<service>.sql. Volume tạo bằng db/init đã có bảng nhưng chưa có
+    # flyway_schema_history => Flyway đánh dấu baseline V1 rồi chạy tiếp V2+ (deployment-guide.md §8).
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
   data:
     redis:
       host: ${REDIS_HOST:localhost}

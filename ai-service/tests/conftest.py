@@ -1,6 +1,5 @@
 import asyncio
 import os
-import pathlib
 import tempfile
 
 # Test luôn chạy không có DEEPSEEK_API_KEY thật (engine rule-based); client DeepSeek được test bằng MockTransport.
@@ -16,14 +15,16 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import config  # noqa: E402
 from app.main import app  # noqa: E402
 
-SCHEMA = pathlib.Path(__file__).resolve().parents[2] / "db" / "init" / "ai-service.sql"
+from app import migrations  # noqa: E402
+
 TABLES = "interview_turns, interviews, enrichment_messages, enrichment_conversations, cv_documents"
 
 
 async def _reset_schema() -> None:
+    """Áp migration (giống lúc service khởi động) rồi xoá sạch dữ liệu — giữ lại schema_migrations."""
     conn = await asyncpg.connect(config.AI_DB_URL)
     try:
-        await conn.execute(SCHEMA.read_text())
+        await migrations.apply(conn)
         await conn.execute(f"TRUNCATE {TABLES} RESTART IDENTITY CASCADE")
     finally:
         await conn.close()
