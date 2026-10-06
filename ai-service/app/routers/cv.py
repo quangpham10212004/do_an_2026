@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app import config
 from app.enrichment import service
-from app.enrichment.views import CvUploadResult, CvView
+from app.enrichment.views import CvSummaryView, CvUploadResult, CvView
 from app.security import AuthUser, require_role, require_user
 
 router = APIRouter(prefix="/api/ai")
@@ -39,3 +39,16 @@ async def download(cv_id: UUID, user: AuthUser = Depends(require_user)) -> Respo
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(file_name)}"},
     )
+
+
+@router.get("/cv/mine", response_model=list[CvSummaryView], response_model_by_alias=True)
+async def mine(user: AuthUser = Depends(require_user)) -> list[CvSummaryView]:
+    """CV của chính người gọi — để giao diện cho phép xem/xoá."""
+    return await service.my_cvs(user)
+
+
+@router.delete("/cv/{cv_id}", status_code=204)
+async def delete(cv_id: UUID, user: AuthUser = Depends(require_user)) -> Response:
+    """Xoá CV (chủ CV hoặc ADMIN) — chính sách dữ liệu CV."""
+    await service.delete_cv(user, cv_id)
+    return Response(status_code=204)

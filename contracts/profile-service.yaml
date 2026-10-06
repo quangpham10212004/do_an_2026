@@ -3,8 +3,11 @@ info:
   title: profile-service
   version: 1.0.0
   description: >
-    Career profile của mentor/mentee, lịch rảnh, trạng thái xác thực mentor và sinh/lưu
-    embedding (gọi matching-service POST /internal/embed). Sở hữu bởi Thảo.
+    Career profile của mentor/mentee, lịch rảnh và trạng thái xác thực mentor. Sở hữu bởi Thảo.
+    Service này KHÔNG sở hữu embedding: vector, hash text nguồn và trạng thái chỉ mục thuộc về
+    matching-service (matching_db). Sau khi lưu hồ sơ, profile-service chỉ báo
+    POST /internal/embeddings/reindex sang matching-service theo kiểu bắn-rồi-quên và không chờ
+    kết quả; trạng thái chỉ mục tra ở GET /api/matching/index-status.
     Endpoint /internal/* yêu cầu header X-Internal-Token; còn lại yêu cầu JWT.
 servers:
   - url: http://localhost:8082
@@ -51,8 +54,6 @@ components:
             rating: { type: number, format: float }
             ratingCount: { type: integer }
             verificationStatus: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
-            embeddingUpdatedAt: { type: string, format: date-time, nullable: true }
-            embeddingStatus: { type: string, enum: [UPDATED, UNCHANGED, PENDING] }
             availability: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
     MenteeProfileInput:
       type: object
@@ -71,8 +72,6 @@ components:
         - type: object
           properties:
             userId: { type: string, format: uuid }
-            embeddingUpdatedAt: { type: string, format: date-time, nullable: true }
-            embeddingStatus: { type: string, enum: [UPDATED, UNCHANGED, PENDING] }
     MentorCard:
       type: object
       properties:
@@ -140,9 +139,9 @@ paths:
         "404": { description: PROFILE_NOT_FOUND }
     put:
       summary: >
-        FR-2.4/FR-2.5 Tạo/cập nhật hồ sơ mentor (chủ hồ sơ hoặc ADMIN). Sau khi lưu, tự gọi
-        matching-service sinh embedding; nếu text chuẩn hoá không đổi thì bỏ qua (NFR-7),
-        nếu matching-service lỗi thì embeddingStatus = PENDING và job nền tự thử lại.
+        FR-2.4/FR-2.5 Tạo/cập nhật hồ sơ mentor (chủ hồ sơ hoặc ADMIN). Sau khi lưu, báo
+        matching-service lập lại chỉ mục embedding (bắn rồi quên, không ảnh hưởng phản hồi này).
+        Trạng thái chỉ mục tra ở GET /api/matching/index-status.
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       requestBody:
         required: true
@@ -199,7 +198,9 @@ paths:
               schema: { $ref: "#/components/schemas/MenteeProfile" }
         "404": { description: PROFILE_NOT_FOUND }
     put:
-      summary: FR-2.1 → FR-2.3, FR-2.5 Tạo/cập nhật hồ sơ mentee (kích hoạt sinh embedding)
+      summary: >
+        FR-2.1 → FR-2.3, FR-2.5 Tạo/cập nhật hồ sơ mentee. Sau khi lưu, báo matching-service
+        lập lại chỉ mục embedding (bắn rồi quên).
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       requestBody:
         required: true
@@ -217,7 +218,8 @@ paths:
     post:
       summary: >
         FR-8.5 Nhận goal đã được chatbot enrichment tổng hợp (mentoring-service gọi bằng
-        X-Internal-Token, hoặc chính mentee), ghi đè goal, gộp kỹ năng trích từ CV và sinh lại embedding.
+        X-Internal-Token, hoặc chính mentee), ghi đè goal và gộp kỹ năng trích từ CV; matching-service
+        lập lại chỉ mục embedding sau đó.
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       security: [{ bearerAuth: [] }, { internalToken: [] }]
       requestBody:
@@ -238,17 +240,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MenteeProfile" }
 
-  /api/profile/admin/embeddings/rebuild:
-    post:
-      summary: (ADMIN) Sinh embedding còn thiếu (force=false) hoặc sinh lại toàn bộ (force=true)
-      parameters:
-        - { name: force, in: query, schema: { type: boolean, default: false } }
-      responses:
-        "200": { description: "{ mentors, mentees, pending }" }
-
   /internal/profile-summary/{userId}:
     get:
-      summary: Nội bộ — tóm tắt hồ sơ (không bao gồm embedding)
+      summary: Nội bộ — tóm tắt hồ sơ
       security: [{ internalToken: [] }]
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:
@@ -322,3 +316,17 @@ paths:
                 activeMenteeCount: { type: integer, minimum: 0 }
       responses:
         "204": { description: OK }
+  /internal/profile/{userId}/cv-file:
+    delete:
+      summary: Nội bộ — gỡ tham chiếu CV đã bị xoá khỏi hồ sơ (ai-service gọi sau DELETE /api/ai/cv/{id})
+      description: >-
+        Đặt cv_file_url = NULL trên hồ sơ mentor hoặc mentee của userId, CHỈ KHI giá trị hiện tại đúng bằng
+        cvFileUrl truyền vào (không ghi đè CV khác mà người dùng đã gắn sau đó). Idempotent: không có hồ sơ
+        hoặc không khớp thì vẫn trả 204. cv_file_url không thuộc text embedding nên không cần lập lại chỉ mục.
+      security: [{ internalToken: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - { name: cvFileUrl, in: query, required: true, schema: { type: string, example: "/api/ai/cv/3f0c.../file" } }
+      responses:
+        "204": { description: OK (đã gỡ hoặc không có gì để gỡ) }
+        "400": { description: BAD_REQUEST (thiếu cvFileUrl) }

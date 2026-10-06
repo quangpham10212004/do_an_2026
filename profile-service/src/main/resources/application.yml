@@ -25,7 +25,6 @@ app:
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
     public-paths: ""
   services:
+    # Chỉ dùng để báo matching-service lập lại chỉ mục sau khi hồ sơ thay đổi
+    # (POST /internal/embeddings/reindex, bắn rồi quên).
     matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}
-  embedding:
-    # Chu kỳ job retry sinh embedding cho profile bị lỗi/chưa có embedding
-    retry-interval: ${EMBEDDING_RETRY_INTERVAL:PT1M}

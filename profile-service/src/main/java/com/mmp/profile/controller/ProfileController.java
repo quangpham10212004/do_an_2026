@@ -6,11 +6,9 @@ import com.mmp.profile.security.AuthUser;
 import com.mmp.profile.security.CurrentUser;
 import com.mmp.profile.service.ProfileService;
 import jakarta.validation.Valid;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -79,14 +77,6 @@ public class ProfileController {
     public MenteeProfileResponse applyEnrichment(@PathVariable UUID userId, @Valid @RequestBody EnrichmentInput input) {
         CurrentUser.requireAccess(userId);
         return profileService.applyEnrichment(userId, input);
-    }
-
-    // ---- Admin ----
-
-    @PostMapping("/admin/embeddings/rebuild")
-    @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Integer> rebuildEmbeddings(@RequestParam(defaultValue = "false") boolean force) {
-        return profileService.rebuildAllEmbeddings(force);
     }
 
     private static void requireOwnerWithRole(UUID ownerId, String role) {

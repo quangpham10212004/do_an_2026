@@ -1,7 +1,9 @@
 -- profile-service database init (profile_db)
 -- Chạy tự động khi docker compose up lần đầu (mount vào /docker-entrypoint-initdb.d)
-
-CREATE EXTENSION IF NOT EXISTS vector;
+--
+-- profile-service chỉ sở hữu dữ liệu hồ sơ. Embedding (vector + hash + trạng thái
+-- index) thuộc về matching-service và nằm trong matching_db — xem
+-- db/init/matching-service.sql và CONVENTIONS.md mục 1 & 7.
 
 CREATE TABLE IF NOT EXISTS mentor_profiles (
     user_id               UUID PRIMARY KEY,
@@ -20,9 +22,6 @@ CREATE TABLE IF NOT EXISTS mentor_profiles (
     rating_count          INTEGER NOT NULL DEFAULT 0,
     verification_status   TEXT NOT NULL DEFAULT 'PENDING_INTERVIEW'
         CHECK (verification_status IN ('PENDING_INTERVIEW', 'PENDING_REVIEW', 'APPROVED', 'REJECTED')),
-    embedding             VECTOR(384),
-    embedding_text_hash   TEXT,                                   -- NFR-7: không re-embed nếu text không đổi
-    embedding_updated_at  TIMESTAMPTZ,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -37,9 +36,6 @@ CREATE TABLE IF NOT EXISTS mentee_profiles (
     skills                TEXT[] NOT NULL DEFAULT '{}',
     portfolio_links       TEXT[] NOT NULL DEFAULT '{}',
     cv_file_url           TEXT,
-    embedding             VECTOR(384),
-    embedding_text_hash   TEXT,
-    embedding_updated_at  TIMESTAMPTZ,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -57,16 +53,10 @@ CREATE TABLE IF NOT EXISTS mentor_availability (
 
 CREATE INDEX IF NOT EXISTS idx_mentor_availability_mentor ON mentor_availability (mentor_id);
 
--- HNSW index để similarity search nhanh — dùng cosine distance (khớp với
--- toán tử <=> trong matching_pipeline.py)
-CREATE INDEX IF NOT EXISTS idx_mentor_profiles_embedding
-    ON mentor_profiles USING hnsw (embedding vector_cosine_ops);
-
-CREATE INDEX IF NOT EXISTS idx_mentee_profiles_embedding
-    ON mentee_profiles USING hnsw (embedding vector_cosine_ops);
-
 -- Role read-only cho matching-service (ngoại lệ kiến trúc đã duyệt,
 -- CONVENTIONS.md mục 7): chỉ được SELECT, không thể ghi vào profile.
+-- matching-service đọc các bảng này để lấy text nguồn cho embedding và để lọc/
+-- xếp hạng mentor; vector kết quả được ghi vào matching_db của chính nó.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'matching_reader') THEN

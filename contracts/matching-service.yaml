@@ -5,6 +5,8 @@ info:
   description: >
     AI Matching pipeline: embedding (sentence-transformers all-MiniLM-L6-v2, 384 chiều) +
     pgvector top-K retrieval → hard filter → re-rank → giải thích. Sở hữu bởi Thảo.
+    Sở hữu TOÀN BỘ chỉ mục embedding: vector, hash text nguồn và trạng thái index nằm trong
+    matching_db (mentor_embeddings, mentee_embeddings) — profile-service không lưu vector.
     Đọc trực tiếp (READ-ONLY, role matching_reader) bảng mentor_profiles, mentee_profiles,
     mentor_availability trong DB của profile-service — ngoại lệ đã được duyệt (CONVENTIONS.md mục 7).
 servers:
@@ -32,6 +34,18 @@ components:
         hourlyRate: { type: number }
         matchedSkills: { type: array, items: { type: string }, description: Kỹ năng trùng với kỹ năng/mục tiêu của mentee }
         reasons: { type: array, items: { type: string }, description: "FR-4.6 — lý do đề xuất, ví dụ 'Trùng kỹ năng: Java'" }
+    IndexStatus:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [MENTOR, MENTEE], nullable: true }
+        status:
+          type: string
+          enum: [UPDATED, UNCHANGED, PENDING]
+          description: >
+            UPDATED = vector khớp đúng nội dung hồ sơ hiện tại; UNCHANGED = text không đổi nên
+            tái dùng vector cũ (NFR-7); PENDING = hồ sơ đã đổi/chưa embed được, IndexSyncJob sẽ thử lại.
+        indexedAt: { type: string, format: date-time, nullable: true }
     PipelineStats:
       type: object
       properties:
@@ -50,9 +64,12 @@ paths:
       responses:
         "200": { description: "{ status: UP, modelLoaded: bool }" }
 
-  /internal/embed:
+  /internal/embeddings/reindex:
     post:
-      summary: Nội bộ — sinh embedding (vector đã chuẩn hoá L2) từ text. Gọi bởi profile-service.
+      summary: >
+        Nội bộ — lập lại chỉ mục embedding cho 1 hồ sơ. profile-service gọi sau khi lưu hồ sơ và
+        KHÔNG chờ kết quả (bắn rồi quên); nếu lời gọi thất bại, IndexSyncJob sẽ bắt được ở vòng
+        quét kế tiếp. Chỉ gửi định danh — matching-service tự đọc nội dung hồ sơ từ profile_db.
       security: [{ internalToken: [] }]
       requestBody:
         required: true
@@ -60,23 +77,59 @@ paths:
           application/json:
             schema:
               type: object
-              required: [text]
+              required: [userId]
               properties:
-                text: { type: string, minLength: 1, maxLength: 10000 }
+                userId: { type: string, format: uuid }
+                role:
+                  type: string
+                  enum: [MENTOR, MENTEE]
+                  nullable: true
+                  description: Bỏ trống thì matching-service tự phát hiện hồ sơ nằm ở bảng nào.
+                force: { type: boolean, default: false, description: Bỏ qua kiểm tra hash, embed lại vô điều kiện }
       responses:
         "200":
-          description: Vector embedding
+          description: Trạng thái chỉ mục sau khi xử lý
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IndexStatus" }
+        "400": { description: BAD_REQUEST — userId không hợp lệ }
+        "403": { description: Thiếu/sai X-Internal-Token }
+        "404": { description: PROFILE_NOT_FOUND — không có hồ sơ với userId này }
+
+  /api/matching/index-status:
+    get:
+      summary: Trạng thái chỉ mục embedding của 1 hồ sơ (chính chủ, hoặc ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: userId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Trạng thái chỉ mục
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IndexStatus" }
+        "401": { description: UNAUTHORIZED }
+        "403": { description: FORBIDDEN — truy vấn hồ sơ của người khác }
+        "404": { description: PROFILE_NOT_FOUND }
+
+  /api/matching/admin/embeddings/rebuild:
+    post:
+      summary: (ADMIN) Sinh embedding còn thiếu (force=false) hoặc sinh lại toàn bộ (force=true)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: force, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        "200":
+          description: "{ mentors, mentees, pending }"
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  embedding:
-                    type: array
-                    items: { type: number, format: float }
-                    minItems: 384
-                    maxItems: 384
-        "403": { description: Thiếu/sai X-Internal-Token }
+                  mentors: { type: integer }
+                  mentees: { type: integer }
+                  pending: { type: integer }
+        "403": { description: FORBIDDEN — chỉ ADMIN }
 
   /api/matching/mentors:
     get:
@@ -98,4 +151,8 @@ paths:
                   pipeline: { $ref: "#/components/schemas/PipelineStats" }
         "401": { description: UNAUTHORIZED }
         "403": { description: FORBIDDEN — truy vấn cho mentee khác }
-        "404": { description: MENTEE_PROFILE_INCOMPLETE — chưa có hồ sơ hoặc chưa có embedding }
+        "404":
+          description: >
+            MENTEE_PROFILE_INCOMPLETE — chưa có hồ sơ, hoặc có hồ sơ nhưng chưa lập chỉ mục được.
+            Nếu hồ sơ tồn tại mà chưa có vector, matching-service lập chỉ mục ngay trong request
+            thay vì bắt mentee chờ vòng quét kế tiếp.

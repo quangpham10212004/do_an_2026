@@ -1,6 +1,10 @@
 # Báo cáo kiểm thử — MentorHub
 
-Tài liệu dùng cho chương **Kiểm thử & đánh giá** của báo cáo. Số liệu trong tài liệu là kết quả chạy
+> **Trạng thái số liệu**: unit test, e2e và benchmark được chạy lại ngày 06/10/2026 trên mã nguồn sau `R-1`
+> (Java qua `maven:3.9-eclipse-temurin-21`; matching-service và ai-service trên Postgres/pgvector thật,
+> không test nào bị skip). Số đo khác (lỗi phát hiện) ghi rõ thời điểm tại chỗ.
+
+Tài liệu dùng cho chương **Kiểm thử & đánh giá** của báo cáo. Số liệu gốc trong tài liệu là kết quả chạy
 thực tế ngày 17/09/2026 (sau khi tách ai-service và chuyển sang DeepSeek) trên máy phát triển (macOS, Docker Desktop, JDK 21, Python 3.12, Node 26).
 
 > **Cập nhật 20/09/2026 (SRD v1.2).** Sau khi chuyển toàn bộ luồng + dữ liệu AI Interview và CV
@@ -14,9 +18,9 @@ thực tế ngày 17/09/2026 (sau khi tách ai-service và chuyển sang DeepSee
 
 ```mermaid
 flowchart TB
-    E2E["Kiểm thử chấp nhận end-to-end<br/>scripts/e2e_acceptance.py — 65 kiểm tra theo DoD<br/>(toàn hệ thống chạy bằng docker compose)"]
+    E2E["Kiểm thử chấp nhận end-to-end<br/>scripts/e2e_acceptance.py — kiểm tra theo DoD<br/>(toàn hệ thống chạy bằng docker compose)"]
     PERF["Kiểm thử hiệu năng<br/>scripts/benchmark_matching.py (NFR-1)"]
-    UNIT["Kiểm thử đơn vị — 106 test<br/>JUnit 5 + Mockito + AssertJ · pytest + FastAPI TestClient"]
+    UNIT["Kiểm thử đơn vị<br/>JUnit 5 + Mockito + AssertJ · pytest + FastAPI TestClient"]
     BUILD["Kiểm tra biên dịch & build<br/>mvn package · next build · docker compose build"]
     E2E --> PERF --> UNIT --> BUILD
 ```
@@ -39,14 +43,17 @@ hàm thuần (`BookingRules`, `ReferralService.onSuccessfulTransaction`, `hard_f
 
 | Service | File test | Số test | Kết quả |
 |---|---|---|---|
-| auth-service | `AuthServiceTest` | 9 | ✅ 9/9 |
-| profile-service | `ProfileLogicTest` | 6 | ✅ 6/6 |
-| learning-service | `LearningServiceTest` | 2 | ✅ 2/2 |
-| payment-service | `ReferralServiceTest` (9), `SandboxPaymentGatewayTest` (4) | 13 | ✅ 13/13 |
-| mentoring-service | `BookingRulesTest` (8), `AiClientTest` (5), `SessionSchedulerTest` (3) | 16 | ✅ 16/16 |
-| matching-service | `test_pipeline.py` (10), `test_api.py` (9) | 19 | ✅ 19/19 |
-| ai-service | `test_interview_rule_based.py` (10), `test_cv.py` (9), `test_enrichment_rule_based.py` (6), `test_deepseek.py` (8), `test_api.py` (8) | 41 | ✅ 41/41 |
-| **Tổng** | | **106** | **✅ 106/106** |
+| auth-service | `AuthServiceTest` | 9 | ✅ 9/9 pass |
+| profile-service | `ProfileLogicTest` (logic embedding đã chuyển sang matching-service), `ProfileCvFileTest` (xoá tham chiếu CV đúng URL) | 5 | ✅ 5/5 pass |
+| learning-service | `LearningServiceTest` | 2 | ✅ 2/2 pass |
+| payment-service | `ReferralServiceTest`, `SandboxPaymentGatewayTest` | 13 | ✅ 13/13 pass |
+| mentoring-service | `BookingRulesTest`, `SessionSchedulerTest`, `MentoringRequestServiceTest` (`/internal/relationships`) (`AiClientTest` đã xoá cùng `AiClient` ở SRD v1.2) | 12 | ✅ 12/12 pass |
+| matching-service | `test_pipeline.py`, `test_api.py`, `test_index_service.py` (DB giả), `test_index_db.py` (Postgres thật — cần `MATCHING_DB_URL`, `PROFILE_DB_URL`, `PROFILE_DB_ADMIN_URL`; thiếu biến thì skip ở máy dev, FAIL trên CI) | 41 | ✅ 41/41 pass |
+| ai-service | `test_interview_rule_based.py`, `test_cv.py`, `test_enrichment_rule_based.py`, `test_deepseek.py`, `test_api.py`, `test_interview_flow.py`, `test_cv_enrichment_flow.py` (2 file cuối chạy trên Postgres thật; gồm quyền tải CV của mentor fail-closed, `GET /cv/mine`, `DELETE /cv/{id}`) | 74 | ✅ 74/74 pass |
+| **Tổng** | | **156** | **✅ 156/156 pass, 0 skip** |
+
+> Ghi số **passed / skipped / total** đúng như `mvn test` và `pytest -q` in ra; nếu có test bị skip vì
+> thiếu Postgres thì ghi rõ, không cộng vào số pass.
 
 Lệnh chạy:
 
@@ -76,12 +83,38 @@ Lệnh chạy:
 
 | # | Test case | Kỳ vọng |
 |---|---|---|
+| 1 | Chuẩn hoá danh sách kỹ năng | Bỏ rỗng, bỏ trùng không phân biệt hoa thường, giữ thứ tự |
+| 2 | Chuẩn hoá lĩnh vực | `"  BackEnd "` → `backend` |
+
+Từ khi quyền sở hữu embedding chuyển sang matching-service, profile-service không còn logic embedding
+nào để kiểm thử; các test tương ứng chuyển sang `matching-service/tests/test_index_service.py`.
+
+**matching-service — `test_index_service.py`** (trước đây là `ProfileLogicTest` bên Java)
+
+| # | Test case | Kỳ vọng |
+|---|---|---|
 | 1 | Chuẩn hoá văn bản mentor/mentee | Cùng cấu trúc `Domain. Skills. ...`, gộp khoảng trắng |
-| 2 | Chuẩn hoá danh sách kỹ năng | Bỏ rỗng, bỏ trùng không phân biệt hoa thường, giữ thứ tự |
+| 2 | Hash chỉ đổi khi văn bản đổi | `text_hash` tất định |
 | 3 | Chuỗi vector pgvector | `[0.5,-1.0,0.25]` |
-| 4 | NFR-7: văn bản không đổi | Không gọi matching-service, trả `UNCHANGED` |
-| 5 | matching-service lỗi | Trả `PENDING`, đặt `embedding_text_hash = NULL` để retry |
-| 6 | Sinh embedding thành công | Ghi vector + hash SHA-256 |
+| 4 | NFR-7: văn bản không đổi | Không chạy model, trả `UNCHANGED` |
+| 5 | `force=true` | Chạy model lại dù hash trùng |
+| 6 | Hash lệch | Embed lại đúng đoạn văn bản mới |
+| 7 | Model lỗi | Trả `PENDING`, đặt `text_hash = NULL`, giữ vector cũ |
+| 8 | Lập chỉ mục thành công | Ghi vector + hash SHA-256 |
+| 9 | Trạng thái khi hồ sơ đã đổi | `status` = `PENDING` cho tới khi embed lại |
+| 10 | `reconcile()` chỉ embed lại hồ sơ có văn bản lệch hash | Hồ sơ không đổi không chạy model |
+| 11 | `reconcile()` tôn trọng `INDEX_SYNC_BATCH` | Mỗi vòng không embed quá số lượng cho phép |
+| 12 | `reconcile()` khi model lỗi | Đếm vào `pending`, vòng sau thử lại |
+| 13 | `reconcile()` dọn chỉ mục mồ côi | Xoá dòng chỉ mục không còn hồ sơ trong `profile_db` |
+
+**matching-service — `test_index_db.py`** (Postgres thật, bổ sung cho bản DB giả): `reconcile()` lập chỉ
+mục hồ sơ mới và chạy lại lần hai không làm gì (idempotent); embed lại hồ sơ đổi văn bản; xoá chỉ mục
+của hồ sơ đã bị xoá khỏi `profile_db`; model lỗi thì giữ vector cũ và vòng sau thử lại; pool `profile_db`
+(role `matching_reader`) không ghi được.
+
+**matching-service — `test_api.py`** (bổ sung): `/internal/embeddings/reindex` chặn thiếu internal token
+(403), `userId` sai định dạng (400), hồ sơ không tồn tại (404); `/api/matching/index-status` chỉ cho
+chính chủ hoặc ADMIN; `/api/matching/admin/embeddings/rebuild` chỉ cho ADMIN.
 
 **learning-service — `LearningServiceTest`**: công thức % hoàn thành (1/3 → 33,3; 2/3 → 66,7; khoá không
 có tài liệu → 0; hoàn thành nhiều hơn tổng do tài liệu bị xoá → 100).
@@ -109,7 +142,6 @@ có tài liệu → 0; hoàn thành nhiều hơn tổng do tài liệu bị xoá
 | Nhóm | Test case chính |
 |---|---|
 | Đặt lịch — `BookingRulesTest` (8) | Phiên nằm trong khung rảnh; tràn khung/bắt đầu sớm/sai ngày bị từ chối; tính theo múi giờ Việt Nam (12:00 UTC = 19:00 GMT+7); phát hiện chồng lấn (nối tiếp không tính chồng); phiên đã huỷ không chặn lịch; công thức giá và làm tròn 1.000đ; liệt kê khung giờ trống theo bước 30 phút vừa khít thời lượng, bỏ giờ trước mốc sớm nhất và giờ chồng lấn phiên đang giữ chỗ (phiên đã huỷ không chặn) |
-| Gọi ai-service — `AiClientTest` (5) | Gửi lịch sử + engine đã dùng + internal token đúng hợp đồng; lượt đầu không gửi engine; upload CV dạng multipart; lỗi 4xx của ai-service (ví dụ `CV_NO_TEXT`) được chuyển tiếp nguyên mã và HTTP status; lỗi 5xx / không kết nối được → 502 `AI_SERVICE_UNAVAILABLE` |
 | Job nền — `SessionSchedulerTest` (3) | Nhắc lịch truy vấn đúng cửa sổ 24 giờ, gửi cho cả mentor và mentee, hiển thị giờ Việt Nam, đánh dấu đã nhắc; huỷ phiên chưa thanh toán quá 30 phút; chỉ tự hoàn thành phiên CONFIRMED đã kết thúc quá 2 giờ |
 
 **ai-service**
@@ -127,16 +159,40 @@ có tài liệu → 0; hoàn thành nhiều hơn tổng do tài liệu bị xoá
 | File | Test case chính |
 |---|---|
 | `test_pipeline.py` (10) | Hard filter loại đúng 5 loại vi phạm và đếm lý do; so khớp lĩnh vực không phân biệt hoa thường/khoảng trắng; mentor chưa APPROVED (mọi trạng thái) luôn bị loại; re-rank sắp xếp giảm dần; kiểm tra số học công thức (0,82); cold-start dùng rating trung tính; kẹp similarity về [0,1]; độ tương đồng thắng rating cao; sinh lý do (trùng kỹ năng, khớp mục tiêu, cùng lĩnh vực, tương đồng, rating, kinh nghiệm); khớp mục tiêu theo nguyên từ |
-| `test_api.py` (9) | Health; thiếu token → 401 đúng format lỗi; token giả mạo/refresh token → 401; mentee xem gợi ý của người khác → 403; response đúng contract camelCase + thống kê pipeline; hồ sơ chưa đủ → 404 `MENTEE_PROFILE_INCOMPLETE`; admin xem được mọi mentee; `/internal/embed` bắt buộc internal token; text rỗng → 400 `VALIDATION_ERROR` |
+| `test_api.py` (12) | Health; thiếu token → 401 đúng format lỗi; token giả mạo/refresh token → 401; mentee xem gợi ý của người khác → 403; response đúng contract camelCase + thống kê pipeline; hồ sơ chưa đủ → 404 `MENTEE_PROFILE_INCOMPLETE`; admin xem được mọi mentee; `/internal/embeddings/reindex` bắt buộc internal token, `userId` sai định dạng → 400, hồ sơ không tồn tại → 404; `/api/matching/index-status` chỉ chính chủ hoặc ADMIN; `/api/matching/admin/embeddings/rebuild` chỉ ADMIN |
 
 ## 3. Kiểm thử chấp nhận end-to-end
 
 Script `scripts/e2e_acceptance.py` tạo người dùng mới mỗi lần chạy (email ngẫu nhiên) và đi qua toàn bộ
 nghiệp vụ trên hệ thống thật (`docker compose up` + `seed_demo.py`).
 
-**Kết quả lần chạy cuối: 65/65 PASS, thời gian ~2,9 giây** (ai-service chạy engine rule-based).
+**Kết quả lần chạy cuối (sau `R-1`, 06/10/2026): `66/66 kiểm tra PASS trong 3.1s`.**
+Script có 66 lời gọi `check()`; lời gọi "điểm từng câu bị ẩn với mentor" nằm trong vòng lặp theo lượt
+phỏng vấn nên số dòng kết quả thực tế lớn hơn 66. Bảng dưới liệt kê mỗi kiểm tra một lần.
+*(Lần chạy trước `R-1`, 17/09/2026: 65/65 PASS, ~2,9 giây, engine rule-based.)*
 
-| DoD | Kiểm tra | Kết quả |
+> **Thay đổi ngữ nghĩa của DoD 2 sau `R-1` (tách quyền sở hữu embedding).**
+>
+> | | Trước `R-1` | Sau `R-1` |
+> |---|---|---|
+> | Phát biểu tiêu chí | *"Embedding được sinh khi lưu hồ sơ"* — **đồng bộ** | *"Chỉ mục embedding sẵn sàng trong vòng N giây sau khi lưu"* — **nhất quán cuối cùng** |
+> | Cơ chế | profile-service gọi `POST /internal/embed` ngay trong request lưu hồ sơ | profile-service bắn `POST /internal/embeddings/reindex` rồi trả lời ngay; `IndexSyncJob` đối soát mỗi `INDEX_SYNC_INTERVAL` |
+> | Cách e2e kiểm chứng | Đọc `embeddingStatus` / `embeddingUpdatedAt` trong phản hồi lưu hồ sơ | Poll `GET /api/matching/index-status?userId=…` mỗi 0,5 s tới khi `status = UPDATED` |
+> | N | — | **30 giây** — timeout của `wait_indexed()` trong `scripts/e2e_acceptance.py` (`seed_demo.py` chờ tối đa 60 s) |
+>
+> Giải thích N: đường thường (thông báo đến nơi) chỉ mất thời gian embed, khoảng vài chục ms; giới hạn
+> trên khi thông báo bị mất là khoảng một chu kỳ `INDEX_SYNC_INTERVAL` = **60 giây** (vòng quét đầu sau
+> khi matching-service khởi động chờ `min(60, 30)` = 30 giây). Vì e2e chạy khi hệ thống đã ổn định và
+> thông báo luôn được gửi, 30 giây là ngưỡng an toàn cho đường thường; nếu muốn e2e kiểm chứng cả giới
+> hạn trên thì timeout phải > 60 giây.
+>
+> Đây là **thay đổi ngữ nghĩa nghiệm thu**, không chỉ là sửa code test: đánh đổi có chủ đích để việc lưu
+> hồ sơ không bao giờ bị chặn bởi matching-service ([adr.md](adr.md) ADR-02, ADR-03). Script đồng thời
+> khẳng định hai trường `embeddingStatus`/`embeddingUpdatedAt` **không** còn trong phản hồi của
+> profile-service, tức kiểm thử bảo vệ chính ranh giới ownership mới. Kiểm tra DoD 3 "Embedding được sinh
+> lại sau enrichment" dùng cùng cơ chế (chờ `indexedAt` đổi so với mốc trước).
+
+| DoD | Kiểm tra | Kết quả (✅ = lần chạy 06/10/2026) |
 |---|---|---|
 | 1 | Đăng ký mentee & mentor trả JWT | ✅ |
 | 1 | Đăng nhập mentee | ✅ |
@@ -145,7 +201,8 @@ nghiệp vụ trên hệ thống thật (`docker compose up` + `seed_demo.py`).
 | 1 | RBAC: mentee không gọi được API admin (403) | ✅ |
 | 1 | Endpoint `/internal` chặn JWT người dùng (403) | ✅ |
 | 1 | Refresh token xoay vòng, token cũ không dùng lại được | ✅ |
-| 2 | Mentee tạo hồ sơ, embedding sinh ngay khi lưu | ✅ |
+| 2 | Hồ sơ mentee không lộ dữ liệu embedding (thuộc matching-service) | ✅ |
+| 2 | Mentee tạo hồ sơ, matching-service lập chỉ mục embedding ngay sau đó (chờ ≤ 30 s qua `index-status`) | ✅ |
 | 2 | NFR-7: lưu lại hồ sơ không đổi thì không sinh lại embedding | ✅ |
 | 2 | Không sửa được hồ sơ người khác (403) | ✅ |
 | 3 | Parse CV: trích xuất kỹ năng | ✅ |
@@ -204,24 +261,29 @@ nghiệp vụ trên hệ thống thật (`docker compose up` + `seed_demo.py`).
 | — | Roadmap có sẵn dữ liệu seed | ✅ |
 | 1 | Admin khoá tài khoản → không đăng nhập được (FR-1.5) | ✅ |
 
-DoD 11 ("toàn bộ hệ thống chạy được bằng `docker compose up`"): cả 7 service báo `healthy`, frontend
-phục vụ 24/24 route với HTTP 200.
+DoD 11 ("toàn bộ hệ thống chạy được bằng `docker compose up`"): cả 7 service báo `healthy` (cùng 7 CSDL,
+gồm `matching-db`), frontend phục vụ 26/26 route trang với HTTP 200 (tính cả `/mentors`).
 
 ## 4. Kiểm thử phi chức năng
 
 ### 4.1 Hiệu năng (NFR-1)
 
 `python3 scripts/benchmark_matching.py --mentors 5000 --requests 50` (chèn tạm 5.000 hồ sơ mentor tổng
-hợp vào profile_db, gọi API matching 50 lần, sau đó xoá dữ liệu tạm):
+hợp vào `profile_db` và vector tương ứng vào `matching_db`, gọi API matching 50 lần, sau đó xoá dữ liệu tạm):
 
 | Chỉ số | Giá trị |
 |---|---|
 | Số mentor trong CSDL | ~5.007 |
-| Độ trễ trung bình | 4,8 ms |
-| p50 / p95 / max | 4,7 / 5,7 / 6,8 ms |
+| Độ trễ trung bình | 2,9 ms |
+| p50 / p95 / max | 2,8 / 3,6 / 4,9 ms |
 | Yêu cầu NFR-1 | < 2.000 ms — **đạt** |
 
-Độ trễ sinh embedding (`POST /internal/embed`, 20 lần, CPU, container): trung bình ~10,1 ms.
+> Số đo trên là lần chạy 06/10/2026 sau `R-1`: top-K gồm hai truy vấn (pgvector trong `matching_db` → K dòng hồ
+> sơ trong `profile_db`). Pipeline lần cuối: K=50, loại 33 khác lĩnh vực / 2 hết chỗ / 1 chưa duyệt, trả 10.
+> Trước `R-1` (một truy vấn, vector trong `profile_db`): p95 5,7 ms.
+
+Độ trễ sinh embedding (chạy model trong `POST /internal/embeddings/reindex`, 20 lần, CPU, container):
+trung bình ~10,1 ms.
 
 ### 4.2 Bảo mật (NFR-2)
 
@@ -247,7 +309,9 @@ hợp vào profile_db, gọi API matching 50 lần, sau đó xoá dữ liệu t�
 - ai-service không truy cập được qua proxy frontend (`/api/ai/...` → 404). *(Từ SRD v1.2, ai-service có
   API công khai `/api/ai/**` yêu cầu JWT và đi qua proxy như các service khác; `/internal/**` vẫn chỉ
   nhận `X-Internal-Token`.)*
-- matching-service không phản hồi khi lưu hồ sơ → hồ sơ vẫn lưu, embedding `PENDING` và được retry (`ProfileLogicTest`).
+- matching-service không phản hồi khi lưu hồ sơ → hồ sơ vẫn lưu bình thường: `MatchingIndexClient` gọi
+  ngoài luồng request và nuốt lỗi, nên phản hồi của profile-service không đổi; `IndexSyncJob` bắt kịp ở
+  vòng quét sau (`test_index_service.py` phủ nhánh model lỗi → `PENDING`).
 
 ## 5. Lỗi phát hiện trong quá trình kiểm thử
 
@@ -261,7 +325,7 @@ hợp vào profile_db, gọi API matching 50 lần, sau đó xoá dữ liệu t�
 | 6 | Khi port từ điển kỹ năng sang Python (ai-service) | Không nhận ra "Spring Boot", "REST API", "Node.js" | Mẫu regex bị escape 2 lần (`\\s` thay vì `\s`) khi chuyển đổi | Sửa bộ chuyển đổi, đối chiếu đầu ra với bản Java trên cùng CV mẫu (khớp hoàn toàn) |
 | 7 | `AiClientTest` | Upload CV sang ai-service ném `NoClassDefFoundError: org/reactivestreams/Publisher` | `MultipartBodyBuilder` thuộc stack reactive (WebClient), không có trong service | Dùng `LinkedMultiValueMap` + `HttpEntity` với `RestClient` |
 
-Sau khi sửa, toàn bộ 106 unit test và 65 kiểm tra e2e đều pass.
+Sau khi sửa, toàn bộ unit test và kiểm tra e2e của lần chạy 17/09/2026 đều pass (106 unit test, 65 kiểm tra e2e — trước `R-1`).
 
 ## 6. Giới hạn của đợt kiểm thử
 
@@ -282,6 +346,6 @@ Sau khi sửa, toàn bộ 106 unit test và 65 kiểm tra e2e đều pass.
 ```bash
 docker compose up -d --build --wait     # khởi động toàn hệ thống
 python3 scripts/seed_demo.py             # dữ liệu demo
-python3 scripts/e2e_acceptance.py        # 65 kiểm tra DoD
+python3 scripts/e2e_acceptance.py        # kiểm tra theo DoD
 python3 scripts/benchmark_matching.py    # NFR-1
 ```

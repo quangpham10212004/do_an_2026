@@ -68,3 +68,8 @@ async def complete(conn: Db, conversation_id: UUID, enriched_goal: str) -> async
 def to_exchange(message: asyncpg.Record) -> Exchange:
     return Exchange(turn_no=message["turn_no"], slot=message["slot"], question=message["question"],
                     answer=message["answer"])
+
+
+async def delete_for_cv(conn: Db, cv_id: UUID) -> None:
+    """Xoá hội thoại gắn với CV (enrichment_messages xoá theo nhờ ON DELETE CASCADE)."""
+    await conn.execute("DELETE FROM enrichment_conversations WHERE cv_id = $1", cv_id)

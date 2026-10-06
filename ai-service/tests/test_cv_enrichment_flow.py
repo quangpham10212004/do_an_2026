@@ -1,9 +1,12 @@
 """Luồng CV Parsing + Chatbot enrichment end-to-end trong ai-service."""
+import asyncio
 import uuid
 
 import httpx
 import pytest
 
+from app import config, storage
+from app.clients import mentoring, profile
 from app.enrichment import service
 from tests.conftest import auth
 from tests.helpers import make_pdf
@@ -99,17 +102,63 @@ def test_latest_returns_cv_and_conversation(client, db, fake_profile, mentee_id)
     assert latest["conversation"]["id"] == uploaded["conversation"]["id"]
 
 
-def test_cv_file_download_and_access_rules(client, db, fake_profile, mentee_id):
+def test_cv_file_download_and_access_rules(client, db, fake_profile, fake_mentoring, mentee_id):
     cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    url = f"/api/ai/cv/{cv_id}/file"
 
-    mine = client.get(f"/api/ai/cv/{cv_id}/file", headers=auth(mentee_id, "MENTEE"))
+    mine = client.get(url, headers=auth(mentee_id, "MENTEE"))
     assert mine.status_code == 200
     assert mine.headers["content-type"] == "application/pdf"
     assert mine.content.startswith(b"%PDF")
+    assert client.get(url, headers=auth(uuid.uuid4(), "ADMIN")).status_code == 200
+    assert client.get(url, headers=auth(uuid.uuid4(), "MENTEE")).status_code == 403
+    # Chủ CV / admin không cần hỏi mentoring-service.
+    assert fake_mentoring.relationship_checks == []
 
-    # Mentor xem CV mentee khi xét yêu cầu mentoring; mentee khác thì không.
-    assert client.get(f"/api/ai/cv/{cv_id}/file", headers=auth(uuid.uuid4(), "MENTOR")).status_code == 200
-    assert client.get(f"/api/ai/cv/{cv_id}/file", headers=auth(uuid.uuid4(), "MENTEE")).status_code == 403
+
+def test_mentor_can_only_download_cv_of_related_mentee(client, db, fake_profile, fake_mentoring, mentee_id):
+    cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    url = f"/api/ai/cv/{cv_id}/file"
+    related, unrelated = uuid.uuid4(), uuid.uuid4()
+    fake_mentoring.relationships = {(related, mentee_id)}
+
+    assert client.get(url, headers=auth(related, "MENTOR")).status_code == 200
+    denied = client.get(url, headers=auth(unrelated, "MENTOR"))
+    assert denied.status_code == 403 and denied.json()["error"]["code"] == "FORBIDDEN"
+    assert fake_mentoring.relationship_checks == [(related, mentee_id), (unrelated, mentee_id)]
+
+
+def test_mentor_cv_download_fails_closed_when_mentoring_service_down(client, db, fake_profile, mentee_id, monkeypatch):
+    cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    # Không giả lập is_related: gọi thật tới một cổng không có ai lắng nghe.
+    monkeypatch.setattr(config, "MENTORING_SERVICE_URL", "http://127.0.0.1:9")
+    monkeypatch.setattr(config, "RELATIONSHIP_CHECK_TIMEOUT_SECONDS", 1.0)
+    res = client.get(f"/api/ai/cv/{cv_id}/file", headers=auth(uuid.uuid4(), "MENTOR"))
+    assert res.status_code == 403
+
+
+@pytest.mark.parametrize("status, body, expected", [
+    (200, {"related": True}, True),
+    (200, {"related": False}, False),
+    (500, {"error": {"code": "INTERNAL_ERROR"}}, False),
+    (200, ["không phải object"], False),
+])
+def test_is_related_parses_response_and_fails_closed(monkeypatch, status, body, expected):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"], seen["params"] = request.url.path, dict(request.url.params)
+        seen["token"] = request.headers.get("X-Internal-Token")
+        return httpx.Response(status, json=body)
+
+    fake_client = httpx.AsyncClient(base_url="http://mentoring", transport=httpx.MockTransport(handler),
+                                    headers={"X-Internal-Token": config.INTERNAL_API_KEY})
+    monkeypatch.setattr(mentoring, "client_for", lambda _: fake_client)
+    mentor_id, mentee_id = uuid.uuid4(), uuid.uuid4()
+    assert asyncio.run(mentoring.is_related(mentor_id, mentee_id)) is expected
+    assert seen["path"] == "/internal/relationships"
+    assert seen["params"] == {"mentorId": str(mentor_id), "menteeId": str(mentee_id)}
+    assert seen["token"] == config.INTERNAL_API_KEY
 
 
 def test_upload_requires_mentee_profile(client, db, fake_profile, mentee_id):
@@ -131,3 +180,99 @@ def test_cannot_answer_someone_elses_conversation(client, db, fake_profile, ment
     res = client.post(f"/api/ai/enrichment/conversations/{conversation['id']}/answers",
                       json={"answer": "Xin chao"}, headers=auth(uuid.uuid4(), "MENTEE"))
     assert res.status_code == 403
+
+
+# ---------------- Xoá CV / danh sách CV của tôi (chính sách dữ liệu CV) ----------------
+
+
+def _cv_files(owner_id):
+    folder = storage._root / str(owner_id)
+    return sorted(folder.glob("*.pdf")) if folder.exists() else []
+
+
+def test_owner_deletes_cv_with_conversation_and_file(client, db, fake_profile, mentee_id):
+    created = upload(client, mentee_id).json()
+    cv_id, conversation_id = created["cv"]["id"], created["conversation"]["id"]
+    assert len(_cv_files(mentee_id)) == 1
+
+    res = client.delete(f"/api/ai/cv/{cv_id}", headers=auth(mentee_id, "MENTEE"))
+    assert res.status_code == 204 and res.content == b""
+
+    assert _cv_files(mentee_id) == []
+    assert client.get(f"/api/ai/cv/{cv_id}/file", headers=auth(mentee_id, "MENTEE")).json()["error"]["code"] \
+        == "CV_NOT_FOUND"
+    gone = client.get(f"/api/ai/enrichment/conversations/{conversation_id}", headers=auth(mentee_id, "MENTEE"))
+    assert gone.status_code == 404 and gone.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
+    assert client.get("/api/ai/cv/mine", headers=auth(mentee_id, "MENTEE")).json() == []
+    # Hồ sơ đang trỏ tới CV này => nhờ profile-service gỡ tham chiếu.
+    assert fake_profile.cleared_cv_files == [(mentee_id, f"/api/ai/cv/{cv_id}/file")]
+
+
+def test_admin_can_delete_any_cv(client, db, fake_profile, mentee_id):
+    cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    assert client.delete(f"/api/ai/cv/{cv_id}", headers=auth(uuid.uuid4(), "ADMIN")).status_code == 204
+    assert _cv_files(mentee_id) == []
+
+
+@pytest.mark.parametrize("role", ["MENTEE", "MENTOR"])
+def test_other_users_and_mentors_cannot_delete_cv(client, db, fake_profile, fake_mentoring, mentee_id, role):
+    cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    # Kể cả mentor đang hướng dẫn mentee (được phép tải) cũng không được xoá.
+    other = uuid.uuid4()
+    fake_mentoring.relationships = {(other, mentee_id)}
+    res = client.delete(f"/api/ai/cv/{cv_id}", headers=auth(other, role))
+    assert res.status_code == 403 and res.json()["error"]["code"] == "FORBIDDEN"
+    assert len(_cv_files(mentee_id)) == 1
+    assert fake_profile.cleared_cv_files == []
+
+
+def test_delete_unknown_cv_is_404(client, db, fake_profile, mentee_id):
+    res = client.delete(f"/api/ai/cv/{uuid.uuid4()}", headers=auth(mentee_id, "MENTEE"))
+    assert res.status_code == 404 and res.json()["error"]["code"] == "CV_NOT_FOUND"
+
+
+def test_delete_succeeds_when_file_already_missing(client, db, fake_profile, mentee_id):
+    cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    for f in _cv_files(mentee_id):
+        f.unlink()
+    assert client.delete(f"/api/ai/cv/{cv_id}", headers=auth(mentee_id, "MENTEE")).status_code == 204
+    assert client.get("/api/ai/cv/mine", headers=auth(mentee_id, "MENTEE")).json() == []
+
+
+def test_delete_succeeds_when_profile_service_is_down(client, db, fake_profile, mentee_id):
+    cv_id = upload(client, mentee_id).json()["cv"]["id"]
+    fake_profile.clear_error = httpx.ConnectError("profile-service down")
+    assert client.delete(f"/api/ai/cv/{cv_id}", headers=auth(mentee_id, "MENTEE")).status_code == 204
+    assert client.get("/api/ai/cv/mine", headers=auth(mentee_id, "MENTEE")).json() == []
+
+
+def test_my_cvs_lists_only_callers_cvs_newest_first(client, db, fake_profile, mentee_id):
+    first = upload(client, mentee_id).json()["cv"]["id"]
+    second = upload(client, mentee_id).json()["cv"]["id"]
+    upload(client, uuid.uuid4())  # CV của mentee khác
+
+    res = client.get("/api/ai/cv/mine", headers=auth(mentee_id, "MENTEE"))
+    assert res.status_code == 200
+    items = res.json()
+    assert [i["id"] for i in items] == [second, first]
+    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl"}
+    assert items[0]["fileName"] == "cv.pdf"
+    assert items[0]["fileUrl"] == f"/api/ai/cv/{second}/file"
+    assert client.get("/api/ai/cv/mine", headers=auth(uuid.uuid4(), "MENTOR")).json() == []
+    assert client.get("/api/ai/cv/mine").status_code == 401
+
+
+def test_clear_cv_file_calls_profile_service_internal_endpoint(monkeypatch):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"], seen["path"] = request.method, request.url.path
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(204)
+
+    fake_client = httpx.AsyncClient(base_url="http://profile", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(profile, "client_for", lambda _: fake_client)
+    user_id = uuid.uuid4()
+    asyncio.run(profile.clear_cv_file(user_id, "/api/ai/cv/abc/file"))
+    assert seen == {"method": "DELETE", "path": f"/internal/profile/{user_id}/cv-file",
+                    "params": {"cvFileUrl": "/api/ai/cv/abc/file"}}

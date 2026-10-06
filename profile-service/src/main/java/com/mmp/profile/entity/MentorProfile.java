@@ -7,9 +7,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Hồ sơ mentor. Cột embedding (VECTOR(384)) không được map vào entity — nó được
- * ghi bằng JDBC trong EmbeddingService để tránh phụ thuộc kiểu pgvector trong JPA,
- * và không bao giờ được trả ra API (chỉ matching-service đọc trực tiếp).
+ * Hồ sơ mentor — toàn bộ dữ liệu mà profile-service sở hữu. Embedding của hồ sơ
+ * này nằm ở matching_db (bảng mentor_embeddings) do matching-service quản lý;
+ * profile-service không lưu và không đọc vector.
  */
 @Entity
 @Table(name = "mentor_profiles")
@@ -63,9 +63,6 @@ public class MentorProfile {
     @Column(name = "verification_status", nullable = false)
     private VerificationStatus verificationStatus = VerificationStatus.PENDING_INTERVIEW;
 
-    @Column(name = "embedding_updated_at", insertable = false, updatable = false)
-    private OffsetDateTime embeddingUpdatedAt;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -113,6 +110,5 @@ public class MentorProfile {
     public void setRatingCount(int ratingCount) { this.ratingCount = ratingCount; }
     public VerificationStatus getVerificationStatus() { return verificationStatus; }
     public void setVerificationStatus(VerificationStatus s) { this.verificationStatus = s; }
-    public OffsetDateTime getEmbeddingUpdatedAt() { return embeddingUpdatedAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

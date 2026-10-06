@@ -15,7 +15,7 @@ flowchart LR
     U[Trình duyệt<br/>Mentee / Mentor / Admin] -->|HTTPS| FE
 
     subgraph Edge
-      FE[frontend<br/>Next.js 14<br/>:3000<br/>proxy /api/**]
+      FE[frontend<br/>Next.js 14 + TS<br/>:3000<br/>proxy /api/**]
     end
 
     subgraph Services
@@ -30,7 +30,8 @@ flowchart LR
 
     subgraph Data
       ADB[(auth_db)]
-      PDB[(profile_db<br/>+ pgvector)]
+      PDB[(profile_db)]
+      MADB[(matching_db<br/>+ pgvector)]
       MDB[(mentoring_db)]
       PYDB[(payment_db)]
       LDB[(learning_db)]
@@ -46,15 +47,16 @@ flowchart LR
     AUTH --> REDIS
     AUTH -. internal: referral .-> PAY
     PROF --> PDB
-    PROF -. internal: embed .-> MATCH
+    PROF -. internal: reindex (bắn rồi quên) .-> MATCH
+    MATCH --> MADB
     MATCH -. READ-ONLY .-> PDB
     MENT --> MDB
     MENT -. internal: mentor, rating .-> PROF
     MENT -. internal: refund .-> PAY
     AIS --> AIDB
     AIS --> VOL
-    AIS -. internal: mentor, verification, enrichment .-> PROF
-    AIS -. internal: notifications .-> MENT
+    AIS -. internal: mentor, verification, enrichment, xoá cv-file .-> PROF
+    AIS -. internal: notifications, relationships .-> MENT
     AIS -. JSON output mode .-> DEEPSEEK
     PAY --> PYDB
     PAY -. internal: session, confirm .-> MENT
@@ -65,10 +67,10 @@ flowchart LR
 
 | Service | Công nghệ | Trách nhiệm | Dữ liệu sở hữu |
 |---|---|---|---|
-| **frontend** | Next.js 14 | Giao diện 3 vai trò; route handler proxy `/api/<service>/**` tới service tương ứng | — |
+| **frontend** | Next.js 14 + TypeScript | Giao diện 3 vai trò; route handler proxy `/api/<service>/**` tới service tương ứng | — |
 | **auth-service** | Spring Boot | Đăng ký, đăng nhập, JWT, refresh token, xác thực email, quản lý tài khoản, admin khoá tài khoản, chống brute-force | `users`, `refresh_tokens`; bộ đếm đăng nhập sai (Redis) |
-| **profile-service** | Spring Boot | Hồ sơ mentor/mentee, lịch rảnh, trạng thái xác thực mentor, sinh & lưu embedding, job retry embedding | `mentor_profiles`, `mentee_profiles`, `mentor_availability` |
-| **matching-service** | FastAPI | Sinh embedding (model sentence-transformers); pipeline top-K → hard filter → re-rank → explain | Không có DB riêng; đọc read-only DB của profile-service |
+| **profile-service** | Spring Boot | Hồ sơ mentor/mentee, lịch rảnh, trạng thái xác thực mentor. Không giữ dữ liệu embedding — chỉ báo matching-service khi hồ sơ đổi | `mentor_profiles`, `mentee_profiles`, `mentor_availability` |
+| **matching-service** | FastAPI | Sở hữu trọn chỉ mục embedding (chuẩn hoá text, chạy model sentence-transformers, lưu vector, job đồng bộ); pipeline top-K → hard filter → re-rank → explain | `mentor_embeddings`, `mentee_embeddings` (matching_db); đọc read-only DB của profile-service |
 | **mentoring-service** | Spring Boot | Yêu cầu mentoring, đặt lịch, đánh giá, thông báo, nhắc lịch | `mentoring_requests`, `sessions`, `reviews`, `notifications` |
 | **ai-service** | FastAPI | **Toàn bộ 3 tính năng AI hội thoại/văn bản** — luồng nghiệp vụ lẫn dữ liệu: AI Interview (sinh/chấm câu hỏi, tổng hợp đánh giá, admin duyệt), CV Parsing (pypdf), chatbot enrichment; engine DeepSeek + rule-based fallback | `interviews`, `interview_turns`, `cv_documents`, `enrichment_conversations`, `enrichment_messages`; file CV |
 | **payment-service** | Spring Boot | Thanh toán qua cổng sandbox, hoàn tiền, đối soát; referral & điểm thưởng | `transactions`, `referral_codes`, `referrals`, `reward_ledger` |
@@ -80,7 +82,7 @@ flowchart LR
 |---|---|
 | Phân chia theo người phụ trách | Mỗi thành viên sở hữu 2 service → làm việc song song, chấm điểm cá nhân rõ ràng |
 | Đa ngôn ngữ | matching-service và ai-service dùng Python (hệ sinh thái ML/LLM), phần nghiệp vụ còn lại dùng Java/Spring; mọi logic AI nằm trọn trong Python nên thay model/prompt không đụng tới code Java |
-| Cô lập lỗi | matching-service lỗi → lưu hồ sơ vẫn thành công (embedding được retry sau) |
+| Cô lập lỗi | matching-service lỗi → lưu hồ sơ vẫn thành công (profile-service không chờ kết quả lập chỉ mục; `IndexSyncJob` bắt kịp sau) |
 | Mở rộng độc lập | Có thể scale riêng matching-service (tốn CPU) mà không ảnh hưởng service khác |
 
 Đánh đổi đã chấp nhận: phức tạp hơn khi triển khai và gỡ lỗi; nhất quán dữ liệu giữa service là
@@ -122,12 +124,17 @@ Nguyên tắc:
 
 ```
 matching-service/app/
-  main.py                 khởi tạo app, load model lúc startup, chuẩn hoá lỗi
-  config.py db.py security.py
-  routers/embed.py        POST /internal/embed
+  main.py                 khởi tạo app, load model lúc startup, chạy IndexSyncJob, chuẩn hoá lỗi
+  config.py security.py
+  db.py                   2 pool: matching_db (read-write) + profile_db (read-only)
+  routers/index.py        POST /internal/embeddings/reindex, GET /api/matching/index-status,
+                          POST /api/matching/admin/embeddings/rebuild
   routers/matching.py     GET  /api/matching/mentors
   services/embedding_service.py   SentenceTransformer (load 1 lần)
+  services/profile_text.py        chuẩn hoá hồ sơ → text + SHA-256 (NFR-7)
+  services/index_service.py       vòng đời chỉ mục: reindex / status / reconcile / rebuild
   services/matching_pipeline.py   top_k_retrieval → hard_filter → re_rank → explain
+  jobs/index_sync.py      đồng bộ chỉ mục với profile_db theo chu kỳ
   schemas/matching.py     Pydantic model, alias camelCase
 ```
 
@@ -148,29 +155,33 @@ ai-service/app/
                              repository, models                                               (Quang)
   enrichment/                rule_based, deepseek_engine, engine, repository, service, views   (Quang)
   routers/                   interview.py, cv.py, enrichment.py  (tất cả dưới /api/ai/**)
-tests/                       58 test (pytest; httpx.MockTransport giả lập DeepSeek, Postgres thật cho
+tests/                       pytest (httpx.MockTransport giả lập DeepSeek, Postgres thật cho
                              luồng có trạng thái — không có Postgres thì các test đó tự skip)
 ```
 
 Nguyên tắc giống phía Java: gọi engine/LLM **trước** rồi mới mở transaction ghi kết quả; lượt trả lời
 được ghi bằng `UPDATE ... WHERE answer IS NULL` để chống gửi trùng.
 
-Không lưu trạng thái: mọi dữ liệu (buổi phỏng vấn, hội thoại, file CV) nằm ở mentoring-service; mỗi
-lượt gửi kèm lịch sử. Mỗi engine DeepSeek trả `(kết quả, fallback_used)` — lỗi LLM chỉ làm lượt đó dùng
-rule-based chứ không làm hỏng nghiệp vụ.
+Dữ liệu (buổi phỏng vấn, hội thoại, metadata CV) nằm trong `ai_db` của chính ai-service; file CV nằm
+trên volume `cv-storage` (chính sách: [cv-data-policy.md](cv-data-policy.md)). Mỗi engine DeepSeek trả
+`(kết quả, fallback_used)` — lỗi LLM chỉ làm lượt đó dùng rule-based chứ không làm hỏng nghiệp vụ.
 
-### 2.4 Frontend (Next.js App Router)
+### 2.4 Frontend (Next.js 14 + TypeScript, App Router)
 
 ```
 frontend/src/
-  app/api/[service]/[...path]/route.js   proxy tới microservice (đọc URL lúc runtime)
-  app/<route>/page.js                    25 trang: auth, dashboard, profile, cv-enrichment, interview,
-                                         matching, mentors/[id], mentoring/*, payment/[sessionId],
-                                         learning/*, referral, notifications, account, admin/*
-  features/<auth|profile|matching|learning|mentoring|payment>/api.js   hàm gọi API theo ownership
-  lib/api.js (fetch + tự refresh token) · lib/auth.js (AuthContext) · components/ (Nav, Footer, RequireAuth, ui)
-  app/globals.css                        giao diện theo design tokens (Tailwind CSS v4 + tailwind/theme.css)
+  app/api/[service]/[...path]/route   proxy tới microservice (đọc URL lúc runtime)
+  app/<route>/page                    26 trang: auth, dashboard, profile, cv-enrichment, interview,
+                                      matching, mentors (duyệt danh sách mentor), mentors/[id],
+                                      mentoring/*, payment/[sessionId], learning/*, referral,
+                                      notifications, account, admin/*
+  features/<auth|profile|matching|learning|mentoring|payment|ai>/api   hàm gọi API theo ownership
+  lib/api (fetch + tự refresh token) · lib/auth (AuthContext) · components/ (Nav, Footer, RequireAuth, ui)
+  app/globals.css                     giao diện theo design tokens (Tailwind CSS v4 + tailwind/theme.css)
 ```
+
+Font Nunito / Nunito Sans được **tự host** qua gói npm `@fontsource` (file woff2 đóng gói lúc build) —
+không tải từ Google Fonts, nên `next build` không cần mạng ngoài bước `npm install`.
 
 Giao diện theo design system trong `frontend/DESIGN.md`, `tokens.json`, `tailwind/theme.css` — chi tiết:
 [ui-design.md](ui-design.md).
@@ -209,6 +220,8 @@ sequenceDiagram
 | Service-to-service | Header `X-Internal-Token` (so sánh hằng thời gian); `/internal/**` chỉ chấp nhận role INTERNAL; proxy frontend chỉ chuyển tiếp `/api/<service>/**` nên không thể gọi `/internal/**` từ trình duyệt |
 | CSDL | matching-service dùng role `matching_reader` chỉ có quyền SELECT |
 | Upload file | Kiểm tra chữ ký `%PDF-`, ≤ 5MB, ≤ 10 trang; đường dẫn lưu trữ được chuẩn hoá chống path traversal |
+| Dữ liệu CV | Tải file: chủ CV, admin, nội bộ, hoặc mentor có yêu cầu mentoring `PENDING`/`ACCEPTED` với chủ CV — ai-service hỏi `GET /internal/relationships` của mentoring-service (timeout 3 s), lỗi ⇒ 403 (*fail-closed*). Chủ CV/admin xoá được CV (`DELETE /api/ai/cv/{id}`). Chi tiết: [cv-data-policy.md](cv-data-policy.md) |
+| Bí mật mặc định | Cả 7 service ghi log **WARN** lúc khởi động nếu `JWT_SECRET` / `INTERNAL_API_KEY` còn đúng giá trị dev mặc định trong code (`DevSecretsWarning` ở 5 service Java, `config.dev_secret_warnings()` ở 2 service Python); chỉ cảnh báo, không chặn khởi động |
 | Thanh toán | Số tiền lấy từ server (giá phiên), unique index chỉ 1 giao dịch SUCCESS/phiên |
 | AI | `/api/ai/**` yêu cầu JWT như mọi service khác, `/internal/**` chỉ nhận X-Internal-Token; DEEPSEEK_API_KEY chỉ nằm ở ai-service; nội dung người dùng đặt trong thẻ `<answer>`/`<cv>`, prompt yêu cầu coi là dữ liệu, bỏ qua chỉ dẫn bên trong; JSON trả về được validate & kẹp miền giá trị; kết quả phỏng vấn luôn cần admin duyệt |
 
@@ -227,7 +240,9 @@ Mỗi service có CSDL riêng nên không dùng transaction phân tán. Hệ th�
 
 | Tình huống | Kỹ thuật | Cài đặt |
 |---|---|---|
-| Lưu hồ sơ nhưng matching-service lỗi khi sinh embedding | Đánh dấu cần retry + job nền | `embedding_text_hash = NULL`; `EmbeddingRetryJob` chạy mỗi phút |
+| Lưu hồ sơ nhưng matching-service lỗi/đang down | Thông báo best-effort + job đối soát theo hash | profile-service gọi `/internal/embeddings/reindex` và không chờ kết quả; `IndexSyncJob` so SHA-256 của text hồ sơ với `text_hash` trong chỉ mục mỗi phút và embed lại phần lệch |
+| Mentee tìm mentor trước khi chỉ mục kịp cập nhật | Lập chỉ mục ngay trong request | `/api/matching/mentors` thấy hồ sơ **mentee** chưa có vector thì embed tại chỗ thay vì trả 404 (mentor mới vẫn chờ thông báo hoặc `IndexSyncJob`) |
+| Hồ sơ bị xoá nhưng vector còn trong chỉ mục | Dọn rác định kỳ | `IndexSyncJob` xoá dòng chỉ mục không còn hồ sơ tương ứng (2 DB nên không có FK) |
 | Thanh toán thành công nhưng báo xác nhận phiên thất bại | Cờ đồng bộ + job đối soát | `transactions.session_synced`; `PaymentReconciliationJob` mỗi phút |
 | Tiền về sau khi phiên đã tự huỷ | Bù trừ (compensation) | `SessionService.markPaid` gọi hoàn tiền ngay |
 | DeepSeek lỗi giữa buổi phỏng vấn hoặc hội thoại | Fallback + gọi engine trước khi ghi | DeepSeek lỗi → dùng rule-based cho lượt đó; engine không sinh được câu hỏi → 502 `AI_ENGINE_UNAVAILABLE`, transaction rollback nên người dùng gửi lại được |
@@ -242,7 +257,7 @@ Mỗi service có CSDL riêng nên không dùng transaction phân tán. Hệ th�
 
 | Service | Job | Chu kỳ | Mục đích |
 |---|---|---|---|
-| profile-service | `EmbeddingRetryJob` | 1 phút | Sinh lại embedding cho hồ sơ bị lỗi |
+| matching-service | `IndexSyncJob` (`jobs/index_sync.py`) | 60 giây (`INDEX_SYNC_INTERVAL`) | Embed lại hồ sơ có text lệch hash, dọn chỉ mục mồ côi |
 | mentoring-service | `SessionScheduler.sendReminders` | 1 phút | FR-5.5 nhắc lịch phiên CONFIRMED trong 24 giờ tới |
 | mentoring-service | `SessionScheduler.expireUnpaidSessions` | 1 phút | Huỷ phiên PENDING quá 30 phút |
 | mentoring-service | `SessionScheduler.autoCompleteFinishedSessions` | 5 phút | Hoàn thành phiên đã kết thúc > 2 giờ |
@@ -257,11 +272,12 @@ flowchart TB
       subgraph net[Docker network mặc định của compose]
         fe[frontend:3000]
         a[auth-service:8081] --- adb[(auth-db)]
-        p[profile-service:8082] --- pdb[(profile-db pgvector)]
+        p[profile-service:8082] --- pdb[(profile-db)]
         m[mentoring-service:8083] --- mdb[(mentoring-db)]
         pay[payment-service:8084] --- paydb[(payment-db)]
         l[learning-service:8085] --- ldb[(learning-db)]
-        mt[matching-service:8090] -.read-only.- pdb
+        mt[matching-service:8090] --- mtdb[(matching-db pgvector)]
+        mt -.read-only.- pdb
         ai[ai-service:8091] --- aidb[(ai-db)]
         ai -.- m
         r[(redis)]
@@ -274,11 +290,16 @@ flowchart TB
 - Mỗi service Java build bằng Dockerfile multi-stage (`maven:3.9-eclipse-temurin-21` → `eclipse-temurin:21-jre-alpine`).
 - matching-service cài PyTorch bản CPU và tải sẵn model vào image (khởi động không cần Internet).
 - ai-service là image `python:3.11-slim` nhẹ (FastAPI, httpx, pypdf, asyncpg); chỉ cần Internet khi bật DeepSeek.
-- frontend build `output: standalone` → image Node 20 alpine.
+- frontend (Next.js 14 + TypeScript) build `output: standalone` → image Node 20 alpine.
 - Mọi service có healthcheck; service phụ thuộc chỉ khởi động khi CSDL `healthy`.
 - Cấu hình qua biến môi trường (`.env`, xem `.env.example`): `JWT_SECRET`, `INTERNAL_API_KEY`,
   `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `REMINDER_BEFORE`,
-  `INTERVIEW_MAX_TURNS`, `ENRICHMENT_MAX_TURNS`.
+  `INTERVIEW_MAX_TURNS`, `ENRICHMENT_MAX_TURNS`, `INDEX_SYNC_INTERVAL`.
+- **Nâng cấp từ bản trước khi tách quyền sở hữu embedding**: `db/init/*.sql` chỉ chạy khi volume CSDL
+  được tạo lần đầu, nên máy đã chạy hệ thống cũ sẽ còn `profile_db` với cột `embedding` và chưa có
+  `matching_db`. Chạy `docker compose down -v` rồi `up --build` để khởi tạo lại (mất dữ liệu demo —
+  chạy lại `scripts/seed_demo.py`). Quy trình đầy đủ và cách kiểm chứng:
+  [deployment-guide.md](deployment-guide.md) §8; lý do không dùng công cụ migration: [adr.md](adr.md) ADR-04.
 
 Hướng dẫn chạy chi tiết: [deployment-guide.md](deployment-guide.md).
 
@@ -287,8 +308,29 @@ Hướng dẫn chạy chi tiết: [deployment-guide.md](deployment-guide.md).
 GitHub Actions (`.github/workflows/ci.yml`):
 
 1. **java-services** (matrix 5 service): `mvn -B package` — biên dịch + chạy unit test.
-2. **matching-service**: cài PyTorch CPU + `pytest`.
+2. **matching-service**: 2 service container — `pgvector/pgvector:pg16` (`matching_db`, :5439) và `postgres:16`
+   (`profile_db`, :5434) — cài PyTorch CPU rồi `pytest` với `MATCHING_DB_URL`, `PROFILE_DB_URL` (role
+   `matching_reader`), `PROFILE_DB_ADMIN_URL`. `tests/test_index_db.py` tự nạp `db/init/*.sql` và chạy
+   `reconcile()` trên Postgres thật; thiếu CSDL khi biến `CI` được đặt thì **FAIL** chứ không skip âm thầm.
 3. **ai-service**: `pytest` (không cần API key — DeepSeek được giả lập; luồng có trạng thái chạy trên Postgres của CI).
 4. **frontend**: `npm install` + `npm run build`.
 5. **e2e** (sau khi 4 job trên pass): `docker compose up -d --build --wait` → `seed_demo.py` →
    `e2e_acceptance.py` (kiểm thử theo Definition of Done); in log service nếu thất bại.
+
+## 8. Hạn chế đã biết
+
+Các điểm dưới đây là **đánh đổi có chủ đích** hoặc nợ kỹ thuật ngoài phạm vi đồ án — nêu trước để trả lời
+chủ động khi bảo vệ. Lý do thiết kế chi tiết ở [adr.md](adr.md).
+
+| Hạn chế | Hiện trạng | Rủi ro / hướng xử lý khi triển khai thật |
+|---|---|---|
+| Chỉ mục embedding **nhất quán cuối cùng** | Hồ sơ mới/sửa thường được lập chỉ mục sau vài giây (thông báo best-effort); nếu thông báo mất thì tối đa ~1 chu kỳ `INDEX_SYNC_INTERVAL` = 60 s (vòng đầu sau khi khởi động chờ tới 30 s; mỗi vòng embed tối đa `INDEX_SYNC_BATCH` = 200 hồ sơ/vai trò) | Có chủ đích (ADR-02, ADR-03); theo dõi bằng `GET /api/matching/index-status`, ép làm ngay bằng `POST /api/matching/admin/embeddings/rebuild` |
+| Thanh toán **sandbox** | `SandboxPaymentGateway`, thẻ test; không tích hợp cổng thật | Đã nêu trong phạm vi SRD; tích hợp VNPay/Stripe cần webhook + đối soát |
+| Không có **API Gateway** | Proxy Next.js là cổng vào duy nhất (ADR-05) | Không có rate-limit, xác thực, logging tập trung ở biên |
+| **Bí mật mặc định cho dev** | `JWT_SECRET`, `INTERNAL_API_KEY` có giá trị fallback trong code — nay mỗi service log **WARN** lúc khởi động khi còn dùng fallback, nhưng **không chặn**; giá trị mẫu trong `.env.example` (`change-me-…`) không bị phát hiện. CSDL dùng `postgres/postgres`; role `matching_reader` có mật khẩu hard-code trong `db/init/profile-service.sql`; admin `admin@mmp.local` / `Admin@123` | Bắt buộc đặt qua `.env`/secret manager và đổi mật khẩu role khi triển khai thật; có thể nâng cảnh báo thành chặn khởi động ở profile production |
+| Không có **công cụ migration** | `db/init/*.sql` chỉ chạy khi volume mới (ADR-04) | Đổi schema phải `docker compose down -v` (mất dữ liệu) — [deployment-guide.md](deployment-guide.md) §8 |
+| Không có **service discovery** | URL service cố định qua biến môi trường | Chấp nhận với Docker Compose |
+| Không có **logging/tracing tập trung** | Log stdout từng container | Khó lần vết lỗi xuyên service; cần correlation id + ELK/Loki/OpenTelemetry |
+| **Redis** dùng rất ít | Chỉ đếm số lần đăng nhập sai (auth-service), có fallback bộ nhớ trong | Nêu rõ để tránh câu hỏi "vì sao cần Redis" |
+| Quản lý **dữ liệu CV** chưa đầy đủ | Đã có xem/xoá CV và giới hạn mentor theo quan hệ mentoring; **còn thiếu**: thời hạn lưu tự động, mã hoá khi lưu, xin đồng ý trước khi gửi DeepSeek; goal/kỹ năng suy ra từ CV không tự gỡ khi xoá CV | [cv-data-policy.md](cv-data-policy.md) §7 |
+| `reconcile()` quét toàn bộ hồ sơ mỗi chu kỳ | O(N) mỗi phút | Ổn với vài nghìn hồ sơ; dữ liệu lớn cần quét theo `updated_at` |

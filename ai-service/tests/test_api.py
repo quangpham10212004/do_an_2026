@@ -3,6 +3,7 @@ import uuid
 
 import pytest
 
+from app import config
 from tests.conftest import auth
 from tests.helpers import make_pdf
 
@@ -62,3 +63,13 @@ def test_validation_error_format(client, db, fake_profile):
 def test_not_found_uses_common_format(client, db, fake_profile):
     res = client.get(f"/api/ai/interviews/{uuid.uuid4()}", headers=auth(uuid.uuid4(), "MENTOR"))
     assert res.status_code == 404 and res.json()["error"]["code"] == "INTERVIEW_NOT_FOUND"
+
+
+def test_dev_secret_fallbacks_are_flagged(monkeypatch):
+    """B.11 — khởi động với khoá dev mặc định phải log WARNING; đặt khoá thật thì im lặng."""
+    monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", config._DEV_INTERNAL_API_KEY)
+    assert len(config.dev_secret_warnings()) == 2
+    monkeypatch.setattr(config, "JWT_SECRET", "x" * 64)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-noi-bo-that")
+    assert config.dev_secret_warnings() == []

@@ -27,3 +27,15 @@ def read(relative_path: str) -> bytes:
         return file.read_bytes()
     except OSError:
         raise AiError("CV_FILE_NOT_FOUND", "Không tìm thấy file CV", status=404) from None
+
+
+def delete(relative_path: str) -> bool:
+    """Xoá file CV. File đã mất thì bỏ qua (trả False) — không làm hỏng việc xoá CV."""
+    file = (_root / relative_path).resolve()
+    if not file.is_relative_to(_root):
+        raise AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403)
+    try:
+        file.unlink()
+        return True
+    except FileNotFoundError:
+        return False

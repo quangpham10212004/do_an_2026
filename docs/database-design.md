@@ -8,7 +8,8 @@ và được chạy tự động khi container CSDL khởi tạo lần đầu.
 | CSDL | Service sở hữu | Cổng host | Ghi chú |
 |---|---|---|---|
 | `auth_db` | auth-service | 5433 | |
-| `profile_db` | profile-service | 5434 | Image `pgvector/pgvector:pg16`; matching-service đọc read-only qua role `matching_reader` |
+| `profile_db` | profile-service | 5434 | matching-service đọc read-only qua role `matching_reader` |
+| `matching_db` | matching-service | 5439 | Image `pgvector/pgvector:pg16`; chỉ mục embedding (vector + hash text nguồn) |
 | `mentoring_db` | mentoring-service | 5435 | |
 | `payment_db` | payment-service | 5436 | |
 | `learning_db` | learning-service | 5437 | Có dữ liệu seed khoá học/roadmap |
@@ -76,9 +77,6 @@ erDiagram
         real rating "đồng bộ từ mentoring"
         int rating_count
         text verification_status "PENDING_INTERVIEW|PENDING_REVIEW|APPROVED|REJECTED"
-        vector_384 embedding
-        text embedding_text_hash "SHA-256, NULL = cần sinh lại"
-        timestamptz embedding_updated_at
     }
     mentee_profiles {
         uuid user_id PK
@@ -89,9 +87,6 @@ erDiagram
         text_array skills
         text_array portfolio_links
         text cv_file_url
-        vector_384 embedding
-        text embedding_text_hash
-        timestamptz embedding_updated_at
     }
     mentor_availability {
         uuid id PK
@@ -104,19 +99,55 @@ erDiagram
 
 | Đối tượng | Mô tả |
 |---|---|
-| `mentor_profiles` | Hồ sơ mentor + dữ liệu phục vụ matching (vector, trạng thái xác thực, sức chứa, rating) |
-| `mentee_profiles` | Hồ sơ mentee + vector |
+| `mentor_profiles` | Hồ sơ mentor + dữ liệu phục vụ matching (trạng thái xác thực, sức chứa, rating) |
+| `mentee_profiles` | Hồ sơ mentee |
 | `mentor_availability` | Khung giờ rảnh lặp lại hằng tuần (giờ Việt Nam); `CHECK (end_time > start_time)` |
-| `idx_mentor_profiles_embedding`, `idx_mentee_profiles_embedding` | Chỉ mục **HNSW** với `vector_cosine_ops` phục vụ truy vấn láng giềng gần nhất theo cosine |
 | Role `matching_reader` | Chỉ có `SELECT` trên 3 bảng trên — hiện thực hoá ngoại lệ kiến trúc read-only |
 
-Ý nghĩa `embedding_text_hash` (NFR-7): lưu SHA-256 của đoạn văn bản chuẩn hoá đã dùng để sinh vector.
-Khi lưu hồ sơ, nếu hash không đổi thì bỏ qua bước gọi model; nếu gọi model lỗi thì đặt `NULL` để job
-retry nhận ra (vector cũ vẫn giữ để matching tiếp tục hoạt động).
+`profile_db` **không chứa vector**: embedding thuộc `matching_db` (mục 3). profile-service chỉ lưu nội
+dung hồ sơ và báo matching-service khi nội dung đó thay đổi.
 
 ---
 
-## 3. mentoring_db
+## 3. matching_db
+
+```mermaid
+erDiagram
+    mentor_embeddings {
+        uuid user_id PK "= mentor_profiles.user_id (logic, khác DB nên không có FK)"
+        vector_384 embedding "NULL = chưa embed được"
+        text text_hash "SHA-256 của text đã embed; NULL = chờ thử lại"
+        timestamptz indexed_at
+        int attempts "số lần thử lại liên tiếp bị lỗi"
+        text last_error
+    }
+    mentee_embeddings {
+        uuid user_id PK "= mentee_profiles.user_id (logic)"
+        vector_384 embedding
+        text text_hash
+        timestamptz indexed_at
+        int attempts
+        text last_error
+    }
+```
+
+| Đối tượng | Mô tả |
+|---|---|
+| `mentor_embeddings` | Vector của mentor — tập ứng viên cho bước top-K retrieval |
+| `mentee_embeddings` | Vector của mentee — vector truy vấn, chỉ tra theo khoá chính |
+| `idx_mentor_embeddings_vector` | Chỉ mục **HNSW** với `vector_cosine_ops` phục vụ truy vấn láng giềng gần nhất theo cosine |
+| `idx_*_embeddings_pending` | Chỉ mục riêng phần (`WHERE embedding IS NULL`) cho `IndexSyncJob` quét dòng chờ thử lại |
+
+Ý nghĩa `text_hash` (NFR-7): SHA-256 của đoạn văn bản chuẩn hoá đã dùng để sinh vector. Khi lập lại chỉ
+mục, hash không đổi thì bỏ qua bước gọi model; gọi model lỗi thì đặt `NULL` để `IndexSyncJob` nhận ra
+(vector cũ vẫn giữ để matching tiếp tục hoạt động).
+
+Không có khoá ngoại tới `profile_db` vì khác database — `IndexSyncJob` chịu trách nhiệm xoá dòng chỉ
+mục của hồ sơ đã bị xoá.
+
+---
+
+## 4. mentoring_db
 
 ```mermaid
 erDiagram
@@ -174,7 +205,7 @@ erDiagram
 
 ---
 
-## 4. ai_db
+## 5. ai_db
 
 ai-service sở hữu trọn vẹn dữ liệu của AI Interview và CV Parsing + Chatbot enrichment (trước đây các
 bảng này nằm trong `mentoring_db` và do mentoring-service điều phối).
@@ -252,7 +283,7 @@ erDiagram
 
 ---
 
-## 5. payment_db
+## 6. payment_db
 
 ```mermaid
 erDiagram
@@ -303,7 +334,7 @@ erDiagram
 
 ---
 
-## 6. learning_db
+## 7. learning_db
 
 ```mermaid
 erDiagram
@@ -371,10 +402,11 @@ chữ số thập phân), được tính lại mỗi khi người dùng đánh d
 
 ---
 
-## 7. Ánh xạ tham chiếu giữa các CSDL
+## 8. Ánh xạ tham chiếu giữa các CSDL
 
 | Giá trị | Nguồn gốc | Được tham chiếu ở |
 |---|---|---|
 | `users.id` | auth_db | `mentor_profiles.user_id`, `mentee_profiles.user_id`, `mentoring_requests.mentee_id/mentor_id`, `sessions.*_id`, `interviews.mentor_id` (ai_db), `cv_documents.user_id` (ai_db), `transactions.payer_id/mentor_id`, `referral_codes.user_id`, `referrals.*_id`, `course_enrollments.user_id`… |
 | `sessions.id` | mentoring_db | `transactions.session_id` |
-| `cv_documents.id` | ai_db | `mentee_profiles.cv_file_url` (dạng `/api/ai/cv/{id}/file`) |
+| `cv_documents.id` | ai_db | `mentee_profiles.cv_file_url`, `mentor_profiles.cv_file_url` (dạng `/api/ai/cv/{id}/file`) — khi CV bị xoá, ai-service gọi `DELETE /internal/profile/{userId}/cv-file` để gỡ giá trị nếu còn khớp (best-effort, không có FK) |
+| `mentor_profiles.user_id`, `mentee_profiles.user_id` | profile_db | `mentor_embeddings.user_id`, `mentee_embeddings.user_id` (matching_db) — `IndexSyncJob` dọn dòng mồ côi thay cho khoá ngoại |

@@ -83,4 +83,8 @@ public final class MentoringDtos {
                                     @NotBlank @Size(max = 200) String title, @NotBlank @Size(max = 2000) String message,
                                     @Size(max = 500) String link) {
     }
+
+    /** Kết quả /internal/relationships — related = có yêu cầu PENDING hoặc ACCEPTED. */
+    public record RelationshipView(UUID mentorId, UUID menteeId, boolean related) {
+    }
 }

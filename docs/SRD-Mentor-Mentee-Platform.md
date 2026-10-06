@@ -18,6 +18,7 @@
 | 1.0 | 16/09/2026 | Chốt yêu cầu theo bản hiện thực: bổ sung các quyết định thiết kế (mục 2.4), hoàn thiện đặc tả API (mục 9), đánh dấu tiêu chí nghiệm thu đã đạt (mục 6), thống nhất phân công giữa SRD và `CONVENTIONS.md` |
 | 1.1 | 17/09/2026 | Tách phần AI hội thoại (AI Interview, CV Parsing, Chatbot enrichment) thành **ai-service** (Python/FastAPI); đổi nhà cung cấp LLM sang **DeepSeek API** (quyết định D4, D12) |
 | **1.2** | 20/09/2026 | Chuyển **toàn bộ** AI Interview và CV Parsing + Chatbot enrichment (luồng nghiệp vụ + dữ liệu) từ mentoring-service (Java) sang ai-service (Python); ai-service có CSDL riêng `ai_db` và API công khai `/api/ai/**` (cập nhật quyết định D12) |
+| **1.3** | 06/10/2026 | `R-1`: chuyển quyền sở hữu chỉ mục embedding từ profile-service sang matching-service, CSDL riêng `matching_db` (cổng 5439), đồng bộ best-effort + `IndexSyncJob`; tiêu chí DoD 2 chuyển sang nhất quán cuối cùng (quyết định D8 *quyền sở hữu embedding*; chi tiết [adr.md](adr.md)) |
 
 > Tài liệu liên quan: [Kiến trúc](architecture.md) · [Thiết kế CSDL](database-design.md) ·
 > [Đặc tả API](api-reference.md) · [Tính năng AI](ai-features.md) ·
@@ -124,8 +125,9 @@ ai-service) — khi không cấu hình API key, hệ thống tự dùng engine r
 | D4 | Nguồn AI | DeepSeek API ở JSON Output mode (khi có key) + engine rule-based (mặc định & fallback từng lượt) | Demo được offline, kết quả tất định để kiểm thử; lỗi LLM không làm gián đoạn nghiệp vụ; API DeepSeek tương thích định dạng OpenAI |
 | D5 | Lưu trạng thái xác thực mentor | Cột `verification_status` trong `mentor_profiles` (profile-service), mentoring-service cập nhật qua API nội bộ | matching-service đọc được trực tiếp khi lọc; giữ nguyên tắc chỉ profile-service ghi vào DB của mình |
 | D6 | Sức chứa & rating cho matching | mentoring-service đồng bộ `active_mentee_count`, `rating`, `rating_count` sang profile-service | Hard filter/re-rank chạy trong 1 truy vấn, không gọi thêm service |
-| D7 | Tái sử dụng embedding (NFR-7) | Lưu SHA-256 của văn bản chuẩn hoá; chỉ gọi model khi hash thay đổi | Tránh tính lại khi hồ sơ không đổi nội dung |
-| D8 | Mentee đặt lịch | Phải có yêu cầu mentoring được chấp nhận; phiên nằm trọn trong khung lịch rảnh; khoá advisory theo mentor khi tạo phiên | Đúng FR-5.4 và tránh đặt trùng khi có yêu cầu đồng thời |
+| D7 | Tái sử dụng embedding (NFR-7) | matching-service lưu SHA-256 của văn bản chuẩn hoá cạnh mỗi vector; chỉ gọi model khi hash thay đổi | Tránh tính lại khi hồ sơ không đổi nội dung |
+| D8 *(quyền sở hữu embedding)* | Quyền sở hữu embedding | Toàn bộ chỉ mục embedding thuộc matching-service (`matching_db`); profile-service chỉ báo "hồ sơ vừa đổi" và không chờ kết quả | Mỗi service sở hữu đúng phần việc của mình: đổi model/format văn bản không đụng tới profile-service, và lưu hồ sơ không bao giờ bị chặn bởi matching-service. Bối cảnh, hệ quả, phương án khác: [adr.md](adr.md) ADR-03 |
+| D8 *(đặt lịch)* | Mentee đặt lịch | Phải có yêu cầu mentoring được chấp nhận; phiên nằm trọn trong khung lịch rảnh; khoá advisory theo mentor khi tạo phiên | Đúng FR-5.4 và tránh đặt trùng khi có yêu cầu đồng thời |
 | D9 | Phiên chưa thanh toán | Tự huỷ sau 30 phút | Giải phóng khung giờ bị giữ chỗ |
 | D10 | Referral hợp lệ | Giao dịch thành công **đầu tiên** của người được giới thiệu, giá trị ≥ 50.000đ; không cộng nếu người giới thiệu là mentor của giao dịch; tối đa 5 lượt thưởng/ngày/người | Chống gian lận cơ bản (FR-6.6) |
 | D11 | Frontend gọi backend | Route handler Next.js làm proxy `/api/<service>/**` | Cùng origin (không cần CORS), không bao giờ expose `/internal/*` |
@@ -155,7 +157,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-2.2 | Mục tiêu học tập | Mentee khai báo mục tiêu | ✅ |
 | FR-2.3 | Portfolio | Liên kết dự án/portfolio | ✅ |
 | FR-2.4 | Hồ sơ mentor | Chuyên môn, kinh nghiệm, lịch rảnh hằng tuần, mức phí/giờ, sức chứa | ✅ |
-| FR-2.5 | Sinh embedding hồ sơ | Tự động tạo/cập nhật embedding khi hồ sơ thay đổi; tự thử lại nếu lỗi | ✅ |
+| FR-2.5 | Sinh embedding hồ sơ | Hồ sơ thay đổi → profile-service báo matching-service lập lại chỉ mục (không chờ kết quả); `IndexSyncJob` đối soát định kỳ nên chỉ mục tự hội tụ kể cả khi thông báo bị mất | ✅ |
 
 ### 3.3 Module: Learning Hub (learning-service)
 
@@ -170,7 +172,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 
 | ID | Yêu cầu | Mô tả | Trạng thái |
 |---|---|---|---|
-| FR-4.1 | Sinh embedding | sentence-transformers `all-MiniLM-L6-v2` (384 chiều) từ văn bản hồ sơ chuẩn hoá | ✅ |
+| FR-4.1 | Sinh embedding | matching-service chuẩn hoá văn bản hồ sơ rồi sinh vector bằng sentence-transformers `all-MiniLM-L6-v2` (384 chiều), lưu vào `matching_db` | ✅ |
 | FR-4.2 | Lưu trữ vector | Cột `VECTOR(384)` (pgvector) + chỉ mục HNSW cosine | ✅ |
 | FR-4.3 | Truy vấn Top-K | K = max(50, 5×limit) mentor gần nhất theo cosine distance | ✅ |
 | FR-4.4 | Lọc ràng buộc cứng | Loại mentor chưa được duyệt, tạm ngưng nhận mentee, chưa có lịch rảnh, đầy sức chứa, khác lĩnh vực | ✅ |
@@ -200,7 +202,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-6.5 | Ghi nhận referral hợp lệ | Ghi nhận khi đăng ký; hợp lệ khi có giao dịch thành công đầu tiên | ✅ |
 | FR-6.6 | Cộng điểm thưởng | 100 điểm/lượt hợp lệ, sổ cái điểm append-only, quy tắc chống gian lận (D10) | ✅ |
 
-### 3.7 Module: AI Interview (mentoring-service)
+### 3.7 Module: AI Interview (ai-service `app/interview`)
 
 | ID | Yêu cầu | Mô tả | Trạng thái |
 |---|---|---|---|
@@ -210,7 +212,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-7.4 | Tổng hợp đánh giá | Điểm 0–100, tóm tắt, điểm mạnh, điểm yếu, khuyến nghị APPROVE/REJECT/NEEDS_REVIEW | ✅ |
 | FR-7.5 | Admin review | Admin đọc toàn bộ hội thoại, duyệt hoặc từ chối kèm nhận xét; mentor bị từ chối được phỏng vấn lại | ✅ |
 
-### 3.8 Module: CV Parsing + Chatbot Enrichment (mentoring-service)
+### 3.8 Module: CV Parsing + Chatbot Enrichment (ai-service `app/cv`, `app/enrichment`)
 
 | ID | Yêu cầu | Mô tả | Trạng thái |
 |---|---|---|---|
@@ -218,7 +220,8 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-8.2 | Parse CV | Trích xuất vai trò, kỹ năng, số năm kinh nghiệm, dự án (kèm công nghệ), học vấn | ✅ |
 | FR-8.3 | Chatbot hỏi thêm | Câu hỏi dựa trên CV, không hỏi lại thông tin đã có trong CV hoặc đã được trả lời | ✅ |
 | FR-8.4 | Tổng hợp goal | Sau 4 lượt tổng hợp thành đoạn mục tiêu chuẩn hoá | ✅ |
-| FR-8.5 | Kích hoạt re-embedding | Gửi sang profile-service cập nhật goal, gộp kỹ năng từ CV và sinh lại embedding | ✅ |
+| FR-8.5 | Kích hoạt re-embedding | Gửi sang profile-service cập nhật goal và gộp kỹ năng từ CV; matching-service lập lại chỉ mục vì văn bản chuẩn hoá đã đổi | ✅ |
+| FR-8.6 | Quyền riêng tư CV | Chỉ chủ CV, admin và mentor có yêu cầu mentoring `PENDING`/`ACCEPTED` với chủ CV tải được file (kiểm tra qua mentoring-service, lỗi ⇒ từ chối); chủ CV xem danh sách và **xoá** CV của mình (xoá hội thoại, bản ghi, file, gỡ liên kết trong hồ sơ). Chi tiết: [cv-data-policy.md](cv-data-policy.md) | ✅ (API) |
 
 ---
 
@@ -228,11 +231,11 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 |---|---|---|---|---|
 | NFR-1 | Hiệu năng | Top-K matching < 2 giây với vài nghìn profile | Tính khoảng cách ngay trong PostgreSQL (pgvector + HNSW), vector mentee lấy bằng subquery | ~5.000 mentor: p95 **5,7 ms**, max 6,8 ms |
 | NFR-2 | Bảo mật | Hash mật khẩu, JWT có hạn, phân quyền theo role | BCrypt; access token 30 phút; refresh token lưu dạng SHA-256, xoay vòng, phát hiện tái sử dụng; chặn brute-force (Redis); `@PreAuthorize`; internal token cho `/internal/*` | `AuthServiceTest` (9 test) và nhóm kiểm tra DoD 1 trong e2e đều pass |
-| NFR-3 | Khả năng mở rộng | Microservices, triển khai độc lập qua Docker | 7 service + 6 CSDL riêng, mỗi service 1 Dockerfile; matching-service không lưu trạng thái | — |
+| NFR-3 | Khả năng mở rộng | Microservices, triển khai độc lập qua Docker | 7 service + 7 CSDL riêng, mỗi service 1 Dockerfile; trạng thái của matching-service (chỉ mục embedding) nằm trong `matching_db`, tiến trình không giữ trạng thái nên chạy được nhiều bản | — |
 | NFR-4 | Khả dụng | Chạy ổn định bằng Docker Compose | Healthcheck mọi service, `depends_on` theo trạng thái healthy, job retry/đối soát | `docker compose up` → 7/7 service healthy |
-| NFR-5 | Khả năng bảo trì | Tổ chức module rõ ràng, có test | Kiến trúc phân lớp controller/service/repository; 106 unit test + 65 kiểm tra e2e; CI GitHub Actions | 100% pass |
+| NFR-5 | Khả năng bảo trì | Tổ chức module rõ ràng, có test | Kiến trúc phân lớp controller/service/repository; 156 unit test + 66 kiểm tra e2e; CI GitHub Actions | 156/156 unit test pass, 66/66 e2e PASS (06/10/2026) |
 | NFR-6 | Minh bạch AI | Kết quả matching giải thích được | Danh sách lý do + kỹ năng trùng + thống kê mentor bị loại theo từng ràng buộc + trọng số | — |
-| NFR-7 | Tái sử dụng dữ liệu | Không tính lại embedding nếu profile không đổi | Hash SHA-256 văn bản chuẩn hoá (D7) | Kiểm thử e2e: lưu lại hồ sơ không đổi → `UNCHANGED` |
+| NFR-7 | Tái sử dụng dữ liệu | Không tính lại embedding nếu profile không đổi | Hash SHA-256 văn bản chuẩn hoá trong `matching_db` (D7) | Kiểm thử e2e: lưu lại hồ sơ không đổi → lập chỉ mục trả `UNCHANGED` |
 | NFR-8 | Độ tin cậy AI Interview | Luôn có bước con người xác nhận | Trạng thái PENDING_REVIEW bắt buộc; matching chỉ lấy mentor APPROVED; prompt chống prompt-injection | Kiểm thử e2e: mentor chờ duyệt không xuất hiện trong matching |
 
 ---
@@ -243,16 +246,16 @@ Chi tiết: [architecture.md](architecture.md).
 
 ### 5.1 Kiến trúc tổng quan
 Microservices, giao tiếp REST đồng bộ, contract-first (`contracts/*.yaml`, OpenAPI 3.0). Frontend
-Next.js đóng vai trò cổng vào duy nhất của trình duyệt (proxy `/api/**`). Tác vụ nền (retry
-embedding, nhắc lịch, huỷ phiên quá hạn, đối soát thanh toán) chạy bằng `@Scheduled` trong từng
-service.
+Next.js đóng vai trò cổng vào duy nhất của trình duyệt (proxy `/api/**`). Tác vụ nền chạy bằng
+`@Scheduled` trong từng service Java (nhắc lịch, huỷ phiên quá hạn, đối soát thanh toán) và bằng
+asyncio task trong service Python (`IndexSyncJob` đồng bộ chỉ mục embedding, job đồng bộ goal).
 
 | Service | Port | Người phụ trách | Chức năng chính | Tính năng AI gắn kèm |
 |---|---|---|---|---|
 | auth-service | 8081 | Quang | Tài khoản, JWT, RBAC | — |
 | learning-service | 8085 | Quang | Learning Hub | — |
-| profile-service | 8082 | Thảo | Career profile, lịch rảnh, embedding | Sinh & lưu embedding |
-| matching-service | 8090 | Thảo | AI Matching | **AI Matching** (Thảo) |
+| profile-service | 8082 | Thảo | Career profile, lịch rảnh | — (không giữ dữ liệu AI) |
+| matching-service | 8090 | Thảo | AI Matching + chỉ mục embedding (`matching_db`) | **AI Matching** (Thảo) |
 | mentoring-service | 8083 | Thắng | Yêu cầu, lịch, đánh giá, thông báo | — |
 | payment-service | 8084 | Thắng | Thanh toán sandbox, referral | — |
 | ai-service | 8091 | Thắng (`app/interview`), Quang (`app/cv`, `app/enrichment`) | AI hội thoại: engine + luồng nghiệp vụ + dữ liệu (`ai_db`) | **AI Interview** (Thắng); **CV Parsing + Chatbot enrichment** (Quang) |
@@ -265,7 +268,7 @@ service.
 | Backend (5 service) | Java 21, Spring Boot 3.3 (Web, Security, Data JPA, Validation, Actuator) |
 | Backend (matching-service, ai-service) | Python 3.11, FastAPI, Pydantic, asyncpg; httpx + pypdf + PyJWT (ai-service) |
 | Cơ sở dữ liệu | PostgreSQL 16 (1 DB riêng/service) |
-| Vector Database | pgvector (HNSW, cosine) trong DB của profile-service |
+| Vector Database | pgvector (HNSW, cosine) trong `matching_db` — CSDL riêng của matching-service (image `pgvector/pgvector:pg16`) |
 | Embedding model | sentence-transformers `all-MiniLM-L6-v2` (384 chiều) |
 | LLM (tuỳ chọn) | DeepSeek API (định dạng OpenAI, JSON Output mode), mặc định model `deepseek-flash` |
 | Xử lý PDF | pypdf (ai-service) |
@@ -278,18 +281,20 @@ service.
 ### 5.3 Ngoại lệ kiến trúc đã duyệt
 `matching-service` đọc TRỰC TIẾP (read-only) các bảng `mentor_profiles`, `mentee_profiles`,
 `mentor_availability` trong DB của `profile-service` bằng role PostgreSQL `matching_reader` chỉ có
-quyền `SELECT` — để tính khoảng cách vector ngay trong CSDL thay vì truyền vector qua HTTP. Mọi thao
-tác ghi vào các bảng này chỉ do `profile-service` thực hiện. Xem `CONVENTIONS.md` mục 7.
+quyền `SELECT` — để (a) lấy văn bản nguồn cho embedding mà profile-service không cần biết format văn
+bản, và (b) lấy dữ kiện lọc/xếp hạng của K ứng viên bằng một truy vấn thay vì gọi HTTP cho từng mentor.
+Vector nằm ở `matching_db` của chính matching-service. Mọi thao tác ghi vào các bảng hồ sơ chỉ do
+`profile-service` thực hiện. Xem `CONVENTIONS.md` mục 7 và [adr.md](adr.md) ADR-01.
 
 ---
 
 ## 6. Tiêu chí nghiệm thu (Definition of Done)
 
 Mỗi tiêu chí được kiểm chứng tự động bằng `scripts/e2e_acceptance.py` (kết quả lần chạy cuối:
-**65/65 kiểm tra PASS**, chi tiết tại [testing-report.md](testing-report.md)).
+**66/66 kiểm tra PASS** (lần chạy 06/10/2026), chi tiết tại [testing-report.md](testing-report.md)).
 
 - [x] Người dùng đăng ký/đăng nhập được với 3 vai trò mentee/mentor/admin
-- [x] Mentee tạo được Career Profile; hệ thống tự sinh embedding khi lưu
+- [x] Mentee tạo được Career Profile; matching-service lập chỉ mục embedding sau khi lưu — **nhất quán cuối cùng**: e2e chờ tối đa 30 giây qua `GET /api/matching/index-status` (giới hạn trên khi thông báo bị mất: 1 chu kỳ `INDEX_SYNC_INTERVAL` = 60 giây), xem [testing-report.md](testing-report.md) §3
 - [x] Mentee upload CV, chatbot hỏi thêm dựa trên CV, kết quả được tổng hợp và kích hoạt re-embedding
 - [x] Mentor tạo được profile, trải qua AI Interview multi-turn, kết quả được admin review trước khi kích hoạt
 - [x] Mentor chưa qua AI Interview không xuất hiện trong kết quả matching
@@ -342,28 +347,33 @@ Bản đầy đủ theo từng endpoint: [api-reference.md](api-reference.md); s
 - Endpoint `/api/**` yêu cầu `Authorization: Bearer <JWT>` (trừ đăng ký/đăng nhập/refresh/xác thực email).
 - Endpoint `/internal/**` chỉ nhận header `X-Internal-Token`, không đi qua frontend.
 
-| Service | Số endpoint | Nhóm chức năng |
+| Service | Số endpoint (không kể `/health`) | Nhóm chức năng |
 |---|---|---|
 | auth-service | 12 | register, login, refresh, logout, verify-email, verify-token, me, change-password, admin users |
-| profile-service | 12 | mentor/mentee profile, availability, mentor search, enrichment-chat, rebuild embeddings, internal (summary, mentor, verification, rating, active-mentees) |
-| matching-service | 3 | health, internal embed, matching mentors |
-| learning-service | 18 | courses, enroll, progress, materials, roadmaps, admin CRUD |
-| mentoring-service | 21 | requests, sessions, reviews, notifications, admin stats, internal sessions, internal notifications |
-| payment-service | 11 | charge, transactions, referrals, admin stats/transactions/referrals, internal referrals/refund |
-| ai-service | 14 | health, interviews (+ admin interviews, admin stats), CV upload/parse/file, enrichment conversations |
+| profile-service | 14 | mentor/mentee profile, availability, mentor search, enrichment-chat, internal (summary, mentor, verification, rating, active-mentees, xoá cv-file) |
+| matching-service | 4 | matching mentors, internal reindex, index-status, admin rebuild embeddings |
+| learning-service | 24 | courses, enroll, progress, materials, roadmaps, admin CRUD |
+| mentoring-service | 21 | requests, sessions, reviews, notifications, admin stats, internal sessions, internal notifications, internal relationships |
+| payment-service | 10 | charge, transactions, referrals, admin stats/transactions/referrals, internal referrals/refund |
+| ai-service | 15 | interviews (+ admin interviews, admin stats), CV upload/parse/file/mine/delete, enrichment conversations |
+| **Tổng** | **100** (+ 7 `/health` = 107, khớp `contracts/*.yaml` và mã nguồn) | |
 
 ### 9.1 Sơ đồ gọi API giữa các service
 
 ```
-browser ──► frontend (Next.js, proxy /api/<service>/**)
+browser ──► frontend (Next.js 14 + TypeScript, proxy /api/<service>/**)
                ├─► auth-service ─────────────► payment-service   [POST /internal/referrals]
-               ├─► profile-service ──────────► matching-service  [POST /internal/embed]
-               ├─► matching-service ─────────► profile-db (READ-ONLY, ngoại lệ đã duyệt)
+               ├─► profile-service ──────────► matching-service  [POST /internal/embeddings/reindex,
+               │                                                   bắn rồi quên — không chờ kết quả]
+               ├─► matching-service ─────────► matching-db (chỉ mục embedding, read-write)
+               │                    └────────► profile-db  (READ-ONLY, ngoại lệ đã duyệt)
                ├─► learning-service
                ├─► mentoring-service ────────► profile-service   [/internal/mentor/*, /internal/profile-summary]
                │                    └────────► payment-service   [POST /internal/payments/refund]
-               ├─► ai-service ───────────────► profile-service   [/internal/mentor/*, enrichment-chat]
-               │              ├──────────────► mentoring-service [POST /internal/notifications]
+               ├─► ai-service ───────────────► profile-service   [/internal/mentor/*, enrichment-chat,
+               │              │                                    DELETE /internal/profile/{id}/cv-file]
+               │              ├──────────────► mentoring-service [POST /internal/notifications,
+               │              │                                    GET /internal/relationships]
                │              └──────────────► DeepSeek API (tuỳ chọn)
                └─► payment-service ──────────► mentoring-service [GET /internal/sessions/{id}, POST .../payment-succeeded]
 ```

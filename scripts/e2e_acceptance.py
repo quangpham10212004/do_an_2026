@@ -36,6 +36,27 @@ def expect_error(fn, status):
     return False, "no error"
 
 
+def wait_indexed(user_id, token, after=None, timeout=30):
+    """
+    Chờ matching-service lập xong chỉ mục embedding cho hồ sơ.
+
+    profile-service báo thay đổi theo kiểu bắn-rồi-quên nên chỉ mục là nhất quán
+    cuối cùng (eventually consistent): sau khi lưu hồ sơ phải hỏi matching-service
+    chứ không đọc trạng thái từ phản hồi của profile-service nữa.
+
+    `after` = mốc indexedAt của lần lập chỉ mục trước; truyền vào để chờ ĐÚNG lần
+    lập chỉ mục mới (nếu không, hàm trả về ngay vì chỉ mục cũ vẫn đang UPDATED).
+    Trả về indexedAt khi sẵn sàng, None nếu quá hạn.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        res = call("GET", f"{MATCHING}/api/matching/index-status?userId={user_id}", token=token)
+        if res["status"] == "UPDATED" and res["indexedAt"] != after:
+            return res["indexedAt"]
+        time.sleep(0.5)
+    return None
+
+
 def register(role, name, referral=None):
     email = f"e2e.{role.lower()}.{name}.{RUN}@test.local"
     res = call("POST", f"{AUTH}/api/auth/register",
@@ -78,14 +99,19 @@ def main():
 
     # ---------------- DoD 2: Career profile + embedding ----------------
     print("\nDoD 2 — Career Profile & sinh embedding")
-    mp = call("PUT", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", {
+    profile_body = {
         "displayName": "E2E Mentee", "domain": "backend", "currentLevel": "BEGINNER", "skills": ["Java", "SQL"],
-        "goal": "Tro thanh backend developer Java va hoc system design", "portfolioLinks": []}, token=mentee_token)
-    check(2, "Mentee tạo hồ sơ, embedding sinh ngay khi lưu", mp["embeddingStatus"] == "UPDATED" and mp["embeddingUpdatedAt"])
-    again = call("PUT", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", {
-        "displayName": "E2E Mentee", "domain": "backend", "currentLevel": "BEGINNER", "skills": ["Java", "SQL"],
-        "goal": "Tro thanh backend developer Java va hoc system design", "portfolioLinks": []}, token=mentee_token)
-    check(2, "NFR-7: lưu lại hồ sơ không đổi thì không sinh lại embedding", again["embeddingStatus"] == "UNCHANGED")
+        "goal": "Tro thanh backend developer Java va hoc system design", "portfolioLinks": []}
+    mp = call("PUT", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", profile_body, token=mentee_token)
+    check(2, "Hồ sơ mentee không lộ dữ liệu embedding (thuộc matching-service)",
+          "embeddingStatus" not in mp and "embeddingUpdatedAt" not in mp, sorted(mp))
+    indexed_at = wait_indexed(mentee["userId"], mentee_token)
+    check(2, "Mentee tạo hồ sơ, matching-service lập chỉ mục embedding ngay sau đó", bool(indexed_at))
+    call("PUT", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", profile_body, token=mentee_token)
+    unchanged = call("POST", f"{MATCHING}/internal/embeddings/reindex",
+                     {"userId": mentee["userId"], "role": "MENTEE"}, internal=True)
+    check(2, "NFR-7: lưu lại hồ sơ không đổi thì không sinh lại embedding",
+          unchanged["status"] == "UNCHANGED" and unchanged["indexedAt"] == indexed_at, unchanged)
     ok, _ = expect_error(lambda: call("PUT", f"{PROFILE}/api/profile/mentee/{mentor['userId']}", {
         "displayName": "x", "domain": "backend", "goal": "x"}, token=mentee_token), 403)
     check(2, "Không sửa được hồ sơ người khác (403)", ok)
@@ -115,7 +141,8 @@ def main():
     profile_after = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
     check(3, "Goal được ghi vào profile-service + gộp kỹ năng từ CV", conv["profileSynced"] and profile_after["goal"] == conv["enrichedGoal"]
           and "Spring Boot" in profile_after["skills"])
-    check(3, "Embedding được sinh lại sau enrichment", profile_after["embeddingUpdatedAt"] != mp["embeddingUpdatedAt"])
+    reindexed_at = wait_indexed(mentee["userId"], mentee_token, after=indexed_at)
+    check(3, "Embedding được sinh lại sau enrichment", bool(reindexed_at) and reindexed_at != indexed_at)
 
     # ---------------- DoD 4 & 5: Mentor profile + AI interview + admin review ----------------
     print("\nDoD 4/5 — Hồ sơ mentor, AI Interview multi-turn, admin review, lọc matching")

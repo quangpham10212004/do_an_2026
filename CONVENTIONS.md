@@ -17,6 +17,10 @@ review từ người phụ trách. Mọi thay đổi contract (mục 3) phải �
 
 **Toàn bộ 3 tính năng AI nằm ở Python** — cả luồng nghiệp vụ lẫn dữ liệu. Không service Java nào
 được thêm lại logic AI: mentoring-service chỉ giữ mentoring workflow, profile-service chỉ giữ hồ sơ.
+Cụ thể với AI Matching: **embedding thuộc matching-service, không thuộc profile-service** — chuẩn hoá
+text, chạy model, lưu vector, hash tái sử dụng (NFR-7) và job đồng bộ đều nằm ở `matching-service`, dữ
+liệu ở `matching_db`. profile-service chỉ báo `POST /internal/embeddings/reindex` sau khi lưu hồ sơ,
+theo kiểu bắn-rồi-quên: nó không chờ kết quả, không lưu vector và không có endpoint nào về embedding.
 ai-service gọi ngược profile-service (trạng thái xác thực mentor, goal sau enrichment) và
 mentoring-service (`POST /internal/notifications`) bằng header `X-Internal-Token`; mọi thay đổi ở các
 endpoint đó phải cập nhật contract trước.
@@ -29,7 +33,7 @@ Trang giao diện (`frontend/src/app/**`) thuộc người sở hữu feature m�
   `feature/<service>-<mo-ta-ngan>`, ví dụ `feature/matching-topk-retrieval`.
 - **Squash merge** khi merge vào `main` — mỗi PR gộp thành 1 commit.
 - Commit message theo Conventional Commits: `feat(matching): add top-k retrieval endpoint`,
-  `fix(profile): correct embedding save on update`.
+  `fix(matching): correct embedding save on update`.
 - PR chỉ được merge khi CI xanh (build + unit test + e2e).
 - **Daily async standup**: 3 dòng (hôm qua / hôm nay / đang vướng) vào kênh chung.
 - **Saturday full-system build**: mỗi thứ 7 chạy `docker compose up --build`, `scripts/seed_demo.py`,
@@ -93,12 +97,14 @@ nghiệp vụ thuần tách thành hàm/lớp không phụ thuộc I/O để uni
 ```
 matching-service/
   app/
-    main.py          app, lifespan (load model), exception handler
+    main.py          app, lifespan (load model + IndexSyncJob), exception handler
     config.py        biến môi trường
-    security.py      xác minh JWT / internal token
-    db.py            asyncpg pool (read-only)
-    routers/         embed.py, matching.py
-    services/        embedding_service.py, matching_pipeline.py
+    security.py      xác minh JWT / internal token / ADMIN
+    db.py            asyncpg pool: matching_db (read-write) + profile_db (read-only)
+    routers/         index.py (reindex, index-status, admin rebuild), matching.py
+    services/        embedding_service.py (model), profile_text.py (chuẩn hoá + hash),
+                     index_service.py (vòng đời chỉ mục), matching_pipeline.py
+    jobs/            index_sync.py — đồng bộ chỉ mục với profile_db
     schemas/         Pydantic model
   tests/
   requirements.txt  requirements-dev.txt  Dockerfile
@@ -118,16 +124,25 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 
 - **1 database riêng cho mỗi service** — không service nào ghi trực tiếp vào DB của service khác.
 - **Ngoại lệ đã được duyệt**: `matching-service` được phép **đọc (READ-ONLY)** trực tiếp các bảng
-  `mentor_profiles`, `mentee_profiles`, `mentor_availability` trong DB của `profile-service`, để tính
-  khoảng cách vector ngay trong PostgreSQL thay vì truyền vector qua HTTP. Kết nối dùng role
+  `mentor_profiles`, `mentee_profiles`, `mentor_availability` trong DB của `profile-service`, để (a) lấy
+  text nguồn cho embedding mà không cần profile-service biết format text, và (b) lấy dữ kiện lọc/xếp
+  hạng mentor ngay trong PostgreSQL thay vì gọi HTTP cho từng ứng viên. Kết nối dùng role
   `matching_reader` chỉ có quyền `SELECT` (tạo trong `db/init/profile-service.sql`). Mọi thao tác WRITE
   vào các bảng này chỉ do `profile-service` thực hiện. Ngoại lệ khác phải được cả nhóm thống nhất và ghi
-  chú tại đây trước khi code.
+  chú tại đây trước khi code. Lý do và hệ quả: `docs/adr.md` ADR-01. Hệ quả cần nhớ: **đổi tên/xoá cột**
+  trong 3 bảng trên phải báo người phụ trách matching-service (`_SPEC` trong `index_service.py`, câu
+  SELECT trong `matching_pipeline.py`).
+- **Chỉ mục embedding thuộc `matching_db`** (`mentor_embeddings`, `mentee_embeddings`): vector, hash
+  của text nguồn và trạng thái index. Nguồn sự thật của nội dung hồ sơ vẫn là `profile_db`; chỉ mục tự
+  hội tụ về nguồn nhờ `IndexSyncJob` so hash định kỳ, nên thông báo từ profile-service chỉ để giảm độ
+  trễ chứ không phải điều kiện đúng đắn.
 - Dữ liệu mà service khác cần để lọc/xếp hạng được **đồng bộ chủ động** sang profile-service qua
   `/internal/mentor/**`: số mentee đang hướng dẫn và rating do mentoring-service đẩy; trạng thái xác thực
   mentor do ai-service đẩy sau mỗi bước của AI Interview.
 - Schema nằm trong `db/init/<service-name>.sql`, chạy tự động khi volume CSDL được tạo lần đầu
-  (`docker compose down -v` để khởi tạo lại). Hibernate đặt `ddl-auto: none` — file SQL là nguồn sự thật.
+  (`docker compose down -v` để khởi tạo lại — **xoá dữ liệu**). Hibernate đặt `ddl-auto: none` — file SQL là
+  nguồn sự thật. Không có Flyway/Liquibase: PR đổi schema phải ghi "cần `down -v`" trong mô tả; quy trình
+  nâng cấp và kiểm chứng ở `docs/deployment-guide.md` mục 8.
 - Khoá chính `UUID`; thời gian `TIMESTAMPTZ`; trạng thái `TEXT` + `CHECK`.
 
 ## 8. Environment & ports
@@ -139,9 +154,9 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 | mentoring-service | 8083 | 5435 |
 | payment-service | 8084 | 5436 |
 | learning-service | 8085 | 5437 |
-| matching-service | 8090 | (đọc DB 5434 của profile-service bằng role `matching_reader`) |
+| matching-service | 8090 | 5439 (+ đọc DB 5434 của profile-service bằng role `matching_reader`) |
 | ai-service | 8091 | 5438 |
-| frontend (Next.js) | 3000 | — |
+| frontend (Next.js 14 + TypeScript) | 3000 | — |
 | Redis | 6379 | — |
 
 ## 9. Kiểm thử
@@ -153,7 +168,8 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 
 ## 10. Scope đã chốt (không mở rộng nếu chưa thống nhất nhóm)
 
-- Trong scope: Auth, Career Profile, Learning Hub, AI Matching (embedding + pgvector), AI Interview,
+- Trong scope: Auth, Career Profile, Learning Hub, AI Matching (embedding + pgvector, do
+  matching-service sở hữu trọn vẹn), AI Interview,
   CV Parsing + Chatbot enrichment, Mentoring workflow, Payment (sandbox) + Referral.
 - Ngoài scope: chatbot trợ lý học tập độc lập (chỉ giữ chatbot enrichment hẹp phục vụ matching),
   chatbot A2A, WebRTC video call, AI phân tích giọng nói, SMTP thật, cổng thanh toán thật.

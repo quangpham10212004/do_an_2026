@@ -45,4 +45,11 @@ public class InternalProfileController {
     public void activeMentees(@PathVariable UUID mentorId, @Valid @RequestBody ActiveMenteeUpdate body) {
         profileService.updateActiveMentees(mentorId, body.activeMenteeCount());
     }
+
+    /** ai-service gọi sau khi người dùng xoá CV: gỡ cvFileUrl nếu hồ sơ còn trỏ tới đúng file đó. */
+    @DeleteMapping("/profile/{userId}/cv-file")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearCvFile(@PathVariable UUID userId, @RequestParam String cvFileUrl) {
+        profileService.clearCvFileUrl(userId, cvFileUrl);
+    }
 }

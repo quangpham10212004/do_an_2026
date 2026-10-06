@@ -4,7 +4,7 @@ Hệ thống có 3 tính năng AI, mỗi tính năng do một thành viên sở 
 
 | Tính năng | Người phụ trách | Mã nguồn chính |
 |---|---|---|
-| [1. AI Matching](#1-ai-matching-mentor-mentee) | Phạm Ninh Phương Thảo | `matching-service/app/services/`, `profile-service/.../service/EmbeddingService.java`, `ProfileTextNormalizer.java` |
+| [1. AI Matching](#1-ai-matching-mentor-mentee) | Phạm Ninh Phương Thảo | `matching-service/app/services/` (`profile_text.py`, `index_service.py`, `embedding_service.py`, `matching_pipeline.py`), `matching-service/app/jobs/index_sync.py` |
 | [2. AI Interview](#2-ai-interview-xác-thực-năng-lực-mentor) | Đinh Quyết Thắng | `ai-service/app/interview/` (engine + luồng + dữ liệu), `ai-service/app/routers/interview.py` |
 | [3. CV Parsing + Chatbot enrichment](#3-cv-parsing--chatbot-enrichment) | Phạm Ngọc Quang | `ai-service/app/cv/`, `ai-service/app/enrichment/` (engine + luồng + dữ liệu), `ai-service/app/routers/` |
 
@@ -26,10 +26,11 @@ flowchart LR
     AI --> RB[engine rule-based<br/>mặc định & fallback]
     AI -. "xác thực mentor,<br/>goal sau enrichment" .-> PS[profile-service]
     AI -. "thông báo" .-> MS
-    PS -- /internal/embed --> MT
+    PS -. "/internal/embeddings/reindex<br/>(bắn rồi quên)" .-> MT
 ```
 
-- **matching-service** (Thảo): embedding + pgvector + xếp hạng.
+- **matching-service** (Thảo): sở hữu trọn chỉ mục embedding (chuẩn hoá text, model, vector, job đồng
+  bộ) + pgvector + xếp hạng. profile-service chỉ giữ hồ sơ và báo khi hồ sơ đổi.
 - **ai-service** (Python/FastAPI, cổng 8091): sở hữu **trọn vẹn** hai tính năng AI hội thoại/văn bản —
   engine, luồng nghiệp vụ và dữ liệu: `app/interview/` (Thắng), `app/cv/` + `app/enrichment/` (Quang),
   `app/llm/deepseek.py` (dùng chung). Trạng thái nằm trong CSDL riêng `ai_db`; file CV nằm trên volume
@@ -66,11 +67,12 @@ retrieval + ranking của hệ gợi ý).
 
 ```mermaid
 flowchart LR
-    P[Hồ sơ được lưu<br/>profile-service] --> N[Chuẩn hoá văn bản]
+    P[Hồ sơ được lưu<br/>profile-service] -. "reindex<br/>bắn rồi quên" .-> N
+    JOB[IndexSyncJob<br/>mỗi 60 giây] --> N[matching-service:<br/>đọc hồ sơ, chuẩn hoá văn bản]
     N --> H{SHA-256 đổi?}
     H -- không --> SKIP[Giữ vector cũ<br/>NFR-7]
-    H -- có --> E[POST /internal/embed<br/>all-MiniLM-L6-v2]
-    E --> V[(pgvector<br/>VECTOR 384 + HNSW)]
+    H -- có --> E[all-MiniLM-L6-v2]
+    E --> V[(matching_db<br/>VECTOR 384 + HNSW)]
 
     Q[Mentee bấm Tìm mentor] --> R1[1. Top-K retrieval<br/>cosine distance trong PostgreSQL]
     V --> R1
@@ -82,8 +84,10 @@ flowchart LR
 
 ### 1.3 Biểu diễn hồ sơ (embedding)
 
-**Chuẩn hoá văn bản** (`ProfileTextNormalizer`) — mentor và mentee dùng **cùng cấu trúc** để hai
-loại vector nằm trong cùng không gian ngữ nghĩa:
+**Chuẩn hoá văn bản** (`matching-service/app/services/profile_text.py`) — mentor và mentee dùng **cùng
+cấu trúc** để hai loại vector nằm trong cùng không gian ngữ nghĩa. Format này là chi tiết nội bộ của
+matching-service: nó đọc thẳng các cột hồ sơ từ `profile_db` (read-only) nên profile-service không cần
+biết hồ sơ được biểu diễn thế nào trong không gian vector.
 
 ```
 Mentor: "Domain: backend. Skills: Java, Spring Boot. Experience: 9 years. About: <bio>"
@@ -104,25 +108,41 @@ Vector được **chuẩn hoá L2** (`normalize_embeddings=True`), nên cosine s
 Có thể đổi sang model đa ngôn ngữ cùng 384 chiều (ví dụ `paraphrase-multilingual-MiniLM-L12-v2`) bằng
 biến `EMBEDDING_MODEL` rồi gọi API admin `rebuild?force=true`.
 
-**Tái sử dụng embedding (NFR-7)**: profile-service lưu `embedding_text_hash = SHA-256(văn bản chuẩn
-hoá)`; chỉ gọi model khi hash thay đổi. Nếu matching-service lỗi, hash đặt `NULL` và
-`EmbeddingRetryJob` thử lại mỗi phút — việc lưu hồ sơ không bị chặn.
+**Tái sử dụng embedding (NFR-7)**: `matching_db` lưu `text_hash = SHA-256(văn bản chuẩn hoá)` cạnh mỗi
+vector; chỉ gọi model khi hash thay đổi.
+
+**Đồng bộ chỉ mục**: sau khi lưu hồ sơ, profile-service gọi `POST /internal/embeddings/reindex` và
+**không chờ kết quả** — việc lưu hồ sơ không bao giờ bị chặn bởi matching-service. Thông báo đó chỉ để
+giảm độ trễ: `IndexSyncJob` (mỗi 60 giây) so hash của mọi hồ sơ trong `profile_db` với chỉ mục, embed
+lại phần lệch và xoá dòng chỉ mục của hồ sơ đã bị xoá. Vì vậy chỉ mục luôn hội tụ về nguồn sự thật kể
+cả khi thông báo bị mất hay matching-service vừa khởi động lại. Nếu mentee tìm mentor trước khi chỉ mục
+kịp cập nhật, `/api/matching/mentors` lập chỉ mục ngay trong request thay vì trả 404.
 
 ### 1.4 Bước 1 — Top-K retrieval
 
+Vector nằm ở `matching_db`, dữ kiện hồ sơ nằm ở `profile_db` (mỗi service sở hữu phần việc của mình),
+nên bước này chạy **hai truy vấn**: pgvector lọc ra K ứng viên, rồi lấy đúng K dòng hồ sơ tương ứng.
+
 ```sql
-WITH q AS (SELECT embedding FROM mentee_profiles WHERE user_id = $1)
-SELECT m.*, EXISTS(SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule,
-       m.embedding <=> q.embedding AS distance
-FROM mentor_profiles m, q
-WHERE m.embedding IS NOT NULL
-ORDER BY m.embedding <=> q.embedding
+-- (1) matching_db — xếp hạng theo khoảng cách vector
+WITH q AS (SELECT embedding FROM mentee_embeddings WHERE user_id = $1 AND embedding IS NOT NULL)
+SELECT e.user_id AS mentor_id, e.embedding <=> q.embedding AS distance
+FROM mentor_embeddings e, q
+WHERE e.embedding IS NOT NULL
+ORDER BY e.embedding <=> q.embedding
 LIMIT $2      -- K = max(50, 5 × limit)
+
+-- (2) profile_db (read-only) — dữ kiện lọc & xếp hạng của đúng K ứng viên đó
+SELECT m.*, EXISTS(SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule
+FROM mentor_profiles m
+WHERE m.user_id = ANY($1::uuid[])
 ```
 
 - Toán tử `<=>` của pgvector = **cosine distance** = `1 − cos(θ)`; chỉ mục HNSW `vector_cosine_ops`.
-- Vector của mentee lấy bằng subquery **ngay trong CSDL** → không vector nào truyền qua mạng (lý do
-  của ngoại lệ kiến trúc read-only).
+- Vector của mentee lấy bằng subquery **ngay trong CSDL** → không vector nào truyền qua mạng.
+- Truy vấn (2) chỉ lấy vài chục dòng theo khoá chính; thứ tự theo khoảng cách của (1) được giữ nguyên
+  khi ghép, mentor có vector nhưng không còn hồ sơ thì bị bỏ qua (lý do của ngoại lệ kiến trúc
+  read-only: lọc/xếp hạng ngay trong CSDL thay vì gọi HTTP cho từng ứng viên).
 - **Vì sao K lớn hơn limit?** Một phần ứng viên sẽ bị hard filter loại; lấy dư (×5, tối thiểu 50) để
   sau khi lọc vẫn đủ kết quả.
 
@@ -210,8 +230,17 @@ Thống kê pipeline: `retrieved = 7`, loại `notVerified: 1` (mentor Java chư
   dài vector; với vector đã chuẩn hoá L2 thì thứ tự theo cosine và Euclidean là như nhau.
 - *HNSW là gì?* — Đồ thị nhiều tầng cho tìm kiếm láng giềng gần đúng (ANN), độ phức tạp truy vấn
   ~O(log N), đánh đổi một chút độ chính xác lấy tốc độ.
-- *Vì sao matching-service đọc thẳng DB của profile-service?* — Để tính khoảng cách trong CSDL (tận
-  dụng chỉ mục), tránh truyền hàng nghìn vector 384 chiều qua HTTP; an toàn nhờ role chỉ SELECT.
+- *Vì sao matching-service đọc thẳng DB của profile-service?* — Vector nằm ở `matching_db` nên khoảng
+  cách vẫn tính trong CSDL bằng HNSW; `profile_db` chỉ được đọc để (a) lấy văn bản nguồn cho embedding
+  mà profile-service không cần biết format văn bản và (b) lấy dữ kiện lọc của đúng K ứng viên bằng một
+  truy vấn thay vì K lời gọi HTTP. An toàn nhờ role `matching_reader` chỉ có SELECT. Xem
+  [adr.md](adr.md) ADR-01.
+- *Vì sao tách embedding khỏi profile-service (`R-1`)?* — Format văn bản, hash và model là một phần của
+  thuật toán matching; để chúng ở Java buộc mỗi lần đổi model/format phải sửa hai service, và lưu hồ sơ
+  phải chờ model. Nay đổi model chỉ cần `EMBEDDING_MODEL` + `rebuild?force=true`; lưu hồ sơ không bao giờ
+  bị chặn. Đánh đổi: chỉ mục nhất quán cuối cùng (tối đa ~60 giây). Xem [adr.md](adr.md) ADR-03.
+- *Nếu thông báo reindex bị mất thì sao?* — `IndexSyncJob` so SHA-256 văn bản của mọi hồ sơ với
+  `text_hash` mỗi `INDEX_SYNC_INTERVAL` (60 giây) và embed lại phần lệch, nên chỉ mục luôn hội tụ.
 
 ---
 
@@ -376,7 +405,7 @@ admin bấm duyệt.
 Mentee thường khai báo mục tiêu ngắn và chung chung ("học backend"), khiến embedding kém phân biệt.
 Tính năng này: (1) đọc CV để biết **mentee đã có gì**; (2) hỏi thêm vài câu về **những gì CV không
 thể hiện** (mục tiêu, mảng muốn tập trung, khó khăn, thời gian); (3) tổng hợp thành đoạn mục tiêu
-chuẩn hoá và cập nhật hồ sơ → **sinh lại embedding** → matching chính xác hơn.
+chuẩn hoá và cập nhật hồ sơ → matching-service **lập lại chỉ mục** → matching chính xác hơn.
 
 ### 3.2 Luồng xử lý
 
@@ -401,8 +430,9 @@ sequenceDiagram
     AI->>AI: summarize_goal(CV, lịch sử) → enrichedGoal
     AI->>P: POST /mentee/{id}/enrichment-chat {enrichedGoalText, cvSkills, cvFileUrl}
     P->>P: cập nhật goal, gộp kỹ năng CV (không trùng)
-    P->>X: POST /internal/embed (văn bản chuẩn hoá mới)
-    X-->>P: vector 384 chiều
+    P-)X: POST /internal/embeddings/reindex (chỉ userId — không chờ kết quả)
+    X->>P: đọc hồ sơ (read-only), chuẩn hoá văn bản, hash đổi → embed lại
+    X->>X: lưu vector 384 chiều vào matching_db
     AI-->>M: COMPLETED + goal đã làm rõ (profileSynced = true)
 ```
 
@@ -464,7 +494,7 @@ thoại (JSON `{"enriched_goal": ...}`), lỗi thì dùng mẫu rule-based ở t
 
 **Cập nhật hồ sơ & re-embedding (FR-8.5)**: gửi `enrichedGoalText`, `cvSkills`, `cvFileUrl` sang
 profile-service; kỹ năng từ CV được **gộp** (không trùng, không phân biệt hoa thường) vào kỹ năng hồ sơ;
-văn bản chuẩn hoá thay đổi → hash đổi → sinh lại embedding. Nếu gửi lỗi, cờ `profile_synced = false`
+văn bản chuẩn hoá thay đổi → hash đổi → matching-service sinh lại embedding. Nếu gửi lỗi, cờ `profile_synced = false`
 và job thử lại mỗi 2 phút.
 
 ### 3.6 Ví dụ (kiểm thử e2e với `scripts/sample-cv.pdf`)
@@ -479,13 +509,19 @@ và job thử lại mỗi 2 phút.
   Review code 2 buoi/thang. Nền tảng hiện có (từ CV): Spring Boot, Docker, Java, REST API, PostgreSQL,
   JUnit, MySQL, Redis, React, Node.js; khoảng 1 năm kinh nghiệm; đã làm dự án Movie Ticket Booking
   System, Personal Blog."*
-- Goal này được ghi vào profile-service, kỹ năng hồ sơ có thêm "Spring Boot"…, `embeddingUpdatedAt` thay đổi.
+- Goal này được ghi vào profile-service, kỹ năng hồ sơ có thêm "Spring Boot"…, và `GET /api/matching/index-status` cho thấy `indexedAt` thay đổi.
 
 ### 3.7 Hạn chế & hướng phát triển
 - Parser rule-based phụ thuộc bố cục CV có tiêu đề mục rõ ràng; CV dạng bảng/2 cột phức tạp nên dùng
   engine DeepSeek.
 - Chưa hỗ trợ PDF ảnh scan (cần OCR).
 - Từ điển kỹ năng cần mở rộng định kỳ.
+- Quyền riêng tư CV (FR-8.6): mentor chỉ tải được CV của mentee có yêu cầu mentoring `PENDING`/`ACCEPTED`
+  với mình (hỏi `GET /internal/relationships` của mentoring-service, timeout 3 s, lỗi ⇒ từ chối); chủ CV
+  xem `GET /api/ai/cv/mine` và xoá `DELETE /api/ai/cv/{id}` (xoá hội thoại + bản ghi + file, gỡ `cvFileUrl`
+  trong hồ sơ). **Còn thiếu**: thời hạn lưu tự động; goal/kỹ năng đã gộp từ CV không tự gỡ khi xoá CV; khi
+  bật DeepSeek, toàn văn CV được gửi ra ngoài mà chưa có bước xin đồng ý. Chi tiết:
+  [cv-data-policy.md](cv-data-policy.md).
 
 ### 3.8 Câu hỏi hội đồng có thể hỏi
 - *Vì sao cần chatbot khi đã có CV?* — CV mô tả quá khứ (đã làm gì), matching cần tương lai (muốn học
@@ -494,7 +530,11 @@ và job thử lại mỗi 2 phút.
   nghĩa hơn → vector phân biệt tốt hơn, đồng thời bổ sung kỹ năng cho bước giải thích "Trùng kỹ năng".
 - *Code nằm ở đâu?* — Toàn bộ ở ai-service (Python): đọc PDF, parse, chatbot, lưu file CV, hội thoại và
   điều phối luồng; dùng chung client DeepSeek và cơ chế fallback với AI Interview. profile-service vẫn
-  là nơi duy nhất ghi hồ sơ — ai-service chỉ gọi `POST /api/profile/mentee/{id}/enrichment-chat`.
+  là nơi duy nhất ghi hồ sơ — ai-service chỉ gọi `POST /api/profile/mentee/{id}/enrichment-chat` (và
+  `DELETE /internal/profile/{id}/cv-file` khi người dùng xoá CV).
+- *Mentor có xem được CV của bất kỳ mentee nào không?* — Không. ai-service hỏi mentoring-service xem có
+  yêu cầu mentoring đang mở (PENDING/ACCEPTED) giữa hai người không; mentoring-service lỗi hoặc chậm quá
+  3 giây thì từ chối (*fail-closed*) — thà mentor tạm không xem được còn hơn lộ CV.
 
 ---
 
@@ -502,7 +542,9 @@ và job thử lại mỗi 2 phút.
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Model sentence-transformers (phải 384 chiều) |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | matching-service: model sentence-transformers (phải 384 chiều) |
+| `INDEX_SYNC_INTERVAL` / `INDEX_SYNC_BATCH` | 60 giây / 200 | matching-service: chu kỳ và số hồ sơ mỗi vòng của `IndexSyncJob` |
+| `INDEX_SYNC_ENABLED` | `true` | matching-service: tắt job đồng bộ (dùng khi benchmark) |
 | `DEEPSEEK_API_KEY` | (trống) | ai-service: trống → engine rule-based; có giá trị → engine DeepSeek + fallback |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Địa chỉ API DeepSeek |
 | `DEEPSEEK_MODEL` | `deepseek-flash` | Model DeepSeek (ví dụ `deepseek-v4-pro`) |

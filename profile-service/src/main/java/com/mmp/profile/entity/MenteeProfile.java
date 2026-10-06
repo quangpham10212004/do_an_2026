@@ -36,9 +36,6 @@ public class MenteeProfile {
     @Column(name = "cv_file_url")
     private String cvFileUrl;
 
-    @Column(name = "embedding_updated_at", insertable = false, updatable = false)
-    private OffsetDateTime embeddingUpdatedAt;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -72,6 +69,5 @@ public class MenteeProfile {
     public void setPortfolioLinks(String[] portfolioLinks) { this.portfolioLinks = portfolioLinks; }
     public String getCvFileUrl() { return cvFileUrl; }
     public void setCvFileUrl(String cvFileUrl) { this.cvFileUrl = cvFileUrl; }
-    public OffsetDateTime getEmbeddingUpdatedAt() { return embeddingUpdatedAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

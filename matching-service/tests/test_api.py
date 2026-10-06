@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 
 import jwt
 import pytest
@@ -6,10 +7,11 @@ from fastapi.testclient import TestClient
 
 from app import config
 from app.main import app
-from app.services import matching_pipeline
+from app.services import index_service, matching_pipeline
 
 MENTEE_ID = "7d4f5a3e-8a8f-4a57-9a0e-2a1d9d1f0c11"
 OTHER_ID = "1b2c3d4e-0000-4000-8000-000000000001"
+INDEXED_AT = datetime(2026, 9, 21, 10, 0, tzinfo=timezone.utc)
 
 
 def token(sub: str, role: str, typ: str = "access") -> str:
@@ -89,16 +91,81 @@ def test_admin_can_query_any_mentee(client, fake_pipeline):
     assert res.status_code == 200
 
 
-def test_embed_requires_internal_token(client, monkeypatch):
-    from app.routers import embed as embed_router
-    monkeypatch.setattr(embed_router, "embed_text", lambda text: [0.1] * 384)
-    assert client.post("/internal/embed", json={"text": "java"}).status_code == 403
-    res = client.post("/internal/embed", json={"text": "java"}, headers={"X-Internal-Token": config.INTERNAL_API_KEY})
+@pytest.fixture
+def fake_index(monkeypatch):
+    """Thay các hàm chạm DB của index_service — router test không cần database thật."""
+    calls = []
+
+    async def fake_reindex(user_id, role=None, force=False):
+        calls.append((user_id, role, force))
+        if user_id == OTHER_ID:
+            return index_service.IndexResult(user_id, None, index_service.NOT_FOUND)
+        return index_service.IndexResult(user_id, role or "MENTEE", index_service.UPDATED, INDEXED_AT)
+
+    async def fake_status(user_id, role=None):
+        return index_service.IndexResult(user_id, "MENTEE", index_service.UPDATED, INDEXED_AT)
+
+    async def fake_rebuild(force):
+        return {"mentors": 3, "mentees": 2, "pending": 0}
+
+    monkeypatch.setattr(index_service, "reindex", fake_reindex)
+    monkeypatch.setattr(index_service, "status", fake_status)
+    monkeypatch.setattr(index_service, "rebuild_all", fake_rebuild)
+    return calls
+
+
+def test_reindex_requires_internal_token(client, fake_index):
+    assert client.post("/internal/embeddings/reindex", json={"userId": MENTEE_ID}).status_code == 403
+    res = client.post("/internal/embeddings/reindex", json={"userId": MENTEE_ID, "role": "MENTEE"},
+                      headers={"X-Internal-Token": config.INTERNAL_API_KEY})
     assert res.status_code == 200
-    assert len(res.json()["embedding"]) == 384
+    assert res.json()["status"] == "UPDATED"
+    assert res.json()["userId"] == MENTEE_ID
+    assert fake_index == [(MENTEE_ID, "MENTEE", False)]
 
 
-def test_embed_validates_empty_text(client):
-    res = client.post("/internal/embed", json={"text": ""}, headers={"X-Internal-Token": config.INTERNAL_API_KEY})
+def test_reindex_rejects_malformed_user_id(client, fake_index):
+    res = client.post("/internal/embeddings/reindex", json={"userId": "not-a-uuid"},
+                      headers={"X-Internal-Token": config.INTERNAL_API_KEY})
     assert res.status_code == 400
-    assert res.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert res.json()["error"]["code"] == "BAD_REQUEST"
+
+
+def test_reindex_404_when_profile_missing(client, fake_index):
+    res = client.post("/internal/embeddings/reindex", json={"userId": OTHER_ID},
+                      headers={"X-Internal-Token": config.INTERNAL_API_KEY})
+    assert res.status_code == 404
+    assert res.json()["error"]["code"] == "PROFILE_NOT_FOUND"
+
+
+def test_index_status_is_restricted_to_owner_or_admin(client, fake_index):
+    assert client.get(f"/api/matching/index-status?userId={MENTEE_ID}").status_code == 401
+    res = client.get(f"/api/matching/index-status?userId={OTHER_ID}",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 403
+    res = client.get(f"/api/matching/index-status?userId={MENTEE_ID}",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 200
+    assert res.json()["status"] == "UPDATED"
+    assert res.json()["indexedAt"].startswith("2026-09-21")
+    res = client.get(f"/api/matching/index-status?userId={MENTEE_ID}",
+                     headers={"Authorization": f"Bearer {token(OTHER_ID, 'ADMIN')}"})
+    assert res.status_code == 200
+
+
+def test_rebuild_is_admin_only(client, fake_index):
+    url = "/api/matching/admin/embeddings/rebuild?force=true"
+    assert client.post(url, headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"}).status_code == 403
+    res = client.post(url, headers={"Authorization": f"Bearer {token(OTHER_ID, 'ADMIN')}"})
+    assert res.status_code == 200
+    assert res.json() == {"mentors": 3, "mentees": 2, "pending": 0}
+
+
+def test_dev_secret_fallbacks_are_flagged(monkeypatch):
+    """B.11 — khởi động với khoá dev mặc định phải log WARNING; đặt khoá thật thì im lặng."""
+    monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", config._DEV_INTERNAL_API_KEY)
+    assert len(config.dev_secret_warnings()) == 2
+    monkeypatch.setattr(config, "JWT_SECRET", "x" * 64)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-noi-bo-that")
+    assert config.dev_secret_warnings() == []

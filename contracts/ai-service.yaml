@@ -97,6 +97,13 @@ components:
         engine: { type: string }
         parsed: { $ref: "#/components/schemas/ParsedCv" }
         createdAt: { type: string, format: date-time }
+    CvSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fileName: { type: string }
+        uploadedAt: { type: string, format: date-time }
+        fileUrl: { type: string, description: "Đường dẫn tải file, dạng /api/ai/cv/{id}/file" }
     EnrichmentMessage:
       type: object
       properties:
@@ -287,13 +294,38 @@ paths:
               schema: { $ref: "#/components/schemas/Cv" }
         "400": { description: INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
+  /api/ai/cv/mine:
+    get:
+      summary: Danh sách CV của chính người gọi (mới nhất trước) — để giao diện cho phép xoá
+      responses:
+        "200":
+          description: OK (mảng rỗng nếu chưa có CV)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CvSummary" }
+  /api/ai/cv/{id}:
+    delete:
+      summary: Xoá CV (chủ CV hoặc ADMIN) — xoá hội thoại enrichment liên quan, dòng cv_documents rồi file
+      description: >-
+        Hội thoại enrichment (kèm tin nhắn, ON DELETE CASCADE) và dòng cv_documents bị xoá trong một
+        transaction; sau đó xoá file trên đĩa (file đã mất thì bỏ qua). Nếu hồ sơ của chủ CV đang trỏ tới
+        file này (cvFileUrl), ai-service gỡ tham chiếu qua DELETE /internal/profile/{userId}/cv-file của
+        profile-service — best-effort, lỗi chỉ ghi log.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Đã xoá }
+        "403": { description: FORBIDDEN — không phải chủ CV và không phải ADMIN (kể cả mentor) }
+        "404": { description: CV_NOT_FOUND }
   /api/ai/cv/{id}/file:
     get:
-      summary: Tải file CV gốc (chủ CV, mentor, admin)
+      summary: Tải file CV gốc (chủ CV, admin; mentor chỉ khi mentee có yêu cầu mentoring PENDING/ACCEPTED với mình)
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200":
           description: PDF
           content:
             application/pdf: {}
+        "403": { description: "FORBIDDEN — không phải chủ CV/admin, hoặc mentor không có yêu cầu mentoring đang mở với mentee (kể cả khi mentoring-service không phản hồi)" }
         "404": { description: CV_NOT_FOUND | CV_FILE_NOT_FOUND }

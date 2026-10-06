@@ -28,6 +28,28 @@ jobs:
   matching-service:
     name: Unit test (matching-service)
     runs-on: ubuntu-latest
+    services:
+      # Sau R-1 matching-service dùng 2 CSDL: matching_db (chỉ mục embedding, cần pgvector)
+      # và profile_db (đọc read-only bằng role matching_reader). Test tests/test_index_db.py
+      # tự nạp db/init/*.sql và chạy reconcile() trên Postgres thật — thiếu CSDL trên CI thì FAIL.
+      matching-db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: matching_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5439:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      profile-db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: profile_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,7 +62,11 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Run tests
         working-directory: matching-service
-        run: python -m pytest -q tests/
+        env:
+          MATCHING_DB_URL: postgresql://postgres:postgres@localhost:5439/matching_db
+          PROFILE_DB_URL: postgresql://matching_reader:matching_reader@localhost:5434/profile_db
+          PROFILE_DB_ADMIN_URL: postgresql://postgres:postgres@localhost:5434/profile_db
+        run: python -m pytest -q -rs tests/
 
   ai-service:
     name: Unit test (ai-service)

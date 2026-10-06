@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    for warning in config.dev_secret_warnings():
+        log.warning(warning)
     try:
         await get_pool()
     except OSError as e:  # DB chưa sẵn sàng: pool sẽ được tạo lại ở request đầu tiên

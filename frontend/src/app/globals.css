@@ -8,7 +8,9 @@
 
 :root {
   /* Font: 'feather' và 'duolingo-sans' là font độc quyền → dùng bản thay thế DESIGN.md gợi ý
-     (Nunito Black cho display, Nunito Sans cho nội dung), nạp qua next/font trong layout.js. */
+     (Nunito Black cho display, Nunito Sans cho nội dung), tự host qua @fontsource (import trong layout.tsx). */
+  --font-nunito: "Nunito";
+  --font-nunito-sans: "Nunito Sans";
   --font-display: var(--font-nunito), var(--font-feather);
   --font-body: var(--font-nunito-sans), var(--font-duolingo-sans);
 
@@ -58,6 +60,7 @@ body {
 
 body {
   min-height: 100vh;
+  overflow-wrap: break-word; /* URL/email dài không đẩy tràn khung trên điện thoại */
   display: flex;
   flex-direction: column;
 }
@@ -298,14 +301,15 @@ td {
   display: grid;
   gap: var(--spacing-16);
 }
+/* min(…, 100%): không tràn ngang trên màn hình hẹp hơn độ rộng cột tối thiểu */
 .grid-2 {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
 }
 .grid-3 {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
 }
 .grid-4 {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
 }
 .row {
   display: flex;
@@ -815,6 +819,12 @@ hr {
   margin-right: 4px;
   vertical-align: baseline;
 }
+/* Thẻ mentor ở trang danh sách: nút "Xem hồ sơ" luôn nằm đáy thẻ */
+.mentor-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .badge.new {
   color: var(--color-spark-blue);
   border-color: var(--color-spark-blue);
@@ -921,5 +931,9 @@ hr {
   }
   .nav-user a.muted {
     display: none;
+  }
+  /* Dòng danh sách có nút hành động: cho nút xuống dòng thay vì ép nội dung */
+  .list-item {
+    flex-wrap: wrap;
   }
 }

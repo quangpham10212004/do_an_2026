@@ -6,12 +6,19 @@ Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6):
     3. Re-rank           : điểm cuối = kết hợp similarity + rating + kinh nghiệm
     4. Explain           : sinh lý do đề xuất để kết quả không phải "hộp đen" (NFR-6)
 
+Dữ liệu nằm ở hai DB vì mỗi service sở hữu phần việc của mình: vector ở matching_db
+(của matching-service), dữ kiện hồ sơ ở profile_db (của profile-service, đọc
+read-only). Bước 1 vì vậy chạy hai truy vấn: pgvector lọc ra danh sách ID ứng viên
+trong matching_db, rồi lấy đúng vài chục dòng hồ sơ tương ứng từ profile_db. Không
+vector nào phải truyền qua mạng và HNSW index vẫn được dùng như cũ.
+
 Các hàm thuần (hard_filter, re_rank, explain) không truy cập DB để test độc lập.
 """
 import re
 from collections import Counter
 
-from app.db import get_pool
+from app.db import get_matching_pool, get_profile_pool
+from app.services import index_service
 
 # K mặc định: lấy dư so với limit vì một phần ứng viên sẽ bị hard filter loại bỏ.
 DEFAULT_K = 50
@@ -36,12 +43,10 @@ REASON_DOMAIN_MISMATCH = "domainMismatch"
 
 
 async def get_mentee(mentee_id: str) -> dict | None:
-    pool = await get_pool()
+    """Dữ kiện hồ sơ mentee (profile_db, read-only) — dùng cho hard filter & explain."""
+    pool = await get_profile_pool()
     row = await pool.fetchrow(
-        """
-        SELECT user_id, domain, goal, skills, (embedding IS NOT NULL) AS has_embedding
-        FROM mentee_profiles WHERE user_id = $1::uuid
-        """,
+        "SELECT user_id, domain, goal, skills FROM mentee_profiles WHERE user_id = $1::uuid",
         mentee_id,
     )
     return dict(row) if row else None
@@ -49,28 +54,51 @@ async def get_mentee(mentee_id: str) -> dict | None:
 
 async def top_k_retrieval(mentee_id: str, k: int = DEFAULT_K) -> list[dict]:
     """
-    Top-K retrieval bằng cosine distance của pgvector (toán tử <=>, dùng HNSW index).
-    Vector của mentee được lấy bằng subquery ngay trong DB — không vector nào
-    phải truyền qua mạng.
+    Top-K retrieval bằng cosine distance của pgvector (toán tử <=>, dùng HNSW index)
+    trong matching_db, rồi lấy dữ kiện hồ sơ của đúng K ứng viên đó từ profile_db.
+    Vector của mentee được lấy bằng subquery ngay trong DB — không vector nào phải
+    truyền qua mạng.
     """
-    pool = await get_pool()
-    rows = await pool.fetch(
+    matching_pool = await get_matching_pool()
+    ranked = await matching_pool.fetch(
         """
-        WITH q AS (SELECT embedding FROM mentee_profiles WHERE user_id = $1::uuid)
-        SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.bio,
-               m.capacity, m.active_mentee_count, m.is_available, m.rating, m.rating_count,
-               m.years_experience, m.hourly_rate, m.verification_status,
-               EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule,
-               m.embedding <=> q.embedding AS distance
-        FROM mentor_profiles m, q
-        WHERE m.embedding IS NOT NULL
-        ORDER BY m.embedding <=> q.embedding ASC
+        WITH q AS (SELECT embedding FROM mentee_embeddings WHERE user_id = $1::uuid AND embedding IS NOT NULL)
+        SELECT e.user_id AS mentor_id, e.embedding <=> q.embedding AS distance
+        FROM mentor_embeddings e, q
+        WHERE e.embedding IS NOT NULL
+        ORDER BY e.embedding <=> q.embedding ASC
         LIMIT $2
         """,
         mentee_id,
         k,
     )
-    return [dict(r) for r in rows]
+    if not ranked:
+        return []
+
+    profile_pool = await get_profile_pool()
+    rows = await profile_pool.fetch(
+        """
+        SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.bio,
+               m.capacity, m.active_mentee_count, m.is_available, m.rating, m.rating_count,
+               m.years_experience, m.hourly_rate, m.verification_status,
+               EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule
+        FROM mentor_profiles m
+        WHERE m.user_id = ANY($1::uuid[])
+        """,
+        [r["mentor_id"] for r in ranked],
+    )
+    profiles = {r["mentor_id"]: dict(r) for r in rows}
+
+    # Giữ nguyên thứ tự theo khoảng cách vector. Mentor có trong chỉ mục nhưng
+    # không còn hồ sơ (vừa bị xoá) thì bỏ qua — IndexSyncJob sẽ dọn chỉ mục.
+    candidates = []
+    for r in ranked:
+        profile = profiles.get(r["mentor_id"])
+        if profile is None:
+            continue
+        profile["distance"] = r["distance"]
+        candidates.append(profile)
+    return candidates
 
 
 def rejection_reason(candidate: dict, mentee_domain: str | None) -> str | None:
@@ -154,8 +182,15 @@ def explain(candidate: dict, mentee: dict) -> tuple[list[str], list[str]]:
 async def match_mentors_for_mentee(mentee_id: str, limit: int = 10) -> dict | None:
     """Chạy toàn bộ pipeline. Trả về None nếu mentee chưa có hồ sơ/embedding."""
     mentee = await get_mentee(mentee_id)
-    if mentee is None or not mentee["has_embedding"]:
+    if mentee is None:
         return None
+    if not await index_service.has_embedding(index_service.MENTEE, mentee_id):
+        # Hồ sơ có nhưng chưa được lập chỉ mục: thông báo của profile-service là
+        # best-effort nên có thể chưa tới. Lập chỉ mục ngay thay vì bắt mentee chờ
+        # vòng quét kế tiếp của IndexSyncJob.
+        result = await index_service.reindex(mentee_id, role=index_service.MENTEE)
+        if result.status == index_service.PENDING:
+            return None
 
     k = max(DEFAULT_K, limit * 5)
     candidates = await top_k_retrieval(mentee_id, k=k)

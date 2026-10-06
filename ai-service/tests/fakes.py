@@ -34,6 +34,8 @@ class FakeProfile:
         self.verifications: list[tuple[UUID, str]] = []
         self.enrichments: list[tuple[UUID, str, list[str], str]] = []
         self.enrichment_error: Exception | None = None
+        self.cleared_cv_files: list[tuple[UUID, str]] = []
+        self.clear_error: Exception | None = None
 
     async def find_mentor(self, mentor_id):
         return None if self.mentor is None else {**self.mentor, "userId": str(mentor_id)}
@@ -53,10 +55,22 @@ class FakeProfile:
             raise error
         self.enrichments.append((mentee_id, goal, skills, cv_url))
 
+    async def clear_cv_file(self, user_id, cv_file_url):
+        if self.clear_error is not None:
+            raise self.clear_error
+        self.cleared_cv_files.append((user_id, cv_file_url))
+
 
 class FakeMentoring:
     def __init__(self) -> None:
         self.notifications: list[tuple[str, str]] = []
+        # Cặp (mentor_id, mentee_id) có yêu cầu mentoring PENDING/ACCEPTED.
+        self.relationships: set[tuple[UUID, UUID]] = set()
+        self.relationship_checks: list[tuple[UUID, UUID]] = []
+
+    async def is_related(self, mentor_id, mentee_id):
+        self.relationship_checks.append((mentor_id, mentee_id))
+        return (mentor_id, mentee_id) in self.relationships
 
     async def notify_user(self, user_id, type_, title, message, link=None):
         self.notifications.append((str(user_id), type_))
@@ -68,7 +82,8 @@ class FakeMentoring:
 @pytest.fixture
 def fake_profile(monkeypatch) -> FakeProfile:
     fake = FakeProfile()
-    for name in ("find_mentor", "find_mentee", "display_name", "update_verification", "apply_enrichment"):
+    for name in ("find_mentor", "find_mentee", "display_name", "update_verification", "apply_enrichment",
+                 "clear_cv_file"):
         monkeypatch.setattr(profile, name, getattr(fake, name))
     return fake
 
@@ -78,4 +93,5 @@ def fake_mentoring(monkeypatch) -> FakeMentoring:
     fake = FakeMentoring()
     monkeypatch.setattr(mentoring, "notify_user", fake.notify_user)
     monkeypatch.setattr(mentoring, "notify_role", fake.notify_role)
+    monkeypatch.setattr(mentoring, "is_related", fake.is_related)
     return fake

@@ -1,5 +1,6 @@
 package com.mmp.profile.service;
 
+import com.mmp.profile.client.MatchingIndexClient;
 import com.mmp.profile.dto.ProfileDtos.*;
 import com.mmp.profile.entity.MenteeProfile;
 import com.mmp.profile.entity.MentorAvailability;
@@ -16,38 +17,43 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.util.*;
 
+/**
+ * Nghiệp vụ hồ sơ nghề nghiệp. Service này KHÔNG sở hữu embedding: vector, hash
+ * text và trạng thái chỉ mục đều thuộc matching-service (CONVENTIONS.md mục 1).
+ * Sau mỗi thay đổi nội dung hồ sơ, ta chỉ báo cho matching-service biết hồ sơ nào
+ * vừa đổi (MatchingIndexClient, bắn rồi quên).
+ */
 @Service
 public class ProfileService {
+
+    private static final String ROLE_MENTOR = "MENTOR";
+    private static final String ROLE_MENTEE = "MENTEE";
 
     private final MentorProfileRepository mentorRepo;
     private final MenteeProfileRepository menteeRepo;
     private final MentorAvailabilityRepository availabilityRepo;
-    private final ProfileTextNormalizer normalizer;
-    private final EmbeddingService embeddingService;
+    private final MatchingIndexClient matchingIndexClient;
     private final TransactionTemplate tx;
 
     public ProfileService(MentorProfileRepository mentorRepo, MenteeProfileRepository menteeRepo,
-                          MentorAvailabilityRepository availabilityRepo, ProfileTextNormalizer normalizer,
-                          EmbeddingService embeddingService, TransactionTemplate tx) {
+                          MentorAvailabilityRepository availabilityRepo,
+                          MatchingIndexClient matchingIndexClient, TransactionTemplate tx) {
         this.mentorRepo = mentorRepo;
         this.menteeRepo = menteeRepo;
         this.availabilityRepo = availabilityRepo;
-        this.normalizer = normalizer;
-        this.embeddingService = embeddingService;
+        this.matchingIndexClient = matchingIndexClient;
         this.tx = tx;
     }
 
     // ---------------- Mentor ----------------
 
     public MentorProfileResponse getMentor(UUID userId) {
-        MentorProfile p = findMentor(userId);
-        return MentorProfileResponse.from(p, availability(userId),
-                embeddingService.currentStatus(EmbeddingService.Table.MENTOR, userId).name());
+        return MentorProfileResponse.from(findMentor(userId), availability(userId));
     }
 
     /**
-     * FR-2.4 + FR-2.5: lưu hồ sơ trong 1 transaction, SAU KHI commit mới gọi
-     * matching-service sinh embedding (không giữ transaction trong lúc gọi mạng).
+     * FR-2.4 + FR-2.5: lưu hồ sơ trong 1 transaction, SAU KHI commit mới báo
+     * matching-service lập lại chỉ mục (không gọi mạng bên trong transaction).
      */
     public MentorProfileResponse upsertMentor(UUID userId, MentorProfileInput in) {
         MentorProfile saved = tx.execute(status -> {
@@ -68,9 +74,8 @@ public class ProfileService {
             p.setAvailable(Optional.ofNullable(in.isAvailable()).orElse(p.isAvailable()));
             return mentorRepo.save(p);
         });
-        EmbeddingService.Status status = embeddingService.refresh(
-                EmbeddingService.Table.MENTOR, userId, normalizer.normalizeMentor(saved), false);
-        return MentorProfileResponse.from(findMentor(userId), availability(userId), status.name());
+        matchingIndexClient.reindexAsync(ROLE_MENTOR, saved.getUserId());
+        return MentorProfileResponse.from(findMentor(userId), availability(userId));
     }
 
     public List<AvailabilitySlot> availability(UUID mentorId) {
@@ -134,8 +139,7 @@ public class ProfileService {
     // ---------------- Mentee ----------------
 
     public MenteeProfileResponse getMentee(UUID userId) {
-        return MenteeProfileResponse.from(findMentee(userId),
-                embeddingService.currentStatus(EmbeddingService.Table.MENTEE, userId).name());
+        return MenteeProfileResponse.from(findMentee(userId));
     }
 
     public MenteeProfileResponse upsertMentee(UUID userId, MenteeProfileInput in) {
@@ -158,14 +162,13 @@ public class ProfileService {
             }
             return menteeRepo.save(p);
         });
-        EmbeddingService.Status status = embeddingService.refresh(
-                EmbeddingService.Table.MENTEE, userId, normalizer.normalizeMentee(saved), false);
-        return MenteeProfileResponse.from(findMentee(userId), status.name());
+        matchingIndexClient.reindexAsync(ROLE_MENTEE, saved.getUserId());
+        return MenteeProfileResponse.from(findMentee(userId));
     }
 
     /**
      * FR-8.5 — nhận goal đã được chatbot làm rõ, cập nhật hồ sơ (goal + gộp kỹ năng
-     * trích từ CV) rồi sinh lại embedding.
+     * trích từ CV); matching-service lập lại chỉ mục sau đó.
      */
     public MenteeProfileResponse applyEnrichment(UUID userId, EnrichmentInput in) {
         MenteeProfile saved = tx.execute(status -> {
@@ -182,9 +185,8 @@ public class ProfileService {
             }
             return menteeRepo.save(p);
         });
-        EmbeddingService.Status status = embeddingService.refresh(
-                EmbeddingService.Table.MENTEE, userId, normalizer.normalizeMentee(saved), false);
-        return MenteeProfileResponse.from(findMentee(userId), status.name());
+        matchingIndexClient.reindexAsync(ROLE_MENTEE, saved.getUserId());
+        return MenteeProfileResponse.from(findMentee(userId));
     }
 
     // ---------------- Shared ----------------
@@ -197,30 +199,29 @@ public class ProfileService {
                 .orElseThrow(() -> ApiException.notFound("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ"));
     }
 
-    /** Sinh lại embedding cho toàn bộ profile (dùng khi đổi model hoặc format text). */
-    public Map<String, Integer> rebuildAllEmbeddings(boolean force) {
-        int mentors = 0, mentees = 0, pending = 0;
-        for (MentorProfile p : mentorRepo.findAll()) {
-            var s = embeddingService.refresh(EmbeddingService.Table.MENTOR, p.getUserId(), normalizer.normalizeMentor(p), force);
-            if (s == EmbeddingService.Status.PENDING) pending++; else mentors++;
-        }
-        for (MenteeProfile p : menteeRepo.findAll()) {
-            var s = embeddingService.refresh(EmbeddingService.Table.MENTEE, p.getUserId(), normalizer.normalizeMentee(p), force);
-            if (s == EmbeddingService.Status.PENDING) pending++; else mentees++;
-        }
-        return Map.of("mentors", mentors, "mentees", mentees, "pending", pending);
-    }
-
-    /** Dùng bởi EmbeddingRetryJob. */
-    public void retryPendingEmbeddings(int batchSize) {
-        for (UUID id : embeddingService.findPending(EmbeddingService.Table.MENTOR, batchSize)) {
-            mentorRepo.findById(id).ifPresent(p -> embeddingService.refresh(
-                    EmbeddingService.Table.MENTOR, id, normalizer.normalizeMentor(p), true));
-        }
-        for (UUID id : embeddingService.findPending(EmbeddingService.Table.MENTEE, batchSize)) {
-            menteeRepo.findById(id).ifPresent(p -> embeddingService.refresh(
-                    EmbeddingService.Table.MENTEE, id, normalizer.normalizeMentee(p), true));
-        }
+    /**
+     * Gỡ tham chiếu tới CV đã bị xoá ở ai-service. Chỉ gỡ khi hồ sơ đang trỏ ĐÚNG file đó,
+     * để không xoá nhầm CV khác người dùng gắn sau. cv_file_url không thuộc text embedding
+     * nên không cần báo matching-service. Trả về true nếu có hồ sơ được cập nhật.
+     */
+    public boolean clearCvFileUrl(UUID userId, String cvFileUrl) {
+        Boolean cleared = tx.execute(status -> {
+            boolean changed = false;
+            Optional<MentorProfile> mentor = mentorRepo.findById(userId);
+            if (mentor.isPresent() && cvFileUrl.equals(mentor.get().getCvFileUrl())) {
+                mentor.get().setCvFileUrl(null);
+                mentorRepo.save(mentor.get());
+                changed = true;
+            }
+            Optional<MenteeProfile> mentee = menteeRepo.findById(userId);
+            if (mentee.isPresent() && cvFileUrl.equals(mentee.get().getCvFileUrl())) {
+                mentee.get().setCvFileUrl(null);
+                menteeRepo.save(mentee.get());
+                changed = true;
+            }
+            return changed;
+        });
+        return Boolean.TRUE.equals(cleared);
     }
 
     private MentorProfile findMentor(UUID userId) {

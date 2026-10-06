@@ -46,12 +46,12 @@ flowchart LR
       UC31[Duyệt kết quả AI Interview]
       UC32[Quản lý khoá học, tài liệu, roadmap]
       UC33[Giám sát giao dịch & referral]
-      UC34[Sinh lại embedding]
+      UC34[Sinh lại embedding<br/>matching-service]
     end
     subgraph System_UC[Tự động]
       UC40[Nhắc lịch trước phiên]
       UC41[Huỷ phiên quá hạn thanh toán]
-      UC42[Retry embedding / đối soát thanh toán]
+      UC42[Đồng bộ chỉ mục embedding / đối soát thanh toán]
     end
 
     Mentee --- UC1 & UC2 & UC3 & UC4 & UC5 & UC10 & UC11 & UC12 & UC13 & UC14 & UC15 & UC16 & UC17
@@ -99,9 +99,10 @@ qua AI Interview → Mentor chọn *Hồ sơ* → Giao diện hồ sơ hiển th
 vực, số năm kinh nghiệm, kỹ năng, giới thiệu, mức phí/giờ, sức chứa, portfolio, trạng thái nhận
 mentee) và ô *Điền nhanh từ CV* → (Tuỳ chọn) Mentor tải CV PDF → hệ thống trích xuất kỹ năng và số năm
 kinh nghiệm, điền vào form để mentor kiểm tra → Mentor chỉnh sửa và bấm *Lưu hồ sơ* → Hệ thống lưu hồ sơ,
-chuẩn hoá thành đoạn văn bản, **nếu nội dung thay đổi** gửi sang matching-service sinh embedding mới và
-lưu kèm hồ sơ → **Nếu matching-service lỗi**: vẫn lưu hồ sơ, đánh dấu embedding đang chờ, job nền tự
-thử lại → Hiển thị thông báo thành công và trạng thái embedding; lần đầu tạo hồ sơ nhắc bước tiếp theo
+báo cho matching-service biết hồ sơ vừa đổi (**không chờ kết quả**) → matching-service đọc hồ sơ, chuẩn
+hoá thành đoạn văn bản và **nếu nội dung thay đổi** thì sinh embedding mới vào `matching_db` → **Nếu
+matching-service lỗi hoặc đang down**: hồ sơ vẫn lưu bình thường, `IndexSyncJob` phát hiện lệch hash ở
+vòng quét sau và tự embed lại → Hiển thị thông báo thành công; lần đầu tạo hồ sơ nhắc bước tiếp theo
 là AI Interview.
 
 **Khai báo lịch rảnh** (FR-2.4)
@@ -113,7 +114,7 @@ sai**: báo lỗi → **Nếu đúng**: thay toàn bộ lịch rảnh cũ bằng
 **Tạo/chỉnh sửa hồ sơ mentee** (FR-2.1 → FR-2.3)
 
 Mentee chọn *Hồ sơ* → Nhập tên hiển thị, lĩnh vực muốn học, trình độ, kỹ năng hiện có, mục tiêu học
-tập, portfolio → Bấm *Lưu* → Hệ thống lưu và sinh embedding như trên → Gợi ý bước tiếp theo: tải CV để
+tập, portfolio → Bấm *Lưu* → Hệ thống lưu và lập chỉ mục embedding như trên → Gợi ý bước tiếp theo: tải CV để
 chatbot làm rõ mục tiêu hoặc tìm mentor ngay.
 
 **Xem hồ sơ tóm tắt (nội bộ)**
@@ -126,7 +127,8 @@ hiển thị "Người dùng") → **Nếu có**: trả tên hiển thị, vai t
 
 **Tìm mentor phù hợp** (FR-4.x, FR-5.1)
 
-Mentee chọn *Tìm mentor* → Hệ thống lấy hồ sơ và embedding của mentee → **Nếu chưa có hồ sơ/embedding**:
+Mentee chọn *Tìm mentor* → Hệ thống lấy hồ sơ (profile_db) và embedding (matching_db) của mentee; nếu
+hồ sơ đã có mà chỉ mục chưa kịp cập nhật thì lập chỉ mục ngay trong request → **Nếu vẫn chưa có**:
 thông báo "Bạn cần hoàn thành hồ sơ nghề nghiệp trước khi tìm mentor" kèm nút tạo hồ sơ → **Nếu đã
 có**: lấy top-K mentor gần nhất theo cosine → loại mentor chưa được duyệt, tạm ngưng nhận mentee, chưa
 có lịch rảnh, đã đủ sức chứa, khác lĩnh vực → tính điểm cuối kết hợp độ tương đồng, đánh giá, kinh
@@ -203,7 +205,8 @@ cần tạo hồ sơ trước → Phân tích CV thành vai trò, kỹ năng, s�
 thẻ "Thông tin trích xuất từ CV" và khung chat với câu hỏi đầu tiên nhắc lại thông tin trong CV →
 Mentee trả lời → Hệ thống chọn câu hỏi tiếp theo về thông tin CV chưa có, bỏ qua điều đã được trả lời →
 Lặp đến lượt 4 → Tổng hợp đoạn mục tiêu chuẩn hoá → Gửi sang profile-service cập nhật mục tiêu, bổ sung
-kỹ năng từ CV và sinh lại embedding → Hiển thị mục tiêu đã làm rõ và nút *Tìm mentor phù hợp*.
+kỹ năng từ CV; văn bản chuẩn hoá đổi nên matching-service sinh lại embedding → Hiển thị mục tiêu đã làm
+rõ và nút *Tìm mentor phù hợp*.
 
 ### 2.6 learning-service
 

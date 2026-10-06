@@ -22,7 +22,8 @@ from app.db import get_pool
 from app.enrichment import engine as enrichment_engine
 from app.enrichment import repository as repo
 from app.enrichment.models import Exchange, MenteeContext
-from app.enrichment.views import ConversationView, CvUploadResult, CvView, conversation_view, cv_view
+from app.enrichment.views import (ConversationView, CvSummaryView, CvUploadResult, CvView, conversation_view,
+                                  cv_view)
 from app.security import AuthUser
 
 log = logging.getLogger(__name__)
@@ -172,10 +173,50 @@ async def cv_file(user: AuthUser, cv_id: UUID) -> tuple[str, bytes]:
     cv = await cv_repo.find(pool, cv_id)
     if cv is None:
         raise errors.not_found("CV_NOT_FOUND", "Không tìm thấy CV")
-    # Chủ CV, admin, hoặc mentor (xem CV mentee khi xét yêu cầu mentoring) được tải
-    if not user.is_admin and not user.is_internal and cv["user_id"] != user.user_id and user.role != "MENTOR":
-        raise errors.forbidden("Bạn không có quyền tải CV này")
+    # Chủ CV, admin, service nội bộ; mentor chỉ được tải CV của mentee đang gửi yêu cầu cho
+    # mình (PENDING) hoặc đang được mình hướng dẫn (ACCEPTED) — hỏi mentoring-service, lỗi => từ chối.
+    if not user.is_admin and not user.is_internal and cv["user_id"] != user.user_id:
+        if user.role != "MENTOR" or not await mentoring.is_related(user.user_id, cv["user_id"]):
+            raise errors.forbidden("Bạn không có quyền tải CV này")
     return cv["file_name"], storage.read(cv["storage_path"])
+
+
+async def my_cvs(user: AuthUser) -> list[CvSummaryView]:
+    if user.user_id is None:  # service nội bộ không sở hữu CV
+        return []
+    pool = await get_pool()
+    return [CvSummaryView(id=r["id"], file_name=r["file_name"], uploaded_at=r["created_at"],
+                          file_url=cv_file_url(r["id"]))
+            for r in await cv_repo.list_for_user(pool, user.user_id)]
+
+
+async def delete_cv(user: AuthUser, cv_id: UUID) -> None:
+    """
+    Xoá CV theo yêu cầu của chủ CV hoặc ADMIN (chính sách dữ liệu CV): hội thoại enrichment
+    → dòng cv_documents trong 1 transaction (đúng thứ tự FK), sau đó mới xoá file và gỡ
+    tham chiếu ở profile-service — không gọi mạng/đĩa bên trong transaction.
+    """
+    pool = await get_pool()
+    cv = await cv_repo.find(pool, cv_id)
+    if cv is None:
+        raise errors.not_found("CV_NOT_FOUND", "Không tìm thấy CV")
+    if not user.is_admin and cv["user_id"] != user.user_id:
+        raise errors.forbidden("Chỉ chủ CV hoặc quản trị viên được xoá CV")
+
+    async with pool.acquire() as conn, conn.transaction():
+        await repo.delete_for_cv(conn, cv_id)
+        await cv_repo.delete(conn, cv_id)
+
+    try:
+        if not storage.delete(cv["storage_path"]):
+            log.info("CV file %s was already missing", cv["storage_path"])
+    except (OSError, errors.AiError) as e:  # dòng DB đã xoá — file mồ côi chỉ cần ghi log
+        log.warning("Could not delete CV file %s: %s", cv["storage_path"], e)
+
+    try:
+        await profile.clear_cv_file(cv["user_id"], cv_file_url(cv_id))
+    except httpx.HTTPError as e:
+        log.warning("Could not clear cvFileUrl of %s in profile-service: %s", cv["user_id"], e)
 
 
 def _context(mentee: dict, parsed, max_turns: int) -> MenteeContext:

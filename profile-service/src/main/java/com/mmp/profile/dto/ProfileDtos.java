@@ -8,7 +8,6 @@ import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
-import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -47,17 +46,14 @@ public final class ProfileDtos {
             float rating,
             int ratingCount,
             String verificationStatus,
-            OffsetDateTime embeddingUpdatedAt,
-            String embeddingStatus,
             List<AvailabilitySlot> availability) {
 
-        public static MentorProfileResponse from(MentorProfile p, List<AvailabilitySlot> slots, String embeddingStatus) {
+        public static MentorProfileResponse from(MentorProfile p, List<AvailabilitySlot> slots) {
             return new MentorProfileResponse(p.getUserId(), p.getDisplayName(), Arrays.asList(p.getSkills()),
                     p.getDomain(), p.getBio(), p.getYearsExperience(), p.getCvFileUrl(),
                     Arrays.asList(p.getPortfolioLinks()), p.getHourlyRate(), p.getCapacity(),
                     p.getActiveMenteeCount(), p.isAvailable(), p.getRating(), p.getRatingCount(),
-                    p.getVerificationStatus().name(), p.getEmbeddingUpdatedAt(), embeddingStatus,
-                    slots);
+                    p.getVerificationStatus().name(), slots);
         }
     }
 
@@ -79,14 +75,12 @@ public final class ProfileDtos {
             String currentLevel,
             List<String> skills,
             List<String> portfolioLinks,
-            String cvFileUrl,
-            OffsetDateTime embeddingUpdatedAt,
-            String embeddingStatus) {
+            String cvFileUrl) {
 
-        public static MenteeProfileResponse from(MenteeProfile p, String embeddingStatus) {
+        public static MenteeProfileResponse from(MenteeProfile p) {
             return new MenteeProfileResponse(p.getUserId(), p.getDisplayName(), p.getGoal(), p.getDomain(),
                     p.getCurrentLevel().name(), Arrays.asList(p.getSkills()), Arrays.asList(p.getPortfolioLinks()),
-                    p.getCvFileUrl(), p.getEmbeddingUpdatedAt(), embeddingStatus);
+                    p.getCvFileUrl());
         }
     }
 

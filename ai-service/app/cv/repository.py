@@ -22,3 +22,12 @@ async def find(conn: Db, cv_id: UUID) -> asyncpg.Record | None:
 
 def parsed_of(cv: asyncpg.Record) -> ParsedCv:
     return ParsedCv.model_validate(json.loads(cv["parsed_json"]))
+
+
+async def list_for_user(conn: Db, user_id: UUID) -> list[asyncpg.Record]:
+    return await conn.fetch(
+        "SELECT id, file_name, created_at FROM cv_documents WHERE user_id = $1 ORDER BY created_at DESC", user_id)
+
+
+async def delete(conn: Db, cv_id: UUID) -> None:
+    await conn.execute("DELETE FROM cv_documents WHERE id = $1", cv_id)

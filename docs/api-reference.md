@@ -1,6 +1,6 @@
 # Đặc tả API — MentorHub
 
-Bảng tra cứu toàn bộ endpoint của 7 service (95 endpoint nghiệp vụ, 102 kể cả `/health`). Schema request/response đầy đủ nằm trong
+Bảng tra cứu toàn bộ endpoint của 7 service (100 endpoint nghiệp vụ, 107 kể cả `/health` — khớp số operation trong `contracts/*.yaml` và số route trong mã nguồn). Schema request/response đầy đủ nằm trong
 `contracts/<service>.yaml` (OpenAPI 3.0.3) — có thể mở bằng <https://editor.swagger.io>.
 
 ## Quy ước chung
@@ -46,26 +46,28 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 |---|---|---|---|---|
 | GET | `/health` | Public | Health check | — |
 | GET | `/api/profile/mentors?domain=&q=&page=&size=&includeUnverified=` | Auth | Duyệt mentor đã xác thực (admin xem được cả chưa duyệt) | 5.1 |
-| GET | `/api/profile/mentor/{userId}` | Auth | Hồ sơ mentor kèm lịch rảnh, trạng thái xác thực, trạng thái embedding | 2.4 |
-| PUT | `/api/profile/mentor/{userId}` | Owner (Mentor) | Tạo/cập nhật hồ sơ, tự sinh embedding | 2.4, 2.5 |
+| GET | `/api/profile/mentor/{userId}` | Auth | Hồ sơ mentor kèm lịch rảnh và trạng thái xác thực | 2.4 |
+| PUT | `/api/profile/mentor/{userId}` | Owner (Mentor) | Tạo/cập nhật hồ sơ; báo matching-service lập lại chỉ mục (bắn rồi quên) | 2.4, 2.5 |
 | GET | `/api/profile/mentor/{userId}/availability` | Auth | Lịch rảnh hằng tuần | 2.4 |
 | PUT | `/api/profile/mentor/{userId}/availability` | Owner (Mentor) | `{slots:[{dayOfWeek, startTime, endTime}]}` thay toàn bộ | 2.4 |
 | GET | `/api/profile/mentee/{userId}` | Owner / Mentor / Admin | Hồ sơ mentee | 2.1–2.3 |
-| PUT | `/api/profile/mentee/{userId}` | Owner (Mentee) | Tạo/cập nhật hồ sơ, tự sinh embedding | 2.1–2.3, 2.5 |
-| POST | `/api/profile/mentee/{userId}/enrichment-chat` | Owner / Internal | `{enrichedGoalText, cvSkills?, cvFileUrl?}` → cập nhật goal, gộp kỹ năng, sinh lại embedding | 8.5 |
-| POST | `/api/profile/admin/embeddings/rebuild?force=` | Admin | Sinh embedding còn thiếu / sinh lại toàn bộ | 2.5 |
+| PUT | `/api/profile/mentee/{userId}` | Owner (Mentee) | Tạo/cập nhật hồ sơ; báo matching-service lập lại chỉ mục (bắn rồi quên) | 2.1–2.3, 2.5 |
+| POST | `/api/profile/mentee/{userId}/enrichment-chat` | Owner / Internal | `{enrichedGoalText, cvSkills?, cvFileUrl?}` → cập nhật goal, gộp kỹ năng | 8.5 |
 | GET | `/internal/profile-summary/{userId}` | Internal | `{userId, displayName, role, domain}` | — |
 | GET | `/internal/mentor/{userId}` | Internal | Hồ sơ mentor đầy đủ | — |
 | PUT | `/internal/mentor/{userId}/verification` | Internal | `{status}` | 7.4, 7.5 |
 | PUT | `/internal/mentor/{userId}/rating` | Internal | `{rating, ratingCount}` | 5.6 |
 | PUT | `/internal/mentor/{userId}/active-mentees` | Internal | `{activeMenteeCount}` | 4.4 |
+| DELETE | `/internal/profile/{userId}/cv-file?cvFileUrl=` | Internal | ai-service gọi sau khi xoá CV: gỡ `cv_file_url` của hồ sơ mentor/mentee **chỉ khi khớp chính xác** `cvFileUrl`; luôn 204; không lập lại chỉ mục embedding | 8.6 |
 
 ## 3. matching-service (8090) — Thảo
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
 | GET | `/health` | Public | `{status, modelLoaded}` | — |
-| POST | `/internal/embed` | Internal | `{text}` → `{embedding: float[384]}` | 4.1 |
+| POST | `/internal/embeddings/reindex` | Internal | `{userId, role?, force?}` → `{userId, role, status, indexedAt}`; profile-service gọi sau khi lưu hồ sơ và không chờ kết quả | 4.1, 2.5 |
+| GET | `/api/matching/index-status?userId=` | Owner / Admin | `{userId, role, status, indexedAt}` — `UPDATED` khi vector khớp nội dung hồ sơ hiện tại | 2.5 |
+| POST | `/api/matching/admin/embeddings/rebuild?force=` | Admin | Sinh embedding còn thiếu / sinh lại toàn bộ | 2.5 |
 | GET | `/api/matching/mentors?menteeId=&limit=` | Owner (Mentee) / Admin | Danh sách mentor đã xếp hạng + thống kê pipeline; 404 `MENTEE_PROFILE_INCOMPLETE` | 4.3–4.6, 5.1 |
 
 Ví dụ response:
@@ -143,6 +145,7 @@ Ví dụ response:
 | GET | `/internal/sessions/{id}` | Internal | `{id, menteeId, mentorId, scheduledAt, durationMinutes, price, status}` |
 | POST | `/internal/sessions/{id}/payment-succeeded` | Internal | `{transactionId}` → xác nhận phiên (FR-6.2) |
 | POST | `/internal/notifications` | Internal | `{recipientId? , recipientRole?, type, title, message, link?}` → tạo thông báo (ai-service gọi) |
+| GET | `/internal/relationships?mentorId=&menteeId=` | Internal | `{mentorId, menteeId, related}` — `related = true` khi có yêu cầu mentoring của mentee gửi mentor ở trạng thái `PENDING` hoặc `ACCEPTED` (ai-service dùng để quyết định mentor có được tải CV) |
 
 ## 6. payment-service (8084) — Thắng
 
@@ -198,7 +201,9 @@ lượt đó tự dùng rule-based.
 | GET | `/api/ai/enrichment/conversations/{id}` | Owner | Chi tiết hội thoại | 8.3 |
 | POST | `/api/ai/enrichment/conversations/{id}/answers` | Mentee | `{answer}`; lượt cuối → `enrichedGoal`, đồng bộ hồ sơ | 8.3–8.5 |
 | POST | `/api/ai/cv/parse` | Auth | Parse CV không kèm chatbot (mentor điền nhanh hồ sơ) | 8.1, 8.2 |
-| GET | `/api/ai/cv/{id}/file` | Owner / Mentor / Admin | Tải file PDF gốc | 8.1 |
+| GET | `/api/ai/cv/{id}/file` | Owner / Admin / Mentor có quan hệ | Tải file PDF gốc. Mentor chỉ được tải khi mentoring-service xác nhận yêu cầu `PENDING`/`ACCEPTED` với chủ CV (timeout 3 s, lỗi ⇒ 403 — fail-closed) | 8.1, 8.6 |
+| GET | `/api/ai/cv/mine` | Auth | CV của chính người gọi, mới nhất trước: `[{id, fileName, uploadedAt, fileUrl}]` | 8.6 |
+| DELETE | `/api/ai/cv/{id}` | Owner / Admin | Xoá CV (204): hội thoại enrichment + dòng `cv_documents` trong 1 transaction → file trên volume (thiếu file vẫn 204) → best-effort gỡ `cvFileUrl` ở profile-service. 403 `FORBIDDEN`, 404 `CV_NOT_FOUND`. Chi tiết: [cv-data-policy.md](cv-data-policy.md) §6 | 8.6 |
 
 Lỗi file CV: 400 `INVALID_FILE_TYPE` / `INVALID_PDF` / `ENCRYPTED_PDF` / `CV_TOO_LONG` / `CV_NO_TEXT`,
 413 `FILE_TOO_LARGE`. Engine không sinh được câu hỏi tiếp theo → 502 `AI_ENGINE_UNAVAILABLE` và không

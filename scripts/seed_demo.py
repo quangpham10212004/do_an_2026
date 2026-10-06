@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Seed dữ liệu demo: mentor mẫu (hồ sơ + lịch rảnh + embedding) và mentee mẫu.
+Seed dữ liệu demo: mentor mẫu (hồ sơ + lịch rảnh) và mentee mẫu.
 
 Chạy sau khi `docker compose up` đã sẵn sàng:
     python3 scripts/seed_demo.py
@@ -10,10 +10,14 @@ mentor bằng endpoint nội bộ của profile-service (bỏ qua AI Interview).
 lối tắt CHỈ dành cho dữ liệu demo — luồng thật là mentor phỏng vấn trong UI và
 admin duyệt. Mentor cuối danh sách được để ở trạng thái chưa phỏng vấn để minh
 hoạ việc bị loại khỏi kết quả matching.
+
+Embedding do matching-service tự lập chỉ mục sau khi profile-service báo hồ sơ đổi
+(bắn rồi quên), nên cuối script ta chờ chỉ mục sẵn sàng để chạy matching được ngay.
 """
 import sys
+import time
 
-from common import AUTH, PROFILE, ApiError, call, register_or_login
+from common import AUTH, MATCHING, PROFILE, ApiError, call, register_or_login
 
 PASSWORD = "Demo@123"
 
@@ -49,8 +53,19 @@ MENTEES = [
 ]
 
 
+def wait_indexed(user_id, token, timeout=60):
+    """Chờ matching-service lập xong chỉ mục embedding cho hồ sơ vừa seed."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if call("GET", f"{MATCHING}/api/matching/index-status?userId={user_id}", token=token)["status"] == "UPDATED":
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def main():
     print(f"Seeding demo data via {AUTH} / {PROFILE}")
+    seeded = []
     for email, name, domain, skills, years, bio, rate, capacity, slots, approve in MENTORS:
         auth = register_or_login(email, PASSWORD, "MENTOR", name)
         uid, token = auth["userId"], auth["accessToken"]
@@ -63,6 +78,7 @@ def main():
         }, token=token)
         if approve:
             call("PUT", f"{PROFILE}/internal/mentor/{uid}/verification", {"status": "APPROVED"}, internal=True)
+        seeded.append((uid, token))
         print(f"  mentor  {email:<28} {'APPROVED' if approve else 'PENDING_INTERVIEW'}")
 
     for email, name, domain, level, skills, goal in MENTEES:
@@ -70,7 +86,15 @@ def main():
         call("PUT", f"{PROFILE}/api/profile/mentee/{auth['userId']}", {
             "displayName": name, "goal": goal, "domain": domain, "currentLevel": level, "skills": skills, "portfolioLinks": [],
         }, token=auth["accessToken"])
+        seeded.append((auth["userId"], auth["accessToken"]))
         print(f"  mentee  {email}")
+
+    print("\nChờ matching-service lập chỉ mục embedding...")
+    pending = [uid for uid, token in seeded if not wait_indexed(uid, token)]
+    if pending:
+        print(f"  CẢNH BÁO: {len(pending)} hồ sơ chưa có embedding; IndexSyncJob sẽ thử lại.")
+    else:
+        print(f"  {len(seeded)} hồ sơ đã được lập chỉ mục.")
 
     print(f"\nXong. Mật khẩu mọi tài khoản demo: {PASSWORD}. Admin: admin@mmp.local / Admin@123")
 

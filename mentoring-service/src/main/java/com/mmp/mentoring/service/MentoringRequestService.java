@@ -19,6 +19,10 @@ import java.util.stream.Stream;
 @Service
 public class MentoringRequestService {
 
+    /** Yêu cầu "đang mở": mentor đang xét (PENDING) hoặc đang hướng dẫn (ACCEPTED). */
+    static final List<MentoringRequest.Status> OPEN_STATUSES =
+            List.of(MentoringRequest.Status.PENDING, MentoringRequest.Status.ACCEPTED);
+
     private final MentoringRequestRepository requestRepo;
     private final ProfileClient profileClient;
     private final NotificationService notifications;
@@ -41,8 +45,7 @@ public class MentoringRequestService {
         if (!mentor.isAvailable()) {
             throw ApiException.badRequest("MENTOR_UNAVAILABLE", "Mentor hiện không nhận mentee mới");
         }
-        if (requestRepo.existsByMenteeIdAndMentorIdAndStatusIn(mentee.userId(), in.mentorId(),
-                List.of(MentoringRequest.Status.PENDING, MentoringRequest.Status.ACCEPTED))) {
+        if (requestRepo.existsByMenteeIdAndMentorIdAndStatusIn(mentee.userId(), in.mentorId(), OPEN_STATUSES)) {
             throw ApiException.conflict("REQUEST_ALREADY_EXISTS", "Bạn đã có yêu cầu đang chờ hoặc đang được mentor này hướng dẫn");
         }
         MentoringRequest saved = tx.execute(s -> requestRepo.save(
@@ -134,6 +137,15 @@ public class MentoringRequestService {
 
     public void syncActiveMentees(UUID mentorId) {
         profileClient.updateActiveMentees(mentorId, requestRepo.countActiveMentees(mentorId));
+    }
+
+    /**
+     * Nội bộ — mentor và mentee có yêu cầu đang mở hay không. ai-service dùng để chỉ cho
+     * mentor tải CV của mentee mà mình đang xét hoặc đang hướng dẫn.
+     */
+    public RelationshipView relationship(UUID mentorId, UUID menteeId) {
+        return new RelationshipView(mentorId, menteeId,
+                requestRepo.existsByMenteeIdAndMentorIdAndStatusIn(menteeId, mentorId, OPEN_STATUSES));
     }
 
     private MentoringRequest find(UUID id) {

@@ -2,7 +2,7 @@ import hmac
 from dataclasses import dataclass
 
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from app import config
 
@@ -48,3 +48,10 @@ def require_user(
     if claims.get("typ") != "access":
         raise _unauthorized()
     return Caller(user_id=claims.get("sub"), role=claims.get("role", ""))
+
+
+def require_admin(caller: Caller = Depends(require_user)) -> Caller:
+    """Chỉ ADMIN (hoặc service nội bộ) — dùng cho /api/matching/admin/**."""
+    if caller.role not in ("ADMIN", "INTERNAL"):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Chức năng chỉ dành cho ADMIN"})
+    return caller

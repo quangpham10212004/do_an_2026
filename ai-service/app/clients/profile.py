@@ -72,3 +72,9 @@ async def apply_enrichment(mentee_id: UUID, enriched_goal: str, cv_skills: list[
         json={"enrichedGoalText": enriched_goal, "cvSkills": cv_skills, "cvFileUrl": cv_file_url},
     )
     res.raise_for_status()
+
+
+async def clear_cv_file(user_id: UUID, cv_file_url: str) -> None:
+    """Gỡ cvFileUrl khỏi hồ sơ nếu hồ sơ còn trỏ tới CV vừa bị xoá (profile-service tự so khớp)."""
+    res = await _client().delete(f"/internal/profile/{user_id}/cv-file", params={"cvFileUrl": cv_file_url})
+    res.raise_for_status()

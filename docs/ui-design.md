@@ -1,6 +1,6 @@
 # Thiết kế giao diện — MentorHub
 
-Giao diện frontend (Next.js 14) áp dụng design system do nhóm cung cấp trong 3 file:
+Giao diện frontend (Next.js 14 + TypeScript) áp dụng design system do nhóm cung cấp trong 3 file:
 
 | File | Vai trò |
 |---|---|
@@ -15,8 +15,10 @@ Giao diện frontend (Next.js 14) áp dụng design system do nhóm cung cấp t
   diện dùng chung (`.btn`, `.card`, `.badge`, `.nav`, `.footer`…) được viết lại **chỉ bằng biến token**
   (`var(--color-eager-green)`, `var(--text-nav-label)`, `var(--spacing-24)`, `var(--radius-xl)`…).
 - Các biến ngữ nghĩa cũ của trang (`--primary`, `--good`, `--surface-2`…) được giữ làm alias trỏ về token.
-- Font: `feather` và `duolingo-sans` là font độc quyền → dùng bản thay thế DESIGN.md gợi ý, nạp bằng
-  `next/font/google` (tự host lúc build, có bộ ký tự tiếng Việt): **Nunito 900** cho tiêu đề display,
+- Font: `feather` và `duolingo-sans` là font độc quyền → dùng bản thay thế DESIGN.md gợi ý, tự host
+  qua gói npm `@fontsource/nunito` và `@fontsource/nunito-sans` (import trong `app/layout`, mỗi file CSS
+  khai báo `@font-face` theo subset latin / latin-ext / vietnamese; không gọi Google Fonts lúc build hay
+  lúc chạy): **Nunito 900** cho tiêu đề display,
   **Nunito Sans 500/700** cho nội dung.
 
 ## 2. Áp dụng quy tắc
@@ -32,7 +34,7 @@ Giao diện frontend (Next.js 14) áp dụng design system do nhóm cung cấp t
 | Nhãn menu viết hoa 15px, tracking 0.053em | `.nav-links a`, `.tabs button`, tiêu đề cột bảng, nhãn thống kê |
 | Không gradient / shadow / glass | Đã bỏ toàn bộ `box-shadow` và gradient (vòng điểm AI Interview chuyển sang vòng viền phẳng) |
 | Bố cục editorial: chữ trái – minh hoạ phải, section cách nhau rộng, không lưới thẻ | Trang chủ: 5 section xen kẽ trái/phải, cách nhau 80px, minh hoạ bằng hình lớn |
-| Footer dải xanh full-bleed | `components/Footer.js` |
+| Footer dải xanh full-bleed | `components/Footer` |
 | Max width 1200px, card padding 16–24px, element gap 12px | `.container`, `.card`, `.row` |
 
 ## 3. Điểm điều chỉnh có chủ đích (ngoài DESIGN.md)
@@ -49,9 +51,9 @@ Giao diện frontend (Next.js 14) áp dụng design system do nhóm cung cấp t
 
 | Thành phần | File | Hành vi |
 |---|---|---|
-| Hộp thoại xác nhận / nhập liệu | `components/ui.js` — `useDialog()` | Thay toàn bộ `window.confirm` / `window.prompt` (gửi yêu cầu, từ chối yêu cầu, kết thúc mentoring, huỷ phiên, xoá nội dung, sinh lại embedding). `await ask({...})` trả chuỗi / `true` / `null`; tự focus, đóng bằng Esc hoặc bấm ra ngoài; nút thao tác phá huỷ dùng `.btn.danger` và nói rõ hậu quả (hoàn tiền, xoá dây chuyền) |
-| Phân rã điểm phù hợp | `app/matching/page.js` — `ScoreBreakdown` | Thanh 3 màu = tương đồng hồ sơ (Eager Green) + đánh giá (Spark Blue) + kinh nghiệm (Night Ink) theo trọng số pipeline; phần đánh giá lấy phần còn lại của `finalScore` nên luôn khớp matching-service (kể cả rating trung tính của *Mentor mới*) |
-| Bộ chọn khung giờ | `features/mentoring/SlotPicker.js` | Gọi `GET /api/mentoring/mentors/{id}/available-slots`; hàng ngày 14 ngày tới (ngày không còn giờ bị mờ, cuộn ngang trên điện thoại) + lưới giờ bắt đầu; đổi thời lượng thì tải lại và bỏ chọn giờ không còn hợp lệ; nút *Xác nhận* khoá tới khi đã chọn giờ |
+| Hộp thoại xác nhận / nhập liệu | `components/ui` — `useDialog()` | Thay toàn bộ `window.confirm` / `window.prompt` (gửi yêu cầu, từ chối yêu cầu, kết thúc mentoring, huỷ phiên, xoá nội dung, sinh lại embedding). `await ask({...})` trả chuỗi / `true` / `null`; tự focus, đóng bằng Esc hoặc bấm ra ngoài; nút thao tác phá huỷ dùng `.btn.danger` và nói rõ hậu quả (hoàn tiền, xoá dây chuyền) |
+| Phân rã điểm phù hợp | `app/matching/page` — `ScoreBreakdown` | Thanh 3 màu = tương đồng hồ sơ (Eager Green) + đánh giá (Spark Blue) + kinh nghiệm (Night Ink) theo trọng số pipeline; phần đánh giá lấy phần còn lại của `finalScore` nên luôn khớp matching-service (kể cả rating trung tính của *Mentor mới*) |
+| Bộ chọn khung giờ | `features/mentoring/SlotPicker` | Gọi `GET /api/mentoring/mentors/{id}/available-slots`; hàng ngày 14 ngày tới (ngày không còn giờ bị mờ, cuộn ngang trên điện thoại) + lưới giờ bắt đầu; đổi thời lượng thì tải lại và bỏ chọn giờ không còn hợp lệ; nút *Xác nhận* khoá tới khi đã chọn giờ |
 
 ## 5. Ảnh chụp giao diện
 

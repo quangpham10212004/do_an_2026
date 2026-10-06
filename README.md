@@ -8,7 +8,7 @@ mentor, **CV Parsing + Chatbot enrichment** làm rõ mục tiêu mentee (DeepSee
 |---|---|
 | Nhóm | Phạm Ngọc Quang · Đinh Quyết Thắng · Phạm Ninh Phương Thảo (E22CNPM03) |
 | GVHD | Đào Ngọc Phong |
-| Tài liệu | [`docs/`](docs/README.md) — SRD, kiến trúc, CSDL, API, AI, kiểm thử, triển khai, hướng dẫn sử dụng |
+| Tài liệu | [`docs/`](docs/README.md) — SRD, kiến trúc, ADR, CSDL, API, AI, chính sách dữ liệu CV, kiểm thử, triển khai, hướng dẫn sử dụng |
 
 ## Chạy nhanh
 
@@ -27,7 +27,7 @@ for p in 8081 8082 8083 8084 8085 8090 8091; do curl -s localhost:$p/health; ech
 Kiểm thử:
 
 ```bash
-python3 scripts/e2e_acceptance.py          # 65 kiểm tra theo Definition of Done
+python3 scripts/e2e_acceptance.py          # kiểm thử chấp nhận theo Definition of Done
 python3 scripts/benchmark_matching.py      # hiệu năng AI Matching
 (cd mentoring-service && mvn test)         # unit test (tương tự các service Java khác)
 (cd matching-service && pip install -r requirements-dev.txt && pytest -q tests)
@@ -37,19 +37,24 @@ python3 scripts/benchmark_matching.py      # hiệu năng AI Matching
 
 Chi tiết: [docs/deployment-guide.md](docs/deployment-guide.md).
 
+> **Đã chạy bản trước khi tách chỉ mục embedding sang matching-service?** `db/init/*.sql` chỉ chạy khi
+> volume mới được tạo, nên phải `docker compose down -v` (**xoá toàn bộ dữ liệu**) rồi `up --build` và
+> chạy lại `seed_demo.py` — xem [deployment-guide.md §8](docs/deployment-guide.md#8-nâng-cấp-phiên-bản--migration-csdl).
+
 ## Kiến trúc
 
 ```
-browser → frontend (Next.js :3000, proxy /api/<service>/**)
+browser → frontend (Next.js 14 + TypeScript :3000, proxy /api/<service>/**)
             ├─ auth-service       Spring Boot :8081  — tài khoản, JWT, RBAC                (Quang)
             ├─ learning-service   Spring Boot :8085  — khoá học, roadmap, tiến độ          (Quang)
-            ├─ profile-service    Spring Boot :8082  — hồ sơ, lịch rảnh, embedding         (Thảo)
-            ├─ matching-service   FastAPI     :8090  — AI Matching                         (Thảo)
+            ├─ profile-service    Spring Boot :8082  — hồ sơ, lịch rảnh                    (Thảo)
+            ├─ matching-service   FastAPI     :8090  — AI Matching + chỉ mục embedding      (Thảo)
             ├─ mentoring-service  Spring Boot :8083  — yêu cầu, lịch, đánh giá, thông báo   (Thắng)
             ├─ ai-service         FastAPI     :8091  — AI Interview (Thắng), CV + chatbot (Quang)
             │                                          DeepSeek API + engine rule-based
             └─ payment-service    Spring Boot :8084  — thanh toán sandbox, referral        (Thắng)
-PostgreSQL 16 (1 DB/service, pgvector cho profile) · Redis · Docker Compose · GitHub Actions
+PostgreSQL 16 — 7 CSDL, 1 DB/service (matching_db dùng pgvector, cổng 5439; matching-service đọc
+profile_db read-only) · Redis · Docker Compose · GitHub Actions
 ```
 
 ## Cấu trúc repo
@@ -63,7 +68,21 @@ db/init/                  schema SQL + dữ liệu seed Learning Hub
 docs/                     tài liệu đồ án
 scripts/                  seed_demo.py, e2e_acceptance.py, benchmark_matching.py, make_sample_cv.py
 auth-service/ learning-service/ profile-service/ mentoring-service/ payment-service/   Java 21, Spring Boot 3.3
-matching-service/         Python 3.11, FastAPI, sentence-transformers
+matching-service/         Python 3.11, FastAPI, sentence-transformers, pgvector (CSDL matching_db)
 ai-service/               Python 3.11, FastAPI, DeepSeek (httpx), pypdf, asyncpg (CSDL ai_db)
-frontend/                 Next.js 14 (src/app = trang, src/features/<owner-folder> = API client)
+frontend/                 Next.js 14 + TypeScript (src/app = trang, src/features/<owner-folder> = API client,
+                          font tự host qua @fontsource)
 ```
+
+## Hạn chế đã biết
+
+- AI Matching **nhất quán cuối cùng**: hồ sơ mới/sửa có thể chưa có trong kết quả tới ~60 giây
+  (`INDEX_SYNC_INTERVAL`).
+- Thanh toán là **sandbox**; không có API Gateway riêng (frontend proxy làm cổng vào).
+- `.env.example` và code có **bí mật mặc định cho dev** (`JWT_SECRET`, `INTERNAL_API_KEY`, mật khẩu CSDL; service
+  log WARN lúc khởi động nếu còn dùng giá trị dev trong code) —
+  bắt buộc thay khi triển khai thật.
+- Không có công cụ migration CSDL; CV xoá được nhưng chưa có thời hạn lưu tự động.
+
+Chi tiết và lý do: [docs/architecture.md §8](docs/architecture.md#8-hạn-chế-đã-biết), [docs/adr.md](docs/adr.md),
+[docs/cv-data-policy.md](docs/cv-data-policy.md).

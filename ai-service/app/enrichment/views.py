@@ -19,6 +19,14 @@ class CvView(CamelModel):
     created_at: datetime
 
 
+class CvSummaryView(CamelModel):
+    """Một dòng trong GET /api/ai/cv/mine."""
+    id: UUID
+    file_name: str
+    uploaded_at: datetime
+    file_url: str
+
+
 class EnrichmentMessageView(CamelModel):
     turn_no: int
     slot: str

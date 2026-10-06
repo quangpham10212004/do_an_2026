@@ -306,3 +306,25 @@ paths:
       responses:
         "204": { description: OK }
         "400": { description: RECIPIENT_REQUIRED }
+  /internal/relationships:
+    get:
+      summary: Nội bộ — mentor và mentee có yêu cầu mentoring đang mở (PENDING hoặc ACCEPTED) hay không
+      description: >-
+        ai-service dùng để kiểm tra quyền mentor tải CV của mentee: chỉ mentor đang xét yêu cầu (PENDING)
+        hoặc đang hướng dẫn (ACCEPTED) mentee đó mới được tải. Yêu cầu REJECTED/CANCELLED/COMPLETED không tính.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: mentorId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentorId: { type: string, format: uuid }
+                  menteeId: { type: string, format: uuid }
+                  related: { type: boolean, description: "true khi có yêu cầu PENDING hoặc ACCEPTED giữa hai người" }
+        "400": { description: BAD_REQUEST (thiếu hoặc sai định dạng mentorId/menteeId) }
