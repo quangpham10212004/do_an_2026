@@ -15,7 +15,6 @@ DB của docker compose đang chạy.
 """
 import hashlib
 import os
-import pathlib
 import uuid
 
 import asyncpg
@@ -25,6 +24,7 @@ from app import db
 from app.services import index_service
 from app.services.embedding_service import EMBEDDING_DIM
 from app.services.profile_text import MENTEE, MENTOR, normalize, text_hash
+from tests.schema import migrate_matching_db, reset_profile_db
 
 _REQUIRED = ("MATCHING_DB_URL", "PROFILE_DB_URL", "PROFILE_DB_ADMIN_URL")
 _MISSING = [name for name in _REQUIRED if not os.getenv(name)]
@@ -35,9 +35,6 @@ if _MISSING:
     pytest.skip(f"cần CSDL thật, thiếu biến: {', '.join(_MISSING)}", allow_module_level=True)
 
 pytestmark = pytest.mark.anyio
-
-# Schema lấy thẳng từ db/init (giống ai-service/tests) — các file đều idempotent.
-_INIT = pathlib.Path(__file__).resolve().parents[2] / "db" / "init"
 
 
 def _fake_vector(text: str) -> list[float]:
@@ -59,9 +56,9 @@ async def dbs(monkeypatch):
 
     admin = await asyncpg.connect(os.environ["PROFILE_DB_ADMIN_URL"])
     matching = await asyncpg.connect(os.environ["MATCHING_DB_URL"])
-    await admin.execute((_INIT / "profile-service.sql").read_text())
-    await matching.execute((_INIT / "matching-service.sql").read_text())
-    await admin.execute("TRUNCATE mentor_profiles, mentee_profiles CASCADE")
+    # Schema dựng từ chính migration của repo (US-11): Flyway của profile-service, runner của matching.
+    await reset_profile_db(admin)
+    await migrate_matching_db(matching)
     await matching.execute("TRUNCATE mentor_embeddings, mentee_embeddings")
     try:
         yield {"profile": admin, "matching": matching, "embed_calls": calls}

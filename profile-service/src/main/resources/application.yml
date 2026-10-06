@@ -12,6 +12,13 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+  # US-11 — schema do Flyway quản lý (src/main/resources/db/migration). CSDL đã tạo bằng
+  # db/init/profile-service.sql được baseline ở V1, sau đó chạy V2+ lúc khởi động.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
 
 management:
   endpoints:

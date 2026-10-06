@@ -17,6 +17,8 @@ PROFILE_DB_URL = os.getenv(
     "PROFILE_DB_URL",
     "postgresql://matching_reader:matching_reader@localhost:5434/profile_db",
 )
+# NFR-9 — APP_ENV=prod: từ chối khởi động nếu còn dùng khoá dev mặc định (prod_secret_errors()).
+APP_ENV = os.getenv("APP_ENV", "dev").strip().lower()
 JWT_SECRET = os.getenv("JWT_SECRET", _DEV_JWT_SECRET)
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", _DEV_INTERNAL_API_KEY)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -27,6 +29,25 @@ PRELOAD_MODEL = os.getenv("PRELOAD_MODEL", "true").lower() == "true"
 INDEX_SYNC_ENABLED = os.getenv("INDEX_SYNC_ENABLED", "true").lower() == "true"
 INDEX_SYNC_INTERVAL = float(os.getenv("INDEX_SYNC_INTERVAL", "60"))  # giây
 INDEX_SYNC_BATCH = int(os.getenv("INDEX_SYNC_BATCH", "200"))  # số hồ sơ embed lại mỗi vòng
+
+# US-11 — áp dụng matching-service/migrations/*.sql lúc khởi động (bảng schema_migrations).
+MIGRATE_ON_STARTUP = os.getenv("MIGRATE_ON_STARTUP", "true").lower() == "true"
+
+
+def is_prod() -> bool:
+    return APP_ENV == "prod"
+
+
+def prod_secret_errors() -> list[str]:
+    """NFR-9 — tên các biến còn dùng giá trị dev mặc định khi chạy ở APP_ENV=prod (rỗng = an toàn)."""
+    if not is_prod():
+        return []
+    problems = []
+    if JWT_SECRET == _DEV_JWT_SECRET:
+        problems.append("JWT_SECRET")
+    if INTERNAL_API_KEY == _DEV_INTERNAL_API_KEY:
+        problems.append("INTERNAL_API_KEY")
+    return problems
 
 
 def dev_secret_warnings() -> list[str]:
