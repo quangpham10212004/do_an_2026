@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
@@ -38,10 +39,55 @@ public class ProfileClient {
     public record AvailabilitySlot(UUID id, int dayOfWeek, LocalTime startTime, LocalTime endTime) {
     }
 
+    /** Ngày nghỉ / giờ bận đột xuất của mentor (US-05). startTime/endTime null = nghỉ cả ngày. */
+    public record AvailabilityException(LocalDate date, LocalTime startTime, LocalTime endTime) {
+        public boolean wholeDay() {
+            return startTime == null || endTime == null;
+        }
+    }
+
+    /** Trạng thái nhận mentee của mentor (profile-service, Team B). Thiếu → ACCEPTING. */
+    public enum MentorStatus { ACCEPTING, PAUSED, ON_LEAVE, SUSPENDED }
+
+    public static final int DEFAULT_BUFFER_MINUTES = 15;
+    public static final int DEFAULT_MIN_NOTICE_HOURS = 12;
+
+    /**
+     * GET /internal/mentor/{id}. Các trường status, onLeaveUntil, bufferMinutes, minNoticeHours, meetingLink,
+     * timezone, exceptions do profile-service bổ sung sau (interface 1) — thiếu thì dùng giá trị an toàn qua
+     * các hàm effective*().
+     */
     public record MentorInfo(UUID userId, String displayName, List<String> skills, String domain, String bio,
                              int yearsExperience, BigDecimal hourlyRate, int capacity, int activeMenteeCount,
                              boolean isAvailable, float rating, int ratingCount, String verificationStatus,
-                             List<AvailabilitySlot> availability) {
+                             List<AvailabilitySlot> availability,
+                             String status, LocalDate onLeaveUntil, Integer bufferMinutes, Integer minNoticeHours,
+                             String meetingLink, String timezone, List<AvailabilityException> exceptions) {
+
+        public MentorStatus effectiveStatus() {
+            if (status == null || status.isBlank()) return MentorStatus.ACCEPTING;
+            try {
+                return MentorStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return MentorStatus.ACCEPTING;
+            }
+        }
+
+        public int effectiveBufferMinutes() {
+            return bufferMinutes == null || bufferMinutes < 0 ? DEFAULT_BUFFER_MINUTES : bufferMinutes;
+        }
+
+        public int effectiveMinNoticeHours() {
+            return minNoticeHours == null || minNoticeHours < 0 ? DEFAULT_MIN_NOTICE_HOURS : minNoticeHours;
+        }
+
+        public List<AvailabilitySlot> availabilityOrEmpty() {
+            return availability == null ? List.of() : availability;
+        }
+
+        public List<AvailabilityException> exceptionsOrEmpty() {
+            return exceptions == null ? List.of() : exceptions.stream().filter(e -> e != null && e.date() != null).toList();
+        }
     }
 
     public record ProfileSummary(UUID userId, String displayName, String role, String domain) {

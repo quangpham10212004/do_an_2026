@@ -105,7 +105,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Request" }
-        "400": { description: MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE }
+        "400": { description: "MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
         "409": { description: REQUEST_ALREADY_EXISTS }
   /api/mentoring/requests/{id}/respond:
     post:
@@ -151,10 +151,15 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/Session" } }
     post:
       summary: >
-        FR-5.4 (MENTEE) Đặt lịch — yêu cầu đã ACCEPTED, thời điểm nằm trọn trong lịch rảnh
-        của mentor (giờ Asia/Ho_Chi_Minh), trước ≥ 1 giờ và trong 60 ngày, không trùng
-        phiên PENDING/CONFIRMED của mentor hoặc mentee. Phiên có phí → PENDING (chờ thanh
-        toán, tự huỷ sau 30 phút); phiên miễn phí → CONFIRMED.
+        FR-5.4 / PRD-SES-1 (MENTEE) Đặt lịch — yêu cầu đã ACCEPTED; trạng thái mentor không phải
+        ON_LEAVE (tới hết onLeaveUntil) / SUSPENDED (PAUSED vẫn cho mentee đã được nhận); đặt trước
+        ≥ max(1 giờ, minNoticeHours của mentor — mặc định 12) và trong 60 ngày; nằm trọn trong lịch rảnh
+        hằng tuần (giờ Asia/Ho_Chi_Minh) và không rơi vào ngoại lệ (nghỉ cả ngày / bận một khoảng giờ);
+        không trùng phiên PENDING/CONFIRMED của mentor tính cả bufferMinutes trước và sau (mặc định 15 —
+        phiên 10:00–11:00 chặn tới 11:15) hoặc của mentee. Kiểm tra trùng + tạo phiên chạy dưới advisory
+        lock theo mentor. Dữ kiện mentor lấy từ profile-service GET /internal/mentor/{id} (status,
+        onLeaveUntil, bufferMinutes, minNoticeHours, exceptions — thiếu thì dùng mặc định).
+        Phiên có phí → PENDING (chờ thanh toán, tự huỷ sau 30 phút); phiên miễn phí → CONFIRMED.
       requestBody:
         required: true
         content:
@@ -178,7 +183,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
         "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
-        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
+        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED }
   /api/mentoring/sessions/{id}:
     get:
       summary: Chi tiết phiên (người tham gia / admin)
@@ -231,8 +236,10 @@ paths:
     get:
       summary: >
         FR-5.4 Các thời điểm có thể đặt lịch với mentor — bước 30 phút, nằm trọn trong lịch rảnh
-        hằng tuần, không trùng phiên PENDING/CONFIRMED của mentor hoặc của người gọi, tuân thủ
-        min-lead-time và max-advance. Chỉ trả thời điểm, không lộ thông tin phiên của người khác.
+        hằng tuần trừ ngoại lệ, không trùng phiên PENDING/CONFIRMED của mentor (tính buffer) hoặc của
+        người gọi, bỏ ngày mentor ON_LEAVE/SUSPENDED, tuân thủ max(min-lead-time, minNoticeHours) và
+        max-advance — cùng quy tắc với POST /api/mentoring/sessions. Chỉ trả thời điểm, không lộ thông tin
+        phiên của người khác.
       parameters:
         - { $ref: "#/components/parameters/Id" }
         - { name: durationMinutes, in: query, schema: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 } }
