@@ -1,9 +1,9 @@
 import type { IsoDateTime, Uuid } from "./common";
+import type { SessionType } from "./profile";
 
 // contracts/mentoring-service.yaml
 export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 export type SessionStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
-export type SessionType = "CAREER_ADVICE" | "CODE_REVIEW" | "MOCK_INTERVIEW" | "PROJECT_GUIDANCE";
 /** US-03 — thời lượng phiên được phép (phút). */
 export type SessionDuration = 30 | 45 | 60 | 90 | 120;
 
