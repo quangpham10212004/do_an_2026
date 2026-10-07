@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -26,6 +26,10 @@ export const aiApi = {
     form.append("consentExternalAi", String(consentExternalAi));
     return api<Cv>("/api/ai/cv/parse", { method: "POST", form });
   },
+  // US-20: lưu thông tin đã duyệt (chỉ chủ CV), rồi mới bắt đầu chatbot (409 CV_NOT_REVIEWED nếu chưa duyệt)
+  confirmCvFields: (cvId: Uuid, fields: ConfirmedCvFields) =>
+    api<Cv>(`/api/ai/cv/${cvId}/confirmed-fields`, { method: "PUT", body: fields }),
+  startEnrichment: (cvId: Uuid) => api<CvUploadResult>(`/api/ai/cv/${cvId}/enrichment-conversation`, { method: "POST" }),
   cvFileUrl: (cvId: Uuid) => `/api/ai/cv/${cvId}/file`,
   /** File PDF gốc (cần đăng nhập) — `url` là cvFileUrl / CvSummary.fileUrl. */
   cvFile: (url: string) => apiBlob(url),

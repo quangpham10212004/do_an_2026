@@ -72,7 +72,19 @@ export interface Cv {
   parsed: ParsedCv;
   /** US-19: false => CV này chỉ được xử lý bằng engine rule-based (không gửi DeepSeek). */
   consentExternalAi: boolean;
+  /** US-20: null = chưa duyệt kết quả parse (chatbot chưa bắt đầu). */
+  confirmedFields: ConfirmedCvFields | null;
+  confirmedAt: IsoDateTime | null;
   createdAt: IsoDateTime;
+}
+
+/** US-20: thông tin CV người dùng đã xem lại / sửa / bỏ (PUT /api/ai/cv/{id}/confirmed-fields). */
+export interface ConfirmedCvFields {
+  role: string | null;
+  skills: string[];
+  yearsExperience: number | null;
+  projects: CvProject[];
+  education: string[];
 }
 
 export type EnrichmentSlot =
@@ -120,5 +132,6 @@ export interface CvSummary {
 
 export interface CvUploadResult {
   cv: Cv;
-  conversation: Conversation;
+  /** US-20: null cho tới khi người dùng duyệt thông tin CV và bắt đầu chatbot. */
+  conversation: Conversation | null;
 }

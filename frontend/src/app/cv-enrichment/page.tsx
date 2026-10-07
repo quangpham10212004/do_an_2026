@@ -6,23 +6,25 @@ import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import CvConsent from "@/features/ai/CvConsent";
+import CvReview, { initialFields } from "@/features/ai/CvReview";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { Cv, CvUploadResult, SessionUser } from "@/types";
+import type { ConfirmedCvFields, Cv, CvUploadResult, SessionUser } from "@/types";
 
-function ParsedCvCard({ cv }: { cv: Cv }) {
-  const p = cv.parsed;
+/** Thông tin CV mà chatbot đang dùng: bản người dùng đã duyệt (US-20). */
+function ConfirmedCvCard({ cv }: { cv: Cv }) {
+  const p = initialFields(cv);
   return (
     <div className="card">
-      <h2>Thông tin trích xuất từ CV</h2>
+      <h2>Thông tin CV đã xác nhận</h2>
       <p className="muted small">
         {cv.fileName} · engine {cv.engine} · {cv.consentExternalAi ? "đã đồng ý gửi AI bên ngoài" : "chỉ xử lý trên nền tảng (rule-based)"}
       </p>
-      {p.currentRole && <p><strong>Vai trò:</strong> {p.currentRole}</p>}
+      {p.role && <p><strong>Vai trò:</strong> {p.role}</p>}
       <p><strong>Kinh nghiệm:</strong> {p.yearsExperience != null ? `${p.yearsExperience} năm` : "chưa xác định"}</p>
       <div className="field">
         <strong>Kỹ năng</strong>
         <div className="chips" style={{ marginTop: 4 }}>
-          {p.skills.length === 0 && <span className="muted small">Không tìm thấy</span>}
+          {p.skills.length === 0 && <span className="muted small">Không có</span>}
           {p.skills.map((s) => <span className="chip" key={s}>{s}</span>)}
         </div>
       </div>
@@ -33,7 +35,7 @@ function ParsedCvCard({ cv }: { cv: Cv }) {
             {p.projects.map((pr, i) => (
               <li key={i}>
                 {pr.name}
-                {pr.technologies?.length > 0 && <span className="muted small"> — {pr.technologies.join(", ")}</span>}
+                {pr.technologies.length > 0 && <span className="muted small"> — {pr.technologies.join(", ")}</span>}
               </li>
             ))}
           </ul>
@@ -73,9 +75,22 @@ function Enrichment({ user }: { user: SessionUser }) {
     }
   }
 
+  /** US-20: lưu thông tin đã duyệt rồi bắt đầu chatbot. Lỗi được CvReview hiển thị. */
+  async function confirmAndStart(cv: Cv, fields: ConfirmedCvFields) {
+    setBusy(true);
+    setError("");
+    try {
+      const confirmed = await aiApi.confirmCvFields(cv.id, fields);
+      setState({ cv: confirmed, conversation: null });
+      setState(await aiApi.startEnrichment(cv.id));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send(e: FormEvent) {
     e.preventDefault();
-    if (!answer.trim() || !state) return;
+    if (!answer.trim() || !state?.conversation) return;
     setBusy(true);
     setError("");
     try {
@@ -90,27 +105,28 @@ function Enrichment({ user }: { user: SessionUser }) {
   }
 
   if (state === undefined) return <Loading />;
-  const conv = state?.conversation;
+  const conv = state?.conversation ?? null;
   const completed = conv?.status === "COMPLETED";
 
   return (
     <>
-      <PageHead title="CV & làm rõ mục tiêu" subtitle="Tải CV (PDF), chatbot sẽ hỏi thêm vài câu để hiểu rõ mục tiêu học tập của bạn." />
+      <PageHead title="CV & làm rõ mục tiêu" subtitle="Tải CV (PDF), xem lại thông tin trích xuất, rồi chatbot sẽ hỏi thêm vài câu để hiểu rõ mục tiêu học tập của bạn." />
       <Alert>{error}</Alert>
       <div className="card" style={{ marginBottom: "1rem" }}>
         <CvConsent checked={consent} onChange={setConsent} audience="MENTEE" disabled={busy} />
         <div className="row">
           <div style={{ flex: 1 }}>
-            <strong>{conv ? "Tải CV mới để bắt đầu lại" : "Tải CV của bạn"}</strong>
+            <strong>{state ? "Tải CV mới để bắt đầu lại" : "Tải CV của bạn"}</strong>
             <div className="hint">PDF có lớp văn bản, tối đa 5MB.</div>
           </div>
           <input type="file" accept="application/pdf" disabled={busy} style={{ maxWidth: 300 }} onChange={(e) => upload(e.target.files?.[0])} />
         </div>
       </div>
-      {busy && !conv && <Loading text="Đang phân tích CV..." />}
-      {conv && (
+      {busy && !state && <Loading text="Đang phân tích CV..." />}
+      {state && !conv && <CvReview key={state.cv.id} cv={state.cv} busy={busy} onConfirm={(fields) => confirmAndStart(state.cv, fields)} />}
+      {state && conv && (
         <div className="grid grid-2" style={{ alignItems: "start" }}>
-          <ParsedCvCard cv={state.cv} />
+          <ConfirmedCvCard cv={state.cv} />
           <div className="card">
             <div className="row between">
               <h2>Chatbot làm rõ mục tiêu</h2>

@@ -7,20 +7,21 @@ from app.db import Db
 from app.enrichment.models import Exchange
 
 
-async def insert(conn: Db, mentee_id: UUID, cv_id: UUID, max_turns: int, engine: str) -> asyncpg.Record:
+async def insert_if_absent(conn: Db, mentee_id: UUID, cv_id: UUID, max_turns: int,
+                           engine: str) -> asyncpg.Record | None:
+    """Tạo hội thoại cho CV; None nếu CV đã có hội thoại (mỗi CV tối đa 1 — uq_enrichment_conversations_cv)."""
     return await conn.fetchrow(
         """INSERT INTO enrichment_conversations (mentee_id, cv_id, max_turns, engine)
-           VALUES ($1, $2, $3, $4) RETURNING *""",
+           VALUES ($1, $2, $3, $4) ON CONFLICT (cv_id) DO NOTHING RETURNING *""",
         mentee_id, cv_id, max_turns, engine)
+
+
+async def find_for_cv(conn: Db, cv_id: UUID) -> asyncpg.Record | None:
+    return await conn.fetchrow("SELECT * FROM enrichment_conversations WHERE cv_id = $1", cv_id)
 
 
 async def find(conn: Db, conversation_id: UUID) -> asyncpg.Record | None:
     return await conn.fetchrow("SELECT * FROM enrichment_conversations WHERE id = $1", conversation_id)
-
-
-async def latest_for_mentee(conn: Db, mentee_id: UUID) -> asyncpg.Record | None:
-    return await conn.fetchrow(
-        "SELECT * FROM enrichment_conversations WHERE mentee_id = $1 ORDER BY created_at DESC LIMIT 1", mentee_id)
 
 
 async def pending_profile_sync(conn: Db) -> list[asyncpg.Record]:

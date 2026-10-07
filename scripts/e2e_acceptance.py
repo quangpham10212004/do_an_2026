@@ -127,7 +127,12 @@ def main():
     parsed = upload["cv"]["parsed"]
     check(3, "Parse CV: trích xuất kỹ năng", {"Java", "Spring Boot", "Docker"} <= set(parsed["skills"]), parsed["skills"])
     check(3, "Parse CV: trích xuất dự án & kinh nghiệm", len(parsed["projects"]) >= 2 and parsed["yearsExperience"] is not None, parsed)
-    conv = upload["conversation"]
+    # Sprint 2 US-20: upload chỉ parse (chưa có hội thoại); duyệt thông tin (giữ nguyên) rồi mới bắt đầu chatbot
+    check(3, "Upload chỉ parse, chưa mở chatbot (chờ người dùng duyệt)", upload["conversation"] is None)
+    call("PUT", f"{AI}/api/ai/cv/{upload['cv']['id']}/confirmed-fields", {
+        "role": parsed["currentRole"], "skills": parsed["skills"], "yearsExperience": parsed["yearsExperience"],
+        "projects": parsed["projects"], "education": parsed["education"]}, token=mentee_token)
+    conv = call("POST", f"{AI}/api/ai/cv/{upload['cv']['id']}/enrichment-conversation", token=mentee_token)["conversation"]
     first_q = conv["currentQuestion"]["question"]
     check(3, "Câu hỏi đầu dựa trên CV (nhắc lại kỹ năng đã có, không hỏi lại)", "Java" in first_q, first_q)
     answers = ["Toi muon lam backend developer Java trong 6 thang toi", "System design va microservices",

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app import config, errors
+from app.cv.models import ConfirmedFields
 from app.enrichment import service
 from app.enrichment.views import CvSummaryView, CvUploadResult, CvView
 from app.security import AuthUser, require_role, require_user
@@ -44,6 +45,18 @@ async def parse(file: UploadFile = File(...), consent_external_ai: bool | None =
     consent = _consent(consent_external_ai)
     file_name, content = await _read(file)
     return await service.parse_and_store(user.user_id, file_name, content, consent)
+
+
+@router.put("/cv/{cv_id}/confirmed-fields", response_model=CvView, response_model_by_alias=True)
+async def confirm_fields(cv_id: UUID, body: ConfirmedFields, user: AuthUser = Depends(require_user)) -> CvView:
+    """US-20 — lưu thông tin CV người dùng đã xem lại/sửa/bỏ (chỉ chủ CV); không ghi gì vào hồ sơ."""
+    return await service.confirm_fields(user, cv_id, body)
+
+
+@router.post("/cv/{cv_id}/enrichment-conversation", response_model=CvUploadResult, response_model_by_alias=True)
+async def start_conversation(cv_id: UUID, user: AuthUser = Depends(require_role("MENTEE"))) -> CvUploadResult:
+    """US-20 — bắt đầu chatbot enrichment cho CV đã duyệt (gọi lại trả về hội thoại đã có)."""
+    return await service.start_conversation(user, cv_id)
 
 
 @router.get("/cv/{cv_id}/file")

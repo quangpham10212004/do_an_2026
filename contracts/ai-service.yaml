@@ -101,7 +101,34 @@ components:
           description: >-
             US-19 — người dùng đồng ý gửi CV này tới AI bên ngoài (DeepSeek). false => parse và mọi lượt chatbot
             enrichment của CV này chỉ dùng engine RULE_BASED. CV tải lên trước Sprint 2 = false.
+        confirmedFields:
+          allOf: [{ $ref: "#/components/schemas/ConfirmedFields" }]
+          nullable: true
+          description: US-20 — null = người dùng chưa duyệt kết quả parse (chatbot chưa bắt đầu)
+        confirmedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+    ConfirmedFields:
+      type: object
+      description: >-
+        US-20 — thông tin CV sau khi người dùng xem lại, sửa hoặc bỏ từng mục. Chatbot dùng các trường này làm
+        ngữ cảnh (không dùng `parsed`), và chỉ `skills` ở đây được gửi sang hồ sơ khi người dùng xác nhận mục
+        tiêu. Chuỗi được cắt khoảng trắng; phần tử rỗng bị bỏ; skills/technologies/education bỏ trùng không
+        phân biệt hoa thường. Sai ràng buộc => 400 VALIDATION_ERROR.
+      properties:
+        role: { type: string, nullable: true, maxLength: 120, description: "Chuỗi rỗng => null" }
+        skills: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
+        yearsExperience: { type: integer, nullable: true, minimum: 0, maximum: 45 }
+        projects:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string, minLength: 1, maxLength: 120 }
+              description: { type: string, maxLength: 400 }
+              technologies: { type: array, maxItems: 15, items: { type: string, maxLength: 60 } }
+        education: { type: array, maxItems: 6, items: { type: string, maxLength: 200 } }
     CvSummary:
       type: object
       properties:
@@ -138,7 +165,10 @@ components:
       type: object
       properties:
         cv: { $ref: "#/components/schemas/Cv" }
-        conversation: { $ref: "#/components/schemas/Conversation" }
+        conversation:
+          allOf: [{ $ref: "#/components/schemas/Conversation" }]
+          nullable: true
+          description: US-20 — null cho tới khi người dùng duyệt thông tin CV và bắt đầu chatbot
     CvUploadForm:
       type: object
       required: [file, consentExternalAi]
@@ -243,8 +273,10 @@ paths:
   /api/ai/mentee/{id}/cv-upload:
     post:
       summary: >
-        FR-8.1 → FR-8.3 (MENTEE) Upload CV PDF (≤ 5MB, có lớp text) → parse có cấu trúc →
-        mở hội thoại enrichment với câu hỏi đầu tiên dựa trên CV. Yêu cầu đã có hồ sơ mentee.
+        FR-8.1 + FR-8.2 (MENTEE) Upload CV PDF (≤ 5MB, có lớp text) → parse có cấu trúc. Yêu cầu đã có hồ sơ
+        mentee. Sprint 2 (US-20): KHÔNG mở hội thoại và KHÔNG ghi gì vào hồ sơ — trả `conversation: null`;
+        người dùng duyệt thông tin (PUT /api/ai/cv/{id}/confirmed-fields) rồi mới bắt đầu chatbot
+        (POST /api/ai/cv/{id}/enrichment-conversation).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -261,7 +293,7 @@ paths:
         "413": { description: FILE_TOO_LARGE }
   /api/ai/mentee/{id}/enrichment/latest:
     get:
-      summary: CV + hội thoại enrichment gần nhất của mentee
+      summary: CV mới nhất của mentee + hội thoại của CV đó (`conversation` null nếu chưa duyệt / chưa bắt đầu)
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: CvUploadResult }
@@ -303,6 +335,43 @@ paths:
               schema: { $ref: "#/components/schemas/Cv" }
         "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
+  /api/ai/cv/{id}/confirmed-fields:
+    put:
+      summary: >
+        US-20 (PRD-CV-2) Lưu thông tin CV người dùng đã xem lại/sửa/bỏ (chỉ chủ CV — ADMIN và mentor cũng 403).
+        Gọi lại được nhiều lần (ghi đè). Không ghi gì vào hồ sơ.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmedFields" }
+      responses:
+        "200":
+          description: CV kèm confirmedFields đã chuẩn hoá
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cv" }
+        "400": { description: VALIDATION_ERROR }
+        "403": { description: FORBIDDEN — không phải chủ CV }
+        "404": { description: CV_NOT_FOUND }
+  /api/ai/cv/{id}/enrichment-conversation:
+    post:
+      summary: >
+        US-20 / FR-8.3 (MENTEE, chủ CV) Bắt đầu chatbot enrichment cho CV đã duyệt; câu hỏi dựa trên
+        confirmedFields, engine theo consentExternalAi của CV. Mỗi CV tối đa một hội thoại: gọi lại trả về
+        hội thoại đã có (200).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: CV + hội thoại
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CvUploadResult" }
+        "400": { description: PROFILE_REQUIRED }
+        "403": { description: FORBIDDEN — không phải chủ CV }
+        "404": { description: CV_NOT_FOUND }
+        "409": { description: CV_NOT_REVIEWED — chưa PUT confirmed-fields }
   /api/ai/cv/mine:
     get:
       summary: Danh sách CV của chính người gọi (mới nhất trước) — để giao diện cho phép xoá

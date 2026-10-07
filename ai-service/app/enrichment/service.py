@@ -1,9 +1,10 @@
 """
 CV Parsing + Chatbot enrichment (FR-8.1 → FR-8.5).
 
-upload CV (PDF) → trích xuất text + parse có cấu trúc → mở hội thoại {maxTurns} lượt,
-câu hỏi dựa trên CV → tổng hợp goal → gửi sang profile-service (cập nhật goal, gộp kỹ năng
-từ CV, sinh lại embedding).
+upload CV (PDF, kèm đồng ý gửi AI bên ngoài — US-19) → trích xuất text + parse có cấu trúc (KHÔNG ghi gì
+vào hồ sơ) → người dùng duyệt/sửa/bỏ từng trường (US-20, confirmed_fields) → mở hội thoại {maxTurns} lượt,
+câu hỏi dựa trên trường đã duyệt → tổng hợp goal → gửi sang profile-service (cập nhật goal, gộp kỹ năng
+đã duyệt, sinh lại embedding).
 
 ai-service sở hữu cả luồng lẫn dữ liệu: file CV, CV đã parse và hội thoại nằm ở ai-service.
 Lời gọi engine luôn thực hiện NGOÀI transaction.
@@ -21,6 +22,7 @@ from app.cv import repository as cv_repo
 from app.db import get_pool
 from app.enrichment import engine as enrichment_engine
 from app.enrichment import repository as repo
+from app.cv.models import ConfirmedFields
 from app.enrichment.models import Exchange, MenteeContext
 from app.enrichment.views import (ConversationView, CvSummaryView, CvUploadResult, CvView, conversation_view,
                                   cv_view)
@@ -56,24 +58,58 @@ async def parse_and_store(owner_id: UUID, file_name: str, content: bytes, consen
 
 async def upload_for_mentee(user: AuthUser, mentee_id: UUID, file_name: str, content: bytes,
                             consent_external_ai: bool) -> CvUploadResult:
-    """FR-8.1 → FR-8.3 — mentee upload CV và bắt đầu chatbot enrichment."""
+    """
+    FR-8.1 + FR-8.2 — mentee upload CV. Chỉ parse và lưu CV; chatbot CHƯA bắt đầu (`conversation = null`)
+    cho tới khi mentee duyệt thông tin trích xuất (US-20: confirm_fields → start_conversation).
+    """
     if not user.is_admin and not user.is_internal and user.user_id != mentee_id:
         raise errors.forbidden("Bạn chỉ có thể tải CV cho chính mình")
-    mentee = await profile.find_mentee(mentee_id)
-    if mentee is None:
+    if await profile.find_mentee(mentee_id) is None:
         raise errors.bad_request("PROFILE_REQUIRED",
                                  "Hãy tạo hồ sơ nghề nghiệp (lĩnh vực, mục tiêu) trước khi tải CV")
+    return CvUploadResult(cv=await parse_and_store(mentee_id, file_name, content, consent_external_ai))
 
-    cv = await parse_and_store(mentee_id, file_name, content, consent_external_ai)
-    ctx = _context(mentee, cv.parsed, MAX_TURNS)
-    first = await enrichment_engine.next_question(cv.engine, ctx, [], cv.consent_external_ai)
 
+async def confirm_fields(user: AuthUser, cv_id: UUID, fields: ConfirmedFields) -> CvView:
+    """
+    US-20 — lưu các trường người dùng đã xem lại/sửa/bỏ (chỉ chủ CV). Không ghi gì sang hồ sơ: kỹ năng đã duyệt
+    chỉ tới profile-service khi người dùng xác nhận mục tiêu (US-21).
+    """
     pool = await get_pool()
+    cv = await _own_cv(pool, user, cv_id)
+    return cv_view(await cv_repo.set_confirmed(pool, cv["id"], fields))
+
+
+async def start_conversation(user: AuthUser, cv_id: UUID) -> CvUploadResult:
+    """
+    FR-8.3 — bắt đầu chatbot enrichment cho CV đã duyệt (chủ CV, MENTEE). Mỗi CV một hội thoại: gọi lại trả về
+    hội thoại đã có. Câu hỏi đầu dùng trường đã duyệt; engine theo đồng ý của CV (US-19).
+    """
+    pool = await get_pool()
+    cv = await _own_cv(pool, user, cv_id)
+    existing = await repo.find_for_cv(pool, cv_id)
+    if existing is not None:
+        messages = await repo.messages_of(pool, existing["id"])
+        return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(existing, messages))
+    confirmed = cv_repo.confirmed_of(cv)
+    if confirmed is None:
+        raise errors.conflict("CV_NOT_REVIEWED",
+                              "Hãy xem lại và xác nhận thông tin trích xuất từ CV trước khi trò chuyện")
+    mentee = await profile.find_mentee(cv["user_id"])
+    if mentee is None:
+        raise errors.bad_request("PROFILE_REQUIRED",
+                                 "Hãy tạo hồ sơ nghề nghiệp (lĩnh vực, mục tiêu) trước khi trò chuyện")
+
+    ctx = _context(mentee, confirmed.as_parsed(), MAX_TURNS)
+    first = await enrichment_engine.next_question(cv["engine"], ctx, [], cv["consent_external_ai"])
+
     async with pool.acquire() as conn, conn.transaction():
-        conversation = await repo.insert(conn, mentee_id, cv.id, MAX_TURNS, first.engine)
-        await repo.insert_message(conn, conversation["id"], 1, first.question.slot, first.question.question)
+        conversation = await repo.insert_if_absent(conn, cv["user_id"], cv_id, MAX_TURNS, first.engine)
+        if conversation is not None:
+            await repo.insert_message(conn, conversation["id"], 1, first.question.slot, first.question.question)
+    conversation = conversation or await repo.find_for_cv(pool, cv_id)  # bấm hai lần cùng lúc: lấy bản đã có
     messages = await repo.messages_of(pool, conversation["id"])
-    return CvUploadResult(cv=cv, conversation=conversation_view(conversation, messages))
+    return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(conversation, messages))
 
 
 async def answer(user: AuthUser, conversation_id: UUID, text: str) -> ConversationView:
@@ -95,7 +131,7 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
     if mentee is None:
         raise errors.not_found("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ mentee")
     cv = await cv_repo.find(pool, conversation["cv_id"])
-    ctx = _context(mentee, cv_repo.parsed_of(cv), conversation["max_turns"])
+    ctx = _context(mentee, cv_repo.chat_context_of(cv), conversation["max_turns"])
     allow_external = cv["consent_external_ai"]  # US-19: kiểm tra lại ở mỗi lượt
 
     history = [repo.to_exchange(m) for m in messages if m["answer"] is not None]
@@ -133,7 +169,7 @@ async def sync_profile(conversation_id: UUID) -> None:
     cv = await cv_repo.find(pool, conversation["cv_id"])
     try:
         await profile.apply_enrichment(conversation["mentee_id"], conversation["enriched_goal"],
-                                       cv_repo.parsed_of(cv).skills, cv_file_url(cv["id"]))
+                                       _confirmed_skills(cv), cv_file_url(cv["id"]))
     except (httpx.HTTPError, errors.AiError) as e:
         log.warning("Could not sync enrichment %s to profile-service: %s", conversation_id, e)
         return
@@ -165,14 +201,16 @@ async def get(user: AuthUser, conversation_id: UUID) -> ConversationView:
 
 
 async def latest(user: AuthUser, mentee_id: UUID) -> CvUploadResult | None:
+    """CV mới nhất của mentee + hội thoại của CV đó (null nếu chưa duyệt/chưa bắt đầu chatbot)."""
     user.require_access(mentee_id)
     pool = await get_pool()
-    conversation = await repo.latest_for_mentee(pool, mentee_id)
-    if conversation is None:
+    cv = await cv_repo.latest_for_user(pool, mentee_id)
+    if cv is None:
         return None
-    cv = await cv_repo.find(pool, conversation["cv_id"])
-    messages = await repo.messages_of(pool, conversation["id"])
-    return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(conversation, messages))
+    conversation = await repo.find_for_cv(pool, cv["id"])
+    view = None if conversation is None else conversation_view(conversation,
+                                                               await repo.messages_of(pool, conversation["id"]))
+    return CvUploadResult(cv=cv_view(cv), conversation=view)
 
 
 async def cv_file(user: AuthUser, cv_id: UUID) -> tuple[str, bytes]:
@@ -224,6 +262,21 @@ async def delete_cv(user: AuthUser, cv_id: UUID) -> None:
         await profile.clear_cv_file(cv["user_id"], cv_file_url(cv_id))
     except httpx.HTTPError as e:
         log.warning("Could not clear cvFileUrl of %s in profile-service: %s", cv["user_id"], e)
+
+
+async def _own_cv(db, user: AuthUser, cv_id: UUID):
+    cv = await cv_repo.find(db, cv_id)
+    if cv is None:
+        raise errors.not_found("CV_NOT_FOUND", "Không tìm thấy CV")
+    if cv["user_id"] != user.user_id:
+        raise errors.forbidden("Chỉ chủ CV được duyệt thông tin và trò chuyện với chatbot")
+    return cv
+
+
+def _confirmed_skills(cv) -> list[str]:
+    """Chỉ kỹ năng người dùng đã duyệt (US-20); CV chưa duyệt => không gửi kỹ năng nào."""
+    confirmed = cv_repo.confirmed_of(cv)
+    return [] if confirmed is None else confirmed.skills
 
 
 def _context(mentee: dict, parsed, max_turns: int) -> MenteeContext:

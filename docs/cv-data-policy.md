@@ -42,7 +42,9 @@ thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Qua
 | `file_name` | Tên file người dùng đặt lúc upload | Trả lại trong header `Content-Disposition` khi tải |
 | `storage_path` | Đường dẫn tương đối trên volume | |
 | `raw_text` | **Toàn bộ văn bản** trích xuất bằng pypdf | Bản sao thứ hai của nội dung CV, nằm trong CSDL |
-| `parsed_json` | Kết quả parse: vai trò, kỹ năng, số năm kinh nghiệm, dự án, học vấn, tóm tắt | |
+| `parsed_json` | Kết quả parse: vai trò, kỹ năng, số năm kinh nghiệm, dự án, học vấn, tóm tắt | Kết quả máy, giữ nguyên để đối chiếu; **không** được gửi sang hồ sơ |
+| `confirmed_fields` | Thông tin người dùng đã xem lại/sửa/bỏ (US-20): `role`, `skills[]`, `yearsExperience`, `projects[]`, `education[]` | `NULL` = chưa duyệt; CV tải trước Sprint 2 = `NULL` (migration `003`) |
+| `confirmed_at` | Lần duyệt gần nhất | |
 | `engine` | `DEEPSEEK` hoặc `RULE_BASED` | |
 | `consent_external_ai` | Người dùng có đồng ý gửi CV này tới AI bên ngoài (US-19) | Bắt buộc khai báo lúc tải; CV tải trước Sprint 2 = `false` (migration `002`) |
 | `created_at` | Thời điểm upload | |
@@ -51,8 +53,11 @@ Liên quan: `enrichment_conversations.cv_id` tham chiếu `cv_documents(id)` (**
 `enrichment_messages` chứa câu trả lời chatbot của mentee (xoá theo hội thoại nhờ `ON DELETE CASCADE`).
 
 ### 2.3 Dữ liệu suy ra lan sang service khác
-Khi hội thoại enrichment hoàn tất, ai-service gửi sang profile-service (`POST
-/api/profile/mentee/{id}/enrichment-chat`): goal tổng hợp, **danh sách kỹ năng từ CV** và `cvFileUrl =
+**Tải và parse CV không ghi gì vào hồ sơ** (US-20). Sau khi parse, người dùng xem lại từng trường, sửa hoặc
+bỏ (`PUT /api/ai/cv/{id}/confirmed-fields`, chỉ chủ CV); chatbot chỉ bắt đầu sau bước này
+(`POST /api/ai/cv/{id}/enrichment-conversation`) và chỉ dùng các trường đã duyệt làm ngữ cảnh. Khi có goal,
+ai-service gửi sang profile-service (`POST /api/profile/mentee/{id}/enrichment-chat`): goal, **chỉ những kỹ
+năng người dùng đã giữ lại** ở bước duyệt (CV chưa duyệt ⇒ danh sách rỗng) và `cvFileUrl =
 /api/ai/cv/{cvId}/file`. Các giá trị này nằm trong `mentee_profiles` (`profile_db`) và gián tiếp đi vào
 văn bản embedding ở `matching_db` (chỉ kỹ năng + goal, không phải toàn văn CV).
 
@@ -78,6 +83,8 @@ file bị từ chối thì không có gì được ghi xuống đĩa hay CSDL.
 |---|---|---|---|
 | Mentee upload CV | `POST /api/ai/mentee/{menteeId}/cv-upload` (multipart `file` + `consentExternalAi`) | Chính mentee đó, ADMIN, nội bộ | Mentee phải có hồ sơ trước (`PROFILE_REQUIRED`); thiếu `consentExternalAi` ⇒ 400 `CONSENT_REQUIRED`, không lưu gì |
 | Parse CV (mentor điền nhanh hồ sơ) | `POST /api/ai/cv/parse` (multipart `file` + `consentExternalAi`) | Mọi người dùng đã đăng nhập | File được lưu dưới `user_id` của người gọi; chỉ trả kết quả, **không ghi hồ sơ** (mentor tự kiểm tra rồi bấm Lưu) |
+| Duyệt thông tin trích xuất | `PUT /api/ai/cv/{cvId}/confirmed-fields` | **Chỉ chủ CV** (ADMIN, mentor ⇒ 403) | Không ghi gì vào hồ sơ |
+| Bắt đầu chatbot | `POST /api/ai/cv/{cvId}/enrichment-conversation` | Chủ CV (MENTEE) | 409 `CV_NOT_REVIEWED` nếu chưa duyệt; mỗi CV một hội thoại |
 | Tải file CV | `GET /api/ai/cv/{cvId}/file` | Chủ CV, ADMIN, nội bộ, mentor **có quan hệ mentoring** với chủ CV | Xem lưu ý dưới |
 | Liệt kê CV của mình | `GET /api/ai/cv/mine` | Mọi người dùng đã đăng nhập — **chỉ trả CV của chính người gọi** (mới nhất trước: `id`, `fileName`, `uploadedAt`, `fileUrl`) | Lời gọi nội bộ (không có user) nhận danh sách rỗng |
 | Xoá CV | `DELETE /api/ai/cv/{cvId}` | **Chủ CV hoặc ADMIN** (204) | Người khác 403 `FORBIDDEN`; không tồn tại 404 `CV_NOT_FOUND`. Mentor có quan hệ cũng **không** xoá được; lời gọi nội bộ không được xoá. Xem mục 6.2 |

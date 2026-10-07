@@ -10,7 +10,7 @@ from app import config
 from app.llm import deepseek
 from tests.conftest import auth
 from tests.helpers import make_pdf
-from tests.test_cv_enrichment_flow import CV_LINES, answer_all, upload
+from tests.test_cv_enrichment_flow import CV_LINES, answer_all, upload, upload_and_start
 
 
 class LlmSpy:
@@ -79,10 +79,9 @@ def test_consent_is_stored_per_cv(client, db, fake_profile, mentee_id, consent, 
 
 def test_without_consent_deepseek_is_never_called(client, db, fake_profile, fake_mentoring, mentee_id,
                                                    llm_forbidden):
-    created = upload(client, mentee_id, consent="false").json()
-    assert created["cv"]["engine"] == "RULE_BASED"
-    conversation = created["conversation"]
-    assert conversation["engine"] == "RULE_BASED"
+    conversation = upload_and_start(client, mentee_id, consent="false")
+    cv = client.get(f"/api/ai/mentee/{mentee_id}/enrichment/latest", headers=auth(mentee_id, "MENTEE")).json()["cv"]
+    assert cv["engine"] == "RULE_BASED" and conversation["engine"] == "RULE_BASED"
     done, _ = answer_all(client, conversation, mentee_id)
     assert done["status"] == "COMPLETED" and done["enrichedGoal"]
     assert llm_forbidden.requests == []
@@ -106,8 +105,7 @@ async def _force_engine(conversation_id: str, engine: str) -> None:
 def test_consent_is_checked_on_every_turn_even_if_conversation_says_deepseek(client, db, fake_profile,
                                                                             fake_mentoring, mentee_id,
                                                                             llm_forbidden):
-    created = upload(client, mentee_id, consent="false").json()
-    conversation = created["conversation"]
+    conversation = upload_and_start(client, mentee_id, consent="false")
     # Dữ liệu cũ / sai lệch: hội thoại ghi engine DEEPSEEK nhưng CV không có đồng ý.
     asyncio.run(_force_engine(conversation["id"], "DEEPSEEK"))
     done, _ = answer_all(client, conversation, mentee_id)

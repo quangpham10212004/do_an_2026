@@ -5,8 +5,8 @@ from uuid import UUID
 import asyncpg
 from pydantic import Field
 
-from app.cv.models import ParsedCv
-from app.cv.repository import parsed_of
+from app.cv.models import ConfirmedFields, ParsedCv
+from app.cv.repository import confirmed_of, parsed_of
 from app.enrichment.models import SLOT_LABELS
 from app.schemas import CamelModel
 
@@ -17,6 +17,9 @@ class CvView(CamelModel):
     engine: str
     parsed: ParsedCv
     consent_external_ai: bool
+    # US-20: null = người dùng chưa duyệt kết quả parse (chatbot chưa bắt đầu)
+    confirmed_fields: ConfirmedFields | None = None
+    confirmed_at: datetime | None = None
     created_at: datetime
 
 
@@ -55,7 +58,8 @@ class ConversationView(CamelModel):
 
 class CvUploadResult(CamelModel):
     cv: CvView
-    conversation: ConversationView
+    # US-20: null cho tới khi người dùng duyệt thông tin CV và bắt đầu chatbot
+    conversation: ConversationView | None = None
 
 
 class AnswerInput(CamelModel):
@@ -64,7 +68,8 @@ class AnswerInput(CamelModel):
 
 def cv_view(cv: asyncpg.Record) -> CvView:
     return CvView(id=cv["id"], file_name=cv["file_name"], engine=cv["engine"], parsed=parsed_of(cv),
-                  consent_external_ai=cv["consent_external_ai"], created_at=cv["created_at"])
+                  consent_external_ai=cv["consent_external_ai"], confirmed_fields=confirmed_of(cv),
+                  confirmed_at=cv["confirmed_at"], created_at=cv["created_at"])
 
 
 def conversation_view(conversation: asyncpg.Record, messages: list[asyncpg.Record]) -> ConversationView:
