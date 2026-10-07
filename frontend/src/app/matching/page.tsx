@@ -99,7 +99,7 @@ function Matching({ user }: { user: SessionUser }) {
   const [dialog, ask] = useDialog();
 
   useEffect(() => {
-    matchingApi.mentorsFor(user.userId, 10).then(setData).catch((e: unknown) => {
+    matchingApi.mentorsFor(user.userId, { limit: 10 }).then(setData).catch((e: unknown) => {
       setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorMessage(e) });
       setData(null);
     });

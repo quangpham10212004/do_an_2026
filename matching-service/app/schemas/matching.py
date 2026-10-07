@@ -49,14 +49,31 @@ class RankedMentor(CamelModel):
 
 
 class PipelineStats(CamelModel):
+    considered: int = 0
+    excluded: dict[str, int]
+    eligible: int = 0
     k: int
     retrieved: int
-    excluded: dict[str, int]
     returned: int
     weights: dict[str, float]
+
+
+class EffectiveFilters(CamelModel):
+    """US-17 — bộ lọc thực sự được áp dụng cho lượt tìm (request + mặc định từ hồ sơ)."""
+
+    max_rate: float | None = None
+    days: list[int] = []
+    time_of_day: Literal["MORNING", "AFTERNOON", "EVENING"] | None = None
+    language: list[str] = []
+    session_type: str | None = None
+    min_rating: float | None = None
+    free_only: bool = False
+    from_profile_defaults: list[str] = []
 
 
 class MatchingResponse(CamelModel):
     mentee_id: str
     mentors: list[RankedMentor]
     pipeline: PipelineStats
+    filters: EffectiveFilters = EffectiveFilters()
+    excluded_by: dict[str, int] = {}

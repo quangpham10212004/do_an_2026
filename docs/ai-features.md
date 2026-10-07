@@ -74,10 +74,10 @@ flowchart LR
     H -- có --> E[all-MiniLM-L6-v2]
     E --> V[(matching_db<br/>VECTOR 384 + HNSW)]
 
-    Q[Mentee bấm Tìm mentor] --> R1[1. Top-K retrieval<br/>cosine distance trong PostgreSQL]
+    Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R2[1. Hard filter trên profile_db<br/>5 ràng buộc + bộ lọc người dùng]
+    R2 --> R1[2. Top-K retrieval<br/>cosine, chỉ trong mentor hợp lệ]
     V --> R1
-    R1 --> R2[2. Hard filter<br/>5 ràng buộc]
-    R2 --> R3[3. Re-rank<br/>0.7·sim + 0.2·rating + 0.1·exp]
+    R1 --> R3[3. Re-rank<br/>0.7·sim + 0.2·rating + 0.1·exp]
     R3 --> R4[4. Explain<br/>lý do + thống kê]
     R4 --> OUT[Danh sách mentor]
 ```
@@ -118,10 +118,16 @@ lại phần lệch và xoá dòng chỉ mục của hồ sơ đã bị xoá. V�
 cả khi thông báo bị mất hay matching-service vừa khởi động lại. Nếu mentee tìm mentor trước khi chỉ mục
 kịp cập nhật, `/api/matching/mentors` lập chỉ mục ngay trong request thay vì trả 404.
 
-### 1.4 Bước 1 — Top-K retrieval
+### 1.4 Bước 2 — Top-K retrieval (chỉ trong mentor hợp lệ)
+
+> **US-17 (Sprint 2)**: thứ tự đã đổi thành **lọc trước, xếp hạng sau**. Bước 1 (mục 1.5) chạy một truy
+> vấn trên `profile_db` trả về ID mọi mentor thoả ràng buộc hệ thống + bộ lọc người dùng; bước này chỉ
+> xếp hạng cosine **trong các ID đó** (`WHERE e.user_id = ANY($ids)`), nên có ≥ `limit` mentor hợp lệ đã
+> lập chỉ mục thì luôn trả đủ `limit` kết quả. Truy vấn hồ sơ (2) bên dưới được gộp vào bước 1. Mã:
+> `matching_pipeline.py` (`eligible_candidates`, `rank_by_similarity`), `match_filters.py`.
 
 Vector nằm ở `matching_db`, dữ kiện hồ sơ nằm ở `profile_db` (mỗi service sở hữu phần việc của mình),
-nên bước này chạy **hai truy vấn**: pgvector lọc ra K ứng viên, rồi lấy đúng K dòng hồ sơ tương ứng.
+nên pipeline chạy **hai truy vấn** và giữa hai DB chỉ truyền danh sách ID (bản trước US-17 như sau):
 
 ```sql
 -- (1) matching_db — xếp hạng theo khoảng cách vector
@@ -146,9 +152,10 @@ WHERE m.user_id = ANY($1::uuid[])
 - **Vì sao K lớn hơn limit?** Một phần ứng viên sẽ bị hard filter loại; lấy dư (×5, tối thiểu 50) để
   sau khi lọc vẫn đủ kết quả.
 
-### 1.5 Bước 2 — Hard filter (FR-4.4)
+### 1.5 Bước 1 — Hard filter (FR-4.4, US-17)
 
-Ứng viên bị loại nếu vi phạm **bất kỳ** ràng buộc nào (kiểm tra theo thứ tự):
+Chạy bằng SQL trên `profile_db` cho **toàn bộ** mentor, trước bước vector. Ứng viên bị loại nếu vi phạm
+**bất kỳ** ràng buộc hệ thống nào (kiểm tra theo thứ tự):
 
 | Mã lý do | Điều kiện loại | Ý nghĩa nghiệp vụ |
 |---|---|---|
@@ -160,6 +167,16 @@ WHERE m.user_id = ANY($1::uuid[])
 
 Số lượng bị loại theo từng lý do được trả về trong `pipeline.excluded` và hiển thị trên giao diện —
 người dùng thấy rõ kết quả **không chỉ dựa thuần vector** (DoD 7).
+
+**Bộ lọc người dùng (US-17, PRD-MATCH-1/2)** — cũng là hard filter: `maxRate` (giá ≤), `days` + `timeOfDay`
+(có khung lịch rảnh hằng tuần giao với cửa sổ MORNING 06–12 / AFTERNOON 12–18 / EVENING 18–23 vào một
+trong các ngày đã chọn, hoặc ngày bất kỳ nếu không chọn ngày), `language`, `sessionType`, `minRating`,
+`freeOnly`. Param không truyền thì lấy từ sở thích hồ sơ mentee (US-16) khi `useProfileDefaults=true`;
+response trả lại bộ lọc hiệu lực (`filters`, kèm `fromProfileDefaults`).
+
+**`excludedBy` (US-18, PRD-MATCH-5)** — với mỗi bộ lọc người dùng đang bật: số mentor đã qua ràng buộc
+hệ thống và mọi bộ lọc khác nhưng trượt riêng bộ lọc đó = số mentor có thêm nếu chỉ nới bộ lọc đó. Trang
+`/matching` dùng con số lớn nhất để gợi ý "Nới điều kiện" khi kết quả ít.
 
 ### 1.6 Bước 3 — Re-rank (FR-4.5)
 
@@ -218,10 +235,10 @@ Thống kê pipeline: `retrieved = 7`, loại `notVerified: 1` (mentor Java chư
 | ~5.007 | 4,8 ms | 4,7 ms | 5,7 ms | 6,8 ms | < 2.000 ms ✅ |
 
 ### 1.10 Hạn chế & hướng phát triển
-- Hard filter áp dụng **sau** top-K: nếu phần lớn K ứng viên gần nhất bị loại, kết quả có thể ít hơn
-  `limit` dù còn mentor phù hợp xa hơn. Hướng cải thiện: đưa các điều kiện lọc vào mệnh đề `WHERE`
-  (pgvector ≥ 0.8 hỗ trợ iterative index scan) hoặc tăng K thích ứng.
-- Chưa lọc theo lịch rảnh *cụ thể* mà mentee mong muốn (hiện chỉ yêu cầu mentor có lịch rảnh).
+- (Đã xử lý ở US-17) Trước đây hard filter áp dụng **sau** top-K nên kết quả có thể hụt; nay lọc trước
+  rồi xếp hạng trong tập hợp lệ. Đánh đổi: bước lọc quét toàn bộ `mentor_profiles` mỗi lượt tìm (ổn với
+  vài nghìn mentor) và danh sách ID truyền sang `matching_db` có thể dài.
+- Bộ lọc giờ so theo giờ địa phương của mentor, chưa quy đổi múi giờ giữa mentee và mentor.
 - Trọng số chọn theo lập luận nghiệp vụ; khi có dữ liệu thật (tỷ lệ chấp nhận yêu cầu, rating sau
   phiên) có thể học trọng số (learning-to-rank) và đánh giá bằng NDCG/Precision@K.
 

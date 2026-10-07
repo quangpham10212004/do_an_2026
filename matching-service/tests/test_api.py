@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app import config
 from app.main import app
-from app.services import index_service, matching_pipeline
+from app.services import index_service, match_filters, matching_pipeline
 
 MENTEE_ID = "7d4f5a3e-8a8f-4a57-9a0e-2a1d9d1f0c11"
 OTHER_ID = "1b2c3d4e-0000-4000-8000-000000000001"
@@ -27,9 +27,13 @@ def client():
 
 @pytest.fixture
 def fake_pipeline(monkeypatch):
-    async def fake_match(mentee_id: str, limit: int = 10):
+    calls = []
+
+    async def fake_match(mentee_id: str, limit: int = 10, requested=None, use_profile_defaults=True, exclude_ids=None):
+        calls.append({"limit": limit, "requested": requested, "use_profile_defaults": use_profile_defaults})
         if mentee_id == OTHER_ID:
             return None
+        filters = match_filters.resolve(requested or {}, {"budget_max_per_hour": 150000}, use_profile_defaults)
         return {
             "mentors": [{
                 "mentor_id": "mentor-1", "display_name": "Anh Mentor", "domain": "backend",
@@ -37,10 +41,14 @@ def fake_pipeline(monkeypatch):
                 "rating_count": 2, "years_experience": 6, "hourly_rate": 200000,
                 "matched_skills": ["Java"], "reasons": ["Trùng kỹ năng: Java"],
             }],
-            "stats": {"k": 50, "retrieved": 5, "excluded": {"notVerified": 4}, "returned": 1},
+            "filters": filters,
+            "excluded_by": {name: 12 for name in sorted(filters.active())},
+            "stats": {"considered": 20, "excluded": {"notVerified": 4}, "eligible": 3, "k": 50,
+                      "retrieved": 3, "returned": 1},
         }
 
     monkeypatch.setattr(matching_pipeline, "match_mentors_for_mentee", fake_match)
+    return calls
 
 
 def test_health(client):
@@ -76,6 +84,45 @@ def test_matching_returns_camel_case_contract(client, fake_pipeline):
     assert {"mentorId", "displayName", "similarityScore", "finalScore", "yearsExperience", "reasons", "matchedSkills"} <= m.keys()
     assert body["pipeline"]["excluded"] == {"notVerified": 4}
     assert body["pipeline"]["weights"]["similarity"] == 0.7
+
+
+def test_matching_echoes_effective_filters_and_excluded_by(client, fake_pipeline):
+    """US-17/18 — thiếu param thì lấy sở thích hồ sơ; response trả lại bộ lọc hiệu lực + excludedBy."""
+    headers = {"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"}
+    body = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}", headers=headers).json()
+    assert body["filters"]["maxRate"] == 150000
+    assert body["filters"]["fromProfileDefaults"] == ["maxRate"]
+    assert body["excludedBy"] == {"maxRate": 12}
+    assert body["pipeline"]["eligible"] == 3 and body["pipeline"]["considered"] == 20
+
+    url = (f"/api/matching/mentors?menteeId={MENTEE_ID}&maxRate=500000&days=1,3&days=5&timeOfDay=EVENING"
+           f"&language=en&sessionType=CODE_REVIEW&minRating=4&freeOnly=true&useProfileDefaults=false&limit=5")
+    body = client.get(url, headers=headers).json()
+    assert fake_pipeline[-1] == {
+        "limit": 5,
+        "use_profile_defaults": False,
+        "requested": {"maxRate": 500000, "days": [1, 3, 5], "timeOfDay": "EVENING", "language": ["en"],
+                      "sessionType": "CODE_REVIEW", "minRating": 4, "freeOnly": True},
+    }
+    assert body["filters"] == {"maxRate": 500000, "days": [1, 3, 5], "timeOfDay": "EVENING", "language": ["en"],
+                               "sessionType": "CODE_REVIEW", "minRating": 4, "freeOnly": True,
+                               "fromProfileDefaults": []}
+
+
+def test_matching_without_filter_params_passes_none(client, fake_pipeline):
+    client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}",
+               headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert fake_pipeline[-1]["use_profile_defaults"] is True
+    assert set(fake_pipeline[-1]["requested"].values()) == {None}
+
+
+def test_matching_rejects_invalid_filter_values(client, fake_pipeline):
+    headers = {"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"}
+    for query in ("days=0", "days=8", "days=abc", "timeOfDay=NIGHT", "language=fr", "sessionType=PAIRING",
+                  "minRating=6", "maxRate=-1"):
+        res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}&{query}", headers=headers)
+        assert res.status_code == 400, query
+        assert res.json()["error"]["code"] in ("BAD_REQUEST", "VALIDATION_ERROR"), query
 
 
 def test_matching_404_when_profile_incomplete(client, fake_pipeline):
