@@ -36,10 +36,10 @@ def mentee_id():
     return uuid.uuid4()
 
 
-def upload(client, mentee_id, lines=CV_LINES):
+def upload(client, mentee_id, lines=CV_LINES, consent="false"):
     return client.post(f"/api/ai/mentee/{mentee_id}/cv-upload",
                        files={"file": ("cv.pdf", make_pdf(lines), "application/pdf")},
-                       headers=auth(mentee_id, "MENTEE"))
+                       data={"consentExternalAi": consent}, headers=auth(mentee_id, "MENTEE"))
 
 
 def answer_all(client, conversation, mentee_id):
@@ -171,7 +171,7 @@ def test_upload_requires_mentee_profile(client, db, fake_profile, mentee_id):
 def test_cannot_upload_for_another_mentee(client, db, fake_profile, mentee_id):
     res = client.post(f"/api/ai/mentee/{uuid.uuid4()}/cv-upload",
                       files={"file": ("cv.pdf", make_pdf(CV_LINES), "application/pdf")},
-                      headers=auth(mentee_id, "MENTEE"))
+                      data={"consentExternalAi": "false"}, headers=auth(mentee_id, "MENTEE"))
     assert res.status_code == 403
 
 
@@ -255,7 +255,7 @@ def test_my_cvs_lists_only_callers_cvs_newest_first(client, db, fake_profile, me
     assert res.status_code == 200
     items = res.json()
     assert [i["id"] for i in items] == [second, first]
-    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl"}
+    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl", "consentExternalAi"}
     assert items[0]["fileName"] == "cv.pdf"
     assert items[0]["fileUrl"] == f"/api/ai/cv/{second}/file"
     assert client.get("/api/ai/cv/mine", headers=auth(uuid.uuid4(), "MENTOR")).json() == []

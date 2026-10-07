@@ -39,7 +39,7 @@ def test_cv_parse_returns_structured_data(client, db, fake_profile):
     pdf = make_pdf(["Backend Developer", "PROJECTS", "Booking system", "- Java, Spring Boot, Redis",
                     "SKILLS", "Java, Docker"])
     res = client.post("/api/ai/cv/parse", files={"file": ("cv.pdf", pdf, "application/pdf")},
-                      headers=auth(MENTEE, "MENTOR"))
+                      data={"consentExternalAi": "false"}, headers=auth(MENTEE, "MENTOR"))
     body = res.json()
     assert res.status_code == 200, res.text
     assert body["engine"] == "RULE_BASED"
@@ -49,7 +49,7 @@ def test_cv_parse_returns_structured_data(client, db, fake_profile):
 
 def test_cv_parse_errors_use_common_format(client, db):
     res = client.post("/api/ai/cv/parse", files={"file": ("cv.txt", b"not a pdf", "text/plain")},
-                      headers=auth(MENTEE, "MENTOR"))
+                      data={"consentExternalAi": "true"}, headers=auth(MENTEE, "MENTOR"))
     assert res.status_code == 400 and res.json()["error"]["code"] == "INVALID_FILE_TYPE"
 
 

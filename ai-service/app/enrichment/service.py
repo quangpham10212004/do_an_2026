@@ -35,22 +35,27 @@ def cv_file_url(cv_id: UUID) -> str:
     return f"/api/ai/cv/{cv_id}/file"
 
 
-async def parse_and_store(owner_id: UUID, file_name: str, content: bytes) -> CvView:
-    """FR-8.1 + FR-8.2 — upload & parse CV (dùng chung cho mentor để điền nhanh hồ sơ)."""
+async def parse_and_store(owner_id: UUID, file_name: str, content: bytes, consent_external_ai: bool) -> CvView:
+    """
+    FR-8.1 + FR-8.2 — upload & parse CV (dùng chung cho mentor để điền nhanh hồ sơ).
+    US-19: `consent_external_ai` = false => chỉ parse bằng rule-based, không gửi gì tới DeepSeek.
+    """
     if not content:
         raise errors.bad_request("FILE_REQUIRED", "Vui lòng chọn file CV")
     if len(content) > config.MAX_CV_BYTES:
         raise errors.AiError("FILE_TOO_LARGE", "File CV không được vượt quá 5MB", status=413)
 
     # Parse trước khi lưu file: file không hợp lệ (INVALID_FILE_TYPE, CV_NO_TEXT...) thì không lưu gì cả.
-    result = await cv_engine.parse(None, content)
+    result = await cv_engine.parse(None, content, consent_external_ai)
     path = storage.save(owner_id, content)
     pool = await get_pool()
-    cv = await cv_repo.insert(pool, owner_id, file_name, path, result.raw_text, result.parsed, result.engine)
+    cv = await cv_repo.insert(pool, owner_id, file_name, path, result.raw_text, result.parsed, result.engine,
+                              consent_external_ai)
     return cv_view(cv)
 
 
-async def upload_for_mentee(user: AuthUser, mentee_id: UUID, file_name: str, content: bytes) -> CvUploadResult:
+async def upload_for_mentee(user: AuthUser, mentee_id: UUID, file_name: str, content: bytes,
+                            consent_external_ai: bool) -> CvUploadResult:
     """FR-8.1 → FR-8.3 — mentee upload CV và bắt đầu chatbot enrichment."""
     if not user.is_admin and not user.is_internal and user.user_id != mentee_id:
         raise errors.forbidden("Bạn chỉ có thể tải CV cho chính mình")
@@ -59,9 +64,9 @@ async def upload_for_mentee(user: AuthUser, mentee_id: UUID, file_name: str, con
         raise errors.bad_request("PROFILE_REQUIRED",
                                  "Hãy tạo hồ sơ nghề nghiệp (lĩnh vực, mục tiêu) trước khi tải CV")
 
-    cv = await parse_and_store(mentee_id, file_name, content)
+    cv = await parse_and_store(mentee_id, file_name, content, consent_external_ai)
     ctx = _context(mentee, cv.parsed, MAX_TURNS)
-    first = await enrichment_engine.next_question(cv.engine, ctx, [])
+    first = await enrichment_engine.next_question(cv.engine, ctx, [], cv.consent_external_ai)
 
     pool = await get_pool()
     async with pool.acquire() as conn, conn.transaction():
@@ -91,6 +96,7 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
         raise errors.not_found("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ mentee")
     cv = await cv_repo.find(pool, conversation["cv_id"])
     ctx = _context(mentee, cv_repo.parsed_of(cv), conversation["max_turns"])
+    allow_external = cv["consent_external_ai"]  # US-19: kiểm tra lại ở mỗi lượt
 
     history = [repo.to_exchange(m) for m in messages if m["answer"] is not None]
     history.append(Exchange(turn_no=current["turn_no"], slot=current["slot"], question=current["question"],
@@ -98,9 +104,10 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
     is_last = current["turn_no"] >= conversation["max_turns"]
 
     # Gọi engine TRƯỚC khi mở transaction.
-    next_question = None if is_last else await enrichment_engine.next_question(conversation["engine"], ctx, history)
-    goal = (await enrichment_engine.summarize_goal(conversation["engine"], ctx, history)).enriched_goal \
-        if is_last else None
+    next_question = None if is_last else await enrichment_engine.next_question(
+        conversation["engine"], ctx, history, allow_external)
+    goal = (await enrichment_engine.summarize_goal(conversation["engine"], ctx, history, allow_external)
+            ).enriched_goal if is_last else None
 
     async with pool.acquire() as conn, conn.transaction():
         written = await repo.answer_message(conn, current["id"], text)
@@ -186,7 +193,7 @@ async def my_cvs(user: AuthUser) -> list[CvSummaryView]:
         return []
     pool = await get_pool()
     return [CvSummaryView(id=r["id"], file_name=r["file_name"], uploaded_at=r["created_at"],
-                          file_url=cv_file_url(r["id"]))
+                          file_url=cv_file_url(r["id"]), consent_external_ai=r["consent_external_ai"])
             for r in await cv_repo.list_for_user(pool, user.user_id)]
 
 

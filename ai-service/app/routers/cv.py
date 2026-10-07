@@ -2,10 +2,10 @@
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app import config
+from app import config, errors
 from app.enrichment import service
 from app.enrichment.views import CvSummaryView, CvUploadResult, CvView
 from app.security import AuthUser, require_role, require_user
@@ -17,18 +17,33 @@ async def _read(file: UploadFile) -> tuple[str, bytes]:
     return file.filename or "cv.pdf", await file.read(config.MAX_CV_BYTES + 1)
 
 
+def _consent(value: bool | None) -> bool:
+    """US-19 — trường bắt buộc: người dùng phải chủ động chọn đồng ý / không đồng ý gửi CV tới AI bên ngoài."""
+    if value is None:
+        raise errors.bad_request("CONSENT_REQUIRED",
+                                 "Vui lòng cho biết bạn có đồng ý gửi CV tới AI bên ngoài (DeepSeek) hay không")
+    return value
+
+
+# Trường form multipart; false => chỉ dùng engine rule-based cho CV này (parse + chatbot).
+ConsentField = Form(None, alias="consentExternalAi")
+
+
 @router.post("/mentee/{mentee_id}/cv-upload", response_model=CvUploadResult, response_model_by_alias=True)
-async def upload(mentee_id: UUID, file: UploadFile = File(...),
+async def upload(mentee_id: UUID, file: UploadFile = File(...), consent_external_ai: bool | None = ConsentField,
                  user: AuthUser = Depends(require_role("MENTEE", "ADMIN"))) -> CvUploadResult:
+    consent = _consent(consent_external_ai)
     file_name, content = await _read(file)
-    return await service.upload_for_mentee(user, mentee_id, file_name, content)
+    return await service.upload_for_mentee(user, mentee_id, file_name, content, consent)
 
 
 @router.post("/cv/parse", response_model=CvView, response_model_by_alias=True)
-async def parse(file: UploadFile = File(...), user: AuthUser = Depends(require_user)) -> CvView:
-    """Parse CV không kèm chatbot — mentor dùng để điền nhanh hồ sơ."""
+async def parse(file: UploadFile = File(...), consent_external_ai: bool | None = ConsentField,
+                user: AuthUser = Depends(require_user)) -> CvView:
+    """Parse CV không kèm chatbot — mentor dùng để điền nhanh hồ sơ (không ghi gì vào hồ sơ)."""
+    consent = _consent(consent_external_ai)
     file_name, content = await _read(file)
-    return await service.parse_and_store(user.user_id, file_name, content)
+    return await service.parse_and_store(user.user_id, file_name, content, consent)
 
 
 @router.get("/cv/{cv_id}/file")

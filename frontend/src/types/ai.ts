@@ -70,6 +70,8 @@ export interface Cv {
   fileName: string;
   engine: string;
   parsed: ParsedCv;
+  /** US-19: false => CV này chỉ được xử lý bằng engine rule-based (không gửi DeepSeek). */
+  consentExternalAi: boolean;
   createdAt: IsoDateTime;
 }
 
@@ -113,6 +115,7 @@ export interface CvSummary {
   uploadedAt: IsoDateTime;
   /** Dạng /api/ai/cv/{id}/file — cần access token, tải qua apiBlob(). */
   fileUrl: string;
+  consentExternalAi: boolean;
 }
 
 export interface CvUploadResult {

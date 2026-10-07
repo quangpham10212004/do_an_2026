@@ -16,6 +16,7 @@ class CvView(CamelModel):
     file_name: str
     engine: str
     parsed: ParsedCv
+    consent_external_ai: bool
     created_at: datetime
 
 
@@ -25,6 +26,7 @@ class CvSummaryView(CamelModel):
     file_name: str
     uploaded_at: datetime
     file_url: str
+    consent_external_ai: bool
 
 
 class EnrichmentMessageView(CamelModel):
@@ -62,7 +64,7 @@ class AnswerInput(CamelModel):
 
 def cv_view(cv: asyncpg.Record) -> CvView:
     return CvView(id=cv["id"], file_name=cv["file_name"], engine=cv["engine"], parsed=parsed_of(cv),
-                  created_at=cv["created_at"])
+                  consent_external_ai=cv["consent_external_ai"], created_at=cv["created_at"])
 
 
 def conversation_view(conversation: asyncpg.Record, messages: list[asyncpg.Record]) -> ConversationView:

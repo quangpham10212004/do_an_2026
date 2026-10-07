@@ -13,14 +13,17 @@ export const aiApi = {
     api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // CV + chatbot enrichment
-  uploadCv: (menteeId: Uuid, file: File) => {
+  // US-19: consentExternalAi bắt buộc — false => chỉ engine rule-based cho CV này (parse + chatbot)
+  uploadCv: (menteeId: Uuid, file: File, consentExternalAi: boolean) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("consentExternalAi", String(consentExternalAi));
     return api<CvUploadResult>(`/api/ai/mentee/${menteeId}/cv-upload`, { method: "POST", form });
   },
-  parseCv: (file: File) => {
+  parseCv: (file: File, consentExternalAi: boolean) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("consentExternalAi", String(consentExternalAi));
     return api<Cv>("/api/ai/cv/parse", { method: "POST", form });
   },
   cvFileUrl: (cvId: Uuid) => `/api/ai/cv/${cvId}/file`,

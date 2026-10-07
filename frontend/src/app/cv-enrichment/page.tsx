@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
+import CvConsent from "@/features/ai/CvConsent";
 import { ApiError, errorMessage } from "@/lib/api";
 import type { Cv, CvUploadResult, SessionUser } from "@/types";
 
@@ -13,7 +14,9 @@ function ParsedCvCard({ cv }: { cv: Cv }) {
   return (
     <div className="card">
       <h2>Thông tin trích xuất từ CV</h2>
-      <p className="muted small">{cv.fileName} · engine {cv.engine}</p>
+      <p className="muted small">
+        {cv.fileName} · engine {cv.engine} · {cv.consentExternalAi ? "đã đồng ý gửi AI bên ngoài" : "chỉ xử lý trên nền tảng (rule-based)"}
+      </p>
       {p.currentRole && <p><strong>Vai trò:</strong> {p.currentRole}</p>}
       <p><strong>Kinh nghiệm:</strong> {p.yearsExperience != null ? `${p.yearsExperience} năm` : "chưa xác định"}</p>
       <div className="field">
@@ -44,6 +47,7 @@ function ParsedCvCard({ cv }: { cv: Cv }) {
 function Enrichment({ user }: { user: SessionUser }) {
   const [state, setState] = useState<CvUploadResult | null | undefined>(undefined);
   const [answer, setAnswer] = useState("");
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode>("");
   const bottom = useRef<HTMLDivElement>(null);
@@ -61,7 +65,7 @@ function Enrichment({ user }: { user: SessionUser }) {
     setBusy(true);
     setError("");
     try {
-      setState(await aiApi.uploadCv(user.userId, file));
+      setState(await aiApi.uploadCv(user.userId, file, consent));
     } catch (err) {
       setError(err instanceof ApiError && err.code === "PROFILE_REQUIRED" ? <>{errorMessage(err)} <Link href="/profile">Tạo hồ sơ</Link></> : errorMessage(err));
     } finally {
@@ -94,6 +98,7 @@ function Enrichment({ user }: { user: SessionUser }) {
       <PageHead title="CV & làm rõ mục tiêu" subtitle="Tải CV (PDF), chatbot sẽ hỏi thêm vài câu để hiểu rõ mục tiêu học tập của bạn." />
       <Alert>{error}</Alert>
       <div className="card" style={{ marginBottom: "1rem" }}>
+        <CvConsent checked={consent} onChange={setConsent} audience="MENTEE" disabled={busy} />
         <div className="row">
           <div style={{ flex: 1 }}>
             <strong>{conv ? "Tải CV mới để bắt đầu lại" : "Tải CV của bạn"}</strong>

@@ -120,7 +120,8 @@ def main():
 
     # ---------------- DoD 3: CV + chatbot enrichment ----------------
     print("\nDoD 3 — Upload CV, chatbot hỏi thêm, tổng hợp & re-embedding")
-    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES))
+    # Sprint 2 US-19: consentExternalAi bắt buộc (false => rule-based, tất định cho e2e)
+    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES), fields={"consentExternalAi": "false"})
     upload = call("POST", f"{AI}/api/ai/mentee/{mentee['userId']}/cv-upload", token=mentee_token,
                   raw_body=body, content_type=ctype)
     parsed = upload["cv"]["parsed"]

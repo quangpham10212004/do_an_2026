@@ -60,9 +60,13 @@ def register_or_login(email, password, role, full_name, referral_code=None):
         return call("POST", f"{AUTH}/api/auth/login", {"email": email, "password": password})
 
 
-def multipart_file(field, filename, content, mime="application/pdf"):
+def multipart_file(field, filename, content, mime="application/pdf", fields=None):
+    """Body multipart/form-data gồm 1 file và (tuỳ chọn) các trường văn bản `fields` {tên: giá trị}."""
     boundary = uuid.uuid4().hex
-    body = (
+    body = b"".join(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode()
+        for name, value in (fields or {}).items())
+    body += (
         f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"{filename}\"\r\n"
         f"Content-Type: {mime}\r\n\r\n"
     ).encode() + content + f"\r\n--{boundary}--\r\n".encode()

@@ -96,6 +96,11 @@ components:
         fileName: { type: string }
         engine: { type: string }
         parsed: { $ref: "#/components/schemas/ParsedCv" }
+        consentExternalAi:
+          type: boolean
+          description: >-
+            US-19 — người dùng đồng ý gửi CV này tới AI bên ngoài (DeepSeek). false => parse và mọi lượt chatbot
+            enrichment của CV này chỉ dùng engine RULE_BASED. CV tải lên trước Sprint 2 = false.
         createdAt: { type: string, format: date-time }
     CvSummary:
       type: object
@@ -104,6 +109,7 @@ components:
         fileName: { type: string }
         uploadedAt: { type: string, format: date-time }
         fileUrl: { type: string, description: "Đường dẫn tải file, dạng /api/ai/cv/{id}/file" }
+        consentExternalAi: { type: boolean }
     EnrichmentMessage:
       type: object
       properties:
@@ -133,6 +139,17 @@ components:
       properties:
         cv: { $ref: "#/components/schemas/Cv" }
         conversation: { $ref: "#/components/schemas/Conversation" }
+    CvUploadForm:
+      type: object
+      required: [file, consentExternalAi]
+      properties:
+        file: { type: string, format: binary }
+        consentExternalAi:
+          type: boolean
+          description: >-
+            US-19 (bắt buộc; "true"/"false") — đồng ý gửi CV tới DeepSeek khi engine AI bật. Thiếu => 400
+            CONSENT_REQUIRED, không lưu gì. false => chỉ engine RULE_BASED cho CV này (parse + mọi lượt chatbot),
+            kiểm tra lại ở mỗi lượt; không request nào tới DeepSeek.
     AnswerInput:
       type: object
       required: [answer]
@@ -233,18 +250,14 @@ paths:
         required: true
         content:
           multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary }
+            schema: { $ref: "#/components/schemas/CvUploadForm" }
       responses:
         "200":
           description: CV đã parse + hội thoại
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CvUploadResult" }
-        "400": { description: PROFILE_REQUIRED | FILE_REQUIRED | INVALID_FILE_TYPE | CV_NO_TEXT }
+        "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | PROFILE_REQUIRED | FILE_REQUIRED | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
   /api/ai/mentee/{id}/enrichment/latest:
     get:
@@ -281,18 +294,14 @@ paths:
         required: true
         content:
           multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary }
+            schema: { $ref: "#/components/schemas/CvUploadForm" }
       responses:
         "200":
           description: CV đã parse
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Cv" }
-        "400": { description: INVALID_FILE_TYPE | CV_NO_TEXT }
+        "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
   /api/ai/cv/mine:
     get:
