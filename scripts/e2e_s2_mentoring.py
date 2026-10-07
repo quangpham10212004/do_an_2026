@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, charge
+from common import AI, AUTH, MATCHING, MENTORING, PAYMENT, PROFILE, ApiError, call, charge
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -340,7 +340,47 @@ def us14(ctx):
     check("US-14", "rejectReason ngoài FULL/NOT_MY_EXPERTISE/SCHEDULE/OTHER → 400", status == 400, (status, code))
 
 
-STORIES = {"US-13": us13, "US-12": us12, "US-14": us14}
+def us15(ctx):
+    print("US-15 — Yêu cầu hết hạn sau 72 giờ")
+    mentor = approved_mentor(ctx["admin"]["accessToken"], "expiry", 150000)
+    accepted_mentee(mentor, "expiry-active")   # mentor có 1 mentee đang hướng dẫn
+    before = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
+    me = mentee_with_profile("expiry")
+    r = send_request(me, mentor)
+    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 71})
+    dev("jobs/request-expiry")
+    mine = {x["id"]: x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])}
+    check("US-15", "PENDING 71 giờ → vẫn PENDING", mine[r["id"]]["status"] == "PENDING", mine[r["id"]]["status"])
+    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 73})
+    dev("jobs/request-expiry")
+    mine = {x["id"]: x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])}
+    check("US-15", "PENDING quá 72 giờ không phản hồi → EXPIRED (kèm expiredAt)",
+          mine[r["id"]]["status"] == "EXPIRED" and mine[r["id"]]["expiredAt"], mine[r["id"]])
+    after = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
+    check("US-15", "active_mentee_count của mentor không đổi", before == after == 1, (before, after))
+    notes = [n for n in call("GET", f"{MENTORING}/api/mentoring/notifications?limit=20", token=me["accessToken"])["items"]
+             if n["type"] == "REQUEST_EXPIRED"]
+    check("US-15", "Mentee được báo REQUEST_EXPIRED với link /matching", len(notes) == 1 and notes[0]["link"] == "/matching", notes)
+    try:
+        probe = call("GET", f"{ctx['matching_url']}/internal/matching/similar-mentors?menteeId={me['userId']}"
+                            f"&excludeMentorId={mentor['userId']}&limit=3", internal=True)
+        print(f"  [INFO] matching similar-mentors trả {len(probe.get('mentors', []))} mentor; thông báo "
+              f"{'có' if notes and 'Gợi ý' in notes[0]['message'] else 'không có'} gợi ý")
+        if probe.get("mentors"):
+            check("US-15", "Thông báo kèm tối đa 3 mentor tương tự (matching-service)", notes and "Gợi ý mentor tương tự" in notes[0]["message"],
+                  notes[0]["message"] if notes else None)
+    except ApiError as e:
+        print(f"  [INFO] matching-service similar-mentors chưa sẵn sàng ({e.status}) — thông báo gửi không kèm gợi ý (best-effort)")
+        check("US-15", "matching lỗi/404 → vẫn gửi thông báo, không kèm gợi ý", notes and "Gợi ý" not in notes[0]["message"])
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/requests/{r['id']}/respond", {"decision": "ACCEPT"},
+                                           token=mentor["accessToken"]))
+    check("US-15", "Mentor không phản hồi được yêu cầu đã hết hạn (409 REQUEST_NOT_PENDING)", code == "REQUEST_NOT_PENDING", (status, code))
+    seen = next(x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=mentor["accessToken"]) if x["id"] == r["id"])
+    check("US-15", "Mentor vẫn thấy yêu cầu EXPIRED trong danh sách", seen["status"] == "EXPIRED")
+    check("US-15", "Sau khi hết hạn mentee gửi lại được cho cùng mentor", send_request(me, mentor)["status"] == "PENDING")
+
+
+STORIES = {"US-13": us13, "US-12": us12, "US-14": us14, "US-15": us15}
 
 
 def main(selected):
@@ -348,7 +388,7 @@ def main(selected):
     print(f"E2E Sprint 2 mentoring/payment run {RUN}\n")
     admin = call("POST", f"{AUTH}/api/auth/login", {"email": "admin@mmp.local", "password": "Admin@123"})
     mentor = approved_mentor(admin["accessToken"], "main", 200000)
-    ctx = {"admin": admin, "mentor": mentor, "mentee": accepted_mentee(mentor, "main")}
+    ctx = {"admin": admin, "mentor": mentor, "mentee": accepted_mentee(mentor, "main"), "matching_url": MATCHING}
     for story, fn in STORIES.items():
         if not selected or story in selected:
             fn(ctx)

@@ -358,9 +358,11 @@ stateDiagram-v2
     PENDING --> ACCEPTED: mentor chấp nhận (còn sức chứa)
     PENDING --> REJECTED: mentor từ chối
     PENDING --> CANCELLED: mentee huỷ
+    PENDING --> EXPIRED: mentor không phản hồi sau 72 giờ (US-15)
     ACCEPTED --> COMPLETED: mentor/mentee kết thúc quan hệ
     REJECTED --> [*]
     CANCELLED --> [*]
+    EXPIRED --> [*]
     COMPLETED --> [*]
 ```
 

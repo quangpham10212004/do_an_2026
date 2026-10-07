@@ -136,7 +136,8 @@ function SendRequest({ user, mentorId }: { user: SessionUser; mentorId: string }
             onChange={(e) => setForm({ ...form, message: e.target.value })} />
         </div>
         <p className="small muted">
-          Bạn có thể có tối đa 3 yêu cầu đang chờ phản hồi cùng lúc.
+          Mentor có 72 giờ để phản hồi; quá hạn yêu cầu tự hết hạn và bạn sẽ nhận gợi ý mentor khác. Bạn có thể có tối đa
+          3 yêu cầu đang chờ phản hồi cùng lúc.
         </p>
         <div className="row">
           <button className="btn" disabled={busy || !goalValid}>{busy ? "Đang gửi..." : "Gửi yêu cầu"}</button>

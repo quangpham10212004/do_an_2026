@@ -40,7 +40,7 @@ public final class MentoringDtos {
     public record RequestView(UUID id, UUID menteeId, String menteeName, UUID mentorId, String mentorName, String message,
                               String goal, String sessionType, String frequency, int expectedDurationMonths,
                               String status, String rejectReason, String responseNote, OffsetDateTime createdAt,
-                              OffsetDateTime respondedAt, MenteeSummary menteeProfile) {
+                              OffsetDateTime respondedAt, OffsetDateTime expiredAt, MenteeSummary menteeProfile) {
     }
 
     // ---------- Sessions ----------

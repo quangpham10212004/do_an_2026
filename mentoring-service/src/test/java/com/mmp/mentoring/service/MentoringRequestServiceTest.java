@@ -125,7 +125,7 @@ class MentoringRequestServiceTest {
         MentoringRequest r = new MentoringRequest(menteeId, mentorId, GOAL, SessionType.CODE_REVIEW, MentoringRequest.Frequency.ONE_OFF, 1, null);
         UUID id = UUID.randomUUID();
         ReflectionTestUtils.setField(r, "id", id);
-        when(repo.findById(id)).thenReturn(Optional.of(r));
+        when(repo.findForUpdate(id)).thenReturn(Optional.of(r));
 
         assertThat(code(() -> service.respond(mentor, id, new RespondRequestInput("REJECT", null, "Bận")))).isEqualTo("REJECT_REASON_REQUIRED");
         var view = service.respond(mentor, id, new RespondRequestInput("REJECT", MentoringRequest.RejectReason.SCHEDULE, " Bận "));

@@ -2,7 +2,8 @@ import type { IsoDateTime, Uuid } from "./common";
 import type { SessionType } from "./profile";
 
 // contracts/mentoring-service.yaml
-export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED";
+/** US-15 — EXPIRED: mentor không phản hồi trong 72 giờ. */
+export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "EXPIRED";
 /** US-12 — PENDING = chờ thanh toán; EXPIRED = quá hạn thanh toán; AWAITING_ATTENDANCE = chờ hai bên xác nhận tham dự. */
 export type SessionStatus =
   | "PENDING"
@@ -59,6 +60,8 @@ export interface MentoringRequest {
   responseNote: string | null;
   createdAt: IsoDateTime;
   respondedAt: IsoDateTime | null;
+  /** US-15 — thời điểm hết hạn (status EXPIRED). */
+  expiredAt: IsoDateTime | null;
   menteeProfile: MenteeSummary | null;
 }
 

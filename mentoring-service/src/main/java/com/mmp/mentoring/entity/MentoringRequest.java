@@ -9,8 +9,11 @@ import java.util.UUID;
 @Table(name = "mentoring_requests")
 public class MentoringRequest {
 
-    /** PENDING → ACCEPTED | REJECTED | CANCELLED; ACCEPTED → COMPLETED (kết thúc quan hệ mentoring) */
-    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED }
+    /**
+     * PENDING → ACCEPTED | REJECTED | CANCELLED | EXPIRED (US-15: không phản hồi sau 72 giờ);
+     * ACCEPTED → COMPLETED (kết thúc quan hệ mentoring)
+     */
+    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED }
 
     /** US-14 — tần suất mong muốn. */
     public enum Frequency { WEEKLY, BIWEEKLY, MONTHLY, ONE_OFF }
@@ -62,6 +65,9 @@ public class MentoringRequest {
     @Column(name = "responded_at")
     private OffsetDateTime respondedAt;
 
+    @Column(name = "expired_at")
+    private OffsetDateTime expiredAt;
+
     protected MentoringRequest() {
     }
 
@@ -91,7 +97,13 @@ public class MentoringRequest {
     public RejectReason getRejectReason() { return rejectReason; }
     public void setRejectReason(RejectReason rejectReason) { this.rejectReason = rejectReason; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
     public OffsetDateTime getRespondedAt() { return respondedAt; }
     public void setRespondedAt(OffsetDateTime respondedAt) { this.respondedAt = respondedAt; }
+    public OffsetDateTime getExpiredAt() { return expiredAt; }
+
+    /** US-15 — PENDING quá hạn phản hồi. */
+    public void expire(OffsetDateTime at) {
+        this.status = Status.EXPIRED;
+        this.expiredAt = at;
+    }
 }

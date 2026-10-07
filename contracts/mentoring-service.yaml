@@ -29,7 +29,14 @@ components:
         sessionType: { $ref: "#/components/schemas/SessionType" }
         frequency: { $ref: "#/components/schemas/RequestFrequency" }
         expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
-        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED] }
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED]
+          description: >
+            US-15: PENDING không được mentor phản hồi sau 72 giờ (app.requests.expire-after) → EXPIRED (job mỗi 5 phút).
+            active_mentee_count của mentor không đổi. Mentee nhận thông báo REQUEST_EXPIRED (link /matching) kèm tối đa 3
+            mentor tương tự lấy từ matching-service GET /internal/matching/similar-mentors (best-effort: lỗi/404 → không gợi ý).
+        expiredAt: { type: string, format: date-time, nullable: true, description: "US-15 — thời điểm hết hạn" }
         rejectReason: { allOf: [{ $ref: "#/components/schemas/RejectReason" }], nullable: true, description: "US-14 — có khi REJECTED" }
         responseNote: { type: string, nullable: true, description: "Ghi chú tuỳ chọn của mentor khi phản hồi" }
         createdAt: { type: string, format: date-time }
@@ -580,12 +587,28 @@ paths:
                 endedMinutesAgo: { type: integer, default: 0 }
       responses:
         "200": { description: "{ id, scheduledAt, endsAt, status }" }
+  /internal/dev/requests/{id}/shift:
+    post:
+      summary: "DEV/E2E — lùi created_at của yêu cầu về createdHoursAgo giờ trước (kiểm thử US-15). Không có ở profile prod."
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                createdHoursAgo: { type: integer, default: 0 }
+      responses:
+        "200": { description: "{ id, createdAt, status }" }
+        "404": { description: REQUEST_NOT_FOUND }
   /internal/dev/jobs/{job}:
     post:
-      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry. Không có ở profile prod."
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15). Không có ở profile prod."
       security: [{ internalToken: [] }]
       parameters:
-        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry] } }
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, request-expiry] } }
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }

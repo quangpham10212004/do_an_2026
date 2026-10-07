@@ -195,7 +195,7 @@ public class MentoringRequestService {
     }
 
     private MentoringRequest find(UUID id) {
-        return requestRepo.findById(id).orElseThrow(() -> ApiException.notFound("REQUEST_NOT_FOUND", "Không tìm thấy yêu cầu"));
+        return requestRepo.findForUpdate(id).orElseThrow(() -> ApiException.notFound("REQUEST_NOT_FOUND", "Không tìm thấy yêu cầu"));
     }
 
     private Map<UUID, String> names(MentoringRequest r) {
@@ -208,7 +208,7 @@ public class MentoringRequestService {
                 r.getSessionType() == null ? null : r.getSessionType().name(),
                 r.getFrequency() == null ? null : r.getFrequency().name(), r.getExpectedDurationMonths(),
                 r.getStatus().name(), r.getRejectReason() == null ? null : r.getRejectReason().name(),
-                r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), profiles.get(r.getMenteeId()));
+                r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), r.getExpiredAt(), profiles.get(r.getMenteeId()));
     }
 
     static String trimToNull(String s) {

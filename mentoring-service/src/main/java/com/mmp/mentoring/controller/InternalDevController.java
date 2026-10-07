@@ -1,10 +1,13 @@
 package com.mmp.mentoring.controller;
 
+import com.mmp.mentoring.entity.MentoringRequest;
 import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.exception.ApiException;
+import com.mmp.mentoring.repository.MentoringRequestRepository;
 import com.mmp.mentoring.repository.SessionRepository;
 import com.mmp.mentoring.service.AttendanceService;
 import com.mmp.mentoring.service.PaymentOutboxService;
+import com.mmp.mentoring.service.RequestExpiryService;
 import com.mmp.mentoring.service.SessionScheduler;
 import org.springframework.context.annotation.Profile;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -27,15 +30,23 @@ public class InternalDevController {
     public record ShiftSessionInput(Integer endedMinutesAgo) {
     }
 
+    public record ShiftRequestInput(Integer createdHoursAgo) {
+    }
+
     private final SessionRepository sessionRepo;
     private final AttendanceService attendance;
     private final PaymentOutboxService outbox;
     private final SessionScheduler scheduler;
+    private final MentoringRequestRepository requestRepo;
+    private final RequestExpiryService requestExpiry;
     private final TransactionTemplate tx;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
-                                 SessionScheduler scheduler, TransactionTemplate tx) {
+                                 SessionScheduler scheduler, MentoringRequestRepository requestRepo,
+                                 RequestExpiryService requestExpiry, TransactionTemplate tx) {
         this.sessionRepo = sessionRepo;
+        this.requestRepo = requestRepo;
+        this.requestExpiry = requestExpiry;
         this.attendance = attendance;
         this.outbox = outbox;
         this.scheduler = scheduler;
@@ -55,13 +66,25 @@ public class InternalDevController {
         return Map.of("id", s.getId(), "scheduledAt", s.getScheduledAt(), "endsAt", s.endsAt(), "status", s.getStatus().name());
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry. */
+    /** Lùi thời điểm tạo yêu cầu về {@code createdHoursAgo} giờ trước (kiểm thử US-15 hết hạn 72 giờ). */
+    @PostMapping("/requests/{id}/shift")
+    public Map<String, Object> shiftRequest(@PathVariable UUID id, @RequestBody ShiftRequestInput in) {
+        int ago = in.createdHoursAgo() == null ? 0 : in.createdHoursAgo();
+        OffsetDateTime createdAt = OffsetDateTime.now().minusHours(ago);
+        Integer updated = tx.execute(st -> requestRepo.overrideCreatedAt(id, createdAt));
+        if (updated == null || updated == 0) throw ApiException.notFound("REQUEST_NOT_FOUND", "Không tìm thấy yêu cầu");
+        MentoringRequest r = requestRepo.findById(id).orElseThrow();
+        return Map.of("id", r.getId(), "createdAt", createdAt, "status", r.getStatus().name());
+    }
+
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
             case "attendance" -> attendance.runJob();
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
+            case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);
         }
         return Map.of("job", job, "status", "DONE");

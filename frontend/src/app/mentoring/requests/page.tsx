@@ -69,6 +69,12 @@ function RequestDetails({ r, isMentor }: { r: MentoringRequest; isMentor: boolea
         <div className="small muted">Lý do từ chối: {REJECT_REASON_LABELS[r.rejectReason]}</div>
       )}
       {r.responseNote && <div className="small muted">Phản hồi: {r.responseNote}</div>}
+      {r.status === "EXPIRED" && (
+        <div className="small muted">
+          {isMentor ? "Yêu cầu đã hết hạn vì bạn không phản hồi trong 72 giờ" : "Mentor không phản hồi trong 72 giờ nên yêu cầu đã hết hạn"}
+          {r.expiredAt && ` (${formatDateTime(r.expiredAt)})`}.
+        </div>
+      )}
     </>
   );
 }
@@ -137,7 +143,9 @@ function Requests({ user }: { user: SessionUser }) {
                 {!isMentor && r.status === "PENDING" && (
                   <button className="btn secondary sm" onClick={() => act(() => mentoringApi.cancelRequest(r.id), "Đã huỷ yêu cầu")}>Huỷ</button>
                 )}
-                {!isMentor && r.status === "REJECTED" && <Link className="btn secondary sm" href="/matching">Tìm mentor khác</Link>}
+                {!isMentor && (r.status === "REJECTED" || r.status === "EXPIRED") && (
+                  <Link className="btn secondary sm" href="/matching">Tìm mentor khác</Link>
+                )}
                 {!isMentor && r.status === "ACCEPTED" && <Link className="btn sm" href={`/mentoring/book/${r.mentorId}`}>Đặt lịch</Link>}
                 {r.status === "ACCEPTED" && (
                   <button className="btn secondary sm" onClick={async () => (await ask({ title: "Kết thúc quan hệ mentoring này?", message: "Mentor sẽ được giải phóng một chỗ. Bạn cần gửi yêu cầu mới nếu muốn học tiếp.", confirmText: "Kết thúc", danger: true })) && act(() => mentoringApi.completeRequest(r.id), "Đã kết thúc mentoring")}>
