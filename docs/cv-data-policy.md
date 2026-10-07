@@ -5,7 +5,8 @@ liệu này mô tả **chính xác những gì mã nguồn đang làm** với fi
 thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Quang (`ai-service/app/cv`, `app/enrichment`);
 `app/storage.py` là phần dùng chung cần cả Quang và Thắng review (`CONVENTIONS.md` mục 1).
 
-> Nguồn đối chiếu: `ai-service/app/storage.py`, `app/cv/extractor.py`, `app/cv/repository.py`,
+> Nguồn đối chiếu (cập nhật Sprint 2: US-19 đồng ý, US-20 duyệt thông tin, US-21 xác nhận mục tiêu):
+> `ai-service/migrations/002–004`, `app/storage.py`, `app/cv/extractor.py`, `app/cv/repository.py`,
 > `app/routers/cv.py`, `app/enrichment/service.py`, `app/clients/mentoring.py`, `app/clients/profile.py`,
 > `app/config.py`, `db/init/ai-service.sql`, `docker-compose.yml`; mentoring-service
 > `InternalRelationshipController`; profile-service `InternalProfileController.clearCvFile`.
@@ -49,16 +50,23 @@ thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Qua
 | `consent_external_ai` | Người dùng có đồng ý gửi CV này tới AI bên ngoài (US-19) | Bắt buộc khai báo lúc tải; CV tải trước Sprint 2 = `false` (migration `002`) |
 | `created_at` | Thời điểm upload | |
 
-Liên quan: `enrichment_conversations.cv_id` tham chiếu `cv_documents(id)` (**không** `ON DELETE CASCADE`);
+Liên quan: `enrichment_conversations.cv_id` tham chiếu `cv_documents(id)` (**không** `ON DELETE CASCADE`;
+tối đa một hội thoại mỗi CV); hội thoại lưu goal nháp (`enriched_goal`), quyết định của người dùng
+(`goal_status`: `NONE`/`DRAFT`/`CONFIRMED`/`DISCARDED`) và goal đã xác nhận (`confirmed_goal`) — migration
+`004`;
 `enrichment_messages` chứa câu trả lời chatbot của mentee (xoá theo hội thoại nhờ `ON DELETE CASCADE`).
 
 ### 2.3 Dữ liệu suy ra lan sang service khác
 **Tải và parse CV không ghi gì vào hồ sơ** (US-20). Sau khi parse, người dùng xem lại từng trường, sửa hoặc
 bỏ (`PUT /api/ai/cv/{id}/confirmed-fields`, chỉ chủ CV); chatbot chỉ bắt đầu sau bước này
-(`POST /api/ai/cv/{id}/enrichment-conversation`) và chỉ dùng các trường đã duyệt làm ngữ cảnh. Khi có goal,
-ai-service gửi sang profile-service (`POST /api/profile/mentee/{id}/enrichment-chat`): goal, **chỉ những kỹ
-năng người dùng đã giữ lại** ở bước duyệt (CV chưa duyệt ⇒ danh sách rỗng) và `cvFileUrl =
-/api/ai/cv/{cvId}/file`. Các giá trị này nằm trong `mentee_profiles` (`profile_db`) và gián tiếp đi vào
+(`POST /api/ai/cv/{id}/enrichment-conversation`) và chỉ dùng các trường đã duyệt làm ngữ cảnh.
+
+Khi hội thoại xong, goal chỉ là **bản nháp** (`goal_status = DRAFT`, US-21) — hồ sơ chưa đổi. Người dùng
+chọn "Dùng mục tiêu này" (có thể "Sửa" trước; `POST .../confirm-goal`) hoặc "Bỏ qua" (`POST
+.../discard-goal`, không gửi gì). **Chỉ khi xác nhận**, ai-service gửi sang profile-service (`POST
+/api/profile/mentee/{id}/enrichment-chat`) đúng một lần: goal người dùng đã chọn, **chỉ những kỹ năng người
+dùng đã giữ lại** ở bước duyệt (CV chưa duyệt ⇒ danh sách rỗng) và `cvFileUrl = /api/ai/cv/{cvId}/file`.
+profile-service tạm lỗi ⇒ job nền thử lại; job chỉ gửi goal `CONFIRMED`, không bao giờ gửi bản nháp. Các giá trị này nằm trong `mentee_profiles` (`profile_db`) và gián tiếp đi vào
 văn bản embedding ở `matching_db` (chỉ kỹ năng + goal, không phải toàn văn CV).
 
 ## 3. Kiểm tra đầu vào
@@ -180,8 +188,8 @@ Mạng/đĩa được gọi **sau** khi transaction đã commit (đúng quy ư�
 `cv_file_url` **không** kích hoạt lập lại chỉ mục embedding vì `cv_file_url` không nằm trong văn bản
 chuẩn hoá.
 
-**Không bị xoá** (cần người dùng tự sửa trên trang Hồ sơ nếu muốn): goal tổng hợp và kỹ năng đã gộp từ CV
-vào hồ sơ mentee, và do đó vector trong `matching_db` (chỉ chứa kỹ năng + goal, không chứa toàn văn CV).
+**Không bị xoá** (cần người dùng tự sửa trên trang Hồ sơ nếu muốn): goal người dùng đã xác nhận và kỹ năng
+đã duyệt được gộp vào hồ sơ mentee, và do đó vector trong `matching_db` (chỉ chứa kỹ năng + goal, không chứa toàn văn CV).
 Dữ liệu đã gửi DeepSeek (nếu bật) nằm ngoài tầm kiểm soát của hệ thống.
 
 ### 6.3 Xoá toàn bộ (môi trường demo)

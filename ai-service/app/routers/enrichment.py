@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 
 from app.enrichment import service
-from app.enrichment.views import AnswerInput, ConversationView, CvUploadResult
+from app.enrichment.views import AnswerInput, ConversationView, CvUploadResult, GoalInput
 from app.security import AuthUser, require_role, require_user
 
 router = APIRouter(prefix="/api/ai")
@@ -28,3 +28,18 @@ async def conversation(conversation_id: UUID, user: AuthUser = Depends(require_u
 async def answer(conversation_id: UUID, body: AnswerInput,
                  user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
     return await service.answer(user, conversation_id, body.answer)
+
+
+@router.post("/enrichment/conversations/{conversation_id}/confirm-goal", response_model=ConversationView,
+             response_model_by_alias=True)
+async def confirm_goal(conversation_id: UUID, body: GoalInput,
+                       user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
+    """US-21 — "Dùng mục tiêu này" (goal có thể đã sửa): ghi vào hồ sơ; gọi lại không đồng bộ lần hai."""
+    return await service.confirm_goal(user, conversation_id, body.goal)
+
+
+@router.post("/enrichment/conversations/{conversation_id}/discard-goal", response_model=ConversationView,
+             response_model_by_alias=True)
+async def discard_goal(conversation_id: UUID, user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
+    """US-21 — "Bỏ qua": bỏ bản nháp, hồ sơ không đổi."""
+    return await service.discard_goal(user, conversation_id)

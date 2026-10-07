@@ -7,15 +7,16 @@ import { Alert, Loading, PageHead } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import CvConsent from "@/features/ai/CvConsent";
 import CvReview, { initialFields } from "@/features/ai/CvReview";
+import GoalDraft from "@/features/ai/GoalDraft";
 import { ApiError, errorMessage } from "@/lib/api";
 import type { ConfirmedCvFields, Cv, CvUploadResult, SessionUser } from "@/types";
 
-/** Thông tin CV mà chatbot đang dùng: bản người dùng đã duyệt (US-20). */
+/** Thông tin CV mà chatbot đang dùng: bản người dùng đã duyệt (US-20); hội thoại cũ (trước Sprint 2) dùng kết quả parse. */
 function ConfirmedCvCard({ cv }: { cv: Cv }) {
   const p = initialFields(cv);
   return (
     <div className="card">
-      <h2>Thông tin CV đã xác nhận</h2>
+      <h2>{cv.confirmedFields ? "Thông tin CV đã xác nhận" : "Thông tin trích xuất từ CV (chưa duyệt)"}</h2>
       <p className="muted small">
         {cv.fileName} · engine {cv.engine} · {cv.consentExternalAi ? "đã đồng ý gửi AI bên ngoài" : "chỉ xử lý trên nền tảng (rule-based)"}
       </p>
@@ -149,14 +150,7 @@ function Enrichment({ user }: { user: SessionUser }) {
             )}
             {completed && (
               <div style={{ marginTop: "1rem" }}>
-                <Alert type="success">
-                  Mục tiêu đã được tổng hợp{conv.profileSynced ? " và cập nhật vào hồ sơ (đã sinh lại embedding)." : ", đang đồng bộ vào hồ sơ..."}
-                </Alert>
-                <div className="card" style={{ background: "var(--surface-2)", boxShadow: "none" }}>
-                  <strong>Mục tiêu đã làm rõ</strong>
-                  <p style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{conv.enrichedGoal}</p>
-                </div>
-                <Link href="/matching" className="btn" style={{ marginTop: "1rem" }}>Tìm mentor phù hợp</Link>
+                <GoalDraft key={conv.id} conversation={conv} onChange={(conversation) => setState({ ...state, conversation })} />
               </div>
             )}
           </div>

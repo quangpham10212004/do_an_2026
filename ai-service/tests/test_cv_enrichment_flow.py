@@ -71,6 +71,13 @@ def upload_and_start(client, mentee_id, consent="false", fields=None):
     return started.json()["conversation"]
 
 
+def confirm_goal(client, mentee_id, conversation, goal=None):
+    """US-21: "Dùng mục tiêu này" — mặc định giữ nguyên bản nháp."""
+    return client.post(f"/api/ai/enrichment/conversations/{conversation['id']}/confirm-goal",
+                       json={"goal": conversation["enrichedGoal"] if goal is None else goal},
+                       headers=auth(mentee_id, "MENTEE"))
+
+
 def answer_all(client, conversation, mentee_id):
     slots = []
     while conversation["status"] == "IN_PROGRESS":
@@ -100,13 +107,19 @@ def test_conversation_opens_after_review(client, db, fake_profile, mentee_id):
     assert fake_profile.enrichments == []
 
 
-def test_conversation_completes_and_syncs_profile(client, db, fake_profile, fake_mentoring, mentee_id):
+def test_conversation_completes_with_draft_and_syncs_profile_after_confirmation(client, db, fake_profile,
+                                                                               fake_mentoring, mentee_id):
     conversation, slots = answer_all(client, upload_and_start(client, mentee_id), mentee_id)
     assert len(slots) == conversation["maxTurns"]
     assert len(set(slots)) == len(slots), "chatbot không được hỏi lặp cùng một slot"
     assert conversation["status"] == "COMPLETED"
     assert conversation["enrichedGoal"]
-    assert conversation["profileSynced"] is True
+    # US-21: goal là bản nháp, hồ sơ chưa đổi.
+    assert conversation["goalStatus"] == "DRAFT" and conversation["profileSynced"] is False
+    assert fake_profile.enrichments == [] and fake_mentoring.notifications == []
+
+    conversation = confirm_goal(client, mentee_id, conversation).json()
+    assert conversation["goalStatus"] == "CONFIRMED" and conversation["profileSynced"] is True
 
     synced_mentee, goal, skills, cv_url = fake_profile.enrichments[-1]
     assert synced_mentee == mentee_id
@@ -119,7 +132,8 @@ def test_conversation_completes_and_syncs_profile(client, db, fake_profile, fake
 def test_profile_sync_is_retried_when_profile_service_fails(client, db, fake_profile, fake_mentoring, mentee_id):
     fake_profile.enrichment_error = httpx.ConnectError("profile-service down")
     conversation, _ = answer_all(client, upload_and_start(client, mentee_id), mentee_id)
-    assert conversation["status"] == "COMPLETED"
+    conversation = confirm_goal(client, mentee_id, conversation).json()
+    assert conversation["goalStatus"] == "CONFIRMED"
     assert conversation["profileSynced"] is False
     assert fake_profile.enrichments == []
 

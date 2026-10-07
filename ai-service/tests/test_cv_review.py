@@ -4,7 +4,7 @@ import uuid
 import pytest
 
 from tests.conftest import auth
-from tests.test_cv_enrichment_flow import answer_all, start_chat, upload, upload_and_start
+from tests.test_cv_enrichment_flow import answer_all, confirm_goal, start_chat, upload, upload_and_start
 
 FIELDS = {
     "role": "  Backend Developer  ",
@@ -100,5 +100,6 @@ def test_chat_uses_confirmed_fields_not_raw_parse(client, db, fake_profile, ment
     done, slots = answer_all(client, conversation, mentee_id)
     assert "PROJECT_EXPERIENCE" in slots, "không còn dự án nào sau khi duyệt => chatbot hỏi về dự án"
     assert "(từ CV): Go." in done["enrichedGoal"], done["enrichedGoal"]  # nền tảng = chỉ kỹ năng đã duyệt
-    # Chỉ kỹ năng đã duyệt được gửi sang hồ sơ.
+    # Chỉ kỹ năng đã duyệt được gửi sang hồ sơ (khi người dùng dùng mục tiêu — US-21).
+    assert confirm_goal(client, mentee_id, done).status_code == 200
     assert [e[2] for e in fake_profile.enrichments] == [["Go"]]

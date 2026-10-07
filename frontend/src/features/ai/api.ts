@@ -40,4 +40,8 @@ export const aiApi = {
   latestEnrichment: (menteeId: Uuid) => api<CvUploadResult | null>(`/api/ai/mentee/${menteeId}/enrichment/latest`),
   answerEnrichment: (id: Uuid, answer: string) =>
     api<Conversation>(`/api/ai/enrichment/conversations/${id}/answers`, { method: "POST", body: { answer } }),
+  // US-21: goal nháp chỉ vào hồ sơ khi người dùng xác nhận (gọi lại không đồng bộ lần hai); bỏ qua = không gửi gì
+  confirmGoal: (id: Uuid, goal: string) =>
+    api<Conversation>(`/api/ai/enrichment/conversations/${id}/confirm-goal`, { method: "POST", body: { goal } }),
+  discardGoal: (id: Uuid) => api<Conversation>(`/api/ai/enrichment/conversations/${id}/discard-goal`, { method: "POST" }),
 };

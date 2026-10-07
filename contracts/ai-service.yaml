@@ -157,7 +157,16 @@ components:
         currentTurn: { type: integer }
         currentQuestion: { $ref: "#/components/schemas/EnrichmentMessage" }
         messages: { type: array, items: { $ref: "#/components/schemas/EnrichmentMessage" } }
-        enrichedGoal: { type: string, nullable: true }
+        enrichedGoal: { type: string, nullable: true, description: "Goal NHÁP do chatbot tổng hợp khi hội thoại xong (không tự ghi vào hồ sơ)" }
+        goalStatus:
+          type: string
+          enum: [NONE, DRAFT, CONFIRMED, DISCARDED]
+          description: >-
+            US-21 — NONE: hội thoại chưa xong; DRAFT: chờ người dùng "Dùng mục tiêu này" / "Bỏ qua";
+            CONFIRMED: confirmedGoal được đồng bộ sang hồ sơ (profileSynced theo dõi việc gửi, lỗi thì job
+            thử lại); DISCARDED: không gửi gì.
+        confirmedGoal: { type: string, nullable: true, description: Goal người dùng đã chọn dùng (có thể đã sửa) }
+        goalDecidedAt: { type: string, format: date-time, nullable: true }
         profileSynced: { type: boolean }
         createdAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time, nullable: true }
@@ -180,6 +189,11 @@ components:
             US-19 (bắt buộc; "true"/"false") — đồng ý gửi CV tới DeepSeek khi engine AI bật. Thiếu => 400
             CONSENT_REQUIRED, không lưu gì. false => chỉ engine RULE_BASED cho CV này (parse + mọi lượt chatbot),
             kiểm tra lại ở mỗi lượt; không request nào tới DeepSeek.
+    GoalInput:
+      type: object
+      required: [goal]
+      properties:
+        goal: { type: string, minLength: 10, maxLength: 3000, description: "Cắt khoảng trắng hai đầu trước khi kiểm tra độ dài" }
     AnswerInput:
       type: object
       required: [answer]
@@ -308,8 +322,8 @@ paths:
   /api/ai/enrichment/conversations/{id}/answers:
     post:
       summary: >
-        FR-8.3 → FR-8.5 (MENTEE) Trả lời câu hỏi chatbot. Sau lượt cuối, goal được tổng hợp và
-        đẩy sang profile-service (cập nhật goal + kỹ năng từ CV + sinh lại embedding).
+        FR-8.3 → FR-8.4 (MENTEE) Trả lời câu hỏi chatbot. Sau lượt cuối, goal được tổng hợp thành BẢN NHÁP
+        (goalStatus = DRAFT) — Sprint 2 (US-21): KHÔNG còn tự đẩy sang profile-service; xem confirm-goal.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -319,6 +333,36 @@ paths:
       responses:
         "200": { description: Conversation sau lượt trả lời }
         "409": { description: CONVERSATION_COMPLETED | NO_OPEN_QUESTION | ALREADY_ANSWERED }
+  /api/ai/enrichment/conversations/{id}/confirm-goal:
+    post:
+      summary: >
+        US-21 / FR-8.5 (MENTEE, chủ hội thoại) "Dùng mục tiêu này": goal (bản nháp hoặc bản người dùng sửa) được
+        lưu vào confirmedGoal rồi gửi sang profile-service POST /api/profile/mentee/{id}/enrichment-chat
+        {enrichedGoalText = confirmedGoal, cvSkills = chỉ confirmedFields.skills của CV (chưa duyệt => []),
+        cvFileUrl}; profile-service lỗi => profileSynced = false và job nền thử lại. Idempotent: goal đã
+        CONFIRMED thì trả 200 với trạng thái hiện tại, không gửi lại (kể cả khi body khác).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GoalInput" }
+      responses:
+        "200": { description: Conversation (goalStatus = CONFIRMED) }
+        "400": { description: VALIDATION_ERROR — goal thiếu, < 10 hoặc > 3000 ký tự }
+        "403": { description: FORBIDDEN — không phải chủ hội thoại }
+        "404": { description: CONVERSATION_NOT_FOUND }
+        "409": { description: CONVERSATION_NOT_COMPLETED | GOAL_DISCARDED }
+  /api/ai/enrichment/conversations/{id}/discard-goal:
+    post:
+      summary: >
+        US-21 (MENTEE, chủ hội thoại) "Bỏ qua": bỏ bản nháp, hồ sơ không đổi. Gọi lại khi đã bỏ: 200.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Conversation (goalStatus = DISCARDED) }
+        "403": { description: FORBIDDEN — không phải chủ hội thoại }
+        "404": { description: CONVERSATION_NOT_FOUND }
+        "409": { description: CONVERSATION_NOT_COMPLETED | GOAL_ALREADY_CONFIRMED }
   /api/ai/cv/parse:
     post:
       summary: FR-8.2 Parse CV không kèm chatbot — mentor dùng để điền nhanh hồ sơ

@@ -104,6 +104,9 @@ export interface EnrichmentMessage {
   answer: string | null;
 }
 
+/** US-21: NONE (chưa xong) → DRAFT → CONFIRMED (đồng bộ hồ sơ) | DISCARDED (không gửi gì). */
+export type EnrichmentGoalStatus = "NONE" | "DRAFT" | "CONFIRMED" | "DISCARDED";
+
 export interface Conversation {
   id: Uuid;
   menteeId: Uuid;
@@ -114,7 +117,12 @@ export interface Conversation {
   currentTurn: number;
   currentQuestion: EnrichmentMessage | null;
   messages: EnrichmentMessage[];
+  /** Goal NHÁP do chatbot tổng hợp — không tự ghi vào hồ sơ (US-21). */
   enrichedGoal: string | null;
+  goalStatus: EnrichmentGoalStatus;
+  /** Goal người dùng đã chọn dùng (có thể đã sửa). */
+  confirmedGoal: string | null;
+  goalDecidedAt: IsoDateTime | null;
   profileSynced: boolean;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;

@@ -1,9 +1,10 @@
 """Response model của CV Parsing + Chatbot enrichment (JSON camelCase)."""
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 import asyncpg
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from app.cv.models import ConfirmedFields, ParsedCv
 from app.cv.repository import confirmed_of, parsed_of
@@ -50,7 +51,11 @@ class ConversationView(CamelModel):
     current_turn: int
     current_question: EnrichmentMessageView | None = None
     messages: list[EnrichmentMessageView] = []
-    enriched_goal: str | None = None
+    enriched_goal: str | None = None  # bản nháp do chatbot tổng hợp
+    # US-21: NONE | DRAFT | CONFIRMED | DISCARDED — hồ sơ chỉ đổi khi CONFIRMED
+    goal_status: str = "NONE"
+    confirmed_goal: str | None = None
+    goal_decided_at: datetime | None = None
     profile_synced: bool = False
     created_at: datetime
     completed_at: datetime | None = None
@@ -64,6 +69,11 @@ class CvUploadResult(CamelModel):
 
 class AnswerInput(CamelModel):
     answer: str = Field(min_length=1, max_length=5000)
+
+
+class GoalInput(CamelModel):
+    """US-21 — goal người dùng chọn dùng (có thể đã sửa từ bản nháp); giới hạn theo profile-service (3000)."""
+    goal: Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=3000)]
 
 
 def cv_view(cv: asyncpg.Record) -> CvView:
@@ -82,5 +92,7 @@ def conversation_view(conversation: asyncpg.Record, messages: list[asyncpg.Recor
         id=conversation["id"], mentee_id=conversation["mentee_id"], cv_id=conversation["cv_id"],
         status=conversation["status"], engine=conversation["engine"], max_turns=conversation["max_turns"],
         current_turn=conversation["current_turn"], current_question=current, messages=views,
-        enriched_goal=conversation["enriched_goal"], profile_synced=conversation["profile_synced"],
+        enriched_goal=conversation["enriched_goal"], goal_status=conversation["goal_status"],
+        confirmed_goal=conversation["confirmed_goal"], goal_decided_at=conversation["goal_decided_at"],
+        profile_synced=conversation["profile_synced"],
         created_at=conversation["created_at"], completed_at=conversation["completed_at"])

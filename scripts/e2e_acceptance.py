@@ -146,6 +146,12 @@ def main():
     check(3, f"Hội thoại kết thúc sau đúng {conv['maxTurns']} lượt, không lặp slot", len(slots) == conv["maxTurns"] and len(set(slots)) == len(slots), slots)
     check(3, "Mốc thời gian đã nêu ('6 tháng') nên không hỏi lại TIMELINE", "TIMELINE" not in slots, slots)
     check(3, "Tổng hợp goal chuẩn hoá", conv["enrichedGoal"] and "Nền tảng hiện có" in conv["enrichedGoal"])
+    # Sprint 2 US-21: goal là bản nháp — hồ sơ chỉ đổi sau khi mentee "Dùng mục tiêu này"
+    profile_draft = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
+    check(3, "Goal nháp chưa ghi vào hồ sơ trước khi xác nhận", conv["goalStatus"] == "DRAFT"
+          and not conv["profileSynced"] and profile_draft["goal"] != conv["enrichedGoal"], conv["goalStatus"])
+    conv = call("POST", f"{AI}/api/ai/enrichment/conversations/{conv['id']}/confirm-goal",
+                {"goal": conv["enrichedGoal"]}, token=mentee_token)
     profile_after = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
     check(3, "Goal được ghi vào profile-service + gộp kỹ năng từ CV", conv["profileSynced"] and profile_after["goal"] == conv["enrichedGoal"]
           and "Spring Boot" in profile_after["skills"])

@@ -10,7 +10,7 @@ from app import config
 from app.llm import deepseek
 from tests.conftest import auth
 from tests.helpers import make_pdf
-from tests.test_cv_enrichment_flow import CV_LINES, answer_all, upload, upload_and_start
+from tests.test_cv_enrichment_flow import CV_LINES, answer_all, confirm_goal, upload, upload_and_start
 
 
 class LlmSpy:
@@ -84,6 +84,7 @@ def test_without_consent_deepseek_is_never_called(client, db, fake_profile, fake
     assert cv["engine"] == "RULE_BASED" and conversation["engine"] == "RULE_BASED"
     done, _ = answer_all(client, conversation, mentee_id)
     assert done["status"] == "COMPLETED" and done["enrichedGoal"]
+    assert confirm_goal(client, mentee_id, done).json()["profileSynced"] is True
     assert llm_forbidden.requests == []
 
     # Mentor điền nhanh hồ sơ từ CV không đồng ý: cũng không gọi DeepSeek.

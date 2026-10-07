@@ -3,8 +3,9 @@ CV Parsing + Chatbot enrichment (FR-8.1 → FR-8.5).
 
 upload CV (PDF, kèm đồng ý gửi AI bên ngoài — US-19) → trích xuất text + parse có cấu trúc (KHÔNG ghi gì
 vào hồ sơ) → người dùng duyệt/sửa/bỏ từng trường (US-20, confirmed_fields) → mở hội thoại {maxTurns} lượt,
-câu hỏi dựa trên trường đã duyệt → tổng hợp goal → gửi sang profile-service (cập nhật goal, gộp kỹ năng
-đã duyệt, sinh lại embedding).
+câu hỏi dựa trên trường đã duyệt → tổng hợp goal NHÁP (US-21, chưa đổi hồ sơ) → người dùng "Dùng mục tiêu
+này" (có thể sửa) hoặc "Bỏ qua" → chỉ khi xác nhận mới gửi sang profile-service (cập nhật goal, gộp kỹ năng
+đã duyệt, sinh lại embedding; lỗi thì job thử lại).
 
 ai-service sở hữu cả luồng lẫn dữ liệu: file CV, CV đã parse và hội thoại nằm ở ai-service.
 Lời gọi engine luôn thực hiện NGOÀI transaction.
@@ -31,6 +32,8 @@ from app.security import AuthUser
 log = logging.getLogger(__name__)
 
 MAX_TURNS = config.ENRICHMENT_MAX_TURNS
+# Job thử lại bỏ qua goal vừa xác nhận trong khoảng này (request xác nhận đang tự gửi) để không gửi trùng.
+SYNC_GRACE_SECONDS = 60
 
 
 def cv_file_url(cv_id: UUID) -> str:
@@ -113,7 +116,7 @@ async def start_conversation(user: AuthUser, cv_id: UUID) -> CvUploadResult:
 
 
 async def answer(user: AuthUser, conversation_id: UUID, text: str) -> ConversationView:
-    """FR-8.3 → FR-8.5 — mentee trả lời; sau lượt cuối tổng hợp goal và cập nhật profile."""
+    """FR-8.3 → FR-8.4 — mentee trả lời; sau lượt cuối tổng hợp goal NHÁP (không đổi hồ sơ — US-21)."""
     text = text.strip()
     pool = await get_pool()
     conversation = await _find(pool, conversation_id)
@@ -157,23 +160,54 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
                                       next_question.question.question)
             await repo.set_current_turn(conn, conversation_id, next_turn)
 
-    if is_last:
-        await sync_profile(conversation_id)
+    return await _view(pool, conversation_id)
+
+
+async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str) -> ConversationView:
+    """
+    US-21 — "Dùng mục tiêu này": goal (bản nháp hoặc bản người dùng sửa) được ghi nhận rồi đồng bộ sang hồ sơ
+    cùng các kỹ năng đã duyệt. Idempotent: goal đã xác nhận thì trả về trạng thái hiện tại, không gửi lại.
+    """
+    pool = await get_pool()
+    conversation = await _owned_completed(pool, user, conversation_id)
+    if conversation["goal_status"] == "DISCARDED":
+        raise errors.conflict("GOAL_DISCARDED", "Mục tiêu này đã bị bỏ qua — hãy tải CV mới để làm lại")
+    if conversation["goal_status"] == "DRAFT" and \
+            await repo.decide_goal(pool, conversation_id, "CONFIRMED", goal) is not None:
+        await sync_profile(conversation_id)  # chỉ request chuyển DRAFT → CONFIRMED mới gửi
+    return await _view(pool, conversation_id)
+
+
+async def discard_goal(user: AuthUser, conversation_id: UUID) -> ConversationView:
+    """US-21 — "Bỏ qua": bỏ bản nháp, không gửi gì sang hồ sơ. Gọi lại khi đã bỏ: trả về trạng thái hiện tại."""
+    pool = await get_pool()
+    conversation = await _owned_completed(pool, user, conversation_id)
+    if conversation["goal_status"] == "DRAFT":
+        await repo.decide_goal(pool, conversation_id, "DISCARDED", None)
+    conversation = await _find(pool, conversation_id)
+    if conversation["goal_status"] == "CONFIRMED":
+        raise errors.conflict("GOAL_ALREADY_CONFIRMED", "Mục tiêu đã được dùng cho hồ sơ, không thể bỏ qua")
     return await _view(pool, conversation_id)
 
 
 async def sync_profile(conversation_id: UUID) -> None:
-    """Gửi goal đã tổng hợp sang profile-service; lỗi sẽ được job thử lại."""
+    """
+    Gửi goal ĐÃ XÁC NHẬN + kỹ năng đã duyệt sang profile-service; lỗi sẽ được job thử lại. Không làm gì nếu goal
+    chưa được xác nhận hoặc đã gửi rồi.
+    """
     pool = await get_pool()
     conversation = await _find(pool, conversation_id)
+    if conversation["goal_status"] != "CONFIRMED" or conversation["profile_synced"]:
+        return
     cv = await cv_repo.find(pool, conversation["cv_id"])
     try:
-        await profile.apply_enrichment(conversation["mentee_id"], conversation["enriched_goal"],
+        await profile.apply_enrichment(conversation["mentee_id"], conversation["confirmed_goal"],
                                        _confirmed_skills(cv), cv_file_url(cv["id"]))
     except (httpx.HTTPError, errors.AiError) as e:
         log.warning("Could not sync enrichment %s to profile-service: %s", conversation_id, e)
         return
-    await repo.mark_synced(pool, conversation_id)
+    if not await repo.mark_synced(pool, conversation_id):
+        return
     await mentoring.notify_user(conversation["mentee_id"], "PROFILE_ENRICHED", "Hồ sơ đã được cập nhật",
                                 "Mục tiêu học tập của bạn đã được làm rõ. Hãy thử tìm mentor phù hợp ngay!",
                                 "/matching")
@@ -185,7 +219,7 @@ async def retry_profile_sync_forever() -> None:
         await asyncio.sleep(config.PROFILE_SYNC_RETRY_SECONDS)
         try:
             pool = await get_pool()
-            for conversation in await repo.pending_profile_sync(pool):
+            for conversation in await repo.pending_profile_sync(pool, SYNC_GRACE_SECONDS):
                 await sync_profile(conversation["id"])
         except asyncio.CancelledError:
             raise
@@ -262,6 +296,15 @@ async def delete_cv(user: AuthUser, cv_id: UUID) -> None:
         await profile.clear_cv_file(cv["user_id"], cv_file_url(cv_id))
     except httpx.HTTPError as e:
         log.warning("Could not clear cvFileUrl of %s in profile-service: %s", cv["user_id"], e)
+
+
+async def _owned_completed(db, user: AuthUser, conversation_id: UUID):
+    conversation = await _find(db, conversation_id)
+    if conversation["mentee_id"] != user.user_id:
+        raise errors.forbidden("Đây không phải hội thoại của bạn")
+    if conversation["status"] != "COMPLETED":
+        raise errors.conflict("CONVERSATION_NOT_COMPLETED", "Hội thoại chưa kết thúc nên chưa có mục tiêu")
+    return conversation
 
 
 async def _own_cv(db, user: AuthUser, cv_id: UUID):
