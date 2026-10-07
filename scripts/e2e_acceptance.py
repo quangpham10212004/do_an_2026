@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
-                    make_pdf, multipart_file)
+                    charge, make_pdf, multipart_file)
 
 VN = timezone(timedelta(hours=7))
 # US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
@@ -260,21 +260,21 @@ def main():
     check(8, "Mentee chưa được chấp nhận không đặt được lịch với mentor", ok)
 
     expiry = (datetime.now() + timedelta(days=800)).strftime("%m/%y")
-    declined = call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": {
-        "cardNumber": "4000 0000 0000 0002", "expiry": expiry, "cvv": "123"}}, token=referred_token)
+    declined = charge(session["id"], {
+        "cardNumber": "4000 0000 0000 0002", "expiry": expiry, "cvv": "123"}, referred_token)
     check(8, "Thẻ bị từ chối → giao dịch FAILED", declined["status"] == "FAILED" and declined["failureReason"] == "CARD_DECLINED")
     still = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
     check(8, "Thanh toán thất bại thì phiên vẫn PENDING (FR-6.2)", still["status"] == "PENDING")
-    ok, _ = expect_error(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "amount": 1000, "card": {
-        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}}, token=referred_token), 400)
+    ok, _ = expect_error(lambda: charge(session["id"], {
+        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}, referred_token, amount=1000), 400)
     check(8, "Client sửa số tiền bị từ chối (AMOUNT_MISMATCH)", ok)
-    paid = call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": {
-        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}}, token=referred_token)
+    paid = charge(session["id"], {
+        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token)
     check(8, "Thẻ hợp lệ → giao dịch SUCCESS", paid["status"] == "SUCCESS")
     confirmed = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
     check(8, "Booking được xác nhận sau thanh toán thành công", confirmed["status"] == "CONFIRMED")
-    ok, _ = expect_error(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": {
-        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}}, token=referred_token), 409)
+    ok, _ = expect_error(lambda: charge(session["id"], {
+        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token), 409)
     check(8, "Không thanh toán trùng 1 phiên (409)", ok)
 
     # ---------------- DoD 10 (phần 2): points ----------------
@@ -305,8 +305,8 @@ def main():
     s2 = call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=4)).isoformat(),
         "durationMinutes": 60, **BOOKING_FORM}, token=referred_token)
-    call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": s2["id"], "card": {
-        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}}, token=referred_token)
+    charge(s2["id"], {
+        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}, referred_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s2['id']}/cancel", {"reason": "Ban viec"}, token=referred_token)
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{s2['id']}/transactions", token=referred_token)
     check(8, "Huỷ phiên đã thanh toán → giao dịch REFUNDED (FR-6.3)", any(t["status"] == "REFUNDED" for t in txs), txs)

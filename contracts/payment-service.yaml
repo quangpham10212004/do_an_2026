@@ -20,14 +20,34 @@ components:
         sessionId: { type: string, format: uuid }
         payerId: { type: string, format: uuid }
         mentorId: { type: string, format: uuid }
-        amount: { type: number }
+        amount: { type: number, description: "Giá phiên (VND) mentee trả" }
+        fee: { type: number, example: 45000, description: "US-13 — phí nền tảng = round(amount × feeRate), chốt lúc charge" }
+        mentorEarning: { type: number, example: 255000, description: "US-13 — amount − fee, chốt lúc charge (đổi cấu hình phí về sau không đổi giá trị này)" }
+        feeRate: { type: number, example: 0.15, description: "US-13 — tỉ lệ phí áp dụng (app.payment.platform-fee-rate lúc charge)" }
+        refundedAmount: { type: number, description: "US-13 — tổng các lần hoàn (bảng refunds); ≤ amount" }
         currency: { type: string, example: VND }
-        status: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED] }
+        status:
+          type: string
+          enum: [PENDING, SUCCESS, FAILED, REFUNDED, PARTIALLY_REFUNDED, ON_HOLD]
+          description: >
+            PENDING → SUCCESS | FAILED; SUCCESS → PARTIALLY_REFUNDED → REFUNDED; SUCCESS → REFUNDED;
+            SUCCESS → ON_HOLD → SUCCESS (US-12: phiên DISPUTED — chưa trả mentor, chưa hoàn mentee).
         provider: { type: string, example: SANDBOX }
         providerReference: { type: string, nullable: true }
-        failureReason: { type: string, nullable: true, example: CARD_DECLINED }
+        failureReason: { type: string, nullable: true, example: CARD_DECLINED, description: "Chỉ lý do charge thất bại (hoàn tiền không còn ghi đè trường này)" }
+        holdReason: { type: string, nullable: true, example: SESSION_DISPUTED }
+        refunds: { type: array, items: { $ref: "#/components/schemas/Refund" } }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    Refund:
+      type: object
+      description: US-13 — một lần hoàn tiền (bảng refunds); SUM(amount) ≤ Transaction.amount
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: number }
+        reason: { type: string, nullable: true }
+        actorId: { type: string, format: uuid, nullable: true, description: "null = hệ thống / service nội bộ" }
+        createdAt: { type: string, format: date-time }
     Referral:
       type: object
       properties:
@@ -55,6 +75,16 @@ paths:
         FR-6.1 → FR-6.3 Thanh toán 1 phiên PENDING (MENTEE chủ phiên). Số tiền lấy từ
         mentoring-service; nếu client gửi amount khác giá phiên → AMOUNT_MISMATCH.
         SUCCESS → xử lý referral + báo mentoring-service xác nhận phiên (FR-6.2).
+        US-13: phí nền tảng (app.payment.platform-fee-rate, mặc định 15%) chốt vào fee / mentorEarning lúc tạo giao dịch.
+        Bắt buộc header Idempotency-Key (frontend sinh 1 UUID cho mỗi lần checkout): cùng người gọi + cùng key trong
+        24 giờ → trả lại giao dịch của lần gọi đầu (kể cả FAILED), không charge lần 2. Lỗi kiểm tra xảy ra trước khi
+        tạo giao dịch (SESSION_NOT_PAYABLE, AMOUNT_MISMATCH...) không "tiêu" key.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, maxLength: 255, example: 3f1c2a7e-0d4b-4c55-9a8e-1b2c3d4e5f60 }
+          description: "Phạm vi: (userId của JWT, key). 1–255 ký tự ASCII in được."
       requestBody:
         required: true
         content:
@@ -79,9 +109,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
-        "400": { description: AMOUNT_MISMATCH / FREE_SESSION }
+        "400": { description: IDEMPOTENCY_KEY_REQUIRED / INVALID_IDEMPOTENCY_KEY / AMOUNT_MISMATCH / FREE_SESSION }
         "403": { description: Không phải mentee của phiên }
-        "409": { description: ALREADY_PAID / SESSION_NOT_PAYABLE }
+        "409": { description: "ALREADY_PAID / SESSION_NOT_PAYABLE / IDEMPOTENCY_KEY_REUSED (key đã dùng cho phiên khác) / IDEMPOTENCY_IN_PROGRESS (lần gọi đầu chưa xong)" }
 
   /api/payment/transactions:
     get:
@@ -148,7 +178,7 @@ paths:
     get:
       summary: (ADMIN) Giám sát giao dịch
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED] } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED, PARTIALLY_REFUNDED, ON_HOLD] } }
         - { name: page, in: query, schema: { type: integer, default: 0 } }
         - { name: size, in: query, schema: { type: integer, default: 20 } }
       responses:
@@ -157,7 +187,7 @@ paths:
     get:
       summary: (ADMIN) Thống kê giao dịch
       responses:
-        "200": { description: "{ successCount, failedCount, refundedCount, totalRevenue }" }
+        "200": { description: "{ successCount, failedCount, refundedCount, totalRevenue, partiallyRefundedCount, onHoldCount, totalPlatformFee }" }
   /api/payment/admin/referrals:
     get:
       summary: (ADMIN) Giám sát referral
@@ -193,7 +223,10 @@ paths:
         "409": { description: ALREADY_REFERRED }
   /internal/payments/refund:
     post:
-      summary: Nội bộ — mentoring-service yêu cầu hoàn tiền khi phiên đã thanh toán bị huỷ
+      summary: >
+        Nội bộ — mentoring-service yêu cầu hoàn tiền phiên (huỷ phiên đã thanh toán US-01, mentor vắng mặt US-12).
+        US-13: hoàn theo amount (VND) HOẶC percent (% giá gốc; cả hai trống = 100%). Mỗi lần ghi 1 dòng refunds,
+        tổng ≤ giá gốc; giao dịch → PARTIALLY_REFUNDED hoặc REFUNDED (khi đã hoàn đủ). Không ghi đè giao dịch.
       security: [{ internalToken: [] }]
       requestBody:
         required: true
@@ -204,21 +237,64 @@ paths:
               required: [sessionId]
               properties:
                 sessionId: { type: string, format: uuid }
-                reason: { type: string }
-                percent:
-                  type: integer
-                  minimum: 1
-                  maximum: 100
-                  default: 100
-                  description: "US-01 — % giá phiên cần hoàn. Hiện chỉ hỗ trợ 100 (khác 100 → 400 PARTIAL_REFUND_NOT_SUPPORTED); hoàn một phần thuộc US-13"
+                reason: { type: string, maxLength: 300 }
+                percent: { type: integer, minimum: 1, maximum: 100, description: "% giá gốc của giao dịch" }
+                amount: { type: number, minimum: 1, description: "Số tiền VND (không gửi cùng percent)" }
+                actorId: { type: string, format: uuid, nullable: true, description: "Người thực hiện (admin); trống = hệ thống" }
       responses:
         "200":
-          description: Giao dịch sau khi hoàn tiền (status = REFUNDED)
+          description: Giao dịch sau khi hoàn tiền (PARTIALLY_REFUNDED / REFUNDED, kèm refunds)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
-        "400": { description: PARTIAL_REFUND_NOT_SUPPORTED }
+        "400": { description: INVALID_REFUND_AMOUNT / VALIDATION_ERROR }
+        "404": { description: NO_SUCCESS_TRANSACTION (chưa thanh toán / đã hoàn đủ) }
+        "409": { description: REFUND_EXCEEDS_AMOUNT / TRANSACTION_ON_HOLD }
+  /internal/payments/hold:
+    post:
+      summary: >
+        Nội bộ — US-12 phiên DISPUTED: tạm giữ giao dịch SUCCESS → ON_HOLD (không trả mentor, không hoàn mentee cho tới
+        khi xử lý tranh chấp — US-32). Gọi lại khi đã ON_HOLD → 200 như cũ.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string, format: uuid }
+                reason: { type: string, maxLength: 300, example: SESSION_DISPUTED }
+      responses:
+        "200":
+          description: Giao dịch (status = ON_HOLD)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { description: NO_SUCCESS_TRANSACTION (phiên miễn phí / chưa thanh toán) }
+        "409": { description: TRANSACTION_NOT_HOLDABLE (đã hoàn tiền) }
+  /internal/payments/release:
+    post:
+      summary: Nội bộ — US-12/US-32 giải phóng giao dịch tạm giữ ON_HOLD → SUCCESS. Gọi lại khi đã SUCCESS → 200 như cũ.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Giao dịch (status = SUCCESS)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
         "404": { description: NO_SUCCESS_TRANSACTION }
+        "409": { description: TRANSACTION_NOT_ON_HOLD }
   /internal/rewards:
     post:
       summary: >

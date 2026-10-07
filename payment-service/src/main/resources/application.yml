@@ -34,6 +34,9 @@ app:
   services:
     mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  payment:                         # US-13
+    platform-fee-rate: ${PLATFORM_FEE_RATE:0.15}   # phí nền tảng chốt vào giao dịch lúc charge (fee, mentor_earning)
+    idempotency-ttl: PT24H         # Idempotency-Key của /charge có hiệu lực 24 giờ / người gọi
   referral:
     # FR-6.6 — quy tắc cộng điểm & chống gian lận cơ bản
     reward-points: 100

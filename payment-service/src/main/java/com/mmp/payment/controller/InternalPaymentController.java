@@ -26,14 +26,22 @@ public class InternalPaymentController {
         return referralService.registerReferee(req.code(), req.refereeId());
     }
 
-    /** Gọi bởi mentoring-service khi phiên đã thanh toán bị huỷ. */
+    /** Gọi bởi mentoring-service khi phiên đã thanh toán bị huỷ / mentor vắng mặt (US-13: amount hoặc percent). */
     @PostMapping("/payments/refund")
     public TransactionResponse refund(@Valid @RequestBody RefundRequest req) {
-        if (req.percent() != null && req.percent() != 100) {
-            throw com.mmp.payment.exception.ApiException.badRequest("PARTIAL_REFUND_NOT_SUPPORTED",
-                    "Chưa hỗ trợ hoàn tiền một phần");
-        }
-        return paymentService.refund(req.sessionId(), req.reason());
+        return paymentService.refund(req.sessionId(), req.reason(), req.percent(), req.amount(), req.actorId());
+    }
+
+    /** US-12 — phiên tranh chấp: tạm giữ giao dịch (SUCCESS → ON_HOLD). Idempotent. */
+    @PostMapping("/payments/hold")
+    public TransactionResponse hold(@Valid @RequestBody HoldRequest req) {
+        return paymentService.hold(req.sessionId(), req.reason());
+    }
+
+    /** US-12 — giải phóng giao dịch tạm giữ (ON_HOLD → SUCCESS). Idempotent. */
+    @PostMapping("/payments/release")
+    public TransactionResponse release(@Valid @RequestBody HoldRequest req) {
+        return paymentService.release(req.sessionId());
     }
 
     /** US-01 — mentoring-service cộng điểm xin lỗi khi mentor huỷ phiên. Gửi lại cùng nội dung → trả bản ghi cũ. */

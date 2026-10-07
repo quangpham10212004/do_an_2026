@@ -380,8 +380,16 @@ stateDiagram-v2
     [*] --> PENDING: tạo giao dịch
     PENDING --> SUCCESS: cổng sandbox chấp nhận
     PENDING --> FAILED: bị từ chối / thanh toán trùng
-    SUCCESS --> REFUNDED: huỷ phiên đã thanh toán
+    SUCCESS --> REFUNDED: hoàn toàn bộ (huỷ phiên, mentor vắng mặt)
+    SUCCESS --> PARTIALLY_REFUNDED: hoàn một phần
+    PARTIALLY_REFUNDED --> REFUNDED: hoàn nốt phần còn lại
+    SUCCESS --> ON_HOLD: phiên DISPUTED (US-12)
+    ON_HOLD --> SUCCESS: hết tranh chấp (US-32)
 ```
+
+US-13: phí nền tảng (`app.payment.platform-fee-rate`, mặc định 15%) chốt vào `fee`/`mentor_earning` lúc charge;
+mỗi lần hoàn tiền là 1 dòng bảng `refunds` (tổng ≤ `amount`), không ghi đè giao dịch; `POST /api/payment/charge`
+bắt buộc header `Idempotency-Key` (cùng người gọi + key trong 24 giờ → trả kết quả lần đầu).
 
 ### 4.4 Trạng thái xác thực mentor & referral
 

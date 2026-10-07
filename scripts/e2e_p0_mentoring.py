@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call
+from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, charge
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -83,7 +83,7 @@ def book(mentee, mentor, start, duration=60, **extra):
 
 
 def pay(mentee, session):
-    return call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": CARD}, token=mentee["accessToken"])
+    return charge(session["id"], CARD, mentee["accessToken"])   # US-13: kèm Idempotency-Key
 
 
 def slots(mentee, mentor, duration=30, days=7, exclude=None):
