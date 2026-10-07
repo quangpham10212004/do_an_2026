@@ -25,10 +25,40 @@ components:
         mentorId: { type: string, format: uuid }
         mentorName: { type: string }
         message: { type: string, nullable: true }
-        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED] }
-        responseNote: { type: string, nullable: true }
+        goal: { type: string, description: "US-14 — mục tiêu (50–1000 ký tự với yêu cầu mới; yêu cầu cũ được migrate từ message)" }
+        sessionType: { $ref: "#/components/schemas/SessionType" }
+        frequency: { $ref: "#/components/schemas/RequestFrequency" }
+        expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED]
+          description: >
+            US-15: PENDING không được mentor phản hồi sau 72 giờ (app.requests.expire-after) → EXPIRED (job mỗi 5 phút).
+            active_mentee_count của mentor không đổi. Mentee nhận thông báo REQUEST_EXPIRED (link /matching) kèm tối đa 3
+            mentor tương tự lấy từ matching-service GET /internal/matching/similar-mentors (best-effort: lỗi/404 → không gợi ý).
+        expiredAt: { type: string, format: date-time, nullable: true, description: "US-15 — thời điểm hết hạn" }
+        rejectReason: { allOf: [{ $ref: "#/components/schemas/RejectReason" }], nullable: true, description: "US-14 — có khi REJECTED" }
+        responseNote: { type: string, nullable: true, description: "Ghi chú tuỳ chọn của mentor khi phản hồi" }
         createdAt: { type: string, format: date-time }
         respondedAt: { type: string, format: date-time, nullable: true }
+        menteeProfile:
+          type: object
+          nullable: true
+          description: >
+            US-14 — tóm tắt hồ sơ mentee cho mentor/admin xét yêu cầu (chỉ với yêu cầu PENDING/ACCEPTED; lấy best-effort
+            từ profile-service GET /api/profile/mentee/{id} bằng X-Internal-Token). Mentee xem danh sách của mình → null.
+          properties:
+            displayName: { type: string }
+            domain: { type: string }
+            currentLevel: { type: string, nullable: true, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+            goal: { type: string, description: "Goal hiện tại trong hồ sơ (có thể khác goal của yêu cầu)" }
+            skills: { type: array, items: { type: string } }
+    RequestFrequency:
+      type: string
+      enum: [WEEKLY, BIWEEKLY, MONTHLY, ONE_OFF]
+    RejectReason:
+      type: string
+      enum: [FULL, NOT_MY_EXPERTISE, SCHEDULE, OTHER]
     Session:
       type: object
       properties:
@@ -51,12 +81,21 @@ components:
           nullable: true
           description: >
             US-04 — link phòng họp (sao chép từ meetingLink của hồ sơ mentor lúc đặt lịch, mentor có thể đổi).
-            Chỉ trả khi status là CONFIRMED hoặc trạng thái sau đó; PENDING/CANCELLED luôn null.
-        status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED], description: "PENDING = chờ thanh toán" }
+            Chỉ trả khi status là CONFIRMED hoặc trạng thái sau đó (AWAITING_ATTENDANCE, COMPLETED, NO_SHOW_*, DISPUTED);
+            PENDING/EXPIRED/CANCELLED luôn null.
+        status: { $ref: "#/components/schemas/SessionStatus" }
         cancelledBy: { type: string, nullable: true, enum: [MENTEE, MENTOR, SYSTEM] }
-        cancelReason: { type: string, nullable: true, description: "Lý do người huỷ nhập; huỷ do quá hạn thanh toán = PAYMENT_TIMEOUT" }
+        cancelReason: { type: string, nullable: true, description: "Lý do người huỷ nhập; EXPIRED do quá hạn thanh toán = PAYMENT_TIMEOUT; huỷ trong buổi gọi (US-12) = CANCELLED_ON_CALL" }
         refundPercent: { type: integer, nullable: true, minimum: 0, maximum: 100 }
         rescheduleCount: { type: integer, description: "US-06 — số lần đã dời lịch (tối đa 2)" }
+        menteeAttendance: { allOf: [{ $ref: "#/components/schemas/AttendanceAnswer" }], nullable: true, description: "US-12 — câu trả lời của mentee (null = chưa trả lời)" }
+        mentorAttendance: { allOf: [{ $ref: "#/components/schemas/AttendanceAnswer" }], nullable: true, description: "US-12 — câu trả lời của mentor" }
+        attendanceDeadline: { type: string, format: date-time, description: "US-12 — endsAt + 48 giờ (app.attendance.window): hạn xác nhận tham dự" }
+        attendanceResolution:
+          type: string
+          nullable: true
+          enum: [BOTH_HELD, HELD_ONE_SIDE, NO_ANSWER, MENTEE_NO_SHOW_REPORTED, MENTOR_NO_SHOW_REPORTED, CONFLICT, CANCELLED_ON_CALL]
+          description: US-12 — cách phiên được kết luận (null với phiên chưa kết luận hoặc hoàn thành trước US-12)
         pendingReschedule:
           allOf: [{ $ref: "#/components/schemas/RescheduleProposal" }]
           nullable: true
@@ -74,6 +113,18 @@ components:
         expiresAt: { type: string, format: date-time, description: "min(tạo + 24 giờ, giờ bắt đầu gốc − 1 giờ)" }
         status: { type: string, enum: [PENDING, ACCEPTED, DECLINED, EXPIRED] }
         createdAt: { type: string, format: date-time }
+    SessionStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED]
+      description: >
+        PENDING = chờ thanh toán → CONFIRMED (đã thanh toán / miễn phí) | EXPIRED (quá 30 phút chưa thanh toán — trước
+        US-12 là CANCELLED + PAYMENT_TIMEOUT, đã migrate); PENDING/CONFIRMED → CANCELLED (huỷ trước giờ bắt đầu).
+        US-12: tới giờ kết thúc CONFIRMED → AWAITING_ATTENDANCE; trong 48 giờ hai bên POST /attendance; kết luận →
+        COMPLETED | NO_SHOW_MENTEE | NO_SHOW_MENTOR | DISPUTED | CANCELLED (huỷ trong buổi gọi). Chỉ COMPLETED được đánh giá.
+    AttendanceAnswer:
+      type: string
+      enum: [HELD, MENTOR_NO_SHOW, MENTEE_NO_SHOW, CANCELLED_ON_CALL]
+      description: "Mentee: HELD | MENTOR_NO_SHOW | CANCELLED_ON_CALL. Mentor: HELD | MENTEE_NO_SHOW | CANCELLED_ON_CALL."
     SessionType:
       type: string
       nullable: true
@@ -112,16 +163,23 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Request" } }
     post:
-      summary: FR-5.2 (MENTEE) Gửi yêu cầu tới mentor đã được xác thực
+      summary: >
+        FR-5.2 / US-14 (MENTEE) Gửi yêu cầu theo form tới mentor đã được xác thực. goal bắt buộc 50–1000 ký tự (sau trim),
+        sessionType, frequency, expectedDurationMonths ∈ {1, 3, 6}, message tuỳ chọn. Mỗi mentee tối đa 3 yêu cầu PENDING
+        (app.requests.max-pending) → 409 TOO_MANY_PENDING_REQUESTS; vẫn chỉ 1 yêu cầu đang mở (PENDING/ACCEPTED) với mỗi mentor.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [mentorId]
+              required: [mentorId, goal, sessionType, frequency, expectedDurationMonths]
               properties:
                 mentorId: { type: string, format: uuid }
+                goal: { type: string, minLength: 50, maxLength: 1000 }
+                sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] }
+                frequency: { $ref: "#/components/schemas/RequestFrequency" }
+                expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
                 message: { type: string, maxLength: 1000 }
       responses:
         "201":
@@ -129,11 +187,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Request" }
-        "400": { description: "MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
-        "409": { description: REQUEST_ALREADY_EXISTS }
+        "400": { description: "VALIDATION_ERROR / INVALID_GOAL / INVALID_EXPECTED_DURATION / MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
+        "409": { description: REQUEST_ALREADY_EXISTS / TOO_MANY_PENDING_REQUESTS }
   /api/mentoring/requests/{id}/respond:
     post:
-      summary: FR-5.3 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa
+      summary: FR-5.3 / US-14 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa; từ chối bắt buộc rejectReason
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -144,9 +202,11 @@ paths:
               required: [decision]
               properties:
                 decision: { type: string, enum: [ACCEPT, REJECT] }
-                note: { type: string }
+                rejectReason: { $ref: "#/components/schemas/RejectReason" }
+                note: { type: string, maxLength: 500, description: Ghi chú tuỳ chọn (mentee thấy) }
       responses:
         "200": { description: Request }
+        "400": { description: REJECT_REASON_REQUIRED / VALIDATION_ERROR }
         "409": { description: REQUEST_NOT_PENDING / CAPACITY_FULL }
   /api/mentoring/requests/{id}/cancel:
     post:
@@ -166,7 +226,7 @@ paths:
     get:
       summary: FR-5.7 Lịch sử phiên của tôi
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED] } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/SessionStatus" } }
       responses:
         "200":
           description: OK
@@ -183,7 +243,7 @@ paths:
         phiên 10:00–11:00 chặn tới 11:15) hoặc của mentee. Kiểm tra trùng + tạo phiên chạy dưới advisory
         lock theo mentor. Dữ kiện mentor lấy từ profile-service GET /internal/mentor/{id} (status,
         onLeaveUntil, bufferMinutes, minNoticeHours, exceptions — thiếu thì dùng mặc định).
-        Phiên có phí → PENDING (chờ thanh toán, tự huỷ sau 30 phút); phiên miễn phí → CONFIRMED.
+        Phiên có phí → PENDING (chờ thanh toán, quá 30 phút → EXPIRED); phiên miễn phí → CONFIRMED.
       requestBody:
         required: true
         content:
@@ -334,13 +394,45 @@ paths:
         "409": { description: SESSION_NOT_EDITABLE }
   /api/mentoring/sessions/{id}/complete:
     post:
-      summary: (MENTOR) Đánh dấu phiên CONFIRMED đã diễn ra
+      summary: >
+        (MENTOR của phiên / ADMIN thay mentor) Giữ từ Sprint 1 — từ US-12 tương đương mentor trả lời HELD ở
+        POST /attendance (cùng điều kiện cửa sổ 48 giờ). Không còn chuyển thẳng sang COMPLETED.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Session }
+        "409": { description: ATTENDANCE_NOT_OPEN / ATTENDANCE_WINDOW_CLOSED / ATTENDANCE_ALREADY_ANSWERED / ATTENDANCE_CLOSED }
+  /api/mentoring/sessions/{id}/attendance:
+    post:
+      summary: >
+        US-12 (MENTEE / MENTOR của phiên) Xác nhận tham dự, 1 lần mỗi bên, từ giờ kết thúc tới giờ kết thúc + 48 giờ
+        (app.attendance.window). Kết luận: cả hai HELD → COMPLETED; trả lời khác nhau → DISPUTED ngay (giao dịch ON_HOLD
+        qua POST /internal/payments/hold — chờ xử lý tranh chấp US-32); một bên trả lời, bên kia im lặng 48 giờ → theo
+        câu đó (HELD → COMPLETED; mentor báo MENTEE_NO_SHOW → NO_SHOW_MENTEE, không hoàn; mentee báo MENTOR_NO_SHOW →
+        NO_SHOW_MENTOR, hoàn 100% + 1 strike MENTOR_NO_SHOW); không ai trả lời → COMPLETED. CANCELLED_ON_CALL (cả hai,
+        hoặc một bên + bên kia im lặng) → CANCELLED, cancelledBy SYSTEM, cancelReason CANCELLED_ON_CALL, hoàn 100%,
+        không strike. Hoàn tiền / tạm giữ đi qua outbox (gửi ngay sau commit, job mỗi phút gửi lại).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answer]
+              properties:
+                answer: { $ref: "#/components/schemas/AttendanceAnswer" }
+      responses:
+        "200":
+          description: Phiên sau khi ghi câu trả lời (có thể đã được kết luận)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { description: "INVALID_ATTENDANCE_ANSWER (tự báo mình vắng mặt) / VALIDATION_ERROR" }
+        "403": { description: Không tham gia phiên }
+        "409": { description: "ATTENDANCE_NOT_OPEN (chưa tới giờ kết thúc) / ATTENDANCE_WINDOW_CLOSED (quá 48 giờ) / ATTENDANCE_ALREADY_ANSWERED / ATTENDANCE_CLOSED (đã kết luận)" }
   /api/mentoring/sessions/{id}/review:
     post:
-      summary: FR-5.6 (MENTEE) Đánh giá sau phiên COMPLETED — rating trung bình đồng bộ sang profile-service
+      summary: FR-5.6 (MENTEE) Đánh giá sau phiên COMPLETED (không đánh giá được NO_SHOW_*/DISPUTED/CANCELLED) — rating trung bình đồng bộ sang profile-service
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -407,7 +499,7 @@ paths:
     get:
       summary: (ADMIN) Thống kê phiên mentoring (số liệu AI Interview ở GET /api/ai/admin/stats)
       responses:
-        "200": { description: "{ pendingSessions, confirmedSessions, completedSessions, cancelledSessions }" }
+        "200": { description: "{ pendingSessions, confirmedSessions, completedSessions, cancelledSessions, awaitingAttendanceSessions, expiredSessions, noShowMenteeSessions, noShowMentorSessions, disputedSessions }" }
 
   # ---------------- Internal (payment-service, ai-service) ----------------
   /internal/sessions/{id}:
@@ -419,7 +511,7 @@ paths:
         "200": { description: "{ id, menteeId, mentorId, scheduledAt, durationMinutes, price, status }" }
   /internal/sessions/{id}/payment-succeeded:
     post:
-      summary: Nội bộ — FR-6.2 xác nhận phiên sau thanh toán thành công (phiên đã huỷ → tự hoàn tiền)
+      summary: Nội bộ — FR-6.2 xác nhận phiên sau thanh toán thành công (phiên đã CANCELLED / EXPIRED → tự hoàn tiền)
       security: [{ internalToken: [] }]
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
@@ -476,3 +568,47 @@ paths:
                   menteeId: { type: string, format: uuid }
                   related: { type: boolean, description: "true khi có yêu cầu PENDING hoặc ACCEPTED giữa hai người" }
         "400": { description: BAD_REQUEST (thiếu hoặc sai định dạng mentorId/menteeId) }
+
+  # ---------------- Dev only (không tồn tại ở profile prod) ----------------
+  /internal/dev/sessions/{id}/shift:
+    post:
+      summary: >
+        DEV/E2E — dời giờ phiên để phiên đã kết thúc endedMinutesAgo phút trước (kiểm thử US-12 không phải chờ).
+        Chỉ X-Internal-Token; bean bị tắt ở profile prod (giống auth-service /internal/dev/emails).
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                endedMinutesAgo: { type: integer, default: 0 }
+      responses:
+        "200": { description: "{ id, scheduledAt, endsAt, status }" }
+  /internal/dev/requests/{id}/shift:
+    post:
+      summary: "DEV/E2E — lùi created_at của yêu cầu về createdHoursAgo giờ trước (kiểm thử US-15). Không có ở profile prod."
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                createdHoursAgo: { type: integer, default: 0 }
+      responses:
+        "200": { description: "{ id, createdAt, status }" }
+        "404": { description: REQUEST_NOT_FOUND }
+  /internal/dev/jobs/{job}:
+    post:
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15). Không có ở profile prod."
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, request-expiry] } }
+      responses:
+        "200": { description: "{ job, status: DONE }" }
+        "404": { description: JOB_NOT_FOUND }

@@ -141,9 +141,12 @@ bổ sung kỹ năng/mục tiêu.
 
 **Gửi yêu cầu mentoring & phản hồi** (FR-5.2, FR-5.3)
 
-Mentee bấm *Gửi yêu cầu mentoring* ở thẻ/hồ sơ mentor → Nhập lời nhắn → Hệ thống kiểm tra mentor đã
-được duyệt, đang nhận mentee, chưa có yêu cầu đang chờ/đang hoạt động giữa hai bên → Tạo yêu cầu, thông
-báo mentor → Mentor mở *Yêu cầu* → Bấm *Chấp nhận* hoặc *Từ chối* (kèm lý do) → **Chấp nhận khi đã đủ
+Mentee bấm *Gửi yêu cầu mentoring* ở thẻ/hồ sơ mentor → Trang `/mentoring/request/{mentorId}` (US-14): nhập mục
+tiêu (50–1000 ký tự, điền sẵn từ goal trong hồ sơ), loại phiên, tần suất (hằng tuần / 2 tuần / hằng tháng / một lần),
+thời gian dự kiến (1/3/6 tháng), lời nhắn tuỳ chọn → Hệ thống kiểm tra mentor đã được duyệt, đang nhận mentee, chưa
+có yêu cầu đang chờ/đang hoạt động giữa hai bên, mentee có ít hơn 3 yêu cầu đang chờ → Tạo yêu cầu, thông
+báo mentor → Mentor mở *Yêu cầu* (kèm tóm tắt hồ sơ mentee) → Bấm *Chấp nhận* hoặc *Từ chối* (bắt buộc chọn lý do:
+đã đủ mentee / không đúng chuyên môn / lịch không phù hợp / khác, kèm ghi chú tuỳ chọn) → **Chấp nhận khi đã đủ
 sức chứa**: báo lỗi "đã nhận đủ số mentee tối đa" → **Chấp nhận hợp lệ**: cập nhật số mentee đang hướng
 dẫn sang profile-service → Mentee nhận thông báo; nếu được chấp nhận, nút *Đặt lịch* xuất hiện.
 
@@ -165,8 +168,10 @@ báo cho mentor và mentee → Đánh dấu đã nhắc.
 
 **Hoàn thành & đánh giá** (FR-5.6, FR-5.7)
 
-Sau buổi học, mentor bấm *Đánh dấu hoàn thành* (hoặc hệ thống tự hoàn thành sau khi phiên kết thúc 2
-giờ) → Mentee nhận thông báo mời đánh giá → Mentee mở *Phiên học*, bấm *Đánh giá*, chọn số sao và nhận
+Tới giờ kết thúc, phiên chuyển *Chờ xác nhận tham dự* (US-12) → Trong 48 giờ mỗi bên trả lời phiên đã diễn
+ra / bên kia vắng mặt / huỷ trong buổi gọi (nút *Đánh dấu hoàn thành* của mentor = "đã diễn ra") → Hệ thống kết luận
+(hai bên khớp → kết luận ngay; mâu thuẫn → tranh chấp, tạm giữ tiền; hết 48 giờ → theo câu trả lời duy nhất, không ai
+trả lời → hoàn thành) → Phiên hoàn thành: mentee nhận thông báo mời đánh giá → Mentee mở *Phiên học*, bấm *Đánh giá*, chọn số sao và nhận
 xét → Hệ thống kiểm tra phiên đã hoàn thành và chưa được đánh giá → Lưu đánh giá, tính lại điểm trung
 bình của mentor, đồng bộ sang profile-service (ảnh hưởng xếp hạng matching) → Mentor nhận thông báo.
 
@@ -353,9 +358,11 @@ stateDiagram-v2
     PENDING --> ACCEPTED: mentor chấp nhận (còn sức chứa)
     PENDING --> REJECTED: mentor từ chối
     PENDING --> CANCELLED: mentee huỷ
+    PENDING --> EXPIRED: mentor không phản hồi sau 72 giờ (US-15)
     ACCEPTED --> COMPLETED: mentor/mentee kết thúc quan hệ
     REJECTED --> [*]
     CANCELLED --> [*]
+    EXPIRED --> [*]
     COMPLETED --> [*]
 ```
 
@@ -366,11 +373,18 @@ stateDiagram-v2
     [*] --> PENDING: đặt lịch phiên có phí
     [*] --> CONFIRMED: đặt lịch phiên miễn phí
     PENDING --> CONFIRMED: thanh toán thành công
-    PENDING --> CANCELLED: huỷ / quá 30 phút chưa thanh toán
-    CONFIRMED --> CANCELLED: huỷ trước giờ bắt đầu (hoàn tiền)
-    CONFIRMED --> COMPLETED: mentor đánh dấu / tự động sau khi kết thúc 2 giờ
-    COMPLETED --> [*]: mentee đánh giá (tuỳ chọn)
+    PENDING --> CANCELLED: huỷ
+    PENDING --> EXPIRED: quá 30 phút chưa thanh toán
+    CONFIRMED --> CANCELLED: huỷ trước giờ bắt đầu (hoàn theo chính sách)
+    CONFIRMED --> AWAITING_ATTENDANCE: tới giờ kết thúc (US-12)
+    AWAITING_ATTENDANCE --> COMPLETED: cả hai HELD / một bên HELD + bên kia im lặng 48h / không ai trả lời 48h
+    AWAITING_ATTENDANCE --> NO_SHOW_MENTEE: mentor báo mentee vắng, mentee im lặng 48h (không hoàn)
+    AWAITING_ATTENDANCE --> NO_SHOW_MENTOR: mentee báo mentor vắng, mentor im lặng 48h (hoàn 100% + strike)
+    AWAITING_ATTENDANCE --> DISPUTED: hai bên trả lời khác nhau (giao dịch ON_HOLD, chờ US-32)
+    AWAITING_ATTENDANCE --> CANCELLED: huỷ trong buổi gọi (hoàn 100%, không strike)
+    COMPLETED --> [*]: mentee đánh giá (tuỳ chọn, chỉ COMPLETED)
     CANCELLED --> [*]
+    EXPIRED --> [*]
 ```
 
 ### 4.3 Giao dịch
@@ -380,8 +394,16 @@ stateDiagram-v2
     [*] --> PENDING: tạo giao dịch
     PENDING --> SUCCESS: cổng sandbox chấp nhận
     PENDING --> FAILED: bị từ chối / thanh toán trùng
-    SUCCESS --> REFUNDED: huỷ phiên đã thanh toán
+    SUCCESS --> REFUNDED: hoàn toàn bộ (huỷ phiên, mentor vắng mặt)
+    SUCCESS --> PARTIALLY_REFUNDED: hoàn một phần
+    PARTIALLY_REFUNDED --> REFUNDED: hoàn nốt phần còn lại
+    SUCCESS --> ON_HOLD: phiên DISPUTED (US-12)
+    ON_HOLD --> SUCCESS: hết tranh chấp (US-32)
 ```
+
+US-13: phí nền tảng (`app.payment.platform-fee-rate`, mặc định 15%) chốt vào `fee`/`mentor_earning` lúc charge;
+mỗi lần hoàn tiền là 1 dòng bảng `refunds` (tổng ≤ `amount`), không ghi đè giao dịch; `POST /api/payment/charge`
+bắt buộc header `Idempotency-Key` (cùng người gọi + key trong 24 giờ → trả kết quả lần đầu).
 
 ### 4.4 Trạng thái xác thực mentor & referral
 

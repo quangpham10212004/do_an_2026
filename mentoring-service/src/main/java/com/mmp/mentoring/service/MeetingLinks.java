@@ -15,9 +15,10 @@ public final class MeetingLinks {
 
     private static final Set<String> EXACT_HOSTS = Set.of("meet.google.com", "zoom.us", "teams.microsoft.com");
 
-    /** Trạng thái được trả link trong API: CONFIRMED và các trạng thái sau CONFIRMED (không gồm huỷ/hết hạn). */
+    /** Trạng thái được trả link trong API: CONFIRMED và các trạng thái sau CONFIRMED (không gồm huỷ / hết hạn thanh toán). */
     private static final Set<MentoringSession.Status> VISIBLE = Set.of(
-            MentoringSession.Status.CONFIRMED, MentoringSession.Status.COMPLETED);
+            MentoringSession.Status.CONFIRMED, MentoringSession.Status.AWAITING_ATTENDANCE, MentoringSession.Status.COMPLETED,
+            MentoringSession.Status.NO_SHOW_MENTEE, MentoringSession.Status.NO_SHOW_MENTOR, MentoringSession.Status.DISPUTED);
 
     private MeetingLinks() {
     }

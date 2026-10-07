@@ -1,8 +1,11 @@
 import { api } from "@/lib/api";
 import type {
+  AttendanceAnswer,
   AvailableSlots,
   BookSessionInput,
   CancelPreview,
+  CreateRequestInput,
+  RejectReason,
   RescheduleProposal,
   LegacyBookSessionInput,
   MentoringRequest,
@@ -18,10 +21,17 @@ import type {
 export const mentoringApi = {
   // Yêu cầu mentoring
   requests: () => api<MentoringRequest[]>("/api/mentoring/requests"),
+  /** US-14 — gửi yêu cầu theo form (trang /mentoring/request/{mentorId}). */
+  sendRequest: (body: CreateRequestInput) => api<MentoringRequest>("/api/mentoring/requests", { method: "POST", body }),
+  /**
+   * @deprecated Dạng cũ (chỉ lời nhắn) — từ US-14 mentoring-service bắt buộc goal / sessionType / frequency /
+   * expectedDurationMonths nên request này bị từ chối 400. Chuyển người dùng tới /mentoring/request/{mentorId}.
+   */
   createRequest: (mentorId: Uuid, message: string) =>
     api<MentoringRequest>("/api/mentoring/requests", { method: "POST", body: { mentorId, message } }),
-  respond: (id: Uuid, decision: "ACCEPT" | "REJECT", note: string) =>
-    api<MentoringRequest>(`/api/mentoring/requests/${id}/respond`, { method: "POST", body: { decision, note } }),
+  /** US-14 — REJECT bắt buộc rejectReason. */
+  respond: (id: Uuid, decision: "ACCEPT" | "REJECT", note: string, rejectReason?: RejectReason) =>
+    api<MentoringRequest>(`/api/mentoring/requests/${id}/respond`, { method: "POST", body: { decision, note, rejectReason } }),
   cancelRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/cancel`, { method: "POST" }),
   completeRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/complete`, { method: "POST" }),
   // Phiên mentoring
@@ -35,7 +45,11 @@ export const mentoringApi = {
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
   updateMeetingLink: (id: Uuid, meetingLink: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/meeting-link`, { method: "PUT", body: { meetingLink } }),
+  /** US-12 — mentor đánh dấu đã diễn ra = trả lời HELD (chỉ trong 48 giờ sau giờ kết thúc). */
   completeSession: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/complete`, { method: "POST" }),
+  /** US-12 — xác nhận tham dự sau phiên. */
+  answerAttendance: (id: Uuid, answer: AttendanceAnswer) =>
+    api<MentoringSession>(`/api/mentoring/sessions/${id}/attendance`, { method: "POST", body: { answer } }),
   review: (id: Uuid, rating: number, comment: string) =>
     api<Review>(`/api/mentoring/sessions/${id}/review`, { method: "POST", body: { rating, comment } }),
   mentorReviews: (mentorId: Uuid) => api<Review[]>(`/api/mentoring/mentors/${mentorId}/reviews`),

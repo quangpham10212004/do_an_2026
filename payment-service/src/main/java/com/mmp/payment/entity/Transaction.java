@@ -4,14 +4,24 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
 @Table(name = "transactions")
 public class Transaction {
 
-    /** FR-6.3 — vòng đời: PENDING → SUCCESS | FAILED; SUCCESS → REFUNDED */
-    public enum Status { PENDING, SUCCESS, FAILED, REFUNDED }
+    /**
+     * FR-6.3 / US-13 — vòng đời: PENDING → SUCCESS | FAILED; SUCCESS → PARTIALLY_REFUNDED → REFUNDED;
+     * SUCCESS → REFUNDED; SUCCESS → ON_HOLD → SUCCESS (US-12 tranh chấp: chưa trả mentor, chưa hoàn mentee).
+     */
+    public enum Status { PENDING, SUCCESS, FAILED, REFUNDED, PARTIALLY_REFUNDED, ON_HOLD }
+
+    /** "Đã thu tiền" — tối đa 1 giao dịch như vậy cho mỗi phiên (unique index uq_transactions_session_paid). */
+    public static final List<Status> PAID_STATUSES = List.of(Status.SUCCESS, Status.ON_HOLD, Status.PARTIALLY_REFUNDED);
+
+    /** Còn hoàn tiền được (ON_HOLD phải release trước). */
+    public static final List<Status> REFUNDABLE_STATUSES = List.of(Status.SUCCESS, Status.PARTIALLY_REFUNDED);
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -28,6 +38,24 @@ public class Transaction {
 
     @Column(nullable = false)
     private BigDecimal amount;
+
+    /** US-13 — tỉ lệ phí nền tảng chốt lúc charge (vd. 0.1500). */
+    @Column(name = "fee_rate", nullable = false)
+    private BigDecimal feeRate = BigDecimal.ZERO;
+
+    /** US-13 — phí nền tảng (VND) chốt lúc charge; đổi cấu hình về sau không làm đổi giá trị này. */
+    @Column(nullable = false)
+    private BigDecimal fee = BigDecimal.ZERO;
+
+    /** US-13 — phần mentor nhận = amount − fee, chốt lúc charge. */
+    @Column(name = "mentor_earning", nullable = false)
+    private BigDecimal mentorEarning = BigDecimal.ZERO;
+
+    @Column(name = "hold_reason")
+    private String holdReason;
+
+    @Column(name = "held_at")
+    private OffsetDateTime heldAt;
 
     @Column(nullable = false)
     private String currency = "VND";
@@ -75,6 +103,31 @@ public class Transaction {
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
     public String getCurrency() { return currency; }
+    public BigDecimal getFeeRate() { return feeRate; }
+    public BigDecimal getFee() { return fee; }
+    public BigDecimal getMentorEarning() { return mentorEarning; }
+
+    /** US-13 — chốt phí nền tảng tại thời điểm charge. */
+    public void applyFee(BigDecimal rate, BigDecimal fee, BigDecimal mentorEarning) {
+        this.feeRate = rate;
+        this.fee = fee;
+        this.mentorEarning = mentorEarning;
+    }
+
+    public String getHoldReason() { return holdReason; }
+    public OffsetDateTime getHeldAt() { return heldAt; }
+
+    /** US-12 — SUCCESS → ON_HOLD (tranh chấp). */
+    public void hold(String reason) {
+        this.status = Status.ON_HOLD;
+        this.holdReason = reason;
+        this.heldAt = OffsetDateTime.now();
+    }
+
+    /** US-12 — ON_HOLD → SUCCESS. */
+    public void release() {
+        this.status = Status.SUCCESS;
+    }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public String getProvider() { return provider; }

@@ -152,6 +152,7 @@ services:
       DB_NAME: mentoring_db
       PROFILE_SERVICE_URL: http://profile-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8084
+      MATCHING_SERVICE_URL: http://matching-service:8090
       REMINDER_BEFORE: ${REMINDER_BEFORE:-PT24H}
     depends_on:
       mentoring-db: { condition: service_healthy }

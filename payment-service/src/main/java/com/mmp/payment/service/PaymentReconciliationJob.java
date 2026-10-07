@@ -17,4 +17,10 @@ public class PaymentReconciliationJob {
     public void reconcile() {
         paymentService.unsyncedSuccessTransactions().forEach(t -> paymentService.syncSession(t.getId()));
     }
+
+    /** US-13 — xoá Idempotency-Key quá 24 giờ. */
+    @Scheduled(fixedDelay = 3_600_000, initialDelay = 120_000)
+    public void purgeIdempotencyKeys() {
+        paymentService.purgeExpiredIdempotencyKeys();
+    }
 }
