@@ -1,26 +1,34 @@
 """
-Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6):
+Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6, US-17 PRD-MATCH-1/2):
 
-    1. Top-K retrieval   : lấy K mentor có vector gần mentee nhất (cosine, pgvector <=>)
-    2. Hard filter       : loại mentor không thoả ràng buộc thực tế
+    1. Hard filter       : profile_db (read-only) cho biết mentor nào thoả MỌI ràng buộc cứng —
+                           5 ràng buộc hệ thống (APPROVED, trạng thái hiệu lực ACCEPTING, có lịch rảnh,
+                           còn chỗ, cùng lĩnh vực) + bộ lọc người dùng (giá, ngày, buổi, ngôn ngữ,
+                           loại phiên, rating, miễn phí — match_filters.py)
+    2. Top-K retrieval   : CHỈ trong các mentor đó, lấy K mentor có vector gần mentee nhất
+                           (cosine, pgvector <=>) trong matching_db
     3. Re-rank           : điểm cuối = kết hợp similarity + rating + kinh nghiệm
     4. Explain           : sinh lý do đề xuất để kết quả không phải "hộp đen" (NFR-6)
 
-Dữ liệu nằm ở hai DB vì mỗi service sở hữu phần việc của mình: vector ở matching_db
-(của matching-service), dữ kiện hồ sơ ở profile_db (của profile-service, đọc
-read-only). Bước 1 vì vậy chạy hai truy vấn: pgvector lọc ra danh sách ID ứng viên
-trong matching_db, rồi lấy đúng vài chục dòng hồ sơ tương ứng từ profile_db. Không
-vector nào phải truyền qua mạng và HNSW index vẫn được dùng như cũ.
+Lọc TRƯỚC khi xếp hạng (US-17): trước đây lấy top-K theo vector rồi mới lọc, nên khi bộ lọc chặt thì
+mentor hợp lệ nằm ngoài top-K bị bỏ sót và kết quả bị hụt. Giờ có ≥ limit mentor hợp lệ (đã lập chỉ
+mục) thì luôn trả đủ limit kết quả.
 
-Các hàm thuần (hard_filter, re_rank, explain) không truy cập DB để test độc lập.
+Dữ liệu nằm ở hai DB vì mỗi service sở hữu phần việc của mình: dữ kiện hồ sơ ở profile_db (của
+profile-service, đọc read-only), vector ở matching_db. Giữa hai DB chỉ truyền danh sách ID — không
+vector nào phải truyền qua mạng.
+
+Các hàm thuần (re_rank, explain, match_filters.*) không truy cập DB để test độc lập.
 """
 import re
-from collections import Counter
 
 from app.db import get_matching_pool, get_profile_pool
 from app.services import index_service
+from app.services import match_filters
+from app.services.match_filters import MatchFilters
 
-# K mặc định: lấy dư so với limit vì một phần ứng viên sẽ bị hard filter loại bỏ.
+# K mặc định: số mentor hợp lệ gần nhất về vector được đưa vào re-rank (re-rank cộng thêm rating và
+# kinh nghiệm nên lấy dư so với limit).
 DEFAULT_K = 50
 
 # Trọng số re-rank — lý do lựa chọn được trình bày trong docs/ai-features.md:
@@ -34,7 +42,7 @@ MAX_YEARS_EXPERIENCE_NORM = 10  # chuẩn hoá years_experience về [0, 1]
 # "phạt" oan (bài toán cold-start).
 NEUTRAL_RATING = 3.5
 
-# Mã lý do loại bỏ — trả về trong thống kê pipeline để giải thích kết quả.
+# Mã lý do loại bỏ của ràng buộc hệ thống — trả về trong pipeline.excluded (thứ tự = thứ tự kiểm tra).
 REASON_NOT_VERIFIED = "notVerified"
 REASON_UNAVAILABLE = "unavailable"
 REASON_NO_SCHEDULE = "noSchedule"
@@ -43,93 +51,111 @@ REASON_DOMAIN_MISMATCH = "domainMismatch"
 
 
 async def get_mentee(mentee_id: str) -> dict | None:
-    """Dữ kiện hồ sơ mentee (profile_db, read-only) — dùng cho hard filter & explain."""
+    """Dữ kiện hồ sơ mentee (profile_db, read-only) — hard filter, explain và bộ lọc mặc định (US-16)."""
     pool = await get_profile_pool()
     row = await pool.fetchrow(
-        "SELECT user_id, domain, goal, skills FROM mentee_profiles WHERE user_id = $1::uuid",
+        """
+        SELECT user_id, domain, goal, skills,
+               preferred_days, preferred_time_of_day, budget_max_per_hour, languages
+        FROM mentee_profiles WHERE user_id = $1::uuid
+        """,
         mentee_id,
     )
     return dict(row) if row else None
 
 
-async def top_k_retrieval(mentee_id: str, k: int = DEFAULT_K) -> list[dict]:
+# Một dòng cho MỖI mentor: `reason` = lý do bị ràng buộc hệ thống loại (NULL = qua), kèm cờ đúng/sai
+# cho từng bộ lọc người dùng (bộ lọc không bật => tham số NULL/rỗng => cờ true). Thứ tự CASE là thứ tự
+# kiểm tra ràng buộc (docs/ai-features.md §1.5). Giờ lịch rảnh so theo giờ địa phương của mentor.
+#   $1 lĩnh vực mentee   $2 maxRate    $3 days int[]   $4/$5 cửa sổ giờ (bắt đầu/kết thúc)
+#   $6 ngôn ngữ text[]   $7 sessionType $8 minRating   $9 ID mentor bỏ qua hoàn toàn (similar-mentors)
+_CANDIDATES_CTE = """
+WITH c AS (
+    SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.capacity, m.active_mentee_count,
+           m.rating, m.rating_count, m.years_experience, m.hourly_rate, m.verification_status,
+           CASE
+               WHEN m.verification_status <> 'APPROVED' THEN 'notVerified'
+               -- US-08: trạng thái hiệu lực — ON_LEAVE đã qua hết on_leave_until tính là ACCEPTING.
+               WHEN NOT (m.status = 'ACCEPTING' OR (m.status = 'ON_LEAVE'
+                         AND m.on_leave_until < (now() AT TIME ZONE m.timezone)::date)) THEN 'unavailable'
+               WHEN NOT EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) THEN 'noSchedule'
+               WHEN m.active_mentee_count >= m.capacity THEN 'fullCapacity'
+               WHEN $1::text IS NOT NULL AND lower(trim(m.domain)) <> lower(trim($1::text)) THEN 'domainMismatch'
+           END AS reason,
+           ($2::numeric IS NULL OR m.hourly_rate <= $2::numeric) AS rate_ok,
+           (m.hourly_rate = 0) AS free_ok,
+           (cardinality($6::text[]) = 0 OR m.languages && $6::text[]) AS language_ok,
+           ($7::text IS NULL OR $7::text = ANY (m.session_types)) AS session_ok,
+           ($8::real IS NULL OR m.rating >= $8::real) AS rating_ok,
+           EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id
+                   AND (cardinality($3::int[]) = 0 OR a.day_of_week = ANY ($3::int[]))) AS days_ok,
+           EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id
+                   AND ($4::time IS NULL OR (a.start_time < $5::time AND a.end_time > $4::time))) AS time_ok,
+           EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id
+                   AND (cardinality($3::int[]) = 0 OR a.day_of_week = ANY ($3::int[]))
+                   AND ($4::time IS NULL OR (a.start_time < $5::time AND a.end_time > $4::time))) AS days_time_ok
+    FROM mentor_profiles m
+    WHERE NOT (m.user_id = ANY ($9::uuid[]))
+)
+"""
+
+
+def _filter_params(mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str]) -> list:
+    window_start, window_end = filters.time_window()
+    return [
+        mentee_domain,
+        filters.max_rate,
+        list(filters.days),
+        window_start,
+        window_end,
+        list(filters.language),
+        filters.session_type,
+        filters.min_rating,
+        exclude_ids,
+    ]
+
+
+async def eligible_candidates(
+    mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str] | None = None
+) -> tuple[list[dict], dict[str, int]]:
     """
-    Top-K retrieval bằng cosine distance của pgvector (toán tử <=>, dùng HNSW index)
-    trong matching_db, rồi lấy dữ kiện hồ sơ của đúng K ứng viên đó từ profile_db.
-    Vector của mentee được lấy bằng subquery ngay trong DB — không vector nào phải
-    truyền qua mạng.
+    Bước 1 — trên profile_db: (mentor đã qua 5 ràng buộc hệ thống, kèm cờ của từng bộ lọc người dùng;
+    số mentor bị loại theo từng lý do hệ thống). Bộ lọc người dùng được áp ở match_filters.apply.
     """
-    matching_pool = await get_matching_pool()
-    ranked = await matching_pool.fetch(
+    params = _filter_params(mentee_domain, filters, exclude_ids or [])
+    pool = await get_profile_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(_CANDIDATES_CTE + "SELECT * FROM c WHERE reason IS NULL", *params)
+        counts = await conn.fetch(
+            _CANDIDATES_CTE + "SELECT reason, count(*) AS n FROM c WHERE reason IS NOT NULL GROUP BY reason",
+            *params,
+        )
+    return [dict(r) for r in rows], {r["reason"]: r["n"] for r in counts}
+
+
+async def rank_by_similarity(mentee_id: str, mentor_ids: list, k: int) -> list[dict]:
+    """
+    Bước 2 — trên matching_db: K mentor (chỉ trong mentor_ids) có vector gần mentee nhất theo cosine
+    distance (pgvector <=>). Vector của mentee lấy bằng subquery ngay trong DB. Mentor hợp lệ nhưng
+    chưa có vector (hồ sơ vừa tạo, chờ IndexSyncJob) thì chưa xếp hạng được.
+    """
+    if not mentor_ids:
+        return []
+    pool = await get_matching_pool()
+    rows = await pool.fetch(
         """
         WITH q AS (SELECT embedding FROM mentee_embeddings WHERE user_id = $1::uuid AND embedding IS NOT NULL)
         SELECT e.user_id AS mentor_id, e.embedding <=> q.embedding AS distance
         FROM mentor_embeddings e, q
-        WHERE e.embedding IS NOT NULL
+        WHERE e.embedding IS NOT NULL AND e.user_id = ANY ($2::uuid[])
         ORDER BY e.embedding <=> q.embedding ASC
-        LIMIT $2
+        LIMIT $3
         """,
         mentee_id,
+        mentor_ids,
         k,
     )
-    if not ranked:
-        return []
-
-    profile_pool = await get_profile_pool()
-    rows = await profile_pool.fetch(
-        """
-        SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.bio,
-               m.capacity, m.active_mentee_count, m.status, m.rating, m.rating_count,
-               -- US-08: trạng thái hiệu lực — ON_LEAVE đã qua hết on_leave_until tính là ACCEPTING.
-               (m.status = 'ACCEPTING' OR (m.status = 'ON_LEAVE'
-                   AND m.on_leave_until < (now() AT TIME ZONE m.timezone)::date)) AS is_accepting,
-               m.years_experience, m.hourly_rate, m.verification_status,
-               EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule
-        FROM mentor_profiles m
-        WHERE m.user_id = ANY($1::uuid[])
-        """,
-        [r["mentor_id"] for r in ranked],
-    )
-    profiles = {r["mentor_id"]: dict(r) for r in rows}
-
-    # Giữ nguyên thứ tự theo khoảng cách vector. Mentor có trong chỉ mục nhưng
-    # không còn hồ sơ (vừa bị xoá) thì bỏ qua — IndexSyncJob sẽ dọn chỉ mục.
-    candidates = []
-    for r in ranked:
-        profile = profiles.get(r["mentor_id"])
-        if profile is None:
-            continue
-        profile["distance"] = r["distance"]
-        candidates.append(profile)
-    return candidates
-
-
-def rejection_reason(candidate: dict, mentee_domain: str | None) -> str | None:
-    """Trả về mã lý do nếu mentor không thoả ràng buộc cứng, None nếu hợp lệ."""
-    if candidate.get("verification_status") != "APPROVED":
-        return REASON_NOT_VERIFIED  # chưa vượt qua AI Interview + admin duyệt
-    if not candidate.get("is_accepting"):
-        return REASON_UNAVAILABLE  # US-08: PAUSED / ON_LEAVE / SUSPENDED không bao giờ được gợi ý
-    if not candidate.get("has_schedule"):
-        return REASON_NO_SCHEDULE  # chưa khai báo lịch rảnh => không thể đặt lịch
-    if candidate.get("active_mentee_count", 0) >= candidate.get("capacity", 0):
-        return REASON_FULL_CAPACITY
-    if mentee_domain and (candidate.get("domain") or "").strip().lower() != mentee_domain.strip().lower():
-        return REASON_DOMAIN_MISMATCH
-    return None
-
-
-def hard_filter(candidates: list[dict], mentee_domain: str | None) -> tuple[list[dict], dict[str, int]]:
-    """Loại mentor không đủ điều kiện thực tế; trả về (danh sách còn lại, thống kê lý do loại)."""
-    kept: list[dict] = []
-    excluded: Counter[str] = Counter()
-    for c in candidates:
-        reason = rejection_reason(c, mentee_domain)
-        if reason is None:
-            kept.append(c)
-        else:
-            excluded[reason] += 1
-    return kept, dict(excluded)
+    return [dict(r) for r in rows]
 
 
 def re_rank(candidates: list[dict]) -> list[dict]:
@@ -182,8 +208,19 @@ def explain(candidate: dict, mentee: dict) -> tuple[list[str], list[str]]:
     return reasons, matched_skills
 
 
-async def match_mentors_for_mentee(mentee_id: str, limit: int = 10) -> dict | None:
-    """Chạy toàn bộ pipeline. Trả về None nếu mentee chưa có hồ sơ/embedding."""
+async def match_mentors_for_mentee(
+    mentee_id: str,
+    limit: int = 10,
+    requested: dict | None = None,
+    use_profile_defaults: bool = True,
+    exclude_ids: list[str] | None = None,
+) -> dict | None:
+    """
+    Chạy toàn bộ pipeline. Trả về None nếu mentee chưa có hồ sơ/embedding.
+
+    requested: bộ lọc từ query (khoá = match_filters.FILTER_NAMES, None = không truyền); bộ lọc thiếu
+    lấy từ sở thích hồ sơ khi use_profile_defaults. exclude_ids: mentor không bao giờ được trả về.
+    """
     mentee = await get_mentee(mentee_id)
     if mentee is None:
         return None
@@ -195,19 +232,55 @@ async def match_mentors_for_mentee(mentee_id: str, limit: int = 10) -> dict | No
         if result.status == index_service.PENDING:
             return None
 
+    filters = match_filters.resolve(requested or {}, mentee, use_profile_defaults)
+    return await _run(mentee, filters, limit, exclude_ids or [])
+
+
+async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: list[str]) -> dict:
+    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids)
+    eligible, excluded_by = match_filters.apply(base, filters)
+
     k = max(DEFAULT_K, limit * 5)
-    candidates = await top_k_retrieval(mentee_id, k=k)
-    filtered, excluded = hard_filter(candidates, mentee["domain"])
-    ranked = re_rank(filtered)[:limit]
+    by_id = {c["mentor_id"]: c for c in eligible}
+    nearest = await rank_by_similarity(str(mentee["user_id"]), list(by_id), k)
+    candidates = []
+    for r in nearest:
+        c = dict(by_id[r["mentor_id"]])
+        c["distance"] = r["distance"]
+        candidates.append(c)
+    ranked = re_rank(candidates)[:limit]
     for c in ranked:
         c["reasons"], c["matched_skills"] = explain(c, mentee)
 
     return {
         "mentors": ranked,
+        "filters": filters,
+        "excluded_by": excluded_by,
         "stats": {
-            "retrieved": len(candidates),
+            "considered": len(base) + sum(excluded.values()),
             "excluded": excluded,
+            "eligible": len(eligible),
+            "retrieved": len(candidates),
             "returned": len(ranked),
             "k": k,
         },
     }
+
+
+async def similar_mentors(mentee_id: str, exclude_mentor_id: str, limit: int = 3) -> list[dict]:
+    """
+    Interface cho mentoring-service (US-15): mentor phù hợp nhất với mentee, trừ exclude_mentor_id.
+    Áp sở thích hồ sơ làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc người dùng (vẫn giữ 5 ràng
+    buộc hệ thống) để bổ sung, kết quả vòng đầu đứng trước. Mentee chưa có hồ sơ/chỉ mục => rỗng.
+    """
+    first = await match_mentors_for_mentee(mentee_id, limit=limit, exclude_ids=[exclude_mentor_id])
+    if first is None:
+        return []
+    mentors = list(first["mentors"])
+    if len(mentors) < limit and first["filters"].active():
+        taken = [exclude_mentor_id] + [str(m["mentor_id"]) for m in mentors]
+        mentee = await get_mentee(mentee_id)
+        if mentee is not None:
+            relaxed = await _run(mentee, MatchFilters(), limit - len(mentors), taken)
+            mentors += relaxed["mentors"]
+    return mentors[:limit]

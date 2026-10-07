@@ -10,6 +10,7 @@ import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
 import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
 import MentorStatusControl from "@/features/profile/MentorStatusControl";
 import BookingSettings from "@/features/profile/BookingSettings";
+import MenteePreferences from "@/features/profile/MenteePreferences";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
@@ -328,6 +329,7 @@ function MenteeProfileForm({ user }: { user: SessionUser }) {
         )}
         <button className="btn">Lưu hồ sơ</button>
       </form>
+      {profile && <MenteePreferences key={profile.userId} profile={profile} onChange={setProfile} />}
       <div style={{ maxWidth: 760, marginTop: "var(--spacing-16)" }}>
         <MyCvs onDeleted={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
       </div>

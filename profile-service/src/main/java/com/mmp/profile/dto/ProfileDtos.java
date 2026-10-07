@@ -106,13 +106,30 @@ public final class ProfileDtos {
             String currentLevel,
             List<String> skills,
             List<String> portfolioLinks,
-            String cvFileUrl) {
+            String cvFileUrl,
+            List<Integer> preferredDays,
+            String preferredTimeOfDay,
+            BigDecimal budgetMaxPerHour,
+            List<String> languages) {
 
         public static MenteeProfileResponse from(MenteeProfile p) {
             return new MenteeProfileResponse(p.getUserId(), p.getDisplayName(), p.getGoal(), p.getDomain(),
                     p.getCurrentLevel().name(), Arrays.asList(p.getSkills()), Arrays.asList(p.getPortfolioLinks()),
-                    p.getCvFileUrl());
+                    p.getCvFileUrl(), Arrays.asList(p.getPreferredDays()),
+                    p.getPreferredTimeOfDay() == null ? null : p.getPreferredTimeOfDay().name(),
+                    p.getBudgetMaxPerHour(), Arrays.asList(p.getLanguages()));
         }
+    }
+
+    /**
+     * US-16 — sở thích tìm mentor, thay toàn bộ. preferredDays rỗng = mọi ngày, preferredTimeOfDay null =
+     * giờ nào cũng được, budgetMaxPerHour null = không giới hạn, languages rỗng = ngôn ngữ nào cũng được.
+     */
+    public record MenteePreferencesInput(
+            @Size(max = 7) List<Integer> preferredDays,
+            String preferredTimeOfDay,
+            BigDecimal budgetMaxPerHour,
+            @Size(max = 5) List<String> languages) {
     }
 
     public record AvailabilitySlot(

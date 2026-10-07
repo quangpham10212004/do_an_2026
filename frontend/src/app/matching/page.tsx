@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead, Stars, useDialog } from "@/components/ui";
+import { Alert, Empty, Loading, PageHead, Stars } from "@/components/ui";
 import { EXCLUSION_LABELS, matchingApi } from "@/features/matching/api";
+import MatchingFilters, { biggestBlocker, describeFilter, dropFilter } from "@/features/matching/MatchingFilters";
 import { mentoringApi } from "@/features/mentoring/api";
 import { formatRate } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { ExclusionReason, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
+import type { ExclusionReason, MatchFilterValues, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
+
+const LIMIT = 10;
 
 const pct = (x: number) => Math.round(x * 100);
 
@@ -46,10 +49,9 @@ interface MentorMatchCardProps {
   m: RankedMentor;
   weights: PipelineWeights;
   requested: boolean;
-  onRequest: (m: RankedMentor) => void;
 }
 
-function MentorMatchCard({ m, weights, requested, onRequest }: MentorMatchCardProps) {
+function MentorMatchCard({ m, weights, requested }: MentorMatchCardProps) {
   return (
     <div className="card">
       <div className="row between" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
@@ -84,7 +86,7 @@ function MentorMatchCard({ m, weights, requested, onRequest }: MentorMatchCardPr
         {requested ? (
           <span className="badge good">Đã gửi yêu cầu</span>
         ) : (
-          <button className="btn sm" onClick={() => onRequest(m)}>Gửi yêu cầu mentoring</button>
+          <Link className="btn sm" href={`/mentoring/request/${m.mentorId}`}>Gửi yêu cầu mentoring</Link>
         )}
       </div>
     </div>
@@ -95,38 +97,32 @@ function Matching({ user }: { user: SessionUser }) {
   const [data, setData] = useState<MatchResult | null | undefined>(undefined);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
-  const [msg, setMsg] = useState("");
-  const [dialog, ask] = useDialog();
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    matchingApi.mentorsFor(user.userId, 10).then(setData).catch((e: unknown) => {
-      setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorMessage(e) });
-      setData(null);
-    });
-    mentoringApi.requests().then((rs) => setRequested(new Set(rs.filter((r) => ["PENDING", "ACCEPTED"].includes(r.status)).map((r) => r.mentorId)))).catch(() => {});
+  /** filters undefined = để server lấy sở thích hồ sơ làm bộ lọc (US-17); có giá trị = ghi đè cho lượt này. */
+  const search = useCallback((filters?: MatchFilterValues) => {
+    setBusy(true);
+    setError(null);
+    matchingApi.mentorsFor(user.userId, { limit: LIMIT, filters })
+      .then(setData)
+      .catch((e: unknown) => {
+        setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorMessage(e) });
+        setData(null);
+      })
+      .finally(() => setBusy(false));
   }, [user]);
 
-  async function request(m: RankedMentor) {
-    const message = await ask({
-      title: `Gửi yêu cầu tới ${m.displayName}`,
-      message: "Mentor cần chấp nhận yêu cầu trước khi bạn đặt lịch.",
-      input: { label: "Lời nhắn (tuỳ chọn)", defaultValue: "Chào anh/chị, em mong được anh/chị hướng dẫn." },
-      confirmText: "Gửi yêu cầu",
-    });
-    if (message === null) return;
-    try {
-      await mentoringApi.createRequest(m.mentorId, message);
-      setRequested(new Set([...requested, m.mentorId]));
-      setMsg(`Đã gửi yêu cầu tới ${m.displayName}.`);
-    } catch (e) {
-      setMsg(errorMessage(e));
-    }
-  }
+  useEffect(() => {
+    search();
+    mentoringApi.requests().then((rs) => setRequested(new Set(rs.filter((r) => ["PENDING", "ACCEPTED"].includes(r.status)).map((r) => r.mentorId)))).catch(() => {});
+  }, [user, search]);
 
   if (data === undefined) return <Loading text="AI đang tìm mentor phù hợp..." />;
   const excluded = data?.pipeline?.excluded || {};
   const excludedEntries = Object.entries(excluded) as [ExclusionReason, number][];
   const excludedTotal = excludedEntries.reduce((sum, [, n]) => sum + n, 0);
+  // US-18 — kết quả ít hơn LIMIT: chỉ ra bộ lọc loại nhiều mentor nhất và cho nới bằng một cú nhấp.
+  const blocker = data && data.mentors.length < LIMIT ? biggestBlocker(data.excludedBy) : null;
 
   return (
     <>
@@ -134,24 +130,31 @@ function Matching({ user }: { user: SessionUser }) {
         <Link href="/mentors" className="btn secondary">Xem tất cả mentor</Link>
         <Link href="/profile" className="btn secondary">Cập nhật hồ sơ</Link>
       </PageHead>
-      {dialog}
-      {msg && <Alert type="info">{msg}</Alert>}
       {error?.code === "MENTEE_PROFILE_INCOMPLETE" && (
         <Alert type="warn">{error.message}. <Link href="/profile">Tạo hồ sơ ngay</Link></Alert>
       )}
       {error && error.code !== "MENTEE_PROFILE_INCOMPLETE" && <Alert>{error.message}</Alert>}
       {data && (
         <>
+          <MatchingFilters value={data.filters} fromProfile={data.filters.fromProfileDefaults} busy={busy}
+            onSearch={(f) => search(f)} onUseProfile={() => search()} />
+          {blocker && (
+            <Alert type="warn">
+              Chỉ tìm thấy {data.mentors.length} mentor: {blocker[1]} mentor bị loại bởi {describeFilter(blocker[0], data.filters)}.{" "}
+              <button className="btn secondary sm" disabled={busy} onClick={() => search(dropFilter(data.filters, blocker[0]))}>Nới điều kiện</button>
+            </Alert>
+          )}
           <p className="muted small">
-            Pipeline: lấy {data.pipeline.retrieved} mentor gần nhất (top-K = {data.pipeline.k}) → loại {excludedTotal}
-            {excludedTotal > 0 && ` (${excludedEntries.map(([k, v]) => `${v} ${EXCLUSION_LABELS[k] || k}`).join(", ")})`} → xếp hạng lại với
+            Pipeline: xét {data.pipeline.considered} mentor → loại {excludedTotal} không đủ điều kiện
+            {excludedTotal > 0 && ` (${excludedEntries.map(([k, v]) => `${v} ${EXCLUSION_LABELS[k] || k}`).join(", ")})`} → còn {data.pipeline.eligible} mentor
+            thoả bộ lọc → lấy {data.pipeline.retrieved} mentor gần nhất về nội dung (top-K = {data.pipeline.k}) → xếp hạng lại với
             trọng số tương đồng {data.pipeline.weights.similarity}, đánh giá {data.pipeline.weights.rating}, kinh nghiệm {data.pipeline.weights.experience}.
           </p>
           {data.mentors.length === 0 ? (
-            <Empty>Chưa tìm thấy mentor phù hợp. Hãy thử bổ sung kỹ năng/mục tiêu trong hồ sơ, hoặc <Link href="/mentors">duyệt toàn bộ danh sách mentor</Link>.</Empty>
+            <Empty>Chưa tìm thấy mentor phù hợp. Hãy thử nới bộ lọc, bổ sung kỹ năng/mục tiêu trong hồ sơ, hoặc <Link href="/mentors">duyệt toàn bộ danh sách mentor</Link>.</Empty>
           ) : (
             <div className="grid grid-2">
-              {data.mentors.map((m) => <MentorMatchCard key={m.mentorId} m={m} weights={data.pipeline.weights} requested={requested.has(m.mentorId)} onRequest={request} />)}
+              {data.mentors.map((m) => <MentorMatchCard key={m.mentorId} m={m} weights={data.pipeline.weights} requested={requested.has(m.mentorId)} />)}
             </div>
           )}
         </>

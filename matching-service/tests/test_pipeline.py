@@ -1,12 +1,8 @@
+# Ràng buộc hệ thống (notVerified, unavailable, noSchedule, fullCapacity, domainMismatch) giờ được áp
+# bằng SQL trên profile_db TRƯỚC khi xếp hạng (US-17) — test trên Postgres thật ở test_matching_db.py.
 from app.services.matching_pipeline import (
     NEUTRAL_RATING,
-    REASON_DOMAIN_MISMATCH,
-    REASON_FULL_CAPACITY,
-    REASON_NO_SCHEDULE,
-    REASON_NOT_VERIFIED,
-    REASON_UNAVAILABLE,
     explain,
-    hard_filter,
     re_rank,
 )
 
@@ -29,38 +25,6 @@ def mentor(**overrides) -> dict:
     }
     base.update(overrides)
     return base
-
-
-def test_hard_filter_keeps_only_eligible_mentors_and_counts_reasons():
-    candidates = [
-        mentor(mentor_id="ok"),
-        mentor(mentor_id="full", active_mentee_count=3),
-        mentor(mentor_id="busy", is_accepting=False),
-        mentor(mentor_id="no-schedule", has_schedule=False),
-        mentor(mentor_id="interview", verification_status="PENDING_REVIEW"),
-        mentor(mentor_id="rejected", verification_status="REJECTED"),
-        mentor(mentor_id="frontend", domain="frontend"),
-    ]
-    kept, excluded = hard_filter(candidates, mentee_domain="backend")
-    assert [c["mentor_id"] for c in kept] == ["ok"]
-    assert excluded == {
-        REASON_FULL_CAPACITY: 1,
-        REASON_UNAVAILABLE: 1,
-        REASON_NO_SCHEDULE: 1,
-        REASON_NOT_VERIFIED: 2,
-        REASON_DOMAIN_MISMATCH: 1,
-    }
-
-
-def test_hard_filter_domain_is_case_insensitive():
-    kept, _ = hard_filter([mentor(domain="Backend ")], mentee_domain="backend")
-    assert len(kept) == 1
-
-
-def test_mentor_without_interview_never_passes_filter():
-    for status in ("PENDING_INTERVIEW", "PENDING_REVIEW", "REJECTED", None):
-        kept, _ = hard_filter([mentor(verification_status=status)], mentee_domain="backend")
-        assert kept == []
 
 
 def test_re_rank_orders_by_final_score():

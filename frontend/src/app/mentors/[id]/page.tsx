@@ -1,22 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, Stars, StatusBadge, Flash } from "@/components/ui";
+import { Alert, Loading, PageHead, Stars, StatusBadge } from "@/components/ui";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { DAY_NAMES, formatDate, formatRate } from "@/lib/format";
-import { errorMessage } from "@/lib/api";
 import type { MentorProfile, MentoringRequest, Review, SessionUser } from "@/types";
 
 function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
   const [mentor, setMentor] = useState<MentorProfile | null | undefined>(undefined);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [request, setRequest] = useState<MentoringRequest | null>(null);
-  const [message, setMessage] = useState("");
-  const [msg, setMsg] = useState<Flash>({});
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     profileApi.getMentor(id).then(setMentor).catch(() => setMentor(null));
@@ -25,19 +21,6 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
       mentoringApi.requests().then((rs) => setRequest(rs.find((r) => r.mentorId === id && ["PENDING", "ACCEPTED"].includes(r.status)) || null)).catch(() => {});
     }
   }, [id, user]);
-
-  async function sendRequest(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      setRequest(await mentoringApi.createRequest(id, message));
-      setMsg({ ok: "Đã gửi yêu cầu. Bạn sẽ nhận thông báo khi mentor phản hồi." });
-    } catch (err) {
-      setMsg({ error: errorMessage(err) });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   if (mentor === undefined) return <Loading />;
   if (!mentor) return <Alert>Không tìm thấy mentor. <Link href="/mentors">Xem danh sách mentor</Link></Alert>;
@@ -48,8 +31,6 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
         <StatusBadge status={mentor.verificationStatus} />
         <span className={`badge ${mentor.status === "ACCEPTING" ? "good" : mentor.status === "SUSPENDED" ? "bad" : ""}`}>{mentorStatusText(mentor.status, mentor.onLeaveUntil)}</span>
       </PageHead>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <div className="stack">
           <div className="card">
@@ -105,12 +86,11 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
         {user.role === "MENTEE" && (
           <div className="card">
             {!request && (
-              <form onSubmit={sendRequest}>
+              <div>
                 <h2>Gửi yêu cầu mentoring</h2>
                 <p className="muted small">Mentor cần chấp nhận yêu cầu trước khi bạn đặt lịch. Còn {Math.max(0, mentor.capacity - mentor.activeMenteeCount)} chỗ.</p>
-                <div className="field"><label>Lời nhắn</label><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Giới thiệu ngắn về bạn và điều bạn mong muốn" maxLength={1000} /></div>
-                <button className="btn" disabled={busy}>Gửi yêu cầu</button>
-              </form>
+                <Link className="btn" href={`/mentoring/request/${id}`}>Gửi yêu cầu</Link>
+              </div>
             )}
             {request?.status === "PENDING" && <Alert type="info">Yêu cầu của bạn đang chờ mentor phản hồi.</Alert>}
             {request?.status === "ACCEPTED" && (
