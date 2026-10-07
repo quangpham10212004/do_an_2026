@@ -236,3 +236,41 @@ def test_prod_mode_rejects_dev_secrets(monkeypatch):
     monkeypatch.setattr(config, "APP_ENV", "dev")
     monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET)
     assert config.prod_secret_errors() == []
+
+
+@pytest.fixture
+def fake_similar(monkeypatch):
+    calls = []
+
+    async def fake(mentee_id, exclude_mentor_id, limit=3):
+        calls.append((mentee_id, exclude_mentor_id, limit))
+        return [{"mentor_id": "11111111-1111-4111-8111-111111111111", "display_name": "Chị Mentor", "final_score": 0.81}]
+
+    monkeypatch.setattr(matching_pipeline, "similar_mentors", fake)
+    return calls
+
+
+def test_similar_mentors_is_internal_only(client, fake_similar):
+    url = f"/internal/matching/similar-mentors?menteeId={MENTEE_ID}&excludeMentorId={OTHER_ID}"
+    assert client.get(url).status_code == 403
+    res = client.get(url, headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 403  # JWT của người dùng không thay được X-Internal-Token
+    res = client.get(url, headers={"X-Internal-Token": config.INTERNAL_API_KEY})
+    assert res.status_code == 200
+    assert res.json() == {"mentors": [{"mentorId": "11111111-1111-4111-8111-111111111111",
+                                       "fullName": "Chị Mentor", "score": 0.81}]}
+    assert fake_similar == [(MENTEE_ID, OTHER_ID, 3)]
+
+
+def test_similar_mentors_validates_params(client, fake_similar):
+    headers = {"X-Internal-Token": config.INTERNAL_API_KEY}
+    base = "/internal/matching/similar-mentors"
+    res = client.get(f"{base}?menteeId=x&excludeMentorId={OTHER_ID}", headers=headers)
+    assert res.status_code == 400 and res.json()["error"]["code"] == "BAD_REQUEST"
+    assert client.get(f"{base}?menteeId={MENTEE_ID}&excludeMentorId=x", headers=headers).status_code == 400
+    assert client.get(f"{base}?menteeId={MENTEE_ID}", headers=headers).status_code == 400
+    for limit in (0, 11):
+        assert client.get(f"{base}?menteeId={MENTEE_ID}&excludeMentorId={OTHER_ID}&limit={limit}",
+                          headers=headers).status_code == 400
+    client.get(f"{base}?menteeId={MENTEE_ID}&excludeMentorId={OTHER_ID}&limit=5", headers=headers)
+    assert fake_similar[-1] == (MENTEE_ID, OTHER_ID, 5)

@@ -265,3 +265,22 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
             "k": k,
         },
     }
+
+
+async def similar_mentors(mentee_id: str, exclude_mentor_id: str, limit: int = 3) -> list[dict]:
+    """
+    Interface cho mentoring-service (US-15): mentor phù hợp nhất với mentee, trừ exclude_mentor_id.
+    Áp sở thích hồ sơ làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc người dùng (vẫn giữ 5 ràng
+    buộc hệ thống) để bổ sung, kết quả vòng đầu đứng trước. Mentee chưa có hồ sơ/chỉ mục => rỗng.
+    """
+    first = await match_mentors_for_mentee(mentee_id, limit=limit, exclude_ids=[exclude_mentor_id])
+    if first is None:
+        return []
+    mentors = list(first["mentors"])
+    if len(mentors) < limit and first["filters"].active():
+        taken = [exclude_mentor_id] + [str(m["mentor_id"]) for m in mentors]
+        mentee = await get_mentee(mentee_id)
+        if mentee is not None:
+            relaxed = await _run(mentee, MatchFilters(), limit - len(mentors), taken)
+            mentors += relaxed["mentors"]
+    return mentors[:limit]

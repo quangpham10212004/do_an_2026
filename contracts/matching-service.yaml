@@ -129,6 +129,43 @@ paths:
         "403": { description: Thiếu/sai X-Internal-Token }
         "404": { description: PROFILE_NOT_FOUND — không có hồ sơ với userId này }
 
+  /internal/matching/similar-mentors:
+    get:
+      summary: >
+        Nội bộ (mentoring-service, US-15) — mentor phù hợp nhất cho một mentee, trừ excludeMentorId (vd.
+        mentor vừa từ chối/không phản hồi yêu cầu). Cùng pipeline với /api/matching/mentors: luôn giữ 5
+        ràng buộc hệ thống (APPROVED, ACCEPTING, có lịch, còn chỗ, cùng lĩnh vực); áp sở thích hồ sơ mentee
+        làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc sở thích và bổ sung (kết quả vòng sở thích đứng
+        trước). Best-effort: mentee chưa có hồ sơ/chỉ mục => 200 với danh sách rỗng.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: excludeMentorId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 3, minimum: 1, maximum: 10 } }
+      responses:
+        "200":
+          description: Tối đa `limit` mentor, xếp theo finalScore giảm dần trong từng vòng
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mentors]
+                properties:
+                  mentors:
+                    type: array
+                    items:
+                      type: object
+                      required: [mentorId, fullName, score]
+                      properties:
+                        mentorId: { type: string, format: uuid }
+                        fullName: { type: string, description: display_name trong hồ sơ mentor }
+                        score: { type: number, format: float, description: finalScore của pipeline (0–1) }
+              example:
+                mentors:
+                  - { mentorId: "3f1c2a9e-0000-4000-8000-000000000001", fullName: "Nguyễn Hoàng Long", score: 0.77 }
+        "400": { description: "BAD_REQUEST / VALIDATION_ERROR — menteeId/excludeMentorId không phải UUID, thiếu param, limit ngoài 1–10" }
+        "403": { description: FORBIDDEN — thiếu/sai X-Internal-Token }
+
   /api/matching/index-status:
     get:
       summary: Trạng thái chỉ mục embedding của 1 hồ sơ (chính chủ, hoặc ADMIN)

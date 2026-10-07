@@ -77,3 +77,13 @@ class MatchingResponse(CamelModel):
     pipeline: PipelineStats
     filters: EffectiveFilters = EffectiveFilters()
     excluded_by: dict[str, int] = {}
+
+
+class SimilarMentor(CamelModel):
+    mentor_id: str
+    full_name: str
+    score: float
+
+
+class SimilarMentorsResponse(CamelModel):
+    mentors: list[SimilarMentor]

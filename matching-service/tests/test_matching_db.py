@@ -209,3 +209,27 @@ async def test_profile_preferences_are_defaults_and_can_be_overridden(conn):
     assert result["filters"].active() == set()
     assert await conn.fetchval("SELECT budget_max_per_hour FROM mentee_profiles WHERE user_id = $1::uuid",
                                mentee) == 150000
+
+
+async def test_similar_mentors_applies_preferences_then_relaxes(conn):
+    """Interface US-15 (mentoring-service): loại mentor đã cho, áp sở thích, nới nếu chưa đủ limit."""
+    best = await add_mentor(conn, rate=100000, bio="Chuyên gia Kafka", years=9)
+    cheap = await add_mentor(conn, rate=100000)
+    declined = await add_mentor(conn, rate=100000, bio="Chuyên gia Kafka")
+    pricey = await add_mentor(conn, rate=300000)
+    await add_mentor(conn, rate=100000, domain="frontend")          # ràng buộc hệ thống: không bao giờ
+    await add_mentor(conn, rate=100000, verification="PENDING_REVIEW")
+    mentee = await add_mentee(conn, budget=150000)
+    await index_service.reconcile(batch=500)
+
+    result = await matching_pipeline.similar_mentors(mentee, declined, limit=3)
+    assert [str(m["mentor_id"]) for m in result] == [best, cheap, pricey]  # vòng sở thích trước, phần nới sau
+    assert all(m["final_score"] > 0 for m in result)
+
+    result = await matching_pipeline.similar_mentors(mentee, declined, limit=1)
+    assert [str(m["mentor_id"]) for m in result] == [best]
+
+    result = await matching_pipeline.similar_mentors(mentee, best, limit=10)
+    assert {str(m["mentor_id"]) for m in result} == {cheap, declined, pricey}
+
+    assert await matching_pipeline.similar_mentors(str(uuid.uuid4()), best, limit=3) == []

@@ -8,8 +8,10 @@ from app.schemas.matching import (
     MatchingResponse,
     PipelineStats,
     RankedMentor,
+    SimilarMentor,
+    SimilarMentorsResponse,
 )
-from app.security import Caller, require_user
+from app.security import Caller, require_internal, require_user
 from app.services import match_filters
 from app.services import matching_pipeline as pipeline
 
@@ -140,3 +142,23 @@ async def get_matches(
         filters=EffectiveFilters(**match_filters.to_echo(result["filters"])),
         excluded_by=result["excluded_by"],
     )
+
+
+@router.get("/internal/matching/similar-mentors", response_model=SimilarMentorsResponse,
+            dependencies=[Depends(require_internal)])
+async def similar_mentors(
+    menteeId: str = Query(...),
+    excludeMentorId: str = Query(...),
+    limit: int = Query(3, ge=1, le=10),
+) -> SimilarMentorsResponse:
+    """
+    Nội bộ (mentoring-service, US-15) — mentor phù hợp nhất cho mentee, trừ excludeMentorId; áp sở thích
+    hồ sơ, nới bộ lọc người dùng nếu chưa đủ limit. Mentee chưa có hồ sơ/chỉ mục => danh sách rỗng.
+    """
+    _parse_uuid(menteeId, "menteeId")
+    _parse_uuid(excludeMentorId, "excludeMentorId")
+    mentors = await pipeline.similar_mentors(menteeId, excludeMentorId, limit=limit)
+    return SimilarMentorsResponse(mentors=[
+        SimilarMentor(mentor_id=str(m["mentor_id"]), full_name=m["display_name"], score=m["final_score"])
+        for m in mentors
+    ])
