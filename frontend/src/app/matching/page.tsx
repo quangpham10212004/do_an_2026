@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead, Stars, useDialog } from "@/components/ui";
+import { Alert, Empty, Loading, PageHead, Stars } from "@/components/ui";
 import { EXCLUSION_LABELS, matchingApi } from "@/features/matching/api";
 import MatchingFilters, { biggestBlocker, describeFilter, dropFilter } from "@/features/matching/MatchingFilters";
 import { mentoringApi } from "@/features/mentoring/api";
@@ -49,10 +49,9 @@ interface MentorMatchCardProps {
   m: RankedMentor;
   weights: PipelineWeights;
   requested: boolean;
-  onRequest: (m: RankedMentor) => void;
 }
 
-function MentorMatchCard({ m, weights, requested, onRequest }: MentorMatchCardProps) {
+function MentorMatchCard({ m, weights, requested }: MentorMatchCardProps) {
   return (
     <div className="card">
       <div className="row between" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
@@ -87,7 +86,7 @@ function MentorMatchCard({ m, weights, requested, onRequest }: MentorMatchCardPr
         {requested ? (
           <span className="badge good">Đã gửi yêu cầu</span>
         ) : (
-          <button className="btn sm" onClick={() => onRequest(m)}>Gửi yêu cầu mentoring</button>
+          <Link className="btn sm" href={`/mentoring/request/${m.mentorId}`}>Gửi yêu cầu mentoring</Link>
         )}
       </div>
     </div>
@@ -98,8 +97,6 @@ function Matching({ user }: { user: SessionUser }) {
   const [data, setData] = useState<MatchResult | null | undefined>(undefined);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
-  const [msg, setMsg] = useState("");
-  const [dialog, ask] = useDialog();
   const [busy, setBusy] = useState(false);
 
   /** filters undefined = để server lấy sở thích hồ sơ làm bộ lọc (US-17); có giá trị = ghi đè cho lượt này. */
@@ -120,23 +117,6 @@ function Matching({ user }: { user: SessionUser }) {
     mentoringApi.requests().then((rs) => setRequested(new Set(rs.filter((r) => ["PENDING", "ACCEPTED"].includes(r.status)).map((r) => r.mentorId)))).catch(() => {});
   }, [user, search]);
 
-  async function request(m: RankedMentor) {
-    const message = await ask({
-      title: `Gửi yêu cầu tới ${m.displayName}`,
-      message: "Mentor cần chấp nhận yêu cầu trước khi bạn đặt lịch.",
-      input: { label: "Lời nhắn (tuỳ chọn)", defaultValue: "Chào anh/chị, em mong được anh/chị hướng dẫn." },
-      confirmText: "Gửi yêu cầu",
-    });
-    if (message === null) return;
-    try {
-      await mentoringApi.createRequest(m.mentorId, message);
-      setRequested(new Set([...requested, m.mentorId]));
-      setMsg(`Đã gửi yêu cầu tới ${m.displayName}.`);
-    } catch (e) {
-      setMsg(errorMessage(e));
-    }
-  }
-
   if (data === undefined) return <Loading text="AI đang tìm mentor phù hợp..." />;
   const excluded = data?.pipeline?.excluded || {};
   const excludedEntries = Object.entries(excluded) as [ExclusionReason, number][];
@@ -150,8 +130,6 @@ function Matching({ user }: { user: SessionUser }) {
         <Link href="/mentors" className="btn secondary">Xem tất cả mentor</Link>
         <Link href="/profile" className="btn secondary">Cập nhật hồ sơ</Link>
       </PageHead>
-      {dialog}
-      {msg && <Alert type="info">{msg}</Alert>}
       {error?.code === "MENTEE_PROFILE_INCOMPLETE" && (
         <Alert type="warn">{error.message}. <Link href="/profile">Tạo hồ sơ ngay</Link></Alert>
       )}
@@ -176,7 +154,7 @@ function Matching({ user }: { user: SessionUser }) {
             <Empty>Chưa tìm thấy mentor phù hợp. Hãy thử nới bộ lọc, bổ sung kỹ năng/mục tiêu trong hồ sơ, hoặc <Link href="/mentors">duyệt toàn bộ danh sách mentor</Link>.</Empty>
           ) : (
             <div className="grid grid-2">
-              {data.mentors.map((m) => <MentorMatchCard key={m.mentorId} m={m} weights={data.pipeline.weights} requested={requested.has(m.mentorId)} onRequest={request} />)}
+              {data.mentors.map((m) => <MentorMatchCard key={m.mentorId} m={m} weights={data.pipeline.weights} requested={requested.has(m.mentorId)} />)}
             </div>
           )}
         </>
