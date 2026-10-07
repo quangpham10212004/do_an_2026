@@ -7,29 +7,52 @@ from app.db import Db
 from app.enrichment.models import Exchange
 
 
-async def insert(conn: Db, mentee_id: UUID, cv_id: UUID, max_turns: int, engine: str) -> asyncpg.Record:
+async def insert_if_absent(conn: Db, mentee_id: UUID, cv_id: UUID, max_turns: int,
+                           engine: str) -> asyncpg.Record | None:
+    """Tạo hội thoại cho CV; None nếu CV đã có hội thoại (mỗi CV tối đa 1 — uq_enrichment_conversations_cv)."""
     return await conn.fetchrow(
         """INSERT INTO enrichment_conversations (mentee_id, cv_id, max_turns, engine)
-           VALUES ($1, $2, $3, $4) RETURNING *""",
+           VALUES ($1, $2, $3, $4) ON CONFLICT (cv_id) DO NOTHING RETURNING *""",
         mentee_id, cv_id, max_turns, engine)
+
+
+async def find_for_cv(conn: Db, cv_id: UUID) -> asyncpg.Record | None:
+    return await conn.fetchrow("SELECT * FROM enrichment_conversations WHERE cv_id = $1", cv_id)
 
 
 async def find(conn: Db, conversation_id: UUID) -> asyncpg.Record | None:
     return await conn.fetchrow("SELECT * FROM enrichment_conversations WHERE id = $1", conversation_id)
 
 
-async def latest_for_mentee(conn: Db, mentee_id: UUID) -> asyncpg.Record | None:
-    return await conn.fetchrow(
-        "SELECT * FROM enrichment_conversations WHERE mentee_id = $1 ORDER BY created_at DESC LIMIT 1", mentee_id)
-
-
-async def pending_profile_sync(conn: Db) -> list[asyncpg.Record]:
+async def pending_profile_sync(conn: Db, min_age_seconds: float) -> list[asyncpg.Record]:
+    """
+    US-21 — chỉ goal người dùng ĐÃ xác nhận mà chưa gửi được. Bỏ qua xác nhận quá mới (request xác nhận đang
+    tự gửi) để job không gửi trùng.
+    """
     return await conn.fetch(
-        "SELECT * FROM enrichment_conversations WHERE status = 'COMPLETED' AND profile_synced = false")
+        """SELECT * FROM enrichment_conversations
+           WHERE goal_status = 'CONFIRMED' AND profile_synced = false
+             AND goal_decided_at < now() - make_interval(secs => $1)""",
+        min_age_seconds)
 
 
-async def mark_synced(conn: Db, conversation_id: UUID) -> None:
-    await conn.execute("UPDATE enrichment_conversations SET profile_synced = true WHERE id = $1", conversation_id)
+async def mark_synced(conn: Db, conversation_id: UUID) -> bool:
+    """True nếu lần gọi này chuyển profile_synced false → true."""
+    row = await conn.fetchrow(
+        "UPDATE enrichment_conversations SET profile_synced = true WHERE id = $1 AND profile_synced = false "
+        "RETURNING id", conversation_id)
+    return row is not None
+
+
+async def decide_goal(conn: Db, conversation_id: UUID, status: str, goal: str | None) -> asyncpg.Record | None:
+    """
+    US-21 — DRAFT → CONFIRMED (kèm goal người dùng chọn/sửa) hoặc DISCARDED, nguyên tử: chỉ một request thắng,
+    nên xác nhận hai lần (kể cả đồng thời) chỉ đồng bộ một lần. None nếu goal không còn ở DRAFT.
+    """
+    return await conn.fetchrow(
+        """UPDATE enrichment_conversations SET goal_status = $2, confirmed_goal = $3, goal_decided_at = now()
+           WHERE id = $1 AND goal_status = 'DRAFT' RETURNING *""",
+        conversation_id, status, goal)
 
 
 async def messages_of(conn: Db, conversation_id: UUID) -> list[asyncpg.Record]:
@@ -60,7 +83,8 @@ async def set_current_turn(conn: Db, conversation_id: UUID, turn_no: int) -> Non
 
 async def complete(conn: Db, conversation_id: UUID, enriched_goal: str) -> asyncpg.Record:
     return await conn.fetchrow(
-        """UPDATE enrichment_conversations SET status = 'COMPLETED', enriched_goal = $2, completed_at = now()
+        """UPDATE enrichment_conversations
+           SET status = 'COMPLETED', enriched_goal = $2, goal_status = 'DRAFT', completed_at = now()
            WHERE id = $1 RETURNING *""",
         conversation_id, enriched_goal)
 

@@ -434,24 +434,39 @@ sequenceDiagram
     participant DB as ai_db
     participant P as profile-service
     participant X as matching-service
-    M->>AI: POST /api/ai/mentee/{id}/cv-upload (PDF)
-    AI->>P: GET hồ sơ mentee (lĩnh vực, trình độ, goal hiện tại)
-    AI->>AI: pypdf → parser → ParsedCv
-    AI->>DB: lưu file CV + cv_documents + hội thoại
-    AI-->>M: ParsedCv + câu hỏi 1
+    M->>AI: POST /api/ai/mentee/{id}/cv-upload (PDF + consentExternalAi — US-19)
+    AI->>P: GET hồ sơ mentee (phải tồn tại)
+    AI->>AI: pypdf → parser (DeepSeek chỉ khi đồng ý) → ParsedCv
+    AI->>DB: lưu file CV + cv_documents (KHÔNG ghi hồ sơ)
+    AI-->>M: ParsedCv, conversation = null
+    M->>AI: PUT /api/ai/cv/{cvId}/confirmed-fields (sửa/bỏ từng trường — US-20)
+    M->>AI: POST /api/ai/cv/{cvId}/enrichment-conversation
+    AI->>DB: hội thoại + câu hỏi 1 (dựa trên trường đã duyệt)
+    AI-->>M: câu hỏi 1
     loop 4 lượt
         M->>AI: POST /api/ai/enrichment/conversations/{id}/answers
         AI->>AI: next-question (CV, lịch sử) — bỏ qua slot đã có
         AI-->>M: câu hỏi tiếp theo
     end
-    AI->>AI: summarize_goal(CV, lịch sử) → enrichedGoal
-    AI->>P: POST /mentee/{id}/enrichment-chat {enrichedGoalText, cvSkills, cvFileUrl}
+    AI->>AI: summarize_goal(CV đã duyệt, lịch sử) → enrichedGoal
+    AI-->>M: COMPLETED, goalStatus = DRAFT (hồ sơ chưa đổi — US-21)
+    alt "Bỏ qua"
+        M->>AI: POST .../discard-goal → DISCARDED, không gửi gì
+    else "Dùng mục tiêu này" (có thể đã "Sửa")
+    M->>AI: POST /api/ai/enrichment/conversations/{id}/confirm-goal {goal}
+    AI->>P: POST /mentee/{id}/enrichment-chat {enrichedGoalText = goal, cvSkills = kỹ năng đã duyệt, cvFileUrl}
     P->>P: cập nhật goal, gộp kỹ năng CV (không trùng)
     P-)X: POST /internal/embeddings/reindex (chỉ userId — không chờ kết quả)
     X->>P: đọc hồ sơ (read-only), chuẩn hoá văn bản, hash đổi → embed lại
     X->>X: lưu vector 384 chiều vào matching_db
-    AI-->>M: COMPLETED + goal đã làm rõ (profileSynced = true)
+    AI-->>M: CONFIRMED (profileSynced = true)
+    end
 ```
+
+Sprint 2: **US-19** — không đồng ý gửi AI bên ngoài ⇒ parse và mọi lượt chatbot của CV đó chỉ chạy
+rule-based (`app/cv/engine.py::engine_for`, kiểm tra lại mỗi lượt). **US-20** — parse không ghi hồ sơ;
+chatbot chỉ bắt đầu sau khi người dùng duyệt và chỉ dùng `confirmed_fields`. **US-21** — goal là bản nháp;
+chỉ `confirm-goal` mới đồng bộ hồ sơ (một lần, nguyên tử DRAFT → CONFIRMED), `discard-goal` không gửi gì.
 
 ### 3.3 Trích xuất văn bản PDF (`ai-service/app/cv/extractor.py`)
 Thư viện `pypdf`. Kiểm tra: chữ ký file `%PDF-`, ≤ 5MB, không mã hoá, ≤ 10 trang, ≥ 50 ký tự văn bản
@@ -509,10 +524,11 @@ Thời gian mong muốn: <TIMELINE>. Nền tảng hiện có (từ CV): <kỹ n�
 Engine DeepSeek (`app/enrichment/deepseek_engine.py`) sinh đoạn mô tả 3–6 câu ở ngôi thứ ba từ CV + hội
 thoại (JSON `{"enriched_goal": ...}`), lỗi thì dùng mẫu rule-based ở trên.
 
-**Cập nhật hồ sơ & re-embedding (FR-8.5)**: gửi `enrichedGoalText`, `cvSkills`, `cvFileUrl` sang
-profile-service; kỹ năng từ CV được **gộp** (không trùng, không phân biệt hoa thường) vào kỹ năng hồ sơ;
+**Cập nhật hồ sơ & re-embedding (FR-8.5)** — chỉ sau khi mentee xác nhận goal (US-21): gửi
+`enrichedGoalText` (goal đã xác nhận), `cvSkills` (chỉ kỹ năng đã duyệt), `cvFileUrl` sang
+profile-service; kỹ năng được **gộp** (không trùng, không phân biệt hoa thường) vào kỹ năng hồ sơ;
 văn bản chuẩn hoá thay đổi → hash đổi → matching-service sinh lại embedding. Nếu gửi lỗi, cờ `profile_synced = false`
-và job thử lại mỗi 2 phút.
+và job thử lại mỗi 2 phút (chỉ goal `CONFIRMED`; bỏ qua xác nhận < 60 giây để không gửi trùng).
 
 ### 3.6 Ví dụ (kiểm thử e2e với `scripts/sample-cv.pdf`)
 - Kỹ năng trích xuất (theo tần suất): Spring Boot, Docker, Java, REST API, PostgreSQL, JUnit, MySQL,
@@ -536,8 +552,8 @@ và job thử lại mỗi 2 phút.
 - Quyền riêng tư CV (FR-8.6): mentor chỉ tải được CV của mentee có yêu cầu mentoring `PENDING`/`ACCEPTED`
   với mình (hỏi `GET /internal/relationships` của mentoring-service, timeout 3 s, lỗi ⇒ từ chối); chủ CV
   xem `GET /api/ai/cv/mine` và xoá `DELETE /api/ai/cv/{id}` (xoá hội thoại + bản ghi + file, gỡ `cvFileUrl`
-  trong hồ sơ). **Còn thiếu**: thời hạn lưu tự động; goal/kỹ năng đã gộp từ CV không tự gỡ khi xoá CV; khi
-  bật DeepSeek, toàn văn CV được gửi ra ngoài mà chưa có bước xin đồng ý. Chi tiết:
+  trong hồ sơ). Gửi DeepSeek chỉ khi người dùng đồng ý cho CV đó (US-19). **Còn thiếu**: thời hạn lưu tự
+  động; goal/kỹ năng đã gộp từ CV không tự gỡ khi xoá CV. Chi tiết:
   [cv-data-policy.md](cv-data-policy.md).
 
 ### 3.8 Câu hỏi hội đồng có thể hỏi

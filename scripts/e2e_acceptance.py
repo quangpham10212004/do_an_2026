@@ -120,13 +120,19 @@ def main():
 
     # ---------------- DoD 3: CV + chatbot enrichment ----------------
     print("\nDoD 3 — Upload CV, chatbot hỏi thêm, tổng hợp & re-embedding")
-    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES))
+    # Sprint 2 US-19: consentExternalAi bắt buộc (false => rule-based, tất định cho e2e)
+    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES), fields={"consentExternalAi": "false"})
     upload = call("POST", f"{AI}/api/ai/mentee/{mentee['userId']}/cv-upload", token=mentee_token,
                   raw_body=body, content_type=ctype)
     parsed = upload["cv"]["parsed"]
     check(3, "Parse CV: trích xuất kỹ năng", {"Java", "Spring Boot", "Docker"} <= set(parsed["skills"]), parsed["skills"])
     check(3, "Parse CV: trích xuất dự án & kinh nghiệm", len(parsed["projects"]) >= 2 and parsed["yearsExperience"] is not None, parsed)
-    conv = upload["conversation"]
+    # Sprint 2 US-20: upload chỉ parse (chưa có hội thoại); duyệt thông tin (giữ nguyên) rồi mới bắt đầu chatbot
+    check(3, "Upload chỉ parse, chưa mở chatbot (chờ người dùng duyệt)", upload["conversation"] is None)
+    call("PUT", f"{AI}/api/ai/cv/{upload['cv']['id']}/confirmed-fields", {
+        "role": parsed["currentRole"], "skills": parsed["skills"], "yearsExperience": parsed["yearsExperience"],
+        "projects": parsed["projects"], "education": parsed["education"]}, token=mentee_token)
+    conv = call("POST", f"{AI}/api/ai/cv/{upload['cv']['id']}/enrichment-conversation", token=mentee_token)["conversation"]
     first_q = conv["currentQuestion"]["question"]
     check(3, "Câu hỏi đầu dựa trên CV (nhắc lại kỹ năng đã có, không hỏi lại)", "Java" in first_q, first_q)
     answers = ["Toi muon lam backend developer Java trong 6 thang toi", "System design va microservices",
@@ -140,6 +146,12 @@ def main():
     check(3, f"Hội thoại kết thúc sau đúng {conv['maxTurns']} lượt, không lặp slot", len(slots) == conv["maxTurns"] and len(set(slots)) == len(slots), slots)
     check(3, "Mốc thời gian đã nêu ('6 tháng') nên không hỏi lại TIMELINE", "TIMELINE" not in slots, slots)
     check(3, "Tổng hợp goal chuẩn hoá", conv["enrichedGoal"] and "Nền tảng hiện có" in conv["enrichedGoal"])
+    # Sprint 2 US-21: goal là bản nháp — hồ sơ chỉ đổi sau khi mentee "Dùng mục tiêu này"
+    profile_draft = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
+    check(3, "Goal nháp chưa ghi vào hồ sơ trước khi xác nhận", conv["goalStatus"] == "DRAFT"
+          and not conv["profileSynced"] and profile_draft["goal"] != conv["enrichedGoal"], conv["goalStatus"])
+    conv = call("POST", f"{AI}/api/ai/enrichment/conversations/{conv['id']}/confirm-goal",
+                {"goal": conv["enrichedGoal"]}, token=mentee_token)
     profile_after = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
     check(3, "Goal được ghi vào profile-service + gộp kỹ năng từ CV", conv["profileSynced"] and profile_after["goal"] == conv["enrichedGoal"]
           and "Spring Boot" in profile_after["skills"])
