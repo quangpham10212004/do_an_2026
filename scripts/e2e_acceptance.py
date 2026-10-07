@@ -18,6 +18,8 @@ from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, S
                     make_pdf, multipart_file)
 
 VN = timezone(timedelta(hours=7))
+# US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
+BOOKING_FORM = {"sessionType": "CAREER_ADVICE", "agenda": "Review CV va dinh huong lo trinh backend Java"}
 RUN = uuid.uuid4().hex[:6]
 results = []
 
@@ -229,7 +231,7 @@ def main():
     req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao"}, token=referred_token)
     check(8, "Mentee gửi yêu cầu mentoring", req["status"] == "PENDING")
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions", {
-        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": next_slot().isoformat(), "durationMinutes": 60},
+        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": next_slot().isoformat(), "durationMinutes": 60, **BOOKING_FORM},
         token=referred_token), 400)
     check(8, "Chưa được chấp nhận thì không đặt lịch được", ok)
     req = call("POST", f"{MENTORING}/api/mentoring/requests/{req['id']}/respond", {"decision": "ACCEPT"}, token=mentor_token)
@@ -237,7 +239,7 @@ def main():
 
     night = next_slot().replace(hour=23, minute=30)
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions", {
-        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": night.isoformat(), "durationMinutes": 60},
+        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": night.isoformat(), "durationMinutes": 60, **BOOKING_FORM},
         token=referred_token), 409)
     check(8, "Đặt ngoài lịch rảnh bị từ chối (409)", ok)
     slot = next_slot().replace(hour=10)
@@ -247,14 +249,14 @@ def main():
           slot in free and night not in free and all(t > datetime.now(VN) for t in free), free[:4])
     session = call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": slot.isoformat(), "durationMinutes": 90,
-        "topic": "Review CV"}, token=referred_token)
+        "topic": "Review CV", **BOOKING_FORM}, token=referred_token)
     check(8, "Tạo phiên PENDING với giá = 200.000đ × 1.5 giờ", session["status"] == "PENDING" and float(session["price"]) == 300000, session)
     free = [datetime.fromisoformat(x["startAt"]) for x in call("GET", slots_url, token=referred_token)["slots"]]
     check(8, "Khung giờ đã đặt (và giờ chồng lấn) biến mất khỏi danh sách trống",
           slot not in free and slot + timedelta(minutes=30) not in free and slot - timedelta(minutes=60) not in free, free[:6])
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": mentee["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(minutes=30)).isoformat(),
-        "durationMinutes": 60}, token=mentee_token), 400)
+        "durationMinutes": 60, **BOOKING_FORM}, token=mentee_token), 400)
     check(8, "Mentee chưa được chấp nhận không đặt được lịch với mentor", ok)
 
     expiry = (datetime.now() + timedelta(days=800)).strftime("%m/%y")
@@ -301,8 +303,8 @@ def main():
     # ---------------- Refund flow ----------------
     print("\nBổ sung — Huỷ phiên đã thanh toán → hoàn tiền; sức chứa")
     s2 = call("POST", f"{MENTORING}/api/mentoring/sessions", {
-        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=1)).isoformat(),
-        "durationMinutes": 60}, token=referred_token)
+        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=4)).isoformat(),
+        "durationMinutes": 60, **BOOKING_FORM}, token=referred_token)
     call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": s2["id"], "card": {
         "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}}, token=referred_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s2['id']}/cancel", {"reason": "Ban viec"}, token=referred_token)
@@ -328,7 +330,7 @@ def main():
     def book_race(user_id, token):
         try:
             call("POST", f"{MENTORING}/api/mentoring/sessions", {
-                "menteeId": user_id, "mentorId": mentor["userId"], "scheduledAt": race_slot, "durationMinutes": 60},
+                "menteeId": user_id, "mentorId": mentor["userId"], "scheduledAt": race_slot, "durationMinutes": 60, **BOOKING_FORM},
                 token=token)
             return 201
         except ApiError as e:

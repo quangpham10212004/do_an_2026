@@ -7,7 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app import config
-from app.db import close_pools
+from app import migrations
+from app.db import close_pools, get_matching_pool
 from app.jobs import index_sync
 from app.routers import index, matching
 from app.services import embedding_service
@@ -18,8 +19,16 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    problems = config.prod_secret_errors()
+    if problems:
+        # NFR-9: không bao giờ chạy production với khoá dev công khai trong mã nguồn.
+        raise RuntimeError(f"NFR-9: APP_ENV=prod không được dùng khoá dev mặc định: {', '.join(problems)}")
     for warning in config.dev_secret_warnings():
         log.warning(warning)
+    if config.MIGRATE_ON_STARTUP:
+        applied = await migrations.apply_with_pool(await get_matching_pool())
+        if applied:
+            log.info("matching_db: đã áp dụng migration %s", ", ".join(applied))
     # Load model 1 lần lúc startup — không load lại mỗi request.
     if config.PRELOAD_MODEL:
         embedding_service.load_model()

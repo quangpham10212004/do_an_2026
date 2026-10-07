@@ -4,9 +4,11 @@ import com.mmp.profile.client.MatchingIndexClient;
 import com.mmp.profile.dto.ProfileDtos.*;
 import com.mmp.profile.entity.MenteeProfile;
 import com.mmp.profile.entity.MentorAvailability;
+import com.mmp.profile.entity.MentorAvailabilityException;
 import com.mmp.profile.entity.MentorProfile;
 import com.mmp.profile.exception.ApiException;
 import com.mmp.profile.repository.MenteeProfileRepository;
+import com.mmp.profile.repository.MentorAvailabilityExceptionRepository;
 import com.mmp.profile.repository.MentorAvailabilityRepository;
 import com.mmp.profile.repository.MentorProfileRepository;
 import org.springframework.data.domain.Page;
@@ -15,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -32,23 +36,52 @@ public class ProfileService {
     private final MentorProfileRepository mentorRepo;
     private final MenteeProfileRepository menteeRepo;
     private final MentorAvailabilityRepository availabilityRepo;
+    private final MentorAvailabilityExceptionRepository exceptionRepo;
     private final MatchingIndexClient matchingIndexClient;
     private final TransactionTemplate tx;
+    private final Clock clock;
+
+    /**
+     * Không thể kiểm tra trùng với phiên CONFIRMED: dữ liệu phiên thuộc mentoring-service và hiện chưa
+     * có endpoint cho profile-service hỏi. mentoring-service tự tôn trọng ngoại lệ khi đặt lịch mới
+     * (nhận qua GET /internal/mentor/{id}); phiên ĐÃ xác nhận không bị tự huỷ nên nhắc mentor tự xem lại.
+     */
+    static final String EXCEPTION_SESSION_WARNING = "Chưa kiểm tra được các phiên đã xác nhận trùng thời gian này. "
+            + "Phiên đã xác nhận không tự huỷ — hãy xem trang Phiên học và dời/huỷ nếu cần.";
 
     public ProfileService(MentorProfileRepository mentorRepo, MenteeProfileRepository menteeRepo,
                           MentorAvailabilityRepository availabilityRepo,
-                          MatchingIndexClient matchingIndexClient, TransactionTemplate tx) {
+                          MentorAvailabilityExceptionRepository exceptionRepo,
+                          MatchingIndexClient matchingIndexClient, TransactionTemplate tx, Clock clock) {
         this.mentorRepo = mentorRepo;
         this.menteeRepo = menteeRepo;
         this.availabilityRepo = availabilityRepo;
+        this.exceptionRepo = exceptionRepo;
         this.matchingIndexClient = matchingIndexClient;
         this.tx = tx;
+        this.clock = clock;
     }
 
     // ---------------- Mentor ----------------
 
     public MentorProfileResponse getMentor(UUID userId) {
-        return MentorProfileResponse.from(findMentor(userId), availability(userId));
+        return toResponse(findMentor(userId));
+    }
+
+    private MentorProfileResponse toResponse(MentorProfile p) {
+        LocalDate today = today(p);
+        return MentorProfileResponse.from(p, effectiveStatus(p), availability(p.getUserId()),
+                exceptions(p.getUserId(), today, today.plusDays(MentorRules.EXCEPTION_HORIZON_DAYS - 1)));
+    }
+
+    /** US-08 — trạng thái hiệu lực (nghỉ phép hết hạn = ACCEPTING), tính khi đọc. */
+    MentorProfile.Status effectiveStatus(MentorProfile p) {
+        return MentorRules.effectiveStatus(p.getStatus(), p.getOnLeaveUntil(), today(p));
+    }
+
+    /** "Hôm nay" theo múi giờ của mentor. */
+    LocalDate today(MentorProfile p) {
+        return LocalDate.now(clock.withZone(MentorRules.zoneOf(p.getTimezone())));
     }
 
     /**
@@ -71,11 +104,15 @@ public class ProfileService {
             p.setPortfolioLinks(normalizeList(in.portfolioLinks()));
             p.setHourlyRate(Optional.ofNullable(in.hourlyRate()).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO)));
             p.setCapacity(Optional.ofNullable(in.capacity()).orElse(p.getCapacity()));
-            p.setAvailable(Optional.ofNullable(in.isAvailable()).orElse(p.isAvailable()));
+            // Cờ isAvailable cũ (US-08): chỉ đổi giữa ACCEPTING/PAUSED, không bao giờ gỡ SUSPENDED.
+            MentorProfile.Status legacy = MentorRules.statusFromLegacyFlag(in.isAvailable(), effectiveStatus(p));
+            if (legacy != null) {
+                p.changeStatus(legacy, null, null);
+            }
             return mentorRepo.save(p);
         });
         matchingIndexClient.reindexAsync(ROLE_MENTOR, saved.getUserId());
-        return MentorProfileResponse.from(findMentor(userId), availability(userId));
+        return getMentor(userId);
     }
 
     public List<AvailabilitySlot> availability(UUID mentorId) {
@@ -109,14 +146,121 @@ public class ProfileService {
         return availability(mentorId);
     }
 
+    // ---------------- US-07: ngoại lệ lịch rảnh ----------------
+
+    public List<AvailabilityExceptionDto> exceptions(UUID mentorId, LocalDate from, LocalDate to) {
+        return exceptionRepo.findByMentorIdAndDateBetweenOrderByDateAscStartTimeAsc(mentorId, from, to).stream()
+                .sorted(EXCEPTION_ORDER)
+                .map(AvailabilityExceptionDto::from).toList();
+    }
+
+    /** Ngoại lệ chưa qua (từ hôm nay theo múi giờ mentor tới hết khoảng cho phép khai báo). */
+    public List<AvailabilityExceptionDto> upcomingExceptions(UUID mentorId) {
+        LocalDate today = today(findMentor(mentorId));
+        return exceptions(mentorId, today, today.plusDays(MentorRules.EXCEPTION_MAX_AHEAD_DAYS));
+    }
+
+    public AvailabilityExceptionResult createException(UUID mentorId, AvailabilityExceptionInput in) {
+        MentorProfile mentor = findMentor(mentorId);
+        LocalDate today = today(mentor);
+        MentorAvailabilityException saved = tx.execute(status -> {
+            MentorRules.validateException(in.date(), in.startTime(), in.endTime(), today,
+                    exceptionRepo.findByMentorIdAndDate(mentorId, in.date()), null);
+            if (exceptionRepo.countByMentorIdAndDateGreaterThanEqual(mentorId, today) >= MentorRules.MAX_UPCOMING_EXCEPTIONS) {
+                throw ApiException.badRequest("TOO_MANY_EXCEPTIONS",
+                        "Tối đa " + MentorRules.MAX_UPCOMING_EXCEPTIONS + " ngoại lệ sắp tới");
+            }
+            return exceptionRepo.save(new MentorAvailabilityException(mentorId, in.date(), in.startTime(), in.endTime(),
+                    MentorRules.trimToNull(in.reason())));
+        });
+        return new AvailabilityExceptionResult(AvailabilityExceptionDto.from(saved), EXCEPTION_SESSION_WARNING);
+    }
+
+    public AvailabilityExceptionResult updateException(UUID mentorId, UUID exceptionId, AvailabilityExceptionInput in) {
+        MentorProfile mentor = findMentor(mentorId);
+        LocalDate today = today(mentor);
+        MentorAvailabilityException saved = tx.execute(status -> {
+            MentorAvailabilityException e = findException(mentorId, exceptionId);
+            if (e.getDate().isBefore(today)) {
+                throw ApiException.badRequest("INVALID_EXCEPTION", "Không thể sửa ngoại lệ của ngày đã qua");
+            }
+            MentorRules.validateException(in.date(), in.startTime(), in.endTime(), today,
+                    exceptionRepo.findByMentorIdAndDate(mentorId, in.date()), exceptionId);
+            e.update(in.date(), in.startTime(), in.endTime(), MentorRules.trimToNull(in.reason()));
+            return exceptionRepo.save(e);
+        });
+        return new AvailabilityExceptionResult(AvailabilityExceptionDto.from(saved), EXCEPTION_SESSION_WARNING);
+    }
+
+    public void deleteException(UUID mentorId, UUID exceptionId) {
+        tx.executeWithoutResult(status -> exceptionRepo.delete(findException(mentorId, exceptionId)));
+    }
+
+    private MentorAvailabilityException findException(UUID mentorId, UUID exceptionId) {
+        return exceptionRepo.findById(exceptionId)
+                .filter(e -> e.getMentorId().equals(mentorId))
+                .orElseThrow(() -> ApiException.notFound("EXCEPTION_NOT_FOUND", "Không tìm thấy ngoại lệ lịch rảnh"));
+    }
+
+    /** Theo ngày; trong cùng ngày, nghỉ cả ngày đứng trước rồi tới giờ bắt đầu. */
+    private static final Comparator<MentorAvailabilityException> EXCEPTION_ORDER =
+            Comparator.comparing(MentorAvailabilityException::getDate)
+                    .thenComparing(MentorAvailabilityException::getStartTime, Comparator.nullsFirst(Comparator.naturalOrder()));
+
     public PageResponse<MentorCard> searchMentors(String domain, String q, boolean includeUnverified, int page, int size) {
         Page<MentorProfile> result = mentorRepo.search(
                 blankToNull(domain) == null ? null : normalizeDomain(domain),
                 includeUnverified ? null : MentorProfile.VerificationStatus.APPROVED,
                 blankToNull(q),
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 50)));
-        return new PageResponse<>(result.map(MentorCard::from).getContent(), result.getNumber(), result.getSize(),
-                result.getTotalElements(), result.getTotalPages());
+        return new PageResponse<>(result.map(m -> MentorCard.from(m, effectiveStatus(m))).getContent(),
+                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
+    }
+
+    // ---------------- US-04: cài đặt đặt lịch ----------------
+
+    public MentorProfileResponse updateBookingSettings(UUID mentorId, BookingSettingsInput in) {
+        String link = MentorRules.normalizeMeetingLink(in.meetingLink());
+        MentorRules.validateBufferAndNotice(in.bufferMinutes(), in.minNoticeHours());
+        String[] languages = MentorRules.normalizeCodes(in.languages(), MentorRules.LANGUAGES, false, "Ngôn ngữ");
+        String[] types = MentorRules.normalizeCodes(in.sessionTypes(), MentorRules.SESSION_TYPES, true, "Loại phiên");
+        String timezone = MentorRules.normalizeTimezone(in.timezone());
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            p.updateBookingSettings(link, in.bufferMinutes(), in.minNoticeHours(), languages, types, timezone);
+            mentorRepo.save(p);
+        });
+        return getMentor(mentorId);
+    }
+
+    // ---------------- US-08: trạng thái mentor ----------------
+
+    /** Mentor tự đổi ACCEPTING / PAUSED / ON_LEAVE (không đặt/gỡ được SUSPENDED). */
+    public MentorProfileResponse changeOwnStatus(UUID mentorId, MentorStatusInput in) {
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            MentorProfile.Status requested = MentorProfile.Status.valueOf(in.status());
+            MentorRules.validateSelfStatusChange(effectiveStatus(p), requested, in.onLeaveUntil(), today(p));
+            p.changeStatus(requested, in.onLeaveUntil(), MentorRules.trimToNull(in.reason()));
+            mentorRepo.save(p);
+        });
+        return getMentor(mentorId);
+    }
+
+    /** Interface 2 — mentoring-service đặt PAUSED / SUSPENDED / ACCEPTING (ACCEPTING gỡ cả đình chỉ). */
+    public MentorProfileResponse setStatusInternal(UUID mentorId, InternalStatusUpdate in) {
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            p.changeStatus(MentorProfile.Status.valueOf(in.status()), null, MentorRules.trimToNull(in.reason()));
+            mentorRepo.save(p);
+        });
+        return getMentor(mentorId);
+    }
+
+    /** MentorStatusJob — ghi lại vào DB các kỳ nghỉ phép đã hết hạn (đọc vốn đã tính đúng không cần job). */
+    public int returnExpiredLeaves() {
+        Integer n = tx.execute(s -> mentorRepo.returnExpiredLeaves());
+        return n == null ? 0 : n;
     }
 
     public MentorProfileResponse updateVerification(UUID mentorId, String status) {

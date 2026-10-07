@@ -79,7 +79,10 @@ async def top_k_retrieval(mentee_id: str, k: int = DEFAULT_K) -> list[dict]:
     rows = await profile_pool.fetch(
         """
         SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.bio,
-               m.capacity, m.active_mentee_count, m.is_available, m.rating, m.rating_count,
+               m.capacity, m.active_mentee_count, m.status, m.rating, m.rating_count,
+               -- US-08: trạng thái hiệu lực — ON_LEAVE đã qua hết on_leave_until tính là ACCEPTING.
+               (m.status = 'ACCEPTING' OR (m.status = 'ON_LEAVE'
+                   AND m.on_leave_until < (now() AT TIME ZONE m.timezone)::date)) AS is_accepting,
                m.years_experience, m.hourly_rate, m.verification_status,
                EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule
         FROM mentor_profiles m
@@ -105,8 +108,8 @@ def rejection_reason(candidate: dict, mentee_domain: str | None) -> str | None:
     """Trả về mã lý do nếu mentor không thoả ràng buộc cứng, None nếu hợp lệ."""
     if candidate.get("verification_status") != "APPROVED":
         return REASON_NOT_VERIFIED  # chưa vượt qua AI Interview + admin duyệt
-    if not candidate.get("is_available"):
-        return REASON_UNAVAILABLE
+    if not candidate.get("is_accepting"):
+        return REASON_UNAVAILABLE  # US-08: PAUSED / ON_LEAVE / SUSPENDED không bao giờ được gợi ý
     if not candidate.get("has_schedule"):
         return REASON_NO_SCHEDULE  # chưa khai báo lịch rảnh => không thể đặt lịch
     if candidate.get("active_mentee_count", 0) >= candidate.get("capacity", 0):

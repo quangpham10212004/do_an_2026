@@ -171,13 +171,54 @@ cd frontend && npm install && npm run dev
 
 ## 8. Nâng cấp phiên bản & migration CSDL
 
-### 8.1 Nguyên tắc
-- Schema mỗi CSDL nằm ở `db/init/<service>.sql`, được mount vào `/docker-entrypoint-initdb.d/` của
-  container PostgreSQL. Image PostgreSQL **chỉ chạy các file này khi thư mục dữ liệu rỗng**, tức lần đầu
-  volume `*-db-data` được tạo.
-- Hệ thống **không dùng Flyway/Liquibase/Alembic** (lý do: [adr.md](adr.md) ADR-04). Hibernate đặt
-  `ddl-auto: none`. Vì vậy sửa file SQL **không** tự cập nhật CSDL đang có.
-- Cách duy nhất được hỗ trợ để áp schema mới là **xoá volume và khởi tạo lại**.
+### 8.1 Nguyên tắc (US-11 — áp dụng cho MỌI service)
+
+Schema được nâng cấp **tại chỗ, không mất dữ liệu** bằng migration đánh số chạy lúc service khởi động.
+`db/init/<service>.sql` vẫn được mount vào `/docker-entrypoint-initdb.d/` và **giữ nguyên** (chỉ chạy khi
+volume mới tạo); mọi thay đổi schema sau mốc này nằm trong migration, **không sửa `db/init`**.
+
+| Loại service | Công cụ | Thư mục | Bảng lịch sử |
+|---|---|---|---|
+| Java (Spring Boot) | Flyway (`flyway-core` + `flyway-database-postgresql`, phiên bản do Spring Boot quản lý) | `src/main/resources/db/migration/V<n>__<mo_ta>.sql` | `flyway_schema_history` |
+| Python (FastAPI) | Runner tự viết ~60 dòng (`ai-service/app/migrations.py`) | `<service>/migrations/NNN_<mo_ta>.sql` | `schema_migrations(version, name, applied_at)` |
+
+Quy tắc chung:
+1. **Baseline**: `V1__baseline.sql` (Java) / `001_baseline.sql` (Python) là **bản sao nguyên văn** của
+   `db/init/<service>.sql` tại thời điểm chuyển sang migration (ai-service có test so khớp hai file).
+2. **Java** — cấu hình trong `application.yml`:
+   ```yaml
+   spring:
+     flyway:
+       enabled: true
+       baseline-on-migrate: true   # volume do db/init tạo: có bảng nhưng chưa có flyway_schema_history
+       baseline-version: 1         # => Flyway ghi baseline V1 (không chạy lại V1) rồi chạy V2, V3...
+       locations: classpath:db/migration
+   ```
+   Hibernate vẫn `ddl-auto: none`. Volume rỗng hoàn toàn (không mount db/init) thì V1 chạy như bình thường.
+3. **Python** — mọi file `CREATE` trong baseline dùng `IF NOT EXISTS` nên chạy lại trên volume do db/init
+   tạo là no-op. Runner: lấy `pg_advisory_lock`, tạo `schema_migrations` nếu chưa có, chạy từng file chưa
+   áp **trong một transaction riêng** rồi ghi phiên bản; file lỗi ⇒ rollback, service **không khởi động**
+   (fail-fast). Gọi runner trước khi pool CSDL được dùng (ai-service: trong `db.get_pool()`).
+4. Thay đổi mới = **thêm file số kế tiếp** (`V2__...`, `002_...`). Không bao giờ sửa/đổi tên file đã merge
+   (Flyway kiểm checksum và sẽ từ chối khởi động). Migration phải chạy được trên dữ liệu thật: thêm cột thì
+   có `DEFAULT` hoặc cho phép NULL, đổi `CHECK` thì `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`.
+5. Mỗi PR đổi schema kèm migration + code + contract trong cùng PR; **không còn** ghi chú "cần `down -v`".
+6. Team khác áp dụng y hệt: copy `db/init/<service>.sql` thành baseline, thêm 2 dependency Flyway và khối
+   cấu hình ở bước 2 (Java), hoặc copy `ai-service/app/migrations.py` (Python, đổi `_LOCK_KEY`).
+
+Migration hiện có:
+
+| Service | Migration |
+|---|---|
+| auth-service | `V1__baseline`, `V2__password_reset_tokens` (US-09) |
+| learning-service | `V1__baseline` |
+| ai-service | `001_baseline` |
+
+Kiểm tra trạng thái:
+```bash
+docker compose exec auth-db psql -U postgres -d auth_db -c "SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank"
+docker compose exec ai-db psql -U postgres -d ai_db -c "SELECT * FROM schema_migrations ORDER BY version"
+```
 
 ### 8.2 Nâng cấp từ bản trước `R-1` (embedding còn nằm trong profile-service)
 
@@ -228,13 +269,12 @@ Dấu hiệu chưa khởi tạo lại: profile-service khởi động được n
 nối được `matching-db`), hoặc bước 2 còn trả về cột `embedding*`.
 
 ### 8.4 Thay đổi schema về sau
-1. Sửa `db/init/<service>.sql` (và entity/SQL trong service tương ứng) trong cùng một PR, ghi chú
-   "cần `down -v`" trong mô tả PR.
-2. Mọi thành viên chạy lại mục 8.2 sau khi kéo code.
-3. Nếu chỉ thay đổi **một** CSDL, có thể xoá riêng volume đó thay vì `down -v` toàn bộ:
-   `docker compose rm -sf <x>-db && docker volume rm <tên_dự_án>_<x>-db-data && docker compose up -d <x>-db`
-   (tên volume xem bằng `docker volume ls`). Lưu ý tham chiếu logic giữa các CSDL (UUID người dùng) sẽ
-   lệch nếu chỉ xoá một phần — với dữ liệu demo, `down -v` + `seed_demo.py` an toàn hơn.
+1. Với service đã có migration (mục 8.1): thêm file migration số kế tiếp, **không** sửa `db/init`. Kéo
+   code mới rồi `docker compose up -d --build <service>` là đủ — migration tự chạy, dữ liệu được giữ.
+2. Service chưa chuyển sang migration (còn dùng cách cũ): sửa `db/init/<service>.sql`, ghi "cần `down -v`"
+   trong PR và chạy lại mục 8.2 — nên chuyển sang migration theo mục 8.1 bước 6 thay vì tiếp tục cách này.
+3. Rollback: migration chỉ đi tiến. Muốn hoàn tác thì viết migration mới đảo ngược thay đổi; trên môi
+   trường demo có thể `down -v` + `seed_demo.py`.
 4. Đổi model embedding hoặc format văn bản chuẩn hoá **không** cần migration: đặt `EMBEDDING_MODEL`,
    khởi động lại matching-service rồi gọi `POST /api/matching/admin/embeddings/rebuild?force=true`
    (hoặc chờ `IndexSyncJob` tự phát hiện hash lệch).

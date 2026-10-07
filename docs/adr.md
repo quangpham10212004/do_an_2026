@@ -17,8 +17,9 @@ kiểm chứng.
 | [ADR-01](#adr-01--matching-service-đọc-trực-tiếp-profile_db-ở-chế-độ-read-only) | matching-service đọc trực tiếp `profile_db`, chỉ đọc | Đã chấp nhận | SRD §5.3, D5, D6 · `CONVENTIONS.md` mục 7 |
 | [ADR-02](#adr-02--thông-báo-best-effort--đối-soát-định-kỳ-thay-cho-transaction-phân-tán) | Thông báo best-effort + job đối soát định kỳ thay cho transaction phân tán | Đã chấp nhận | `architecture.md` §4, §5 |
 | [ADR-03](#adr-03--r-1-chuyển-quyền-sở-hữu-chỉ-mục-embedding-sang-matching-service) | `R-1` — chuyển quyền sở hữu chỉ mục embedding sang matching-service | Đã chấp nhận (thay thế thiết kế embedding trong profile-service) | SRD D7, D8 (quyền sở hữu embedding) |
-| [ADR-04](#adr-04--schema-quản-lý-bằng-file-sql-khởi-tạo-không-dùng-công-cụ-migration) | Schema quản lý bằng `db/init/*.sql`, không dùng công cụ migration | Đã chấp nhận | `deployment-guide.md` §8 |
+| [ADR-04](#adr-04--schema-quản-lý-bằng-file-sql-khởi-tạo-không-dùng-công-cụ-migration) | Schema quản lý bằng `db/init/*.sql`, không dùng công cụ migration | Đã thay thế (US-11: Flyway / migrations ai-service) | `deployment-guide.md` §8 |
 | [ADR-05](#adr-05--frontend-proxy-làm-cổng-vào-không-dùng-api-gateway-riêng) | Frontend proxy làm cổng vào, không dùng API Gateway riêng | Đã chấp nhận | SRD D11 |
+| [ADR-06](#adr-06--us-11-migration-cho-profile-service-flyway-và-matching-service-runner-sql) | US-11: profile-service dùng Flyway, matching-service dùng runner SQL đánh số | Đã chấp nhận (thay thế ADR-04 cho 2 service này) | `CONVENTIONS.md` mục 7 |
 
 ### Quyết định đã ghi trong SRD (không lặp lại ở đây)
 
@@ -203,7 +204,9 @@ matching-service sở hữu **trọn vòng đời** chỉ mục embedding:
 
 ## ADR-04 — Schema quản lý bằng file SQL khởi tạo, không dùng công cụ migration
 
-**Trạng thái**: Đã chấp nhận (nợ kỹ thuật có chủ đích)
+**Trạng thái**: **Đã thay thế (US-11)** — auth-service, learning-service dùng Flyway; ai-service dùng runner
+`ai-service/app/migrations.py` (file `migrations/NNN_*.sql`, bảng `schema_migrations`); `db/init` giữ làm
+baseline. Quy trình cho mọi service: `deployment-guide.md` §8.1. Phần dưới giữ lại để tham khảo lịch sử.
 
 ### Bối cảnh
 Mỗi CSDL được khởi tạo bằng `db/init/<service>.sql` mount vào `/docker-entrypoint-initdb.d/` của image
@@ -245,3 +248,30 @@ Một route handler Next.js duy nhất (`frontend/src/app/api/[service]/[...path
 ### Phương án đã cân nhắc
 Spring Cloud Gateway / Kong / Nginx: phù hợp khi triển khai thật; với đồ án, proxy trong Next.js đủ dùng
 và bớt một container.
+
+---
+
+## ADR-06 — US-11: migration cho profile-service (Flyway) và matching-service (runner SQL)
+
+**Trạng thái**: Đã chấp nhận · thay thế ADR-04 **chỉ cho** profile-service và matching-service · **Phụ trách**: Thảo
+
+### Bối cảnh
+Các story P0 (lịch ngoại lệ, trạng thái mentor, cài đặt đặt lịch, sở thích mentee) đổi schema
+`profile_db` trên dữ liệu đã có. Với ADR-04 mỗi lần đổi phải `docker compose down -v` (mất dữ liệu).
+
+### Quyết định
+- **profile-service**: Flyway (`src/main/resources/db/migration`). `V1__baseline.sql` = bản sao
+  `db/init/profile-service.sql`; `spring.flyway.baseline-on-migrate=true`, `baseline-version=1` nên
+  CSDL đã tạo bằng db/init được baseline ở V1 rồi chạy V2+; CSDL rỗng chạy từ V1.
+- **matching-service**: file `migrations/NNN_ten.sql` được `app/migrations.py` áp dụng lúc khởi động,
+  mỗi file một transaction, ghi `schema_migrations(version, name, checksum)`; khoá `pg_advisory_lock`
+  khi nhiều instance cùng khởi động; file đã áp dụng mà bị sửa (checksum lệch) => từ chối khởi động.
+- `db/init/*.sql` giữ nguyên (vẫn tạo CSDL lần đầu cho docker compose); schema mới nhất là
+  db/init + các migration.
+
+### Hệ quả
+- (+) Nâng cấp tại chỗ, không mất dữ liệu; có lịch sử phiên bản schema.
+- (+) Test CSDL của matching-service dựng `profile_db` từ chính các file Flyway (`tests/schema.py`).
+- (−) Cột/bảng mới mà matching-service đọc phải được `GRANT SELECT` cho `matching_reader` trong
+  migration (cột mới trong 3 bảng đã grant tự có quyền vì grant ở mức bảng).
+

@@ -15,7 +15,6 @@ DB của docker compose đang chạy.
 """
 import hashlib
 import os
-import pathlib
 import uuid
 
 import asyncpg
@@ -25,6 +24,7 @@ from app import db
 from app.services import index_service
 from app.services.embedding_service import EMBEDDING_DIM
 from app.services.profile_text import MENTEE, MENTOR, normalize, text_hash
+from tests.schema import migrate_matching_db, reset_profile_db
 
 _REQUIRED = ("MATCHING_DB_URL", "PROFILE_DB_URL", "PROFILE_DB_ADMIN_URL")
 _MISSING = [name for name in _REQUIRED if not os.getenv(name)]
@@ -35,9 +35,6 @@ if _MISSING:
     pytest.skip(f"cần CSDL thật, thiếu biến: {', '.join(_MISSING)}", allow_module_level=True)
 
 pytestmark = pytest.mark.anyio
-
-# Schema lấy thẳng từ db/init (giống ai-service/tests) — các file đều idempotent.
-_INIT = pathlib.Path(__file__).resolve().parents[2] / "db" / "init"
 
 
 def _fake_vector(text: str) -> list[float]:
@@ -59,9 +56,9 @@ async def dbs(monkeypatch):
 
     admin = await asyncpg.connect(os.environ["PROFILE_DB_ADMIN_URL"])
     matching = await asyncpg.connect(os.environ["MATCHING_DB_URL"])
-    await admin.execute((_INIT / "profile-service.sql").read_text())
-    await matching.execute((_INIT / "matching-service.sql").read_text())
-    await admin.execute("TRUNCATE mentor_profiles, mentee_profiles CASCADE")
+    # Schema dựng từ chính migration của repo (US-11): Flyway của profile-service, runner của matching.
+    await reset_profile_db(admin)
+    await migrate_matching_db(matching)
     await matching.execute("TRUNCATE mentor_embeddings, mentee_embeddings")
     try:
         yield {"profile": admin, "matching": matching, "embed_calls": calls}
@@ -196,6 +193,37 @@ async def test_reconcile_keeps_old_vector_on_failure_and_retries_next_round(dbs,
     row = await _index_row(dbs["matching"], "mentor_embeddings", mentor_id)
     assert row["text_hash"] == await _expected_hash(dbs["profile"], MENTOR, mentor_id)
     assert row["attempts"] == 0 and row["last_error"] is None
+
+
+async def test_matching_hides_paused_on_leave_and_suspended_mentors(dbs):
+    """US-08 — chỉ mentor có trạng thái HIỆU LỰC ACCEPTING được gợi ý (SQL thật trên schema Flyway)."""
+    from app.services import matching_pipeline
+
+    conn = dbs["profile"]
+    ids = {}
+    for name in ("accepting", "paused", "on_leave", "suspended", "leave_expired"):
+        ids[name] = await _add_mentor(conn, bio=f"Kỹ sư backend {name}")
+        await conn.execute(
+            "UPDATE mentor_profiles SET verification_status = 'APPROVED' WHERE user_id = $1::uuid", ids[name])
+        await conn.execute(
+            "INSERT INTO mentor_availability (mentor_id, day_of_week, start_time, end_time) "
+            "VALUES ($1::uuid, 1, '19:00', '21:00')", ids[name])
+    await conn.execute("UPDATE mentor_profiles SET status = 'PAUSED' WHERE user_id = $1::uuid", ids["paused"])
+    await conn.execute("UPDATE mentor_profiles SET status = 'SUSPENDED' WHERE user_id = $1::uuid", ids["suspended"])
+    await conn.execute("UPDATE mentor_profiles SET status = 'ON_LEAVE', on_leave_until = current_date + 3 "
+                       "WHERE user_id = $1::uuid", ids["on_leave"])
+    # Nghỉ phép đã hết hạn (job chưa kịp chạy) vẫn phải được tính là ACCEPTING.
+    await conn.execute("UPDATE mentor_profiles SET status = 'ON_LEAVE', on_leave_until = current_date - 3 "
+                       "WHERE user_id = $1::uuid", ids["leave_expired"])
+    # Cột tương thích is_available là cột sinh tự động từ status.
+    assert await conn.fetchval("SELECT is_available FROM mentor_profiles WHERE user_id = $1::uuid", ids["paused"]) is False
+    mentee_id = await _add_mentee(conn)
+    await index_service.reconcile(batch=100)
+
+    result = await matching_pipeline.match_mentors_for_mentee(mentee_id, limit=10)
+    returned = {str(m["mentor_id"]) for m in result["mentors"]}
+    assert returned == {ids["accepting"], ids["leave_expired"]}
+    assert result["stats"]["excluded"] == {"unavailable": 3}
 
 
 async def test_profile_pool_is_read_only(dbs):

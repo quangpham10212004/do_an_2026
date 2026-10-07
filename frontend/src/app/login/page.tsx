@@ -42,6 +42,7 @@ export default function LoginPage() {
           <div className="field">
             <label htmlFor="password">Mật khẩu</label>
             <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div className="hint" style={{ textAlign: "right" }}><Link href="/forgot-password">Quên mật khẩu?</Link></div>
           </div>
           <button className="btn block" disabled={loading}>{loading ? "Đang đăng nhập..." : "Đăng nhập"}</button>
         </form>

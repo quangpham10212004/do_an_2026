@@ -140,9 +140,10 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
   `/internal/mentor/**`: số mentee đang hướng dẫn và rating do mentoring-service đẩy; trạng thái xác thực
   mentor do ai-service đẩy sau mỗi bước của AI Interview.
 - Schema nằm trong `db/init/<service-name>.sql`, chạy tự động khi volume CSDL được tạo lần đầu
-  (`docker compose down -v` để khởi tạo lại — **xoá dữ liệu**). Hibernate đặt `ddl-auto: none` — file SQL là
-  nguồn sự thật. Không có Flyway/Liquibase: PR đổi schema phải ghi "cần `down -v`" trong mô tả; quy trình
-  nâng cấp và kiểm chứng ở `docs/deployment-guide.md` mục 8.
+  (`docker compose down -v` để khởi tạo lại — **xoá dữ liệu**). Hibernate đặt `ddl-auto: none`. Thay đổi
+  schema sau baseline đi qua **migration** ở mọi service (Flyway `db/migration/V<n>__*.sql` cho Java, V1 =
+  baseline `db/init`; runner `migrations/NNN_*.sql` + bảng `schema_migrations` cho Python), không sửa
+  `db/init`, không cần `down -v`; quy trình ở `docs/deployment-guide.md` mục 8.1, quyết định ở ADR-06.
 - Khoá chính `UUID`; thời gian `TIMESTAMPTZ`; trạng thái `TEXT` + `CHECK`.
 
 ## 8. Environment & ports

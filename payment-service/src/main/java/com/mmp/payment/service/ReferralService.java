@@ -141,6 +141,13 @@ public class ReferralService {
         log.info("Referral {} qualified, +{} points for {}", referral.getId(), rewardPoints, referral.getReferrerId());
     }
 
+    /** US-01 — điểm thưởng gắn với phiên; idempotent nhờ unique (user_id, reason, session_id). */
+    @Transactional
+    public RewardResponse grantSessionReward(UUID userId, int points, String reason, UUID sessionId) {
+        return RewardResponse.from(rewardRepository.findFirstByUserIdAndReasonAndSessionId(userId, reason, sessionId)
+                .orElseGet(() -> rewardRepository.save(RewardEntry.forSession(userId, points, reason, sessionId))));
+    }
+
     @Transactional(readOnly = true)
     public java.util.List<ReferralResponse> all() {
         return referralRepository.findAllByOrderByCreatedAtDesc().stream().map(ReferralResponse::from).toList();

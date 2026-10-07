@@ -62,6 +62,10 @@ public class SessionScheduler {
     public void expireUnpaidSessions() {
         for (MentoringSession s : sessionRepo.findExpiredPending(OffsetDateTime.now().minus(paymentHold))) {
             s.setStatus(MentoringSession.Status.CANCELLED);
+            s.setCancelledBy("SYSTEM");
+            s.setCancelReason("PAYMENT_TIMEOUT");
+            s.setRefundPercent(0);
+            s.setCancelledAt(OffsetDateTime.now());
             notifications.notifyUser(s.getMenteeId(), "SESSION_EXPIRED", "Phiên đã bị huỷ",
                     "Phiên chưa được thanh toán trong " + paymentHold.toMinutes() + " phút nên đã tự động huỷ.", "/mentoring/sessions");
         }

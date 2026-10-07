@@ -39,13 +39,45 @@ components:
         mentorId: { type: string, format: uuid }
         mentorName: { type: string }
         scheduledAt: { type: string, format: date-time }
-        durationMinutes: { type: integer }
+        endsAt: { type: string, format: date-time, description: "scheduledAt + durationMinutes" }
+        durationMinutes: { type: integer, enum: [30, 45, 60, 90, 120] }
         price: { type: number, description: "hourlyRate × duration/60, làm tròn 1.000đ" }
-        topic: { type: string, nullable: true }
+        topic: { type: string, nullable: true, description: "Tiêu đề ngắn (tuỳ chọn, client cũ)" }
+        sessionType: { $ref: "#/components/schemas/SessionType" }
+        agenda: { type: string, nullable: true, description: "US-03 — nội dung muốn trao đổi (phiên tạo trước US-03 có thể null)" }
+        preReadLink: { type: string, nullable: true }
+        meetingLink:
+          type: string
+          nullable: true
+          description: >
+            US-04 — link phòng họp (sao chép từ meetingLink của hồ sơ mentor lúc đặt lịch, mentor có thể đổi).
+            Chỉ trả khi status là CONFIRMED hoặc trạng thái sau đó; PENDING/CANCELLED luôn null.
         status: { type: string, enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED], description: "PENDING = chờ thanh toán" }
+        cancelledBy: { type: string, nullable: true, enum: [MENTEE, MENTOR, SYSTEM] }
+        cancelReason: { type: string, nullable: true, description: "Lý do người huỷ nhập; huỷ do quá hạn thanh toán = PAYMENT_TIMEOUT" }
+        refundPercent: { type: integer, nullable: true, minimum: 0, maximum: 100 }
+        rescheduleCount: { type: integer, description: "US-06 — số lần đã dời lịch (tối đa 2)" }
+        pendingReschedule:
+          allOf: [{ $ref: "#/components/schemas/RescheduleProposal" }]
+          nullable: true
+          description: Đề xuất dời lịch đang chờ phản hồi (nếu có)
         reviewed: { type: boolean }
         reviewRating: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
+    RescheduleProposal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        proposedBy: { type: string, format: uuid }
+        newStart: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: "min(tạo + 24 giờ, giờ bắt đầu gốc − 1 giờ)" }
+        status: { type: string, enum: [PENDING, ACCEPTED, DECLINED, EXPIRED] }
+        createdAt: { type: string, format: date-time }
+    SessionType:
+      type: string
+      nullable: true
+      enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE]
     AvailableSlots:
       type: object
       properties:
@@ -97,7 +129,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Request" }
-        "400": { description: MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE }
+        "400": { description: "MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
         "409": { description: REQUEST_ALREADY_EXISTS }
   /api/mentoring/requests/{id}/respond:
     post:
@@ -143,22 +175,30 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/Session" } }
     post:
       summary: >
-        FR-5.4 (MENTEE) Đặt lịch — yêu cầu đã ACCEPTED, thời điểm nằm trọn trong lịch rảnh
-        của mentor (giờ Asia/Ho_Chi_Minh), trước ≥ 1 giờ và trong 60 ngày, không trùng
-        phiên PENDING/CONFIRMED của mentor hoặc mentee. Phiên có phí → PENDING (chờ thanh
-        toán, tự huỷ sau 30 phút); phiên miễn phí → CONFIRMED.
+        FR-5.4 / PRD-SES-1 (MENTEE) Đặt lịch — yêu cầu đã ACCEPTED; trạng thái mentor không phải
+        ON_LEAVE (tới hết onLeaveUntil) / SUSPENDED (PAUSED vẫn cho mentee đã được nhận); đặt trước
+        ≥ max(1 giờ, minNoticeHours của mentor — mặc định 12) và trong 60 ngày; nằm trọn trong lịch rảnh
+        hằng tuần (giờ Asia/Ho_Chi_Minh) và không rơi vào ngoại lệ (nghỉ cả ngày / bận một khoảng giờ);
+        không trùng phiên PENDING/CONFIRMED của mentor tính cả bufferMinutes trước và sau (mặc định 15 —
+        phiên 10:00–11:00 chặn tới 11:15) hoặc của mentee. Kiểm tra trùng + tạo phiên chạy dưới advisory
+        lock theo mentor. Dữ kiện mentor lấy từ profile-service GET /internal/mentor/{id} (status,
+        onLeaveUntil, bufferMinutes, minNoticeHours, exceptions — thiếu thì dùng mặc định).
+        Phiên có phí → PENDING (chờ thanh toán, tự huỷ sau 30 phút); phiên miễn phí → CONFIRMED.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [menteeId, mentorId, scheduledAt]
+              required: [menteeId, mentorId, scheduledAt, sessionType, agenda]
               properties:
                 menteeId: { type: string, format: uuid }
                 mentorId: { type: string, format: uuid }
                 scheduledAt: { type: string, format: date-time }
-                durationMinutes: { type: integer, minimum: 30, maximum: 180, default: 60 }
+                durationMinutes: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 }
+                sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] }
+                agenda: { type: string, minLength: 20, maxLength: 500, description: "Bắt buộc, 20–500 ký tự sau khi trim" }
+                preReadLink: { type: string, maxLength: 500, nullable: true, description: "Tuỳ chọn, URL http(s)" }
                 topic: { type: string, maxLength: 300 }
       responses:
         "201":
@@ -166,17 +206,47 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
-        "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR }
-        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
+        "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
+        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED / FREE_BOOKING_BLOCKED }
   /api/mentoring/sessions/{id}:
     get:
       summary: Chi tiết phiên (người tham gia / admin)
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Session }
+  /api/mentoring/sessions/{id}/cancel-preview:
+    get:
+      summary: >
+        US-01 (người tham gia / admin) Xem trước kết quả nếu huỷ phiên ngay bây giờ theo chính sách:
+        mentee huỷ ≥ 72 giờ trước → hoàn 100%, < 72 giờ → 0%; mentor huỷ → hoàn 100% + 20 điểm cho mentee +
+        1 strike; admin/hệ thống → 100%. Phiên chưa thanh toán / miễn phí → 0đ. Ngưỡng cấu hình app.cancellation.*.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelledBy: { type: string, enum: [MENTEE, MENTOR, SYSTEM] }
+                  refundPercent: { type: integer }
+                  refundAmount: { type: number, description: "VND, 0 nếu chưa thanh toán" }
+                  policyText: { type: string }
+                  rewardPoints: { type: integer, description: "Điểm xin lỗi mentee được cộng (mentor huỷ)" }
+                  lateFreeCancel: { type: boolean, description: "Huỷ phiên miễn phí < 2 giờ trước giờ bắt đầu → ghi nhận huỷ muộn" }
+        "409": { description: SESSION_NOT_CANCELLABLE / SESSION_ALREADY_STARTED }
+  # US-02: mentor huỷ phiên → bảng mentor_strikes; strike thứ 3 trong 30 ngày (app.strikes.*) → gọi
+  # profile-service PUT /internal/mentor/{id}/status {"status":"PAUSED","reason":"STRIKES"} (best-effort,
+  # 404 được bỏ qua) + thông báo cho toàn bộ ADMIN (type MENTOR_PAUSED_STRIKES) và cho mentor.
   /api/mentoring/sessions/{id}/cancel:
     post:
-      summary: Huỷ phiên chưa bắt đầu; phiên đã thanh toán được hoàn tiền (gọi payment-service)
+      summary: >
+        Huỷ phiên chưa bắt đầu theo chính sách US-01 (xem cancel-preview). Phiên đã thanh toán và được hoàn > 0%
+        → gọi payment-service hoàn tiền TRƯỚC (lỗi → 502 REFUND_FAILED, phiên không bị huỷ). Lưu cancelledBy,
+        cancelReason, refundPercent. Mentor huỷ → điểm xin lỗi (POST /internal/rewards qua outbox) + strike.
+        Mentee huỷ phiên miễn phí < 2 giờ trước → ghi nhận huỷ muộn; 3 lần trong 30 ngày → đặt phiên miễn phí
+        bị chặn 14 ngày (409 FREE_BOOKING_BLOCKED ở POST /api/mentoring/sessions).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         content:
@@ -187,6 +257,81 @@ paths:
                 reason: { type: string }
       responses:
         "200": { description: Session }
+  /api/mentoring/sessions/{id}/reschedule:
+    post:
+      summary: >
+        US-06 (MENTEE/MENTOR của phiên) Đề xuất dời phiên CONFIRMED sang giờ mới, trước giờ bắt đầu ≥ 2 giờ.
+        Tối đa 2 lần dời / phiên, 1 đề xuất mở / phiên. Giờ mới phải qua cùng kiểm tra như đặt lịch (trạng thái mentor,
+        minNoticeHours, lịch rảnh, ngoại lệ, trùng lịch có buffer — bỏ qua chính phiên này). Khi PENDING, khung giờ
+        đề xuất được tính là bận (cả ở đặt lịch và available-slots). Hết hạn lúc min(tạo + 24h, giờ gốc − 1h),
+        job mỗi phút chuyển EXPIRED. Ngưỡng cấu hình app.reschedule.*.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newStart]
+              properties:
+                newStart: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Đề xuất đã tạo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RescheduleProposal" }
+        "400": { description: TOO_SOON / TOO_FAR / SAME_START }
+        "409": { description: SESSION_NOT_CONFIRMED / RESCHEDULE_TOO_LATE / RESCHEDULE_LIMIT / RESCHEDULE_PENDING / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED }
+  /api/mentoring/reschedules/{id}/accept:
+    post:
+      summary: >
+        US-06 Bên còn lại chấp nhận → phiên chuyển sang giờ mới (giữ thời lượng, giá, thanh toán), rescheduleCount + 1,
+        nhắc lịch được gửi lại. Kiểm tra trùng lịch lại dưới advisory lock.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Phiên sau khi dời
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "403": { description: Người đề xuất không tự chấp nhận }
+        "409": { description: RESCHEDULE_NOT_PENDING / RESCHEDULE_EXPIRED / SESSION_NOT_CONFIRMED / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
+  /api/mentoring/reschedules/{id}/decline:
+    post:
+      summary: US-06 Bên còn lại từ chối, hoặc người đề xuất rút lại → DECLINED; phiên giữ giờ cũ
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RescheduleProposal" }
+        "409": { description: RESCHEDULE_NOT_PENDING / RESCHEDULE_EXPIRED }
+  /api/mentoring/sessions/{id}/meeting-link:
+    put:
+      summary: >
+        US-04 (MENTOR của phiên / ADMIN) Đổi link phòng họp cho 1 phiên PENDING/CONFIRMED chưa kết thúc.
+        Chỉ chấp nhận https trên meet.google.com, zoom.us, *.zoom.us, teams.microsoft.com.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [meetingLink]
+              properties:
+                meetingLink: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Phiên sau cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { description: INVALID_MEETING_LINK }
+        "403": { description: Không phải mentor của phiên }
+        "409": { description: SESSION_NOT_EDITABLE }
   /api/mentoring/sessions/{id}/complete:
     post:
       summary: (MENTOR) Đánh dấu phiên CONFIRMED đã diễn ra
@@ -220,12 +365,15 @@ paths:
     get:
       summary: >
         FR-5.4 Các thời điểm có thể đặt lịch với mentor — bước 30 phút, nằm trọn trong lịch rảnh
-        hằng tuần, không trùng phiên PENDING/CONFIRMED của mentor hoặc của người gọi, tuân thủ
-        min-lead-time và max-advance. Chỉ trả thời điểm, không lộ thông tin phiên của người khác.
+        hằng tuần trừ ngoại lệ, không trùng phiên PENDING/CONFIRMED của mentor (tính buffer) hoặc của
+        người gọi, bỏ ngày mentor ON_LEAVE/SUSPENDED, tuân thủ max(min-lead-time, minNoticeHours) và
+        max-advance — cùng quy tắc với POST /api/mentoring/sessions. Chỉ trả thời điểm, không lộ thông tin
+        phiên của người khác.
       parameters:
         - { $ref: "#/components/parameters/Id" }
-        - { name: durationMinutes, in: query, schema: { type: integer, minimum: 30, maximum: 180, default: 60 } }
+        - { name: durationMinutes, in: query, schema: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 } }
         - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 28, default: 14 } }
+        - { name: excludeSessionId, in: query, required: false, schema: { type: string, format: uuid }, description: "US-06 — khi dời lịch: bỏ qua khoảng bận của phiên này (chỉ khi người gọi tham gia phiên)" }
       responses:
         "200":
           description: OK

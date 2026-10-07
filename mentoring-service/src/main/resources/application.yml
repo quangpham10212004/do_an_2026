@@ -12,6 +12,13 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+  # US-11 — Flyway quản lý schema. V1__baseline.sql = db/init/<service>.sql (CSDL đã khởi tạo bằng
+  # docker-entrypoint-initdb.d được baseline ở version 1); mọi thay đổi schema là V2+.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 1
 
 management:
   endpoints:
@@ -32,5 +39,23 @@ app:
     min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
     max-advance: P60D             # chỉ đặt lịch trong vòng 60 ngày tới
     payment-hold: PT30M           # phiên chưa thanh toán sau 30 phút sẽ tự huỷ để giải phóng khung giờ
+  cancellation:                    # US-01 — chính sách huỷ phiên
+    full-refund-before: PT72H       # mentee huỷ trước ≥ 72 giờ → hoàn 100%, muộn hơn → 0%
+    free-late-window: PT2H          # phiên miễn phí huỷ < 2 giờ trước giờ bắt đầu = huỷ muộn
+    mentor-apology-points: 20       # mentor huỷ → mentee được cộng điểm thưởng (reward_ledger MENTOR_CANCEL_APOLOGY)
+    free-block-threshold: 3         # 3 lần huỷ muộn ...
+    free-block-window: P30D         # ... trong 30 ngày ...
+    free-block-duration: P14D       # ... → chặn đặt phiên miễn phí 14 ngày (409 FREE_BOOKING_BLOCKED)
+  strikes:                         # US-02 — strike thứ 3 trong 30 ngày → PAUSED (profile-service) + báo admin
+    threshold: 3
+    window: P30D
+  reschedule:                      # US-06 — dời lịch phiên CONFIRMED
+    max-per-session: 2              # tối đa 2 lần dời / phiên (409 RESCHEDULE_LIMIT)
+    min-before-start: PT2H          # đề xuất trước giờ bắt đầu ≥ 2 giờ
+    proposal-ttl: PT24H             # đề xuất hết hạn sau 24 giờ ...
+    expire-before-start: PT1H       # ... hoặc 1 giờ trước giờ bắt đầu gốc (lấy mốc sớm hơn)
+    expire-interval: PT1M
+  outbox:
+    interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:
     before: ${REMINDER_BEFORE:PT24H}   # FR-5.5 — nhắc lịch trước giờ bắt đầu

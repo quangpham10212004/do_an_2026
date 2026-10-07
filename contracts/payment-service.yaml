@@ -205,10 +205,38 @@ paths:
               properties:
                 sessionId: { type: string, format: uuid }
                 reason: { type: string }
+                percent:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 100
+                  description: "US-01 — % giá phiên cần hoàn. Hiện chỉ hỗ trợ 100 (khác 100 → 400 PARTIAL_REFUND_NOT_SUPPORTED); hoàn một phần thuộc US-13"
       responses:
         "200":
           description: Giao dịch sau khi hoàn tiền (status = REFUNDED)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { description: PARTIAL_REFUND_NOT_SUPPORTED }
         "404": { description: NO_SUCCESS_TRANSACTION }
+  /internal/rewards:
+    post:
+      summary: >
+        Nội bộ — US-01 mentoring-service cộng điểm thưởng gắn với 1 phiên (MENTOR_CANCEL_APOLOGY, 20 điểm khi mentor
+        huỷ). Idempotent theo (userId, reason, sessionId): gửi lại trả bản ghi đã có, không cộng trùng.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, points, reason, sessionId]
+              properties:
+                userId: { type: string, format: uuid }
+                points: { type: integer, minimum: 1, maximum: 10000 }
+                reason: { type: string, example: MENTOR_CANCEL_APOLOGY }
+                sessionId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "Bản ghi reward_ledger { id, points, reason, createdAt }"

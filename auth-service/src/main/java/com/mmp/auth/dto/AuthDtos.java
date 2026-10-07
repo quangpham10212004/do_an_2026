@@ -59,6 +59,16 @@ public final class AuthDtos {
             @NotBlank @Size(min = 8, max = 72, message = "mật khẩu mới phải có 8-72 ký tự") String newPassword) {
     }
 
+    /** US-09 — yêu cầu gửi link đặt lại mật khẩu. */
+    public record ForgotPasswordRequest(@NotBlank @Email @Size(max = 254) String email) {
+    }
+
+    /** US-09 — mật khẩu mới theo cùng quy tắc với đăng ký (8-72 ký tự). */
+    public record ResetPasswordRequest(
+            @NotBlank @Size(max = 200) String token,
+            @NotBlank @Size(min = 8, max = 72, message = "mật khẩu mới phải có 8-72 ký tự") String newPassword) {
+    }
+
     public record UserResponse(
             UUID id,
             String email,

@@ -149,6 +149,71 @@ paths:
               schema: { $ref: "#/components/schemas/User" }
         "400": { description: INVALID_VERIFICATION_TOKEN }
 
+  /api/auth/forgot-password:
+    post:
+      summary: >
+        US-09 (PRD-AUTH-1) Yêu cầu link đặt lại mật khẩu. LUÔN trả 202 dù email có tồn tại hay không
+        (chống dò email). Tối đa 3 yêu cầu / email / giờ (Redis) — vượt quá vẫn 202 nhưng không gửi email.
+        Email đi qua interface EmailSender (mặc định ghi log, link dạng {FRONTEND_URL}/reset-password?token=...).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        "202": { description: Đã tiếp nhận (không có body) }
+        "400": { description: VALIDATION_ERROR — email sai định dạng }
+
+  /api/auth/reset-password:
+    post:
+      summary: >
+        US-09 Đặt mật khẩu mới bằng token trong email (token 32 byte ngẫu nhiên, DB lưu SHA-256, hạn 30 phút,
+        dùng một lần; yêu cầu mới làm token cũ hết hiệu lực). Thành công thì thu hồi mọi refresh token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string, maxLength: 200 }
+                newPassword: { type: string, minLength: 8, maxLength: 72, description: Cùng quy tắc với đăng ký }
+      responses:
+        "204": { description: Đã đổi mật khẩu }
+        "400":
+          description: RESET_TOKEN_INVALID (token sai / hết hạn / đã dùng) | VALIDATION_ERROR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /internal/dev/emails:
+    get:
+      summary: >
+        (Chỉ dev/demo/e2e, KHÔNG tồn tại ở Spring profile prod; X-Internal-Token) Email mà LoggingEmailSender
+        đã "gửi" tới địa chỉ `to` (tối đa 100 email gần nhất trong bộ nhớ), mới nhất trước.
+      parameters:
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    to: { type: string }
+                    subject: { type: string }
+                    body: { type: string }
+                    sentAt: { type: string, format: date-time }
+        "403": { description: Thiếu / sai X-Internal-Token }
+
   /api/auth/verify-token:
     post:
       summary: Xác thực JWT và kiểm tra tài khoản còn ACTIVE (dành cho service cần kiểm tra thu hồi)

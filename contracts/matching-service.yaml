@@ -53,7 +53,7 @@ components:
         retrieved: { type: integer, description: Số ứng viên lấy được ở bước top-K }
         excluded:
           type: object
-          description: "Số mentor bị loại theo lý do: notVerified, unavailable, noSchedule, fullCapacity, domainMismatch"
+          description: "Số mentor bị loại theo lý do: notVerified, unavailable (status hiệu lực ≠ ACCEPTING — PAUSED/ON_LEAVE/SUSPENDED), noSchedule, fullCapacity, domainMismatch"
           additionalProperties: { type: integer }
         returned: { type: integer }
         weights: { type: object, additionalProperties: { type: number } }

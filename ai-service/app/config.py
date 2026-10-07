@@ -37,6 +37,20 @@ MAX_CV_BYTES = 5 * 1024 * 1024
 PROFILE_SYNC_RETRY_SECONDS = float(os.getenv("PROFILE_SYNC_RETRY_SECONDS", "120"))
 
 
+def is_prod() -> bool:
+    """APP_ENV=prod (tương đương Spring profile prod ở các service Java)."""
+    return os.getenv("APP_ENV", "dev").strip().lower() == "prod"
+
+
+def enforce_prod_secrets() -> None:
+    """NFR-9 — APP_ENV=prod mà JWT_SECRET / INTERNAL_API_KEY còn giá trị dev mặc định => không khởi động."""
+    names = [n for n, v, dev in (("JWT_SECRET", JWT_SECRET, _DEV_JWT_SECRET),
+                                 ("INTERNAL_API_KEY", INTERNAL_API_KEY, _DEV_INTERNAL_API_KEY)) if v == dev]
+    if is_prod() and names:
+        raise RuntimeError(f"APP_ENV=prod: {', '.join(names)} đang dùng giá trị DEV mặc định — "
+                           "đặt biến môi trường thật trước khi khởi động")
+
+
 def dev_secret_warnings() -> list[str]:
     """
     Cảnh báo (log lúc khởi động) khi JWT_SECRET / INTERNAL_API_KEY đang dùng giá trị dev
