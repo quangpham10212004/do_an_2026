@@ -112,4 +112,32 @@ public final class PaymentDtos {
     public record PaymentStats(long successCount, long failedCount, long refundedCount, BigDecimal totalRevenue,
                                long partiallyRefundedCount, long onHoldCount, BigDecimal totalPlatformFee) {
     }
+
+    // ---------- US-25: thu nhập mentor ----------
+
+    /**
+     * mentoring-service báo trạng thái cuối của phiên. releaseNow = true khi tranh chấp được giải quyết (giải phóng phần
+     * còn lại ngay, không chờ 48 giờ).
+     */
+    public record FinalStateRequest(@NotBlank @Size(max = 40) String state, @NotNull OffsetDateTime endedAt, Boolean releaseNow) {
+    }
+
+    public record FinalStateResponse(UUID sessionId, UUID transactionId, String finalState, OffsetDateTime endedAt,
+                                     OffsetDateTime releaseAt, OffsetDateTime settledAt, BigDecimal pending, BigDecimal available) {
+    }
+
+    /** GET /api/payment/earnings/summary — tổng của mentor đang đăng nhập (VND). */
+    public record EarningSummary(BigDecimal pending, BigDecimal available, BigDecimal paidOut, BigDecimal reversed,
+                                 BigDecimal earned, String currency, long releaseDelayHours) {
+    }
+
+    public record LedgerEntryView(UUID id, String type, BigDecimal amount, UUID refundId, OffsetDateTime createdAt) {
+    }
+
+    /** GET /api/payment/earnings — 1 dòng / phiên có phí (giao dịch đã thu tiền). */
+    public record EarningRow(UUID sessionId, UUID transactionId, BigDecimal amount, BigDecimal mentorEarning,
+                             String transactionStatus, BigDecimal pending, BigDecimal available, BigDecimal paidOut,
+                             BigDecimal reversed, String finalState, OffsetDateTime endedAt, OffsetDateTime releaseAt,
+                             OffsetDateTime releasedAt, OffsetDateTime createdAt, List<LedgerEntryView> entries) {
+    }
 }

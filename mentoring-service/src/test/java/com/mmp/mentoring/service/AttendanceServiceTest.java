@@ -218,4 +218,46 @@ class AttendanceServiceTest {
         verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
         verify(f.strikes).record(mentorId, id, MentorStrike.Reason.MENTOR_NO_SHOW);
     }
+
+    // ---------- US-25: trạng thái cuối → đồng hồ giải phóng thu nhập ----------
+
+    @Test
+    void completedPaidSessionReportsFinalStateForEarningRelease() {
+        service.answer(mentee, id, Attendance.HELD);
+        service.answer(mentor, id, Attendance.HELD);
+        verify(f.outbox).enqueueFinalState(eq(id), eq("COMPLETED"), eq(session.endsAt()), eq(false));
+    }
+
+    @Test
+    void menteeNoShowReportsFinalStateButMentorNoShowDoesNot() {
+        session.setStatus(Status.AWAITING_ATTENDANCE);
+        service.answer(mentor, id, Attendance.MENTEE_NO_SHOW);
+        endedMinutesAgo(48 * 60 + 1);
+        when(f.sessionRepo.findIdsEndedBefore(eq("AWAITING_ATTENDANCE"), any())).thenReturn(List.of(id.toString()));
+        service.resolveExpired(OffsetDateTime.now());
+        verify(f.outbox).enqueueFinalState(eq(id), eq("NO_SHOW_MENTEE"), any(), eq(false));
+
+        MentoringSession other = new MentoringSession();
+        UUID otherId = UUID.randomUUID();
+        ReflectionTestUtils.setField(other, "id", otherId);
+        other.setMenteeId(menteeId);
+        other.setMentorId(mentorId);
+        other.setDurationMinutes(60);
+        other.setPrice(new BigDecimal("300000"));
+        other.setStatus(Status.AWAITING_ATTENDANCE);
+        other.setScheduledAt(OffsetDateTime.now().minusMinutes(60 + 48 * 60 + 5));
+        other.answerAsMentee(Attendance.MENTOR_NO_SHOW, OffsetDateTime.now().minusHours(47));
+        when(f.sessionRepo.findForUpdate(otherId)).thenReturn(Optional.of(other));
+        when(f.sessionRepo.findIdsEndedBefore(eq("AWAITING_ATTENDANCE"), any())).thenReturn(List.of(otherId.toString()));
+        service.resolveExpired(OffsetDateTime.now());
+        verify(f.outbox, never()).enqueueFinalState(eq(otherId), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void freeSessionDoesNotReportFinalState() {
+        session.setPrice(BigDecimal.ZERO);
+        service.answer(mentee, id, Attendance.HELD);
+        service.answer(mentor, id, Attendance.HELD);
+        verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
+    }
 }

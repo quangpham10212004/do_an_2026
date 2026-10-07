@@ -337,6 +337,7 @@ public class SessionService {
         requireCancellable(before);
         String reason = MentoringRequestService.trimToNull(rawReason);
         CancellationPolicy.Decision d = decide(before, actor, OffsetDateTime.now());
+        boolean reportFinalState = paidLateCancel(before, d);
         if (d.refundPercent() > 0 && d.refundAmount().signum() > 0) {
             paymentClient.refund(before.getId(), "SESSION_CANCELLED_BY_" + actor.name(), d.refundPercent());
         }
@@ -356,8 +357,13 @@ public class SessionService {
             if (d.rewardPoints() > 0) {
                 outbox.enqueueReward(ss.getMenteeId(), d.rewardPoints(), PaymentOutboxService.MENTOR_CANCEL_APOLOGY, ss.getId());
             }
+            if (reportFinalState) {
+                // US-25 — mentee huỷ muộn (hoàn 0%): mentor được trả → giải phóng thu nhập 48 giờ sau giờ kết thúc dự kiến
+                outbox.enqueueFinalState(ss.getId(), MentoringSession.Status.CANCELLED.name(), ss.endsAt(), false);
+            }
             return ss;
         });
+        if (reportFinalState) outbox.flushSession(session.getId());
         afterCancel(session, d);
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
         String suffix = (reason != null ? " Lý do: " + reason + "." : "")
@@ -376,6 +382,11 @@ public class SessionService {
             }
         }
         return session;
+    }
+
+    /** Phiên đã thanh toán bị huỷ mà mentee không được hoàn đủ (mentee huỷ < 72 giờ). */
+    private static boolean paidLateCancel(MentoringSession before, CancellationPolicy.Decision d) {
+        return before.getStatus() == MentoringSession.Status.CONFIRMED && before.getPrice().signum() > 0 && d.refundPercent() < 100;
     }
 
     /** US-02 — mentor huỷ phiên bị ghi 1 strike (3 strike / 30 ngày → PAUSED). */

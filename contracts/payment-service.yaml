@@ -3,7 +3,9 @@ info:
   title: payment-service
   version: 1.0.0
   description: >
-    Thanh toán phiên mentoring qua cổng sandbox + Referral/Affiliate. Sở hữu bởi Thắng.
+    Thanh toán phiên mentoring qua cổng sandbox + Referral/Affiliate + sổ thu nhập mentor (US-25). Sở hữu bởi Thắng.
+    Mọi biến động tiền (charge, refund, hold, release, earning pending/available/reversal) được ghi nhật ký kiểm toán qua
+    auth-service POST /internal/audit (bắn-rồi-quên, US-30).
     Thẻ test: 4242 4242 4242 4242 (thành công), 4000 0000 0000 0002 (CARD_DECLINED),
     4000 0000 0000 9995 (INSUFFICIENT_FUNDS).
 servers:
@@ -48,6 +50,47 @@ components:
         reason: { type: string, nullable: true }
         actorId: { type: string, format: uuid, nullable: true, description: "null = hệ thống / service nội bộ" }
         createdAt: { type: string, format: date-time }
+    EarningSummary:
+      type: object
+      description: >
+        US-25 — tổng thu nhập của mentor (VND) tính từ sổ mentor_ledger (append-only). pending = chưa giải phóng
+        (phiên chưa xong / chưa đủ 48 giờ / đang tranh chấp); available = đã giải phóng chưa chi trả; paidOut = đã chi trả;
+        reversed = đã thu hồi do hoàn tiền; earned = tổng EARNING_PENDING.
+      properties:
+        pending: { type: number, example: 255000 }
+        available: { type: number, example: 127500 }
+        paidOut: { type: number, example: 0 }
+        reversed: { type: number, example: 127500 }
+        earned: { type: number, example: 510000 }
+        currency: { type: string, example: VND }
+        releaseDelayHours: { type: integer, example: 48, description: "app.earnings.release-delay" }
+    LedgerEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [EARNING_PENDING, EARNING_AVAILABLE, REVERSAL, PAYOUT] }
+        amount: { type: number, description: "Luôn dương; kiểu dòng quyết định chiều" }
+        refundId: { type: string, format: uuid, nullable: true, description: "REVERSAL — lần hoàn gây ra" }
+        createdAt: { type: string, format: date-time }
+    EarningRow:
+      type: object
+      description: US-25 — thu nhập của 1 phiên có phí (giao dịch đã thu tiền)
+      properties:
+        sessionId: { type: string, format: uuid }
+        transactionId: { type: string, format: uuid }
+        amount: { type: number }
+        mentorEarning: { type: number }
+        transactionStatus: { type: string, enum: [SUCCESS, ON_HOLD, PARTIALLY_REFUNDED, REFUNDED] }
+        pending: { type: number }
+        available: { type: number }
+        paidOut: { type: number }
+        reversed: { type: number }
+        finalState: { type: string, nullable: true, example: COMPLETED, description: "Trạng thái cuối mentoring báo (null = phiên chưa kết thúc)" }
+        endedAt: { type: string, format: date-time, nullable: true }
+        releaseAt: { type: string, format: date-time, nullable: true, description: "endedAt + 48h (hoặc lúc giải quyết tranh chấp)" }
+        releasedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        entries: { type: array, items: { $ref: "#/components/schemas/LedgerEntry" } }
     Referral:
       type: object
       properties:
@@ -174,6 +217,25 @@ paths:
                         reason: { type: string }
                         createdAt: { type: string, format: date-time }
 
+  /api/payment/earnings/summary:
+    get:
+      summary: (MENTOR) US-25 — tổng thu nhập pending / available / paidOut của mentor đang đăng nhập
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EarningSummary" }
+        "403": { description: Không phải MENTOR }
+  /api/payment/earnings:
+    get:
+      summary: (MENTOR) US-25 — thu nhập theo từng phiên có phí (mới nhất trước), kèm các dòng sổ
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/EarningRow" } }
   /api/payment/admin/transactions:
     get:
       summary: (ADMIN) Giám sát giao dịch
@@ -295,6 +357,32 @@ paths:
               schema: { $ref: "#/components/schemas/Transaction" }
         "404": { description: NO_SUCCESS_TRANSACTION }
         "409": { description: TRANSACTION_NOT_ON_HOLD }
+  /internal/payments/sessions/{sessionId}/final-state:
+    post:
+      summary: >
+        Nội bộ — US-25 mentoring-service báo trạng thái cuối của phiên có phí. payment-service giữ đồng hồ giải phóng:
+        COMPLETED / NO_SHOW_MENTEE / CANCELLED (mentee huỷ muộn, hoàn 0%) → release_at = endedAt + 48h
+        (app.earnings.release-delay); releaseNow=true (tranh chấp đã giải quyết) → giải phóng ngay. Trạng thái khác
+        (NO_SHOW_MENTOR, DISPUTED…) chỉ được ghi nhận. Job giải phóng ghi EARNING_AVAILABLE = phần pending còn lại, bỏ qua
+        giao dịch ON_HOLD (tranh chấp đang mở). Idempotent — gọi lại ghi đè lịch, không ghi trùng sổ.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state, endedAt]
+              properties:
+                state: { type: string, example: COMPLETED }
+                endedAt: { type: string, format: date-time }
+                releaseNow: { type: boolean, default: false }
+      responses:
+        "200":
+          description: "{ sessionId, transactionId, finalState, endedAt, releaseAt, settledAt, pending, available }"
+        "404": { description: NO_SUCCESS_TRANSACTION (phiên miễn phí / chưa thanh toán) }
   /internal/rewards:
     post:
       summary: >

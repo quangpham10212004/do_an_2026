@@ -79,6 +79,27 @@ public class PaymentClient {
     }
 
     /**
+     * US-25 — báo trạng thái cuối của phiên (payment-service giữ đồng hồ 48 giờ giải phóng thu nhập). Ném
+     * RestClientException khi lỗi để outbox phân biệt 4xx/5xx.
+     */
+    public void finalState(UUID sessionId, String state, java.time.OffsetDateTime endedAt, boolean releaseNow) {
+        restClient.post().uri("/internal/payments/sessions/{id}/final-state", sessionId)
+                .body(Map.of("state", state, "endedAt", endedAt.toString(), "releaseNow", releaseNow))
+                .retrieve().toBodilessEntity();
+    }
+
+    /** US-32 — giải phóng giao dịch tạm giữ (ON_HOLD → SUCCESS). 404 = phiên không có giao dịch đã thu tiền. */
+    public boolean release(UUID sessionId) {
+        try {
+            restClient.post().uri("/internal/payments/release")
+                    .body(Map.of("sessionId", sessionId.toString())).retrieve().toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
+        }
+    }
+
+    /**
      * US-01 — cộng điểm thưởng (reward_ledger) cho người dùng. Idempotent theo (userId, reason, sessionId) phía
      * payment-service. Ném RestClientException khi lỗi để outbox gửi lại.
      */

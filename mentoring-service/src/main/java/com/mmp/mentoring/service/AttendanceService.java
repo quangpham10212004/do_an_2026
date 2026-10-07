@@ -187,6 +187,10 @@ public class AttendanceService {
         if (refund > 0) {
             outbox.enqueueRefund(s.getId(), refund, r.outcome() == Status.NO_SHOW_MENTOR ? "MENTOR_NO_SHOW" : "CANCELLED_ON_CALL");
         }
+        // US-25 — trạng thái cuối mentor được trả → payment-service giải phóng thu nhập 48 giờ sau giờ kết thúc
+        if (paid && (r.outcome() == Status.COMPLETED || r.outcome() == Status.NO_SHOW_MENTEE)) {
+            outbox.enqueueFinalState(s.getId(), r.outcome().name(), s.endsAt(), false);
+        }
         log.info("Session {} resolved {} ({}), refund {}%", s.getId(), r.outcome(), r.code(), refund);
     }
 

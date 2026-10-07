@@ -8,6 +8,11 @@ export function formatMoney(value: number | string | null | undefined): string {
   return n.toLocaleString("vi-VN") + " đ";
 }
 
+/** Số tiền VND luôn hiển thị số (0 → "0 đ"), dùng cho số dư / thu nhập. */
+export function formatVnd(value: number | string | null | undefined): string {
+  return Number(value || 0).toLocaleString("vi-VN") + " đ";
+}
+
 /** Đơn giá theo giờ: "Miễn phí" hoặc "300.000 đ/giờ" (tránh "Miễn phí/giờ"). */
 export function formatRate(value: number | string | null | undefined): string {
   return Number(value || 0) === 0 ? "Miễn phí" : `${formatMoney(value)}/giờ`;

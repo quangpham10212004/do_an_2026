@@ -19,6 +19,10 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 1
+    # Sprint 3 — hai nhóm cùng thêm migration cho service này (Team A: V10–V12, Team B: V13–V14) và triển khai song
+    # song lên cùng CSDL: cho phép áp version nhỏ hơn version đã có, và không lỗi khi CSDL có migration của nhánh kia.
+    out-of-order: true
+    ignore-migration-patterns: "*:missing"
 
 management:
   endpoints:
