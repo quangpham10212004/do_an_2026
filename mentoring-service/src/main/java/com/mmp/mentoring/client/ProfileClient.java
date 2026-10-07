@@ -93,18 +93,17 @@ public class ProfileClient {
     public record ProfileSummary(UUID userId, String displayName, String role, String domain) {
     }
 
-    /** Hồ sơ mentee (profile-service GET /api/profile/mentee/{id}, gọi bằng X-Internal-Token). */
+    /** Hồ sơ mentee (profile-service GET /internal/mentee/{id}, gọi bằng X-Internal-Token). */
     public record MenteeProfile(UUID userId, String displayName, String goal, String domain, String currentLevel,
                                 List<String> skills) {
     }
 
     /**
-     * US-14 — hồ sơ mentee để mentor xét yêu cầu. profile-service chưa có endpoint /internal cho mentee nên dùng
-     * GET /api/profile/mentee/{id} (chấp nhận principal INTERNAL). Best-effort: lỗi / 404 → empty.
+     * US-14 — hồ sơ mentee để mentor xét yêu cầu. Best-effort: lỗi / 404 → empty.
      */
     public Optional<MenteeProfile> menteeProfile(UUID menteeId) {
         try {
-            return Optional.ofNullable(restClient.get().uri("/api/profile/mentee/{id}", menteeId).retrieve().body(MenteeProfile.class));
+            return Optional.ofNullable(restClient.get().uri("/internal/mentee/{id}", menteeId).retrieve().body(MenteeProfile.class));
         } catch (RestClientException e) {
             log.debug("Could not load mentee profile {}: {}", menteeId, e.getMessage());
             return Optional.empty();

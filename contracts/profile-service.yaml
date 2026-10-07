@@ -486,6 +486,19 @@ paths:
               schema: { $ref: "#/components/schemas/ProfileSummary" }
         "404": { description: PROFILE_NOT_FOUND }
 
+  /internal/mentee/{userId}:
+    get:
+      summary: Nội bộ — hồ sơ mentee cho mentoring-service (mentor xét yêu cầu, US-14)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenteeProfile" }
+        "404": { description: PROFILE_NOT_FOUND }
+
   /internal/mentor/{userId}:
     get:
       summary: >

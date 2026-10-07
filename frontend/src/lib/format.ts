@@ -52,6 +52,13 @@ export const STATUS_LABELS: Record<string, string> = {
   APPROVE: "Nên duyệt",
   REJECT: "Không nên duyệt",
   NEEDS_REVIEW: "Cần xem xét",
+  AWAITING_ATTENDANCE: "Chờ xác nhận tham dự",
+  EXPIRED: "Hết hạn",
+  NO_SHOW_MENTEE: "Mentee vắng mặt",
+  NO_SHOW_MENTOR: "Mentor vắng mặt",
+  DISPUTED: "Đang tranh chấp",
+  PARTIALLY_REFUNDED: "Hoàn một phần",
+  ON_HOLD: "Tạm giữ",
 };
 
 export const ROLE_LABELS: Record<Role, string> = { MENTEE: "Mentee", MENTOR: "Mentor", ADMIN: "Quản trị viên" };
@@ -60,7 +67,7 @@ export type StatusTone = "good" | "bad" | "warn" | "neutral";
 
 export function statusTone(status: string): StatusTone {
   if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE"].includes(status)) return "good";
-  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT"].includes(status)) return "bad";
-  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW"].includes(status)) return "warn";
+  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED"].includes(status)) return "bad";
+  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED"].includes(status)) return "warn";
   return "neutral";
 }
