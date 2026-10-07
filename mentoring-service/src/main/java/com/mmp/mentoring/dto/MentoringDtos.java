@@ -15,14 +15,32 @@ public final class MentoringDtos {
 
     // ---------- Mentoring requests ----------
 
-    public record CreateRequestInput(@NotNull UUID mentorId, @Size(max = 1000) String message) {
+    /**
+     * US-14 (PRD-REQ-1) — form yêu cầu: goal bắt buộc 50–1000 ký tự (sau trim), sessionType, frequency,
+     * expectedDurationMonths ∈ {1, 3, 6}, message tuỳ chọn.
+     */
+    public record CreateRequestInput(@NotNull UUID mentorId,
+                                     @NotBlank @Size(max = 2000) String goal,
+                                     @NotNull SessionType sessionType,
+                                     @NotNull com.mmp.mentoring.entity.MentoringRequest.Frequency frequency,
+                                     @NotNull Integer expectedDurationMonths,
+                                     @Size(max = 1000) String message) {
     }
 
-    public record RespondRequestInput(@NotNull @Pattern(regexp = "ACCEPT|REJECT") String decision, @Size(max = 1000) String note) {
+    /** US-14 (PRD-REQ-2) — REJECT bắt buộc rejectReason; note tuỳ chọn (≤ 500). */
+    public record RespondRequestInput(@NotNull @Pattern(regexp = "ACCEPT|REJECT") String decision,
+                                      com.mmp.mentoring.entity.MentoringRequest.RejectReason rejectReason,
+                                      @Size(max = 500) String note) {
+    }
+
+    /** US-14 — tóm tắt hồ sơ mentee cho mentor xét yêu cầu (lấy từ profile-service, best-effort). */
+    public record MenteeSummary(String displayName, String domain, String currentLevel, String goal, List<String> skills) {
     }
 
     public record RequestView(UUID id, UUID menteeId, String menteeName, UUID mentorId, String mentorName, String message,
-                              String status, String responseNote, OffsetDateTime createdAt, OffsetDateTime respondedAt) {
+                              String goal, String sessionType, String frequency, int expectedDurationMonths,
+                              String status, String rejectReason, String responseNote, OffsetDateTime createdAt,
+                              OffsetDateTime respondedAt, MenteeSummary menteeProfile) {
     }
 
     // ---------- Sessions ----------

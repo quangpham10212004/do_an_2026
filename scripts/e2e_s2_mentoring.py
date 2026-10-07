@@ -290,7 +290,57 @@ def us12(ctx):
           (status, code))
 
 
-STORIES = {"US-13": us13, "US-12": us12}
+def us14(ctx):
+    print("US-14 — Form yêu cầu mentoring")
+    admin = ctx["admin"]["accessToken"]
+    m1, m2, m3, m4 = (approved_mentor(admin, f"req{i}", 150000) for i in range(1, 5))
+    ctx["extra_mentors"] = [m1, m2, m3, m4]
+    me = mentee_with_profile("req")
+    status, code = error_code(lambda: send_request(me, m1, goal="Hoc Java"))
+    check("US-14", "Goal < 50 ký tự → 400 INVALID_GOAL", status == 400 and code == "INVALID_GOAL", (status, code))
+    status, code = error_code(lambda: send_request(me, m1, expectedDurationMonths=2))
+    check("US-14", "expectedDurationMonths ngoài 1/3/6 → 400", status == 400 and code == "INVALID_EXPECTED_DURATION", (status, code))
+    status, code = error_code(lambda: send_request(me, m1, frequency="DAILY"))
+    check("US-14", "frequency ngoài WEEKLY/BIWEEKLY/MONTHLY/ONE_OFF → 400", status == 400, (status, code))
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": m1["userId"], "message": "Xin chao"},
+                                           token=me["accessToken"]))
+    check("US-14", "Request dạng cũ (chỉ lời nhắn) → 400 VALIDATION_ERROR", status == 400, (status, code))
+    r1 = send_request(me, m1, sessionType="CODE_REVIEW", frequency="BIWEEKLY", expectedDurationMonths=6, message="Chao anh")
+    check("US-14", "Lưu goal / sessionType / frequency / expectedDurationMonths / message",
+          r1["goal"] == GOAL and r1["sessionType"] == "CODE_REVIEW" and r1["frequency"] == "BIWEEKLY"
+          and r1["expectedDurationMonths"] == 6 and r1["message"] == "Chao anh" and r1["status"] == "PENDING", r1)
+    status, code = error_code(lambda: send_request(me, m1))
+    check("US-14", "Vẫn 1 yêu cầu đang mở với mỗi mentor (409 REQUEST_ALREADY_EXISTS)", code == "REQUEST_ALREADY_EXISTS", (status, code))
+    send_request(me, m2)
+    r3 = send_request(me, m3)
+    status, code = error_code(lambda: send_request(me, m4))
+    check("US-14", "Yêu cầu PENDING thứ 4 → 409 TOO_MANY_PENDING_REQUESTS", status == 409 and code == "TOO_MANY_PENDING_REQUESTS", (status, code))
+    call("POST", f"{MENTORING}/api/mentoring/requests/{r3['id']}/cancel", token=me["accessToken"])
+    r4 = send_request(me, m4)
+    check("US-14", "Huỷ bớt 1 yêu cầu → gửi được yêu cầu mới", r4["status"] == "PENDING")
+
+    seen = next(r for r in call("GET", f"{MENTORING}/api/mentoring/requests", token=m1["accessToken"]) if r["id"] == r1["id"])
+    check("US-14", "Mentor thấy tóm tắt hồ sơ mentee (domain, trình độ, kỹ năng) kèm goal của yêu cầu",
+          seen["menteeProfile"] is not None and seen["menteeProfile"]["currentLevel"] == "BEGINNER"
+          and seen["menteeProfile"]["domain"] == "backend" and seen["goal"] == GOAL, seen.get("menteeProfile"))
+    mine = call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])
+    check("US-14", "Mentee xem danh sách của mình không kèm menteeProfile", all(r["menteeProfile"] is None for r in mine))
+
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/requests/{r1['id']}/respond", {"decision": "REJECT"},
+                                           token=m1["accessToken"]))
+    check("US-14", "Từ chối không kèm lý do → 400 REJECT_REASON_REQUIRED", status == 400 and code == "REJECT_REASON_REQUIRED", (status, code))
+    rej = call("POST", f"{MENTORING}/api/mentoring/requests/{r1['id']}/respond",
+               {"decision": "REJECT", "rejectReason": "NOT_MY_EXPERTISE", "note": "Ban nen tim mentor frontend"}, token=m1["accessToken"])
+    notes = call("GET", f"{MENTORING}/api/mentoring/notifications?limit=20", token=me["accessToken"])["items"]
+    check("US-14", "Từ chối lưu rejectReason + note; mentee được báo kèm lý do tiếng Việt",
+          rej["status"] == "REJECTED" and rej["rejectReason"] == "NOT_MY_EXPERTISE" and rej["responseNote"] == "Ban nen tim mentor frontend"
+          and any(n["type"] == "REQUEST_REJECTED" and "chuyên môn" in n["message"] for n in notes), rej)
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/requests/{r1['id']}/respond",
+                                           {"decision": "REJECT", "rejectReason": "BUSY"}, token=m1["accessToken"]))
+    check("US-14", "rejectReason ngoài FULL/NOT_MY_EXPERTISE/SCHEDULE/OTHER → 400", status == 400, (status, code))
+
+
+STORIES = {"US-13": us13, "US-12": us12, "US-14": us14}
 
 
 def main(selected):

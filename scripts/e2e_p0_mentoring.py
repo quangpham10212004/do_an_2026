@@ -23,6 +23,9 @@ RUN = uuid.uuid4().hex[:6]
 OUTBOX_WAIT = int(os.getenv("OUTBOX_WAIT", "100"))
 AGENDA = "Review kien truc REST API va cach to chuc service layer"
 CARD = {"cardNumber": "4242 4242 4242 4242", "expiry": (datetime.now() + timedelta(days=800)).strftime("%m/%y"), "cvv": "123"}
+# US-14 (Sprint 2): yêu cầu mentoring bắt buộc goal (50–1000 ký tự), sessionType, frequency, expectedDurationMonths
+REQUEST_FORM = {"goal": "Muon tro thanh backend developer Java, nam vung Spring Boot, REST API va microservices.",
+                "sessionType": "CAREER_ADVICE", "frequency": "WEEKLY", "expectedDurationMonths": 3}
 results = []
 
 
@@ -69,7 +72,7 @@ def approved_mentor(admin_token, name, hourly_rate):
 
 def accepted_mentee(mentor, name):
     me = register("MENTEE", name)
-    req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao"},
+    req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao", **REQUEST_FORM},
                token=me["accessToken"])
     call("POST", f"{MENTORING}/api/mentoring/requests/{req['id']}/respond", {"decision": "ACCEPT"}, token=mentor["accessToken"])
     return me

@@ -1,22 +1,68 @@
 package com.mmp.mentoring.service;
 
 import com.mmp.mentoring.client.ProfileClient;
+import com.mmp.mentoring.dto.MentoringDtos.CreateRequestInput;
+import com.mmp.mentoring.dto.MentoringDtos.RespondRequestInput;
 import com.mmp.mentoring.entity.MentoringRequest;
+import com.mmp.mentoring.entity.SessionType;
+import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
+import com.mmp.mentoring.security.AuthUser;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class MentoringRequestServiceTest {
 
+    private static final String GOAL = "Trở thành backend developer Java trong 6 tháng, nắm vững Spring Boot và REST API.";
+
     private final MentoringRequestRepository repo = mock(MentoringRequestRepository.class);
-    private final MentoringRequestService service = new MentoringRequestService(
-            repo, mock(ProfileClient.class), mock(NotificationService.class), mock(TransactionTemplate.class));
+    private final ProfileClient profileClient = mock(ProfileClient.class);
+    private final NotificationService notifications = mock(NotificationService.class);
+    private final TransactionTemplate tx = mock(TransactionTemplate.class);
+    private final MentoringRequestService service = new MentoringRequestService(repo, profileClient, notifications, tx, 3);
+
+    private final UUID menteeId = UUID.randomUUID();
+    private final UUID mentorId = UUID.randomUUID();
+    private final AuthUser mentee = new AuthUser(menteeId, "e@test", "MENTEE");
+    private final AuthUser mentor = new AuthUser(mentorId, "m@test", "MENTOR");
+
+    @BeforeEach
+    void setUp() {
+        when(tx.execute(any())).thenAnswer(inv -> inv.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(profileClient.displayNames(any())).thenReturn(Map.of());
+        when(profileClient.findMentor(mentorId)).thenReturn(Optional.of(new ProfileClient.MentorInfo(mentorId, "Mentor", List.of("Java"),
+                "backend", "bio", 5, new BigDecimal("200000"), 5, 0, true, 0, 0, "APPROVED", List.of(),
+                "ACCEPTING", null, null, null, null, null, List.of())));
+    }
+
+    private CreateRequestInput input(String goal, Integer months) {
+        return new CreateRequestInput(mentorId, goal, SessionType.CAREER_ADVICE, MentoringRequest.Frequency.WEEKLY, months, " Xin chào ");
+    }
+
+    private static String code(Runnable r) {
+        try {
+            r.run();
+        } catch (ApiException e) {
+            return e.getCode();
+        }
+        return null;
+    }
 
     @Test
     void relationshipCountsOnlyPendingOrAcceptedRequests() {
@@ -36,5 +82,73 @@ class MentoringRequestServiceTest {
         assertThat(service.relationship(UUID.randomUUID(), mentee).related()).isFalse();
         verify(repo).existsByMenteeIdAndMentorIdAndStatusIn(eq(mentee), eq(mentor), eq(List.of(
                 MentoringRequest.Status.PENDING, MentoringRequest.Status.ACCEPTED)));
+    }
+
+    @Test
+    void createStoresFormFields() {
+        var view = service.create(mentee, input("  " + GOAL + "  ", 3));
+
+        assertThat(view.goal()).isEqualTo(GOAL);
+        assertThat(view.sessionType()).isEqualTo("CAREER_ADVICE");
+        assertThat(view.frequency()).isEqualTo("WEEKLY");
+        assertThat(view.expectedDurationMonths()).isEqualTo(3);
+        assertThat(view.message()).isEqualTo("Xin chào");
+        assertThat(view.status()).isEqualTo("PENDING");
+        verify(repo).lockMenteeRequests(menteeId);
+    }
+
+    @Test
+    void goalLengthAndDurationValidated() {
+        assertThat(code(() -> service.create(mentee, input("quá ngắn", 3)))).isEqualTo("INVALID_GOAL");
+        assertThat(code(() -> service.create(mentee, input("x".repeat(1001), 3)))).isEqualTo("INVALID_GOAL");
+        assertThat(code(() -> service.create(mentee, input(GOAL, 2)))).isEqualTo("INVALID_EXPECTED_DURATION");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void fourthPendingRequestIsRejected() {
+        when(repo.countByMenteeIdAndStatus(menteeId, MentoringRequest.Status.PENDING)).thenReturn(3L);
+
+        assertThat(code(() -> service.create(mentee, input(GOAL, 1)))).isEqualTo("TOO_MANY_PENDING_REQUESTS");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void oneOpenRequestPerMentorStays() {
+        when(repo.existsByMenteeIdAndMentorIdAndStatusIn(menteeId, mentorId, MentoringRequestService.OPEN_STATUSES)).thenReturn(true);
+
+        assertThat(code(() -> service.create(mentee, input(GOAL, 1)))).isEqualTo("REQUEST_ALREADY_EXISTS");
+    }
+
+    @Test
+    void rejectRequiresReasonAndStoresIt() {
+        MentoringRequest r = new MentoringRequest(menteeId, mentorId, GOAL, SessionType.CODE_REVIEW, MentoringRequest.Frequency.ONE_OFF, 1, null);
+        UUID id = UUID.randomUUID();
+        ReflectionTestUtils.setField(r, "id", id);
+        when(repo.findById(id)).thenReturn(Optional.of(r));
+
+        assertThat(code(() -> service.respond(mentor, id, new RespondRequestInput("REJECT", null, "Bận")))).isEqualTo("REJECT_REASON_REQUIRED");
+        var view = service.respond(mentor, id, new RespondRequestInput("REJECT", MentoringRequest.RejectReason.SCHEDULE, " Bận "));
+
+        assertThat(view.status()).isEqualTo("REJECTED");
+        assertThat(view.rejectReason()).isEqualTo("SCHEDULE");
+        assertThat(view.responseNote()).isEqualTo("Bận");
+        verify(notifications).notifyUser(eq(menteeId), eq("REQUEST_REJECTED"), anyString(),
+                org.mockito.ArgumentMatchers.contains("Lịch không phù hợp"), anyString());
+    }
+
+    @Test
+    void mentorSeesMenteeProfileSummaryForOpenRequests() {
+        MentoringRequest r = new MentoringRequest(menteeId, mentorId, GOAL, SessionType.CODE_REVIEW, MentoringRequest.Frequency.ONE_OFF, 1, null);
+        when(repo.findByMentorIdOrderByCreatedAtDesc(mentorId)).thenReturn(List.of(r));
+        when(profileClient.menteeProfile(menteeId)).thenReturn(Optional.of(new ProfileClient.MenteeProfile(menteeId, "An",
+                "Học backend", "backend", "BEGINNER", List.of("Java"))));
+
+        var views = service.mine(mentor);
+
+        assertThat(views.get(0).menteeProfile()).isNotNull();
+        assertThat(views.get(0).menteeProfile().currentLevel()).isEqualTo("BEGINNER");
+        assertThat(service.mine(mentee).isEmpty()).isTrue();
+        verify(profileClient, times(1)).menteeProfile(menteeId);
     }
 }

@@ -55,6 +55,8 @@ app:
     proposal-ttl: PT24H             # đề xuất hết hạn sau 24 giờ ...
     expire-before-start: PT1H       # ... hoặc 1 giờ trước giờ bắt đầu gốc (lấy mốc sớm hơn)
     expire-interval: PT1M
+  requests:                        # US-14 / US-15 — yêu cầu mentoring
+    max-pending: 3                  # mỗi mentee tối đa 3 yêu cầu PENDING (409 TOO_MANY_PENDING_REQUESTS)
   attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
     window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
     interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn

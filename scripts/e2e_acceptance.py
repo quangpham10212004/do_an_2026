@@ -20,6 +20,9 @@ from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, S
 VN = timezone(timedelta(hours=7))
 # US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
 BOOKING_FORM = {"sessionType": "CAREER_ADVICE", "agenda": "Review CV va dinh huong lo trinh backend Java"}
+# US-14 (Sprint 2): yêu cầu mentoring bắt buộc goal (50–1000 ký tự), sessionType, frequency, expectedDurationMonths
+REQUEST_FORM = {"goal": "Muon tro thanh backend developer Java, nam vung Spring Boot, REST API va microservices.",
+                "sessionType": "CAREER_ADVICE", "frequency": "WEEKLY", "expectedDurationMonths": 3}
 RUN = uuid.uuid4().hex[:6]
 results = []
 
@@ -166,7 +169,7 @@ def main():
     ids, _ = mentor_ids_in_matching()
     check(5, "Mentor chưa qua AI Interview KHÔNG xuất hiện trong matching", mentor["userId"] not in ids)
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/requests",
-                                      {"mentorId": mentor["userId"]}, token=mentee_token), 400)
+                                      {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token), 400)
     check(5, "Không gửi được yêu cầu tới mentor chưa xác thực", ok)
 
     interview = call("POST", f"{AI}/api/ai/interviews", token=mentor_token)
@@ -228,7 +231,7 @@ def main():
 
     # ---------------- DoD 8: request → accept → book → pay → confirmed ----------------
     print("\nDoD 8 — Yêu cầu → chấp nhận → đặt lịch → thanh toán sandbox → xác nhận")
-    req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao"}, token=referred_token)
+    req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao", **REQUEST_FORM}, token=referred_token)
     check(8, "Mentee gửi yêu cầu mentoring", req["status"] == "PENDING")
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": next_slot().isoformat(), "durationMinutes": 60, **BOOKING_FORM},
@@ -315,9 +318,9 @@ def main():
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{s2['id']}/transactions", token=referred_token)
     check(8, "Huỷ phiên đã thanh toán → giao dịch REFUNDED (FR-6.3)", any(t["status"] == "REFUNDED" for t in txs), txs)
     # Sức chứa: mentor capacity=2, đã nhận 1 → nhận thêm 1 → mentee thứ 3 bị CAPACITY_FULL
-    r2 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"]}, token=mentee_token)
+    r2 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token)
     call("POST", f"{MENTORING}/api/mentoring/requests/{r2['id']}/respond", {"decision": "ACCEPT"}, token=mentor_token)
-    r3 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"]}, token=referrer["accessToken"])
+    r3 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], **REQUEST_FORM}, token=referrer["accessToken"])
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/requests/{r3['id']}/respond",
                                       {"decision": "ACCEPT"}, token=mentor_token), 409)
     check(7, "Mentor đủ sức chứa không nhận thêm mentee (CAPACITY_FULL)", ok)

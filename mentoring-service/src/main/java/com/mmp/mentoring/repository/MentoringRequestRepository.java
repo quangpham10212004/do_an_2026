@@ -22,4 +22,10 @@ public interface MentoringRequestRepository extends JpaRepository<MentoringReque
 
     @Query("SELECT COUNT(DISTINCT r.menteeId) FROM MentoringRequest r WHERE r.mentorId = :mentorId AND r.status = 'ACCEPTED'")
     long countActiveMentees(@Param("mentorId") UUID mentorId);
+
+    long countByMenteeIdAndStatus(UUID menteeId, MentoringRequest.Status status);
+
+    /** US-14 — advisory lock theo mentee trong transaction: kiểm tra "tối đa 3 PENDING" + tạo yêu cầu không bị chen ngang. */
+    @Query(value = "SELECT pg_advisory_xact_lock(hashtext('mentee-requests:' || CAST(:menteeId AS text)))", nativeQuery = true)
+    Object lockMenteeRequests(@Param("menteeId") UUID menteeId);
 }

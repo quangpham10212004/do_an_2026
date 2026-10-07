@@ -76,7 +76,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
     return (
       <Alert type="info">
         Bạn cần được {mentor.displayName} chấp nhận yêu cầu mentoring trước khi đặt lịch.{" "}
-        <Link href={`/mentoring/requests/new?mentorId=${mentorId}`}>Gửi yêu cầu</Link>
+        <Link href={`/mentoring/request/${mentorId}`}>Gửi yêu cầu</Link>
       </Alert>
     );
   }

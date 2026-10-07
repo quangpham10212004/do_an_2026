@@ -1,4 +1,12 @@
-import type { AttendanceAnswer, AttendanceResolution, SessionDuration, SessionType } from "@/types";
+import type {
+  AttendanceAnswer,
+  AttendanceResolution,
+  ExpectedDurationMonths,
+  RejectReason,
+  RequestFrequency,
+  SessionDuration,
+  SessionType,
+} from "@/types";
 
 // Nhãn tiếng Việt cho các giá trị enum của mentoring-service (contracts/mentoring-service.yaml).
 
@@ -73,3 +81,30 @@ export const ATTENDANCE_RESOLUTION_LABELS: Record<AttendanceResolution, string> 
   CONFLICT: "hai bên xác nhận khác nhau",
   CANCELLED_ON_CALL: "huỷ trong buổi gọi",
 };
+
+// ---- US-14 — form yêu cầu mentoring ----
+
+export const GOAL_MIN = 50;
+export const GOAL_MAX = 1000;
+
+export const FREQUENCY_LABELS: Record<RequestFrequency, string> = {
+  WEEKLY: "Hằng tuần",
+  BIWEEKLY: "2 tuần một lần",
+  MONTHLY: "Hằng tháng",
+  ONE_OFF: "Một lần",
+};
+
+export const FREQUENCIES = Object.keys(FREQUENCY_LABELS) as RequestFrequency[];
+
+export const EXPECTED_DURATIONS: ExpectedDurationMonths[] = [1, 3, 6];
+
+export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
+  FULL: "Đã nhận đủ mentee",
+  NOT_MY_EXPERTISE: "Không đúng chuyên môn",
+  SCHEDULE: "Lịch không phù hợp",
+  OTHER: "Lý do khác",
+};
+
+export const REJECT_REASONS = Object.keys(REJECT_REASON_LABELS) as RejectReason[];
+
+export const LEVEL_LABELS: Record<string, string> = { BEGINNER: "Mới bắt đầu", INTERMEDIATE: "Trung cấp", ADVANCED: "Nâng cao" };

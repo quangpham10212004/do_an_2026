@@ -141,9 +141,12 @@ bổ sung kỹ năng/mục tiêu.
 
 **Gửi yêu cầu mentoring & phản hồi** (FR-5.2, FR-5.3)
 
-Mentee bấm *Gửi yêu cầu mentoring* ở thẻ/hồ sơ mentor → Nhập lời nhắn → Hệ thống kiểm tra mentor đã
-được duyệt, đang nhận mentee, chưa có yêu cầu đang chờ/đang hoạt động giữa hai bên → Tạo yêu cầu, thông
-báo mentor → Mentor mở *Yêu cầu* → Bấm *Chấp nhận* hoặc *Từ chối* (kèm lý do) → **Chấp nhận khi đã đủ
+Mentee bấm *Gửi yêu cầu mentoring* ở thẻ/hồ sơ mentor → Trang `/mentoring/request/{mentorId}` (US-14): nhập mục
+tiêu (50–1000 ký tự, điền sẵn từ goal trong hồ sơ), loại phiên, tần suất (hằng tuần / 2 tuần / hằng tháng / một lần),
+thời gian dự kiến (1/3/6 tháng), lời nhắn tuỳ chọn → Hệ thống kiểm tra mentor đã được duyệt, đang nhận mentee, chưa
+có yêu cầu đang chờ/đang hoạt động giữa hai bên, mentee có ít hơn 3 yêu cầu đang chờ → Tạo yêu cầu, thông
+báo mentor → Mentor mở *Yêu cầu* (kèm tóm tắt hồ sơ mentee) → Bấm *Chấp nhận* hoặc *Từ chối* (bắt buộc chọn lý do:
+đã đủ mentee / không đúng chuyên môn / lịch không phù hợp / khác, kèm ghi chú tuỳ chọn) → **Chấp nhận khi đã đủ
 sức chứa**: báo lỗi "đã nhận đủ số mentee tối đa" → **Chấp nhận hợp lệ**: cập nhật số mentee đang hướng
 dẫn sang profile-service → Mentee nhận thông báo; nếu được chấp nhận, nút *Đặt lịch* xuất hiện.
 

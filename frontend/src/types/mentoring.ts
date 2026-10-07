@@ -27,6 +27,22 @@ export type AttendanceResolution =
 /** US-03 — thời lượng phiên được phép (phút). */
 export type SessionDuration = 30 | 45 | 60 | 90 | 120;
 
+/** US-14 — tần suất mong muốn của quan hệ mentoring. */
+export type RequestFrequency = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "ONE_OFF";
+/** US-14 — thời gian dự kiến (tháng). */
+export type ExpectedDurationMonths = 1 | 3 | 6;
+/** US-14 — lý do mentor từ chối. */
+export type RejectReason = "FULL" | "NOT_MY_EXPERTISE" | "SCHEDULE" | "OTHER";
+
+/** US-14 — tóm tắt hồ sơ mentee hiển thị cho mentor (null khi mentee tự xem / không lấy được). */
+export interface MenteeSummary {
+  displayName: string;
+  domain: string;
+  currentLevel: string | null;
+  goal: string;
+  skills: string[];
+}
+
 export interface MentoringRequest {
   id: Uuid;
   menteeId: Uuid;
@@ -34,10 +50,26 @@ export interface MentoringRequest {
   mentorId: Uuid;
   mentorName: string;
   message: string | null;
+  goal: string;
+  sessionType: SessionType | null;
+  frequency: RequestFrequency;
+  expectedDurationMonths: number;
   status: RequestStatus;
+  rejectReason: RejectReason | null;
   responseNote: string | null;
   createdAt: IsoDateTime;
   respondedAt: IsoDateTime | null;
+  menteeProfile: MenteeSummary | null;
+}
+
+/** US-14 — POST /api/mentoring/requests */
+export interface CreateRequestInput {
+  mentorId: Uuid;
+  goal: string;
+  sessionType: SessionType;
+  frequency: RequestFrequency;
+  expectedDurationMonths: ExpectedDurationMonths;
+  message?: string;
 }
 
 export interface MentoringSession {

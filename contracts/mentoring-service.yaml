@@ -25,10 +25,33 @@ components:
         mentorId: { type: string, format: uuid }
         mentorName: { type: string }
         message: { type: string, nullable: true }
+        goal: { type: string, description: "US-14 — mục tiêu (50–1000 ký tự với yêu cầu mới; yêu cầu cũ được migrate từ message)" }
+        sessionType: { $ref: "#/components/schemas/SessionType" }
+        frequency: { $ref: "#/components/schemas/RequestFrequency" }
+        expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
         status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED] }
-        responseNote: { type: string, nullable: true }
+        rejectReason: { allOf: [{ $ref: "#/components/schemas/RejectReason" }], nullable: true, description: "US-14 — có khi REJECTED" }
+        responseNote: { type: string, nullable: true, description: "Ghi chú tuỳ chọn của mentor khi phản hồi" }
         createdAt: { type: string, format: date-time }
         respondedAt: { type: string, format: date-time, nullable: true }
+        menteeProfile:
+          type: object
+          nullable: true
+          description: >
+            US-14 — tóm tắt hồ sơ mentee cho mentor/admin xét yêu cầu (chỉ với yêu cầu PENDING/ACCEPTED; lấy best-effort
+            từ profile-service GET /api/profile/mentee/{id} bằng X-Internal-Token). Mentee xem danh sách của mình → null.
+          properties:
+            displayName: { type: string }
+            domain: { type: string }
+            currentLevel: { type: string, nullable: true, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+            goal: { type: string, description: "Goal hiện tại trong hồ sơ (có thể khác goal của yêu cầu)" }
+            skills: { type: array, items: { type: string } }
+    RequestFrequency:
+      type: string
+      enum: [WEEKLY, BIWEEKLY, MONTHLY, ONE_OFF]
+    RejectReason:
+      type: string
+      enum: [FULL, NOT_MY_EXPERTISE, SCHEDULE, OTHER]
     Session:
       type: object
       properties:
@@ -133,16 +156,23 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Request" } }
     post:
-      summary: FR-5.2 (MENTEE) Gửi yêu cầu tới mentor đã được xác thực
+      summary: >
+        FR-5.2 / US-14 (MENTEE) Gửi yêu cầu theo form tới mentor đã được xác thực. goal bắt buộc 50–1000 ký tự (sau trim),
+        sessionType, frequency, expectedDurationMonths ∈ {1, 3, 6}, message tuỳ chọn. Mỗi mentee tối đa 3 yêu cầu PENDING
+        (app.requests.max-pending) → 409 TOO_MANY_PENDING_REQUESTS; vẫn chỉ 1 yêu cầu đang mở (PENDING/ACCEPTED) với mỗi mentor.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [mentorId]
+              required: [mentorId, goal, sessionType, frequency, expectedDurationMonths]
               properties:
                 mentorId: { type: string, format: uuid }
+                goal: { type: string, minLength: 50, maxLength: 1000 }
+                sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] }
+                frequency: { $ref: "#/components/schemas/RequestFrequency" }
+                expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
                 message: { type: string, maxLength: 1000 }
       responses:
         "201":
@@ -150,11 +180,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Request" }
-        "400": { description: "MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
-        "409": { description: REQUEST_ALREADY_EXISTS }
+        "400": { description: "VALIDATION_ERROR / INVALID_GOAL / INVALID_EXPECTED_DURATION / MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
+        "409": { description: REQUEST_ALREADY_EXISTS / TOO_MANY_PENDING_REQUESTS }
   /api/mentoring/requests/{id}/respond:
     post:
-      summary: FR-5.3 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa
+      summary: FR-5.3 / US-14 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa; từ chối bắt buộc rejectReason
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -165,9 +195,11 @@ paths:
               required: [decision]
               properties:
                 decision: { type: string, enum: [ACCEPT, REJECT] }
-                note: { type: string }
+                rejectReason: { $ref: "#/components/schemas/RejectReason" }
+                note: { type: string, maxLength: 500, description: Ghi chú tuỳ chọn (mentee thấy) }
       responses:
         "200": { description: Request }
+        "400": { description: REJECT_REASON_REQUIRED / VALIDATION_ERROR }
         "409": { description: REQUEST_NOT_PENDING / CAPACITY_FULL }
   /api/mentoring/requests/{id}/cancel:
     post:

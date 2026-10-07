@@ -4,6 +4,8 @@ import type {
   AvailableSlots,
   BookSessionInput,
   CancelPreview,
+  CreateRequestInput,
+  RejectReason,
   RescheduleProposal,
   LegacyBookSessionInput,
   MentoringRequest,
@@ -19,10 +21,17 @@ import type {
 export const mentoringApi = {
   // Yêu cầu mentoring
   requests: () => api<MentoringRequest[]>("/api/mentoring/requests"),
+  /** US-14 — gửi yêu cầu theo form (trang /mentoring/request/{mentorId}). */
+  sendRequest: (body: CreateRequestInput) => api<MentoringRequest>("/api/mentoring/requests", { method: "POST", body }),
+  /**
+   * @deprecated Dạng cũ (chỉ lời nhắn) — từ US-14 mentoring-service bắt buộc goal / sessionType / frequency /
+   * expectedDurationMonths nên request này bị từ chối 400. Chuyển người dùng tới /mentoring/request/{mentorId}.
+   */
   createRequest: (mentorId: Uuid, message: string) =>
     api<MentoringRequest>("/api/mentoring/requests", { method: "POST", body: { mentorId, message } }),
-  respond: (id: Uuid, decision: "ACCEPT" | "REJECT", note: string) =>
-    api<MentoringRequest>(`/api/mentoring/requests/${id}/respond`, { method: "POST", body: { decision, note } }),
+  /** US-14 — REJECT bắt buộc rejectReason. */
+  respond: (id: Uuid, decision: "ACCEPT" | "REJECT", note: string, rejectReason?: RejectReason) =>
+    api<MentoringRequest>(`/api/mentoring/requests/${id}/respond`, { method: "POST", body: { decision, note, rejectReason } }),
   cancelRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/cancel`, { method: "POST" }),
   completeRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/complete`, { method: "POST" }),
   // Phiên mentoring
