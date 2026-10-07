@@ -73,7 +73,7 @@ function Requests({ user }: { user: SessionUser }) {
               {!isMentor && r.status === "PENDING" && (
                 <button className="btn secondary sm" onClick={() => act(() => mentoringApi.cancelRequest(r.id), "Đã huỷ yêu cầu")}>Huỷ</button>
               )}
-              {!isMentor && r.status === "ACCEPTED" && <Link className="btn sm" href={`/mentors/${r.mentorId}`}>Đặt lịch</Link>}
+              {!isMentor && r.status === "ACCEPTED" && <Link className="btn sm" href={`/mentoring/book/${r.mentorId}`}>Đặt lịch</Link>}
               {r.status === "ACCEPTED" && (
                 <button className="btn secondary sm" onClick={async () => (await ask({ title: "Kết thúc quan hệ mentoring này?", message: "Mentor sẽ được giải phóng một chỗ. Bạn cần gửi yêu cầu mới nếu muốn học tiếp.", confirmText: "Kết thúc", danger: true })) && act(() => mentoringApi.completeRequest(r.id), "Đã kết thúc mentoring")}>
                   Kết thúc

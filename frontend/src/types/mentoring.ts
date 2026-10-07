@@ -3,6 +3,9 @@ import type { IsoDateTime, Uuid } from "./common";
 // contracts/mentoring-service.yaml
 export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 export type SessionStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+export type SessionType = "CAREER_ADVICE" | "CODE_REVIEW" | "MOCK_INTERVIEW" | "PROJECT_GUIDANCE";
+/** US-03 — thời lượng phiên được phép (phút). */
+export type SessionDuration = 30 | 45 | 60 | 90 | 120;
 
 export interface MentoringRequest {
   id: Uuid;
@@ -25,10 +28,21 @@ export interface MentoringSession {
   mentorId: Uuid;
   mentorName: string;
   scheduledAt: IsoDateTime;
+  endsAt: IsoDateTime;
   durationMinutes: number;
   price: number;
   topic: string | null;
+  sessionType: SessionType | null;
+  agenda: string | null;
+  preReadLink: string | null;
+  /** US-04 — chỉ có giá trị khi phiên đã CONFIRMED (hoặc sau đó). */
+  meetingLink: string | null;
   status: SessionStatus;
+  cancelledBy: CancelActor | null;
+  cancelReason: string | null;
+  refundPercent: number | null;
+  rescheduleCount: number;
+  pendingReschedule: RescheduleProposal | null;
   reviewed: boolean;
   reviewRating: number | null;
   createdAt: IsoDateTime;
@@ -38,8 +52,48 @@ export interface BookSessionInput {
   menteeId: Uuid;
   mentorId: Uuid;
   scheduledAt: IsoDateTime;
+  durationMinutes: SessionDuration;
+  sessionType: SessionType;
+  agenda: string;
+  preReadLink?: string;
+  topic?: string;
+}
+
+/**
+ * @deprecated Dạng cũ (trước US-03) — mentoring-service nay bắt buộc sessionType + agenda nên request dạng
+ * này bị từ chối 400. Chỉ giữ để trang chưa cập nhật vẫn biên dịch; dùng BookSessionInput / trang /mentoring/book.
+ */
+export interface LegacyBookSessionInput {
+  menteeId: Uuid;
+  mentorId: Uuid;
+  scheduledAt: IsoDateTime;
   durationMinutes: number;
   topic?: string;
+}
+
+export type RescheduleStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";
+
+/** US-06 — đề xuất dời lịch. */
+export interface RescheduleProposal {
+  id: Uuid;
+  sessionId: Uuid;
+  proposedBy: Uuid;
+  newStart: IsoDateTime;
+  expiresAt: IsoDateTime;
+  status: RescheduleStatus;
+  createdAt: IsoDateTime;
+}
+
+export type CancelActor = "MENTEE" | "MENTOR" | "SYSTEM";
+
+/** US-01 — GET /api/mentoring/sessions/{id}/cancel-preview */
+export interface CancelPreview {
+  cancelledBy: CancelActor;
+  refundPercent: number;
+  refundAmount: number;
+  policyText: string;
+  rewardPoints: number;
+  lateFreeCancel: boolean;
 }
 
 export interface Review {

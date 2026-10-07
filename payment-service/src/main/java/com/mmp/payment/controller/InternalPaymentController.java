@@ -29,6 +29,16 @@ public class InternalPaymentController {
     /** Gọi bởi mentoring-service khi phiên đã thanh toán bị huỷ. */
     @PostMapping("/payments/refund")
     public TransactionResponse refund(@Valid @RequestBody RefundRequest req) {
+        if (req.percent() != null && req.percent() != 100) {
+            throw com.mmp.payment.exception.ApiException.badRequest("PARTIAL_REFUND_NOT_SUPPORTED",
+                    "Chưa hỗ trợ hoàn tiền một phần");
+        }
         return paymentService.refund(req.sessionId(), req.reason());
+    }
+
+    /** US-01 — mentoring-service cộng điểm xin lỗi khi mentor huỷ phiên. Gửi lại cùng nội dung → trả bản ghi cũ. */
+    @PostMapping("/rewards")
+    public RewardResponse grantReward(@Valid @RequestBody GrantRewardRequest req) {
+        return referralService.grantSessionReward(req.userId(), req.points(), req.reason(), req.sessionId());
     }
 }

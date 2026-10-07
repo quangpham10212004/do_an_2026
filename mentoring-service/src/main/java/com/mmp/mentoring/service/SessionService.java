@@ -3,11 +3,16 @@ package com.mmp.mentoring.service;
 import com.mmp.mentoring.client.PaymentClient;
 import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.dto.MentoringDtos.*;
+import com.mmp.mentoring.entity.LateCancellation;
+import com.mmp.mentoring.entity.MentorStrike;
 import com.mmp.mentoring.entity.MentoringRequest;
 import com.mmp.mentoring.entity.MentoringSession;
+import com.mmp.mentoring.entity.RescheduleProposal;
 import com.mmp.mentoring.entity.Review;
 import com.mmp.mentoring.exception.ApiException;
+import com.mmp.mentoring.repository.LateCancellationRepository;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
+import com.mmp.mentoring.repository.RescheduleProposalRepository;
 import com.mmp.mentoring.repository.ReviewRepository;
 import com.mmp.mentoring.repository.SessionRepository;
 import com.mmp.mentoring.security.AuthUser;
@@ -18,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -31,11 +37,16 @@ public class SessionService {
 
     private static final Logger log = LoggerFactory.getLogger(SessionService.class);
     private static final DateTimeFormatter DISPLAY = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
-    private static final int MAX_DURATION_MINUTES = 180;
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final SessionRepository sessionRepo;
     private final MentoringRequestRepository requestRepo;
     private final ReviewRepository reviewRepo;
+    private final LateCancellationRepository lateCancelRepo;
+    private final CancellationPolicy policy;
+    private final PaymentOutboxService outbox;
+    private final StrikeService strikes;
+    private final RescheduleProposalRepository proposalRepo;
     private final ProfileClient profileClient;
     private final PaymentClient paymentClient;
     private final NotificationService notifications;
@@ -45,6 +56,8 @@ public class SessionService {
     private final Duration maxAdvance;
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
+                          LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
+                          StrikeService strikes, RescheduleProposalRepository proposalRepo,
                           ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
@@ -53,6 +66,11 @@ public class SessionService {
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.reviewRepo = reviewRepo;
+        this.lateCancelRepo = lateCancelRepo;
+        this.policy = policy;
+        this.outbox = outbox;
+        this.strikes = strikes;
+        this.proposalRepo = proposalRepo;
         this.profileClient = profileClient;
         this.paymentClient = paymentClient;
         this.notifications = notifications;
@@ -63,11 +81,13 @@ public class SessionService {
     }
 
     /**
-     * Đặt lịch phiên mentoring. Điều kiện:
+     * Đặt lịch phiên mentoring (FR-5.4, PRD-SES-1). Điều kiện:
      * 1. Mentee đã được mentor chấp nhận (có yêu cầu ACCEPTED).
-     * 2. Thời điểm nằm trong khung đặt lịch cho phép và trong lịch rảnh hằng tuần của mentor.
-     * 3. Không trùng phiên đang giữ chỗ của mentor hoặc của mentee.
-     * Kiểm tra (3) + tạo phiên chạy trong 1 transaction có advisory lock theo mentor
+     * 2. Trạng thái mentor cho phép (ON_LEAVE/SUSPENDED chặn; PAUSED vẫn cho mentee đã được nhận).
+     * 3. Đặt trước ít nhất max(min-lead-time, minNoticeHours của mentor) và trong max-advance.
+     * 4. Nằm trọn trong lịch rảnh hằng tuần và không rơi vào ngày nghỉ / giờ bận đột xuất.
+     * 5. Không trùng phiên đang giữ chỗ của mentor (tính cả buffer giữa 2 phiên) hoặc của mentee.
+     * Kiểm tra (5) + tạo phiên chạy trong 1 transaction có advisory lock theo mentor
      * nên hai yêu cầu đồng thời không thể cùng giữ một khung giờ.
      */
     public SessionView book(AuthUser mentee, BookSessionInput in) {
@@ -75,6 +95,18 @@ public class SessionService {
             throw ApiException.forbidden("Bạn chỉ có thể đặt lịch cho chính mình");
         }
         int duration = Optional.ofNullable(in.durationMinutes()).orElse(60);
+        if (!BookingRules.isAllowedDuration(duration)) {
+            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải là 30, 45, 60, 90 hoặc 120 phút");
+        }
+        String agenda = MentoringRequestService.trimToNull(in.agenda());
+        if (agenda == null || agenda.length() < BookingRules.AGENDA_MIN || agenda.length() > BookingRules.AGENDA_MAX) {
+            throw ApiException.badRequest("INVALID_AGENDA", "Agenda phải dài từ " + BookingRules.AGENDA_MIN + " đến "
+                    + BookingRules.AGENDA_MAX + " ký tự");
+        }
+        String preReadLink = MentoringRequestService.trimToNull(in.preReadLink());
+        if (preReadLink != null && !BookingRules.isHttpUrl(preReadLink)) {
+            throw ApiException.badRequest("INVALID_PRE_READ_LINK", "Link tài liệu đọc trước phải là URL http(s) hợp lệ");
+        }
         OffsetDateTime start = in.scheduledAt();
         OffsetDateTime now = OffsetDateTime.now();
         if (start.isBefore(now.plus(minLeadTime))) {
@@ -88,22 +120,21 @@ public class SessionService {
                 .orElseThrow(() -> ApiException.badRequest("NOT_ACCEPTED", "Bạn cần được mentor chấp nhận trước khi đặt lịch"));
         ProfileClient.MentorInfo mentor = profileClient.findMentor(in.mentorId())
                 .orElseThrow(() -> ApiException.notFound("MENTOR_NOT_FOUND", "Không tìm thấy mentor"));
-        if (!BookingRules.fitsAvailability(start, duration, mentor.availability(), zone)) {
-            throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor không rảnh vào thời điểm này, vui lòng chọn khung giờ trong lịch rảnh của mentor");
+        checkSlot(mentor, start, duration, now);
+        if (BookingRules.price(mentor.hourlyRate(), duration).signum() == 0) {
+            // US-01 — 3 lần huỷ muộn phiên miễn phí trong 30 ngày → chặn đặt phiên miễn phí 14 ngày
+            List<OffsetDateTime> late = lateCancelRepo.findByMenteeIdAndCreatedAtAfter(in.menteeId(), now.minus(policy.lookback()))
+                    .stream().map(LateCancellation::getCreatedAt).toList();
+            policy.freeBookingBlockedUntil(late, now).ifPresent(until -> {
+                throw ApiException.conflict("FREE_BOOKING_BLOCKED", "Bạn đã huỷ muộn phiên miễn phí nhiều lần nên tạm thời không đặt được phiên miễn phí tới "
+                        + until.atZoneSameInstant(zone).format(DISPLAY));
+            });
         }
+        int buffer = mentor.effectiveBufferMinutes();
 
         MentoringSession saved = tx.execute(s -> {
             sessionRepo.lockMentorSchedule(in.mentorId());
-            OffsetDateTime windowStart = start.minusMinutes(MAX_DURATION_MINUTES);
-            OffsetDateTime windowEnd = start.plusMinutes(duration);
-            BookingRules.findConflict(start, duration, sessionRepo.findActiveAround(in.mentorId(), windowStart, windowEnd), null)
-                    .ifPresent(c -> {
-                        throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor đã có lịch vào khung giờ này");
-                    });
-            BookingRules.findConflict(start, duration, sessionRepo.findActiveAround(in.menteeId(), windowStart, windowEnd), null)
-                    .ifPresent(c -> {
-                        throw ApiException.conflict("MENTEE_SCHEDULE_CONFLICT", "Bạn đã có phiên khác trùng khung giờ này");
-                    });
+            requireFree(in.mentorId(), in.menteeId(), start, duration, buffer, null);
             MentoringSession session = new MentoringSession();
             session.setRequestId(request.getId());
             session.setMenteeId(in.menteeId());
@@ -111,6 +142,10 @@ public class SessionService {
             session.setScheduledAt(start);
             session.setDurationMinutes(duration);
             session.setTopic(MentoringRequestService.trimToNull(in.topic()));
+            session.setSessionType(in.sessionType());
+            session.setAgenda(agenda);
+            session.setPreReadLink(preReadLink);
+            session.setMeetingLink(MeetingLinks.sanitize(mentor.meetingLink()));
             session.setPrice(BookingRules.price(mentor.hourlyRate(), duration));
             // Phiên miễn phí được xác nhận ngay; phiên có phí chờ thanh toán (FR-6.2)
             session.setStatus(session.getPrice().signum() == 0 ? MentoringSession.Status.CONFIRMED : MentoringSession.Status.PENDING);
@@ -128,12 +163,101 @@ public class SessionService {
     }
 
     /**
+     * Kiểm tra phần không cần khoá của một khung giờ: trạng thái mentor, thời gian báo trước của mentor,
+     * lịch rảnh hằng tuần và ngoại lệ (ngày nghỉ / giờ bận). Dùng cho đặt lịch và dời lịch (US-06).
+     */
+    void checkSlot(ProfileClient.MentorInfo mentor, OffsetDateTime start, int duration, OffsetDateTime now) {
+        LocalDate localDate = start.atZoneSameInstant(zone).toLocalDate();
+        BookingRules.statusBlock(mentor.effectiveStatus(), mentor.onLeaveUntil(), localDate).ifPresent(code -> {
+            throw ApiException.conflict(code, "MENTOR_SUSPENDED".equals(code)
+                    ? "Mentor đang bị tạm khoá, không thể đặt lịch"
+                    : "Mentor đang nghỉ" + (mentor.onLeaveUntil() == null ? "" : " đến hết " + mentor.onLeaveUntil().format(DATE))
+                    + ", vui lòng chọn ngày khác");
+        });
+        Duration lead = BookingRules.effectiveLeadTime(minLeadTime, mentor.effectiveMinNoticeHours());
+        if (start.isBefore(now.plus(lead))) {
+            throw ApiException.badRequest("TOO_SOON", "Mentor cần được đặt lịch trước ít nhất " + lead.toHours() + " giờ");
+        }
+        if (!BookingRules.fitsAvailability(start, duration, mentor.availabilityOrEmpty(), zone)) {
+            throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor không rảnh vào thời điểm này, vui lòng chọn khung giờ trong lịch rảnh của mentor");
+        }
+        if (BookingRules.hitsException(start, duration, mentor.exceptionsOrEmpty(), zone)) {
+            throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor đã báo nghỉ/bận vào thời điểm này, vui lòng chọn khung giờ khác");
+        }
+    }
+
+    /**
+     * Kiểm tra trùng lịch (phải gọi trong transaction đã giữ advisory lock của mentor): khoảng bận của mentor
+     * tính cả buffer, khoảng bận của mentee không buffer. {@code excludeSessionId} = phiên đang dời lịch.
+     */
+    void requireFree(UUID mentorId, UUID menteeId, OffsetDateTime start, int duration, int buffer, UUID excludeSessionId) {
+        OffsetDateTime windowStart = start.minusMinutes(BookingRules.MAX_STORED_DURATION_MINUTES + buffer);
+        OffsetDateTime windowEnd = start.plusMinutes(duration + buffer);
+        BookingRules.findConflict(start, duration, busyBlocks(mentorId, windowStart, windowEnd), excludeSessionId, buffer)
+                .ifPresent(c -> {
+                    throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor đã có lịch vào khung giờ này (tính cả "
+                            + buffer + " phút nghỉ giữa 2 phiên)");
+                });
+        BookingRules.findConflict(start, duration, busyBlocks(menteeId, windowStart, windowEnd), excludeSessionId, 0)
+                .ifPresent(c -> {
+                    throw ApiException.conflict("MENTEE_SCHEDULE_CONFLICT", "Bạn đã có phiên khác trùng khung giờ này");
+                });
+    }
+
+    /**
+     * Khoảng bận của 1 người trong cửa sổ thời gian: phiên đang giữ chỗ + khung giờ của đề xuất dời lịch còn
+     * PENDING (US-06, khoảng bận mang sessionId của phiên được dời, thời lượng = thời lượng phiên).
+     */
+    List<BookingRules.Block> busyBlocks(UUID userId, OffsetDateTime from, OffsetDateTime to) {
+        List<BookingRules.Block> blocks = new ArrayList<>(BookingRules.blocksOf(sessionRepo.findActiveAround(userId, from, to)));
+        List<RescheduleProposal> open = proposalRepo.findPendingAround(userId, from, to);
+        if (!open.isEmpty()) {
+            Map<UUID, MentoringSession> byId = sessionRepo.findAllById(open.stream().map(RescheduleProposal::getSessionId).toList())
+                    .stream().collect(Collectors.toMap(MentoringSession::getId, x -> x));
+            for (RescheduleProposal p : open) {
+                MentoringSession owner = byId.get(p.getSessionId());
+                if (owner != null) blocks.add(new BookingRules.Block(owner.getId(), p.getNewStart(), owner.getDurationMinutes()));
+            }
+        }
+        return blocks;
+    }
+
+    // ---- dùng chung với RescheduleService ----
+
+    MentoringSession load(UUID id) {
+        return find(id);
+    }
+
+    SessionView view(MentoringSession s) {
+        return toView(s);
+    }
+
+    void lockMentor(UUID mentorId) {
+        sessionRepo.lockMentorSchedule(mentorId);
+    }
+
+    void checkWindow(OffsetDateTime start, OffsetDateTime now) {
+        if (start.isAfter(now.plus(maxAdvance))) {
+            throw ApiException.badRequest("TOO_FAR", "Chỉ được đặt lịch trong vòng " + maxAdvance.toDays() + " ngày tới");
+        }
+    }
+
+    /**
      * FR-5.4 — các khung giờ còn đặt được với mentor trong {@code days} ngày tới, đã trừ phiên đang giữ chỗ
-     * của mentor và của người gọi. Chỉ trả thời điểm, không lộ phiên của người khác.
+     * của mentor (tính buffer) và của người gọi, ngày nghỉ/giờ bận của mentor, trạng thái mentor và thời gian
+     * báo trước. Chỉ trả thời điểm, không lộ phiên của người khác.
      */
     public AvailableSlotsView availableSlots(AuthUser caller, UUID mentorId, int durationMinutes, int days) {
-        if (durationMinutes < 30 || durationMinutes > MAX_DURATION_MINUTES) {
-            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải từ 30 đến " + MAX_DURATION_MINUTES + " phút");
+        return availableSlots(caller, mentorId, durationMinutes, days, null);
+    }
+
+    /**
+     * {@code excludeSessionId} (US-06): khi dời lịch, bỏ qua khoảng bận của chính phiên đó — chỉ áp dụng nếu người
+     * gọi tham gia phiên.
+     */
+    public AvailableSlotsView availableSlots(AuthUser caller, UUID mentorId, int durationMinutes, int days, UUID excludeSessionId) {
+        if (!BookingRules.isAllowedDuration(durationMinutes)) {
+            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải là 30, 45, 60, 90 hoặc 120 phút");
         }
         if (days < 1 || days > 28) {
             throw ApiException.badRequest("INVALID_RANGE", "Chỉ xem được lịch trong 1–28 ngày tới");
@@ -141,15 +265,21 @@ public class SessionService {
         ProfileClient.MentorInfo mentor = profileClient.findMentor(mentorId)
                 .orElseThrow(() -> ApiException.notFound("MENTOR_NOT_FOUND", "Không tìm thấy mentor"));
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime earliest = now.plus(minLeadTime);
+        OffsetDateTime earliest = now.plus(BookingRules.effectiveLeadTime(minLeadTime, mentor.effectiveMinNoticeHours()));
         OffsetDateTime latest = Stream.of(now.plusDays(days), now.plus(maxAdvance)).min(Comparator.naturalOrder()).orElseThrow();
-        OffsetDateTime windowStart = earliest.minusMinutes(MAX_DURATION_MINUTES);
-        OffsetDateTime windowEnd = latest.plusMinutes(durationMinutes);
-        List<MentoringSession> busy = new ArrayList<>(sessionRepo.findActiveAround(mentorId, windowStart, windowEnd));
-        if (!caller.userId().equals(mentorId)) {
-            busy.addAll(sessionRepo.findActiveAround(caller.userId(), windowStart, windowEnd));
-        }
-        List<SlotView> slots = BookingRules.availableStarts(earliest, latest, durationMinutes, 30, mentor.availability(), busy, zone)
+        int buffer = mentor.effectiveBufferMinutes();
+        OffsetDateTime windowStart = earliest.minusMinutes(BookingRules.MAX_STORED_DURATION_MINUTES + buffer);
+        OffsetDateTime windowEnd = latest.plusMinutes(durationMinutes + buffer);
+        List<BookingRules.Block> mentorBusy = busyBlocks(mentorId, windowStart, windowEnd);
+        List<BookingRules.Block> callerBusy = caller.userId() == null || caller.userId().equals(mentorId) ? List.of()
+                : busyBlocks(caller.userId(), windowStart, windowEnd);
+        BookingRules.MentorCalendar calendar = new BookingRules.MentorCalendar(mentor.availabilityOrEmpty(),
+                mentor.exceptionsOrEmpty(), buffer, mentor.effectiveStatus(), mentor.onLeaveUntil());
+        UUID exclude = excludeSessionId == null ? null : sessionRepo.findById(excludeSessionId)
+                .filter(s -> s.getMentorId().equals(mentorId) && caller.userId() != null
+                        && (caller.userId().equals(s.getMentorId()) || caller.userId().equals(s.getMenteeId())))
+                .map(MentoringSession::getId).orElse(null);
+        List<SlotView> slots = BookingRules.availableStarts(earliest, latest, durationMinutes, 30, calendar, mentorBusy, callerBusy, exclude, zone)
                 .stream()
                 .map(start -> new SlotView(start, start.plusMinutes(durationMinutes)))
                 .toList();
@@ -179,30 +309,102 @@ public class SessionService {
         return toInternal(session);
     }
 
+    /** US-01 — người gọi xem trước số tiền được hoàn nếu huỷ phiên ngay bây giờ. */
+    public CancelPreviewView cancelPreview(AuthUser user, UUID sessionId) {
+        MentoringSession s = find(sessionId);
+        requireParticipant(user, s);
+        requireCancellable(s);
+        CancellationPolicy.Decision d = decide(s, actorOf(user, s), OffsetDateTime.now());
+        return new CancelPreviewView(d.actor().name(), d.refundPercent(), d.refundAmount(), d.policyText(), d.rewardPoints(),
+                d.lateFreeCancel());
+    }
+
     public SessionView cancel(AuthUser user, UUID sessionId, CancelSessionInput in) {
         MentoringSession before = find(sessionId);
         requireParticipant(user, before);
-        if (before.getStatus() != MentoringSession.Status.PENDING && before.getStatus() != MentoringSession.Status.CONFIRMED) {
-            throw ApiException.conflict("SESSION_NOT_CANCELLABLE", "Phiên không thể huỷ ở trạng thái hiện tại");
-        }
-        if (!before.getScheduledAt().isAfter(OffsetDateTime.now())) {
-            throw ApiException.conflict("SESSION_ALREADY_STARTED", "Không thể huỷ phiên đã bắt đầu");
-        }
-        boolean refund = before.getStatus() == MentoringSession.Status.CONFIRMED && before.getPrice().signum() > 0;
-        if (refund) {
-            paymentClient.refund(sessionId, "SESSION_CANCELLED");
+        return toView(cancelWithPolicy(before, actorOf(user, before), in == null ? null : in.reason()));
+    }
+
+    /**
+     * US-01 — huỷ phiên theo chính sách. Thứ tự: (1) gọi payment-service hoàn tiền (ngoài transaction; lỗi → 502,
+     * phiên không bị huỷ); (2) transaction: chuyển CANCELLED, lưu người huỷ / lý do / % hoàn, ghi huỷ muộn phiên
+     * miễn phí, xếp hàng điểm thưởng xin lỗi vào outbox; (3) strike cho mentor (US-02) và thông báo.
+     */
+    MentoringSession cancelWithPolicy(MentoringSession before, CancellationPolicy.Actor actor, String rawReason) {
+        requireCancellable(before);
+        String reason = MentoringRequestService.trimToNull(rawReason);
+        CancellationPolicy.Decision d = decide(before, actor, OffsetDateTime.now());
+        if (d.refundPercent() > 0 && d.refundAmount().signum() > 0) {
+            paymentClient.refund(before.getId(), "SESSION_CANCELLED_BY_" + actor.name(), d.refundPercent());
         }
         MentoringSession session = tx.execute(s -> {
-            MentoringSession ss = find(sessionId);
+            MentoringSession ss = find(before.getId());
+            requireCancellable(ss);
             ss.setStatus(MentoringSession.Status.CANCELLED);
+            ss.setCancelledBy(actor.name());
+            ss.setCancelReason(reason);
+            ss.setRefundPercent(d.refundPercent());
+            ss.setCancelledAt(OffsetDateTime.now());
+            proposalRepo.findFirstBySessionIdAndStatus(ss.getId(), RescheduleProposal.Status.PENDING)
+                    .ifPresent(p -> p.close(RescheduleProposal.Status.EXPIRED));
+            if (d.lateFreeCancel()) {
+                lateCancelRepo.save(new LateCancellation(ss.getMenteeId(), ss.getId()));
+            }
+            if (d.rewardPoints() > 0) {
+                outbox.enqueueReward(ss.getMenteeId(), d.rewardPoints(), PaymentOutboxService.MENTOR_CANCEL_APOLOGY, ss.getId());
+            }
             return ss;
         });
-        UUID other = user.userId() != null && user.userId().equals(session.getMentorId()) ? session.getMenteeId() : session.getMentorId();
+        afterCancel(session, d);
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
-        notifications.notifyUser(other, "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
-                "Phiên lúc " + when + " đã bị huỷ." + (in != null && in.reason() != null ? " Lý do: " + in.reason() : "")
-                        + (refund ? " Khoản thanh toán sẽ được hoàn lại." : ""), "/mentoring/sessions");
-        return toView(session);
+        String suffix = (reason != null ? " Lý do: " + reason + "." : "")
+                + (d.refundAmount().signum() > 0 ? " Khoản hoàn " + money(d.refundAmount()) + " (" + d.refundPercent() + "%) đang được xử lý." : "")
+                + (d.rewardPoints() > 0 ? " Bạn được cộng " + d.rewardPoints() + " điểm thưởng xin lỗi." : "");
+        switch (actor) {
+            case MENTEE -> notifications.notifyUser(session.getMentorId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                    "Mentee đã huỷ phiên lúc " + when + "." + (reason != null ? " Lý do: " + reason + "." : ""), "/mentoring/sessions");
+            case MENTOR -> notifications.notifyUser(session.getMenteeId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                    "Mentor đã huỷ phiên lúc " + when + "." + suffix, "/mentoring/sessions");
+            case SYSTEM -> {
+                notifications.notifyUser(session.getMenteeId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                        "Hệ thống đã huỷ phiên lúc " + when + "." + suffix, "/mentoring/sessions");
+                notifications.notifyUser(session.getMentorId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ",
+                        "Hệ thống đã huỷ phiên lúc " + when + ".", "/mentoring/sessions");
+            }
+        }
+        return session;
+    }
+
+    /** US-02 — mentor huỷ phiên bị ghi 1 strike (3 strike / 30 ngày → PAUSED). */
+    void afterCancel(MentoringSession session, CancellationPolicy.Decision d) {
+        if (d.strike()) {
+            strikes.record(session.getMentorId(), session.getId(), MentorStrike.Reason.MENTOR_CANCEL);
+        }
+    }
+
+    private CancellationPolicy.Decision decide(MentoringSession s, CancellationPolicy.Actor actor, OffsetDateTime now) {
+        boolean paid = s.getStatus() == MentoringSession.Status.CONFIRMED && s.getPrice().signum() > 0;
+        return policy.evaluate(actor, s.getPrice(), paid, s.getScheduledAt(), now);
+    }
+
+    private static void requireCancellable(MentoringSession s) {
+        if (!BookingRules.HOLDING_STATUSES.contains(s.getStatus())) {
+            throw ApiException.conflict("SESSION_NOT_CANCELLABLE", "Phiên không thể huỷ ở trạng thái hiện tại");
+        }
+        if (!s.getScheduledAt().isAfter(OffsetDateTime.now())) {
+            throw ApiException.conflict("SESSION_ALREADY_STARTED", "Không thể huỷ phiên đã bắt đầu");
+        }
+    }
+
+    /** Mentor của phiên → MENTOR, mentee → MENTEE, admin/nội bộ → SYSTEM. */
+    static CancellationPolicy.Actor actorOf(AuthUser user, MentoringSession s) {
+        if (user.userId() != null && user.userId().equals(s.getMentorId())) return CancellationPolicy.Actor.MENTOR;
+        if (user.userId() != null && user.userId().equals(s.getMenteeId())) return CancellationPolicy.Actor.MENTEE;
+        return CancellationPolicy.Actor.SYSTEM;
+    }
+
+    private static String money(java.math.BigDecimal amount) {
+        return String.format("%,d", amount.longValue()).replace(',', '.') + "đ";
     }
 
     /**
@@ -223,6 +425,32 @@ public class SessionService {
         });
         notifications.notifyUser(session.getMenteeId(), "SESSION_COMPLETED", "Phiên mentoring đã hoàn thành",
                 "Hãy dành 1 phút đánh giá mentor để giúp cộng đồng nhé!", "/mentoring/sessions");
+        return toView(session);
+    }
+
+    /** US-04 — mentor (hoặc admin) đặt link phòng họp riêng cho phiên chưa kết thúc. */
+    public SessionView updateMeetingLink(AuthUser user, UUID sessionId, MeetingLinkInput in) {
+        String link = in.meetingLink().trim();
+        if (!MeetingLinks.isAllowed(link)) {
+            throw ApiException.badRequest("INVALID_MEETING_LINK",
+                    "Link phòng họp phải là https trên meet.google.com, zoom.us hoặc teams.microsoft.com");
+        }
+        MentoringSession session = tx.execute(s -> {
+            MentoringSession ss = find(sessionId);
+            if (!user.isAdmin() && !ss.getMentorId().equals(user.userId())) {
+                throw ApiException.forbidden("Chỉ mentor của phiên mới được đổi link phòng họp");
+            }
+            if (!BookingRules.HOLDING_STATUSES.contains(ss.getStatus()) || !ss.endsAt().isAfter(OffsetDateTime.now())) {
+                throw ApiException.conflict("SESSION_NOT_EDITABLE", "Chỉ đổi được link của phiên sắp diễn ra");
+            }
+            ss.setMeetingLink(link);
+            return ss;
+        });
+        if (session.getStatus() == MentoringSession.Status.CONFIRMED) {
+            notifications.notifyUser(session.getMenteeId(), "MEETING_LINK_UPDATED", "Link phòng họp đã thay đổi",
+                    "Mentor đã cập nhật link phòng họp cho phiên lúc "
+                            + session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY) + ".", "/mentoring/sessions");
+        }
         return toView(session);
     }
 
@@ -304,11 +532,18 @@ public class SessionService {
         Map<UUID, Review> reviews = sessions.isEmpty() ? Map.of()
                 : reviewRepo.findBySessionIdIn(sessions.stream().map(MentoringSession::getId).toList()).stream()
                 .collect(Collectors.toMap(Review::getSessionId, r -> r));
+        Map<UUID, RescheduleProposal> pending = sessions.isEmpty() ? Map.of()
+                : proposalRepo.findBySessionIdInAndStatus(sessions.stream().map(MentoringSession::getId).toList(),
+                        RescheduleProposal.Status.PENDING).stream()
+                .collect(Collectors.toMap(RescheduleProposal::getSessionId, p -> p, (a, b) -> a));
         return sessions.stream().map(s -> {
             Review r = reviews.get(s.getId());
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
-                    names.get(s.getMentorId()), s.getScheduledAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
-                    s.getStatus().name(), r != null, r == null ? null : r.getRating(), s.getCreatedAt());
+                    names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
+                    s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
+                    MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(),
+                    s.getCancelledBy(), s.getCancelReason(), s.getRefundPercent(),
+                    s.getRescheduleCount(), pending.containsKey(s.getId()) ? RescheduleService.toView(pending.get(s.getId())) : null, r != null, r == null ? null : r.getRating(), s.getCreatedAt());
         }).toList();
     }
 

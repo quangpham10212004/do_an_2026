@@ -23,9 +23,11 @@ interface SlotPickerProps {
   value: IsoDateTime | null;
   onChange: (startAt: IsoDateTime | null) => void;
   refreshKey?: number;
+  /** US-06 — khi dời lịch: không coi chính phiên này là bận. */
+  excludeSessionId?: Uuid;
 }
 
-export default function SlotPicker({ mentorId, durationMinutes, value, onChange, refreshKey }: SlotPickerProps) {
+export default function SlotPicker({ mentorId, durationMinutes, value, onChange, refreshKey, excludeSessionId }: SlotPickerProps) {
   const [data, setData] = useState<AvailableSlots | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [day, setDay] = useState<string | null>(null);
@@ -34,11 +36,11 @@ export default function SlotPicker({ mentorId, durationMinutes, value, onChange,
     let cancelled = false;
     setData(undefined);
     setError("");
-    mentoringApi.availableSlots(mentorId, durationMinutes, DAYS)
+    mentoringApi.availableSlots(mentorId, durationMinutes, DAYS, excludeSessionId)
       .then((d) => !cancelled && setData(d))
       .catch((e) => { if (!cancelled) { setError(errorMessage(e)); setData(null); } });
     return () => { cancelled = true; };
-  }, [mentorId, durationMinutes, refreshKey]);
+  }, [mentorId, durationMinutes, refreshKey, excludeSessionId]);
 
   const timeZone = data?.timezone || "Asia/Ho_Chi_Minh";
   const { days, byDay } = useMemo(() => {

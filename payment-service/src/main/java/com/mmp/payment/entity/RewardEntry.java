@@ -25,6 +25,10 @@ public class RewardEntry {
     @Column(name = "referral_id")
     private UUID referralId;
 
+    /** US-01 — phiên gắn với điểm thưởng (vd. MENTOR_CANCEL_APOLOGY), dùng chống cộng trùng. */
+    @Column(name = "session_id")
+    private UUID sessionId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -38,6 +42,13 @@ public class RewardEntry {
         this.referralId = referralId;
     }
 
+    public static RewardEntry forSession(UUID userId, int points, String reason, UUID sessionId) {
+        RewardEntry e = new RewardEntry(userId, points, reason, null);
+        e.sessionId = sessionId;
+        return e;
+    }
+
+    public UUID getSessionId() { return sessionId; }
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public int getPoints() { return points; }

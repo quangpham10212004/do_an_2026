@@ -44,7 +44,17 @@ public final class PaymentDtos {
         }
     }
 
-    public record RefundRequest(@NotNull UUID sessionId, @Size(max = 300) String reason) {
+    /**
+     * percent tuỳ chọn (mặc định 100). Sprint 1 chỉ hỗ trợ hoàn toàn bộ — hoàn một phần thuộc US-13.
+     */
+    public record RefundRequest(@NotNull UUID sessionId, @Size(max = 300) String reason,
+                                @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) Integer percent) {
+    }
+
+    /** US-01 — mentoring-service cộng điểm thưởng (idempotent theo userId + reason + sessionId). */
+    public record GrantRewardRequest(@NotNull UUID userId, @NotNull @jakarta.validation.constraints.Min(1)
+                                     @jakarta.validation.constraints.Max(10000) Integer points,
+                                     @NotBlank @Size(max = 100) String reason, @NotNull UUID sessionId) {
     }
 
     public record RegisterReferralRequest(@NotBlank String code, @NotNull UUID refereeId) {

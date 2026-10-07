@@ -5,12 +5,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * Cảnh báo lớn khi JWT_SECRET / INTERNAL_API_KEY đang dùng giá trị dev mặc định
- * trong application.yml. Không chặn khởi động để local dev và test vẫn chạy được,
- * nhưng khi triển khai thật bắt buộc phải đặt hai biến này (xem .env.example).
+ * Kiểm tra JWT_SECRET / INTERNAL_API_KEY còn dùng giá trị dev mặc định trong application.yml.
+ * <ul>
+ *   <li>NFR-9: khi profile {@code prod} đang bật → <b>chặn khởi động</b> (ném IllegalStateException
+ *       ngay lúc tạo bean, Spring Boot dừng ứng dụng).</li>
+ *   <li>Các profile khác (local dev, test, docker compose demo) → chỉ log WARN.</li>
+ * </ul>
  */
 @Component
 public class DevSecretsWarning {
@@ -25,9 +33,23 @@ public class DevSecretsWarning {
     private final String internalApiKey;
 
     public DevSecretsWarning(@Value("${app.security.jwt-secret}") String jwtSecret,
-                             @Value("${app.security.internal-api-key}") String internalApiKey) {
+                             @Value("${app.security.internal-api-key}") String internalApiKey,
+                             Environment environment) {
         this.jwtSecret = jwtSecret;
         this.internalApiKey = internalApiKey;
+        failIfProdWithDevSecrets(environment.acceptsProfiles(Profiles.of("prod")), jwtSecret, internalApiKey);
+    }
+
+    /** NFR-9 — tách thành hàm tĩnh để unit test. */
+    static void failIfProdWithDevSecrets(boolean prod, String jwtSecret, String internalApiKey) {
+        if (!prod) return;
+        List<String> offending = new ArrayList<>();
+        if (jwtSecret == null || jwtSecret.isBlank() || DEV_JWT_SECRET.equals(jwtSecret)) offending.add("JWT_SECRET");
+        if (internalApiKey == null || internalApiKey.isBlank() || DEV_INTERNAL_API_KEY.equals(internalApiKey)) offending.add("INTERNAL_API_KEY");
+        if (!offending.isEmpty()) {
+            throw new IllegalStateException("Profile prod đang bật nhưng " + String.join(", ", offending)
+                    + " vẫn dùng giá trị dev mặc định — hãy đặt biến môi trường trước khi khởi động");
+        }
     }
 
     @EventListener(ApplicationReadyEvent.class)

@@ -38,6 +38,35 @@ public class MentoringSession {
     private String topic;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "session_type")
+    private SessionType sessionType;
+
+    private String agenda;
+
+    @Column(name = "pre_read_link")
+    private String preReadLink;
+
+    @Column(name = "meeting_link")
+    private String meetingLink;
+
+    /** US-01 — MENTEE | MENTOR | SYSTEM */
+    @Column(name = "cancelled_by")
+    private String cancelledBy;
+
+    @Column(name = "cancel_reason")
+    private String cancelReason;
+
+    @Column(name = "refund_percent")
+    private Integer refundPercent;
+
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
+    /** US-06 — số lần đã dời lịch (tối đa 2). */
+    @Column(name = "reschedule_count", nullable = false)
+    private int rescheduleCount;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
 
@@ -80,6 +109,24 @@ public class MentoringSession {
     public void setPrice(BigDecimal price) { this.price = price; }
     public String getTopic() { return topic; }
     public void setTopic(String topic) { this.topic = topic; }
+    public SessionType getSessionType() { return sessionType; }
+    public void setSessionType(SessionType sessionType) { this.sessionType = sessionType; }
+    public String getAgenda() { return agenda; }
+    public void setAgenda(String agenda) { this.agenda = agenda; }
+    public String getPreReadLink() { return preReadLink; }
+    public void setPreReadLink(String preReadLink) { this.preReadLink = preReadLink; }
+    public String getMeetingLink() { return meetingLink; }
+    public void setMeetingLink(String meetingLink) { this.meetingLink = meetingLink; }
+    public String getCancelledBy() { return cancelledBy; }
+    public void setCancelledBy(String cancelledBy) { this.cancelledBy = cancelledBy; }
+    public String getCancelReason() { return cancelReason; }
+    public void setCancelReason(String cancelReason) { this.cancelReason = cancelReason; }
+    public Integer getRefundPercent() { return refundPercent; }
+    public void setRefundPercent(Integer refundPercent) { this.refundPercent = refundPercent; }
+    public OffsetDateTime getCancelledAt() { return cancelledAt; }
+    public void setCancelledAt(OffsetDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
+    public int getRescheduleCount() { return rescheduleCount; }
+    public void setRescheduleCount(int rescheduleCount) { this.rescheduleCount = rescheduleCount; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public boolean isReminderSent() { return reminderSent; }

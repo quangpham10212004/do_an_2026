@@ -42,7 +42,8 @@ public class MentoringRequestService {
         if (!"APPROVED".equals(mentor.verificationStatus())) {
             throw ApiException.badRequest("MENTOR_NOT_VERIFIED", "Mentor chưa được xác thực năng lực");
         }
-        if (!mentor.isAvailable()) {
+        // US-05 — PAUSED/ON_LEAVE/SUSPENDED: không nhận mentee mới (mentee đã được nhận vẫn đặt lịch được khi PAUSED)
+        if (!mentor.isAvailable() || mentor.effectiveStatus() != ProfileClient.MentorStatus.ACCEPTING) {
             throw ApiException.badRequest("MENTOR_UNAVAILABLE", "Mentor hiện không nhận mentee mới");
         }
         if (requestRepo.existsByMenteeIdAndMentorIdAndStatusIn(mentee.userId(), in.mentorId(), OPEN_STATUSES)) {
