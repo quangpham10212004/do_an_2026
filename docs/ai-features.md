@@ -445,6 +445,14 @@ chuỗi chiến lược thu được gồm cả `DEEPEN` và `PIVOT`, buổi ph�
 thái `PENDING_REVIEW`, có điểm tổng và tóm tắt; mentor chỉ xuất hiện trong kết quả matching sau khi
 admin bấm duyệt.
 
+### 2.8b Đánh giá (US-24, PRD 6.1 Evaluation)
+- **Offline**: 40 câu trả lời có nhãn (10 câu mỗi dải 0–2 / 3–5 / 6–8 / 9–10, tiếng Việt + tiếng Anh) ở
+  `scripts/eval/interview/answers.csv`; `scripts/eval/interview/run_eval.py` chấm bằng rule-based (và DeepSeek khi có
+  `DEEPSEEK_API_KEY`), báo cáo tỉ lệ trong ±2 điểm so với nhãn người chấm, theo dải và ma trận khuyến nghị →
+  [`docs/eval-interview.md`](eval-interview.md) (PROVISIONAL cho tới khi 2 người chấm điền `rater1`/`rater2`).
+- **Online**: tỉ lệ đồng thuận admin – AI ở `GET /api/ai/admin/stats` (`agreementRate`), hiển thị trên bảng điều
+  khiển admin và trang Duyệt mentor (mục tiêu ≥ 80%).
+
 ### 2.9 Hạn chế & hướng phát triển
 - Engine rule-based đánh giá theo từ khoá nên có thể bị "nhồi từ khoá"; đây là lý do bắt buộc admin
   duyệt và khuyến nghị dùng engine DeepSeek khi triển khai thật.

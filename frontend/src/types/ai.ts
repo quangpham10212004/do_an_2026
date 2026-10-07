@@ -82,6 +82,16 @@ export interface InterviewStats {
   interviewsPendingReview: number;
   mentorsApproved: number;
   mentorsRejected: number;
+  retakesRequested: number;
+  /** US-24 — chỉ số online: quyết định admin so với khuyến nghị AI */
+  decisionsTotal: number;
+  /** số quyết định mà AI đã khuyến nghị APPROVE / REJECT */
+  decisionsComparable: number;
+  decisionsAgreeing: number;
+  /** AI khuyến nghị NEEDS_REVIEW — không tính vào tỉ lệ */
+  decisionsOnNeedsReview: number;
+  /** 0..1; null khi chưa có quyết định so sánh được */
+  agreementRate: number | null;
 }
 
 // CV parsing + chatbot enrichment

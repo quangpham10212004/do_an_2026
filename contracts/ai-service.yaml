@@ -121,6 +121,12 @@ components:
         interviewsPendingReview: { type: integer }
         mentorsApproved: { type: integer }
         mentorsRejected: { type: integer }
+        retakesRequested: { type: integer }
+        decisionsTotal: { type: integer, description: "US-24: số buổi admin đã quyết định (APPROVED/REJECTED/RETAKE_REQUESTED)" }
+        decisionsComparable: { type: integer, description: Trong đó AI khuyến nghị APPROVE hoặc REJECT }
+        decisionsAgreeing: { type: integer, description: "APPROVE↔APPROVE hoặc REJECT↔REJECT (REQUEST_RETAKE = không đồng thuận)" }
+        decisionsOnNeedsReview: { type: integer, description: AI khuyến nghị NEEDS_REVIEW / không có — không tính vào tỉ lệ }
+        agreementRate: { type: number, nullable: true, description: "decisionsAgreeing / decisionsComparable (0..1); mục tiêu ≥ 0.8" }
     ParsedCv:
       type: object
       properties:

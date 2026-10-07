@@ -256,14 +256,34 @@ async def unlock(admin: AuthUser, mentor_id: UUID, note: str | None) -> Eligibil
     return after
 
 
+_STATUS_DECISION = {v: k for k, v in _DECISION_STATUS.items()}
+
+
+def agreement(rows: list[tuple[str, str | None, int]]) -> dict:
+    """US-24 — (status đã quyết định, khuyến nghị AI, số buổi) → các con số đồng thuận (hàm thuần)."""
+    total = comparable = agreeing = 0
+    for status, recommendation, count in rows:
+        total += count
+        agrees = rubric.agrees(_STATUS_DECISION[status], recommendation)
+        if agrees is not None:
+            comparable += count
+            agreeing += count if agrees else 0
+    return {"decisions_total": total, "decisions_comparable": comparable, "decisions_agreeing": agreeing,
+            "decisions_on_needs_review": total - comparable,
+            "agreement_rate": round(agreeing / comparable, 4) if comparable else None}
+
+
 async def stats() -> InterviewStats:
     pool = await get_pool()
     counts = await repo.count_by_status(pool)
+    reviewed = await repo.review_counts(pool)
     return InterviewStats(
         interviews_in_progress=counts.get("IN_PROGRESS", 0),
         interviews_pending_review=counts.get("PENDING_REVIEW", 0),
         mentors_approved=counts.get("APPROVED", 0),
-        mentors_rejected=counts.get("REJECTED", 0))
+        mentors_rejected=counts.get("REJECTED", 0),
+        retakes_requested=counts.get("RETAKE_REQUESTED", 0),
+        **agreement([(r["status"], r["recommendation"], r["total"]) for r in reviewed]))
 
 
 async def _find(db, interview_id: UUID):

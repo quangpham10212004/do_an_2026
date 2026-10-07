@@ -95,6 +95,13 @@ class InterviewStats(CamelModel):
     interviews_pending_review: int = 0
     mentors_approved: int = 0
     mentors_rejected: int = 0
+    retakes_requested: int = 0
+    # US-24 — chỉ số online: quyết định admin so với khuyến nghị AI (rubric.agrees)
+    decisions_total: int = 0
+    decisions_comparable: int = 0       # AI khuyến nghị APPROVE / REJECT
+    decisions_agreeing: int = 0
+    decisions_on_needs_review: int = 0  # AI khuyến nghị NEEDS_REVIEW (hoặc buổi cũ không có) — không tính vào tỉ lệ
+    agreement_rate: float | None = None  # 0..1; None khi chưa có quyết định nào so sánh được
 
 
 def _split(text: str | None) -> list[str]:

@@ -43,7 +43,8 @@ TRADEOFF = _rx(r"(trade-?offs?|danh doi|nhuoc diem|han che|gioi han|limitations?
 EXPERIENCE = _rx(r"(vi du|chang han|du an|\bprojects?\b|production|thuc te|kinh nghiem|da tung|tung lam|benchmark|do dac|"
                  r"khach hang|su co|incident|postmortem|cong ty|\bcompany\b|in my (last |previous )?(job|team|role)|"
                  r"\bi (built|led|migrated|designed|reduced|wrote|set up|introduced)|\bwe (built|migrated|reduced|used|moved|had)|"
-                 r"toi da|chung toi|nhom toi|team toi|\bmy team\b|at work)")
+                 r"toi da|chung toi|nhom toi|team toi|\bmy team\b|at work|"
+                 r"\bour (team|service|app|system|company|product|project|cluster|pipeline|platform|site)\b)")
 NUMBER = _rx(r"\d+([.,]\d+)?\s?(%|ms\b|s\b|giay|phut|gio\b|x\b|lan\b|users?\b|nguoi dung|rps|qps|gb\b|mb\b|k\b|"
              r"trieu|million|requests?|ngay\b|tuan\b|thang\b|days?\b|weeks?\b|months?\b|hours?\b|minutes?\b)")
 STRUCTURE = _rx(r"(thu nhat|thu hai|dau tien|tiep theo|sau do|cuoi cung|buoc \d|\bfirst(ly)?\b|\bsecond(ly)?\b|"

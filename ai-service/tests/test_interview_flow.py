@@ -80,7 +80,9 @@ def test_stats_count_by_status(client, db, fake_profile, fake_mentoring, mentor_
     start(client, mentor_id)
     stats = client.get("/api/ai/admin/stats", headers=auth(uuid.uuid4(), "ADMIN")).json()
     assert stats == {"interviewsInProgress": 1, "interviewsPendingReview": 0,
-                     "mentorsApproved": 0, "mentorsRejected": 0}
+                     "mentorsApproved": 0, "mentorsRejected": 0, "retakesRequested": 0,
+                     "decisionsTotal": 0, "decisionsComparable": 0, "decisionsAgreeing": 0,
+                     "decisionsOnNeedsReview": 0, "agreementRate": None}
 
 
 def test_start_requires_mentor_profile(client, db, fake_profile, mentor_id):

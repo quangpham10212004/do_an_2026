@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert, ScoreRing, StatusBadge } from "@/components/ui";
-import type { Interview, InterviewStrategy, InterviewTurn } from "@/types";
+import type { Interview, InterviewStats, InterviewStrategy, InterviewTurn } from "@/types";
 
 const STRATEGY_LABELS: Record<InterviewStrategy, string> = { OPENING: "Mở đầu", DEEPEN: "Đào sâu", PIVOT: "Chủ đề mới" };
 
@@ -76,6 +76,13 @@ export function InterviewTranscript({ interview, admin = false }: { interview: I
       ))}
     </div>
   );
+}
+
+/** US-24: "80% (8/10)" — tỉ lệ quyết định admin trùng khuyến nghị AI. */
+export function formatAgreement(stats: InterviewStats | null): string | null {
+  if (!stats) return null;
+  if (stats.agreementRate == null) return "Chưa có dữ liệu";
+  return `${Math.round(stats.agreementRate * 100)}% (${stats.decisionsAgreeing}/${stats.decisionsComparable})`;
 }
 
 export function AssessmentCard({ interview }: { interview: Interview }) {
