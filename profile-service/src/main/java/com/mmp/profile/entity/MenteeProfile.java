@@ -2,6 +2,7 @@ package com.mmp.profile.entity;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -10,6 +11,9 @@ import java.util.UUID;
 public class MenteeProfile {
 
     public enum Level { BEGINNER, INTERMEDIATE, ADVANCED }
+
+    /** US-16 — buổi muốn học: MORNING 06–12, AFTERNOON 12–18, EVENING 18–23 (giờ địa phương). */
+    public enum TimeOfDay { MORNING, AFTERNOON, EVENING }
 
     @Id
     @Column(name = "user_id")
@@ -35,6 +39,20 @@ public class MenteeProfile {
 
     @Column(name = "cv_file_url")
     private String cvFileUrl;
+
+    // US-16 — sở thích tìm mentor (matching-service dùng làm bộ lọc mặc định)
+    @Column(name = "preferred_days", columnDefinition = "integer[]", nullable = false)
+    private Integer[] preferredDays = new Integer[0];
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preferred_time_of_day")
+    private TimeOfDay preferredTimeOfDay;
+
+    @Column(name = "budget_max_per_hour")
+    private BigDecimal budgetMaxPerHour;
+
+    @Column(columnDefinition = "text[]", nullable = false)
+    private String[] languages = new String[0];
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -70,4 +88,16 @@ public class MenteeProfile {
     public String getCvFileUrl() { return cvFileUrl; }
     public void setCvFileUrl(String cvFileUrl) { this.cvFileUrl = cvFileUrl; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public Integer[] getPreferredDays() { return preferredDays; }
+    public TimeOfDay getPreferredTimeOfDay() { return preferredTimeOfDay; }
+    public BigDecimal getBudgetMaxPerHour() { return budgetMaxPerHour; }
+    public String[] getLanguages() { return languages; }
+
+    /** US-16 — thay toàn bộ sở thích (giá trị đã được MenteeRules chuẩn hoá). */
+    public void updatePreferences(Integer[] days, TimeOfDay timeOfDay, BigDecimal budget, String[] languages) {
+        this.preferredDays = days;
+        this.preferredTimeOfDay = timeOfDay;
+        this.budgetMaxPerHour = budget;
+        this.languages = languages;
+    }
 }

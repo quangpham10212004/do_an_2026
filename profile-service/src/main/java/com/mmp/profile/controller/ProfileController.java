@@ -119,6 +119,13 @@ public class ProfileController {
         return profileService.upsertMentee(userId, input);
     }
 
+    /** US-16 — sở thích tìm mentor (ngày, buổi, ngân sách, ngôn ngữ); matching dùng làm bộ lọc mặc định. */
+    @PutMapping("/mentee/{userId}/preferences")
+    public MenteeProfileResponse updatePreferences(@PathVariable UUID userId, @Valid @RequestBody MenteePreferencesInput input) {
+        requireOwnerWithRole(userId, "MENTEE");
+        return profileService.updatePreferences(userId, input);
+    }
+
     @PostMapping("/mentee/{userId}/enrichment-chat")
     public MenteeProfileResponse applyEnrichment(@PathVariable UUID userId, @Valid @RequestBody EnrichmentInput input) {
         CurrentUser.requireAccess(userId);

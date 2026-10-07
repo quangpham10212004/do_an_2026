@@ -114,7 +114,20 @@ export interface MenteeProfileInput {
   cvFileUrl?: string | null;
 }
 
-export interface MenteeProfile {
+/** US-16 — buổi muốn học: MORNING 06–12, AFTERNOON 12–18, EVENING 18–23. */
+export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING";
+
+/** US-16 (PRD-PROF-2) — sở thích tìm mentor; matching dùng làm bộ lọc mặc định. Rỗng/null = không giới hạn. */
+export interface MenteePreferences {
+  /** ISO-8601: 1 = Thứ Hai ... 7 = Chủ Nhật. */
+  preferredDays: number[];
+  preferredTimeOfDay: TimeOfDay | null;
+  /** VND / giờ. */
+  budgetMaxPerHour: number | null;
+  languages: LanguageCode[];
+}
+
+export interface MenteeProfile extends MenteePreferences {
   userId: Uuid;
   displayName: string;
   goal: string | null;
