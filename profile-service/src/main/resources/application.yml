@@ -35,3 +35,7 @@ app:
     # Chỉ dùng để báo matching-service lập lại chỉ mục sau khi hồ sơ thay đổi
     # (POST /internal/embeddings/reindex, bắn rồi quên).
     matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}
+    # US-27 — sau khi admin đình chỉ mentor: báo mentoring-service huỷ phiên tương lai
+    # (POST /internal/mentors/{id}/suspend, Team A) và ghi audit log (POST /internal/audit, auth-service).
+    mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}

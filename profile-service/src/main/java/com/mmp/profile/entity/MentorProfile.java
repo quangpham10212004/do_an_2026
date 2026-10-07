@@ -68,6 +68,16 @@ public class MentorProfile {
     @Column(name = "status_changed_at")
     private OffsetDateTime statusChangedAt;
 
+    // US-27 — đình chỉ bởi admin (hoặc hệ thống, suspended_by NULL)
+    @Column(name = "suspended_reason")
+    private String suspendedReason;
+
+    @Column(name = "suspended_at")
+    private OffsetDateTime suspendedAt;
+
+    @Column(name = "suspended_by")
+    private UUID suspendedBy;
+
     // US-04 — cài đặt đặt lịch
     @Column(name = "meeting_link")
     private String meetingLink;
@@ -160,11 +170,52 @@ public class MentorProfile {
     }
 
     public void changeStatus(Status status, LocalDate onLeaveUntil, String reason) {
+        boolean wasSuspended = this.status == Status.SUSPENDED;
         this.status = status;
         this.onLeaveUntil = status == Status.ON_LEAVE ? onLeaveUntil : null;
         this.statusReason = reason;
         this.statusChangedAt = OffsetDateTime.now();
+        if (status == Status.SUSPENDED) {
+            // Interface 2 (tranh chấp): hệ thống đình chỉ, không có admin thực hiện.
+            if (!wasSuspended) {
+                this.suspendedAt = this.statusChangedAt;
+                this.suspendedBy = null;
+            }
+            this.suspendedReason = reason;
+        } else {
+            clearSuspension();
+        }
     }
+
+    /** US-27 — admin đình chỉ mentor (tài khoản vẫn đăng nhập được, chỉ ngừng nhận mentee). */
+    public void suspend(String reason, UUID adminId, OffsetDateTime at) {
+        this.status = Status.SUSPENDED;
+        this.onLeaveUntil = null;
+        this.statusReason = reason;
+        this.statusChangedAt = at;
+        this.suspendedReason = reason;
+        this.suspendedAt = at;
+        this.suspendedBy = adminId;
+    }
+
+    /** US-27 — admin gỡ đình chỉ: về ACCEPTING. */
+    public void unsuspend(OffsetDateTime at) {
+        this.status = Status.ACCEPTING;
+        this.onLeaveUntil = null;
+        this.statusReason = null;
+        this.statusChangedAt = at;
+        clearSuspension();
+    }
+
+    private void clearSuspension() {
+        this.suspendedReason = null;
+        this.suspendedAt = null;
+        this.suspendedBy = null;
+    }
+
+    public String getSuspendedReason() { return suspendedReason; }
+    public OffsetDateTime getSuspendedAt() { return suspendedAt; }
+    public UUID getSuspendedBy() { return suspendedBy; }
     public float getRating() { return rating; }
     public void setRating(float rating) { this.rating = rating; }
     public int getRatingCount() { return ratingCount; }

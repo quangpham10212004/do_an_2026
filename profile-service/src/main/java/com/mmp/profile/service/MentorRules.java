@@ -127,6 +127,35 @@ public final class MentorRules {
         return isAvailable ? Status.ACCEPTING : Status.PAUSED;
     }
 
+    // ---------------- US-27: admin đình chỉ mentor ----------------
+
+    public static final int SUSPEND_REASON_MIN = 10;
+    public static final int SUSPEND_REASON_MAX = 500;
+
+    /** Lý do đình chỉ bắt buộc 10–500 ký tự (sau khi trim). Trả về lý do đã trim. */
+    public static String validateSuspendReason(String reason) {
+        String r = trimToNull(reason);
+        if (r == null || r.length() < SUSPEND_REASON_MIN || r.length() > SUSPEND_REASON_MAX) {
+            throw ApiException.badRequest("INVALID_SUSPEND_REASON",
+                    "Lý do tạm ngưng phải từ " + SUSPEND_REASON_MIN + " đến " + SUSPEND_REASON_MAX + " ký tự");
+        }
+        return r;
+    }
+
+    /** Chỉ đình chỉ mentor chưa bị đình chỉ. */
+    public static void requireSuspendable(Status current) {
+        if (current == Status.SUSPENDED) {
+            throw ApiException.conflict("MENTOR_ALREADY_SUSPENDED", "Mentor này đang bị tạm ngưng");
+        }
+    }
+
+    /** Chỉ gỡ đình chỉ khi mentor đang bị đình chỉ. */
+    public static void requireUnsuspendable(Status current) {
+        if (current != Status.SUSPENDED) {
+            throw ApiException.conflict("MENTOR_NOT_SUSPENDED", "Mentor này không bị tạm ngưng");
+        }
+    }
+
     // ---------------- US-04: cài đặt đặt lịch ----------------
 
     public static final Set<Integer> BUFFER_OPTIONS = Set.of(0, 15, 30);
