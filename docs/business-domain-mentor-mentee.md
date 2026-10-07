@@ -165,8 +165,10 @@ báo cho mentor và mentee → Đánh dấu đã nhắc.
 
 **Hoàn thành & đánh giá** (FR-5.6, FR-5.7)
 
-Sau buổi học, mentor bấm *Đánh dấu hoàn thành* (hoặc hệ thống tự hoàn thành sau khi phiên kết thúc 2
-giờ) → Mentee nhận thông báo mời đánh giá → Mentee mở *Phiên học*, bấm *Đánh giá*, chọn số sao và nhận
+Tới giờ kết thúc, phiên chuyển *Chờ xác nhận tham dự* (US-12) → Trong 48 giờ mỗi bên trả lời phiên đã diễn
+ra / bên kia vắng mặt / huỷ trong buổi gọi (nút *Đánh dấu hoàn thành* của mentor = "đã diễn ra") → Hệ thống kết luận
+(hai bên khớp → kết luận ngay; mâu thuẫn → tranh chấp, tạm giữ tiền; hết 48 giờ → theo câu trả lời duy nhất, không ai
+trả lời → hoàn thành) → Phiên hoàn thành: mentee nhận thông báo mời đánh giá → Mentee mở *Phiên học*, bấm *Đánh giá*, chọn số sao và nhận
 xét → Hệ thống kiểm tra phiên đã hoàn thành và chưa được đánh giá → Lưu đánh giá, tính lại điểm trung
 bình của mentor, đồng bộ sang profile-service (ảnh hưởng xếp hạng matching) → Mentor nhận thông báo.
 
@@ -366,11 +368,18 @@ stateDiagram-v2
     [*] --> PENDING: đặt lịch phiên có phí
     [*] --> CONFIRMED: đặt lịch phiên miễn phí
     PENDING --> CONFIRMED: thanh toán thành công
-    PENDING --> CANCELLED: huỷ / quá 30 phút chưa thanh toán
-    CONFIRMED --> CANCELLED: huỷ trước giờ bắt đầu (hoàn tiền)
-    CONFIRMED --> COMPLETED: mentor đánh dấu / tự động sau khi kết thúc 2 giờ
-    COMPLETED --> [*]: mentee đánh giá (tuỳ chọn)
+    PENDING --> CANCELLED: huỷ
+    PENDING --> EXPIRED: quá 30 phút chưa thanh toán
+    CONFIRMED --> CANCELLED: huỷ trước giờ bắt đầu (hoàn theo chính sách)
+    CONFIRMED --> AWAITING_ATTENDANCE: tới giờ kết thúc (US-12)
+    AWAITING_ATTENDANCE --> COMPLETED: cả hai HELD / một bên HELD + bên kia im lặng 48h / không ai trả lời 48h
+    AWAITING_ATTENDANCE --> NO_SHOW_MENTEE: mentor báo mentee vắng, mentee im lặng 48h (không hoàn)
+    AWAITING_ATTENDANCE --> NO_SHOW_MENTOR: mentee báo mentor vắng, mentor im lặng 48h (hoàn 100% + strike)
+    AWAITING_ATTENDANCE --> DISPUTED: hai bên trả lời khác nhau (giao dịch ON_HOLD, chờ US-32)
+    AWAITING_ATTENDANCE --> CANCELLED: huỷ trong buổi gọi (hoàn 100%, không strike)
+    COMPLETED --> [*]: mentee đánh giá (tuỳ chọn, chỉ COMPLETED)
     CANCELLED --> [*]
+    EXPIRED --> [*]
 ```
 
 ### 4.3 Giao dịch

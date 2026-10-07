@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import type {
+  AttendanceAnswer,
   AvailableSlots,
   BookSessionInput,
   CancelPreview,
@@ -35,7 +36,11 @@ export const mentoringApi = {
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
   updateMeetingLink: (id: Uuid, meetingLink: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/meeting-link`, { method: "PUT", body: { meetingLink } }),
+  /** US-12 — mentor đánh dấu đã diễn ra = trả lời HELD (chỉ trong 48 giờ sau giờ kết thúc). */
   completeSession: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/complete`, { method: "POST" }),
+  /** US-12 — xác nhận tham dự sau phiên. */
+  answerAttendance: (id: Uuid, answer: AttendanceAnswer) =>
+    api<MentoringSession>(`/api/mentoring/sessions/${id}/attendance`, { method: "POST", body: { answer } }),
   review: (id: Uuid, rating: number, comment: string) =>
     api<Review>(`/api/mentoring/sessions/${id}/review`, { method: "POST", body: { rating, comment } }),
   mentorReviews: (mentorId: Uuid) => api<Review[]>(`/api/mentoring/mentors/${mentorId}/reviews`),

@@ -42,6 +42,10 @@ class MeetingLinksTest {
         assertThat(MeetingLinks.visibleFor(MentoringSession.Status.CANCELLED)).isFalse();
         assertThat(MeetingLinks.visibleFor(MentoringSession.Status.CONFIRMED)).isTrue();
         assertThat(MeetingLinks.visibleFor(MentoringSession.Status.COMPLETED)).isTrue();
+        // US-12 — các trạng thái sau CONFIRMED vẫn thấy link; EXPIRED (chưa thanh toán) thì không
+        assertThat(MeetingLinks.visibleFor(MentoringSession.Status.AWAITING_ATTENDANCE)).isTrue();
+        assertThat(MeetingLinks.visibleFor(MentoringSession.Status.DISPUTED)).isTrue();
+        assertThat(MeetingLinks.visibleFor(MentoringSession.Status.EXPIRED)).isFalse();
     }
 
     @Test

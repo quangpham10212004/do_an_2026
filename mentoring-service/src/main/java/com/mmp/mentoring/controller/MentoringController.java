@@ -2,6 +2,7 @@ package com.mmp.mentoring.controller;
 
 import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.security.CurrentUser;
+import com.mmp.mentoring.service.AttendanceService;
 import com.mmp.mentoring.service.MentoringRequestService;
 import com.mmp.mentoring.service.NotificationService;
 import com.mmp.mentoring.service.RescheduleService;
@@ -22,13 +23,16 @@ public class MentoringController {
     private final SessionService sessionService;
     private final NotificationService notificationService;
     private final RescheduleService rescheduleService;
+    private final AttendanceService attendanceService;
 
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
-                               NotificationService notificationService, RescheduleService rescheduleService) {
+                               NotificationService notificationService, RescheduleService rescheduleService,
+                               AttendanceService attendanceService) {
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
         this.rescheduleService = rescheduleService;
+        this.attendanceService = attendanceService;
     }
 
     // ---- Mentoring requests (FR-5.2, FR-5.3) ----
@@ -118,10 +122,20 @@ public class MentoringController {
         return rescheduleService.decline(CurrentUser.get(), id);
     }
 
+    /** Giữ từ Sprint 1 — US-12: = mentor trả lời HELD (chỉ trong 48 giờ sau giờ kết thúc). */
     @PostMapping("/sessions/{id}/complete")
     @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
     public SessionView complete(@PathVariable UUID id) {
-        return sessionService.complete(CurrentUser.get(), id);
+        attendanceService.completeByMentor(CurrentUser.get(), id);
+        return sessionService.get(CurrentUser.get(), id);
+    }
+
+    /** US-12 — xác nhận tham dự sau phiên (mentee / mentor của phiên). */
+    @PostMapping("/sessions/{id}/attendance")
+    @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")
+    public SessionView attendance(@PathVariable UUID id, @Valid @RequestBody AttendanceInput in) {
+        attendanceService.answer(CurrentUser.get(), id, in.answer());
+        return sessionService.get(CurrentUser.get(), id);
     }
 
     @PostMapping("/sessions/{id}/review")

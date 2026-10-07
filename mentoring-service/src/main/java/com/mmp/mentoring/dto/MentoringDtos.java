@@ -61,7 +61,13 @@ public final class MentoringDtos {
                               String topic, String sessionType, String agenda, String preReadLink,
                               String meetingLink, String status, String cancelledBy, String cancelReason, Integer refundPercent,
                               int rescheduleCount, RescheduleView pendingReschedule,
+                              String menteeAttendance, String mentorAttendance, OffsetDateTime attendanceDeadline,
+                              String attendanceResolution,
                               boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
+    }
+
+    /** US-12 — câu trả lời xác nhận tham dự. */
+    public record AttendanceInput(@NotNull com.mmp.mentoring.entity.MentoringSession.Attendance answer) {
     }
 
     /** US-06 — đề xuất dời lịch. */
@@ -102,7 +108,8 @@ public final class MentoringDtos {
     }
 
     public record AdminStats(long pendingSessions, long confirmedSessions, long completedSessions,
-                             long cancelledSessions) {
+                             long cancelledSessions, long awaitingAttendanceSessions, long expiredSessions,
+                             long noShowMenteeSessions, long noShowMentorSessions, long disputedSessions) {
     }
 
     // ---------- Internal ----------

@@ -10,7 +10,8 @@ import java.util.UUID;
 @Table(name = "payment_outbox")
 public class PaymentOutbox {
 
-    public enum Kind { REWARD }
+    /** REWARD (US-01), REFUND (US-12 NO_SHOW_MENTOR / CANCELLED_ON_CALL), HOLD (US-12 DISPUTED). */
+    public enum Kind { REWARD, REFUND, HOLD }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -57,6 +58,12 @@ public class PaymentOutbox {
     public OffsetDateTime getSentAt() { return sentAt; }
 
     public void markSent() {
+        this.sentAt = OffsetDateTime.now();
+    }
+
+    /** Lỗi vĩnh viễn (4xx từ payment-service): không gửi lại, giữ lý do để tra cứu. */
+    public void markAbandoned(String error) {
+        markFailed(error);
         this.sentAt = OffsetDateTime.now();
     }
 

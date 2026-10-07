@@ -3,7 +3,27 @@ import type { SessionType } from "./profile";
 
 // contracts/mentoring-service.yaml
 export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED";
-export type SessionStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+/** US-12 — PENDING = chờ thanh toán; EXPIRED = quá hạn thanh toán; AWAITING_ATTENDANCE = chờ hai bên xác nhận tham dự. */
+export type SessionStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "AWAITING_ATTENDANCE"
+  | "COMPLETED"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "NO_SHOW_MENTEE"
+  | "NO_SHOW_MENTOR"
+  | "DISPUTED";
+/** US-12 — câu trả lời xác nhận tham dự. Mentee: HELD | MENTOR_NO_SHOW | CANCELLED_ON_CALL; mentor: HELD | MENTEE_NO_SHOW | CANCELLED_ON_CALL. */
+export type AttendanceAnswer = "HELD" | "MENTOR_NO_SHOW" | "MENTEE_NO_SHOW" | "CANCELLED_ON_CALL";
+export type AttendanceResolution =
+  | "BOTH_HELD"
+  | "HELD_ONE_SIDE"
+  | "NO_ANSWER"
+  | "MENTEE_NO_SHOW_REPORTED"
+  | "MENTOR_NO_SHOW_REPORTED"
+  | "CONFLICT"
+  | "CANCELLED_ON_CALL";
 /** US-03 — thời lượng phiên được phép (phút). */
 export type SessionDuration = 30 | 45 | 60 | 90 | 120;
 
@@ -43,6 +63,11 @@ export interface MentoringSession {
   refundPercent: number | null;
   rescheduleCount: number;
   pendingReschedule: RescheduleProposal | null;
+  menteeAttendance: AttendanceAnswer | null;
+  mentorAttendance: AttendanceAnswer | null;
+  /** endsAt + 48 giờ — hạn xác nhận tham dự. */
+  attendanceDeadline: IsoDateTime;
+  attendanceResolution: AttendanceResolution | null;
   reviewed: boolean;
   reviewRating: number | null;
   createdAt: IsoDateTime;
@@ -139,4 +164,9 @@ export interface MentoringStats {
   confirmedSessions: number;
   completedSessions: number;
   cancelledSessions: number;
+  awaitingAttendanceSessions: number;
+  expiredSessions: number;
+  noShowMenteeSessions: number;
+  noShowMentorSessions: number;
+  disputedSessions: number;
 }

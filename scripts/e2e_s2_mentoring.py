@@ -185,7 +185,112 @@ def us13(ctx):
           t["status"] == "REFUNDED" and len(t["refunds"]) == 1 and float(t["refunds"][0]["amount"]) == float(t["amount"]), t)
 
 
-STORIES = {"US-13": us13}
+def paid_session(ctx, day):
+    s = book(ctx["mentee"], ctx["mentor"], at(day, 9), duration=90)
+    charge(s["id"], CARD, ctx["mentee"]["accessToken"])
+    return s
+
+
+def us12(ctx):
+    print("US-12 — Xác nhận tham dự sau phiên")
+    mentor, mentee = ctx["mentor"], ctx["mentee"]
+
+    # Trước giờ kết thúc: chưa xác nhận được; không tự báo mình vắng mặt
+    s = paid_session(ctx, 20)
+    status, code = error_code(lambda: attend(mentee, s["id"], "HELD"))
+    check("US-12", "Trước giờ kết thúc → 409 ATTENDANCE_NOT_OPEN", status == 409 and code == "ATTENDANCE_NOT_OPEN", (status, code))
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/complete", token=mentor["accessToken"]))
+    check("US-12", "Mentor 'Đánh dấu hoàn thành' trước giờ kết thúc → 409 (không còn hoàn thành sớm)", status == 409, (status, code))
+    ended(s["id"], 5)
+    check("US-12", "Tới giờ kết thúc: CONFIRMED → AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
+    status, code = error_code(lambda: attend(mentee, s["id"], "MENTEE_NO_SHOW"))
+    check("US-12", "Mentee tự báo mình vắng → 400 INVALID_ATTENDANCE_ANSWER", status == 400 and code == "INVALID_ATTENDANCE_ANSWER",
+          (status, code))
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/review", {"rating": 5},
+                                           token=mentee["accessToken"]))
+    check("US-12", "Chưa COMPLETED thì chưa đánh giá được (409)", status == 409, (status, code))
+    one = attend(mentee, s["id"], "HELD")
+    check("US-12", "Một bên HELD → vẫn chờ bên kia", one["status"] == "AWAITING_ATTENDANCE" and one["menteeAttendance"] == "HELD", one)
+    status, code = error_code(lambda: attend(mentee, s["id"], "HELD"))
+    check("US-12", "Mỗi bên chỉ trả lời 1 lần (409 ATTENDANCE_ALREADY_ANSWERED)", code == "ATTENDANCE_ALREADY_ANSWERED", (status, code))
+    done = call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/complete", token=mentor["accessToken"])
+    check("US-12", "Mentor 'complete' = HELD → cả hai HELD → COMPLETED", done["status"] == "COMPLETED"
+          and done["mentorAttendance"] == "HELD" and done["attendanceResolution"] == "BOTH_HELD", done)
+    call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/review", {"rating": 5}, token=mentee["accessToken"])
+    check("US-12", "Phiên COMPLETED đánh giá được", get_session(mentee, s["id"])["reviewed"])
+
+    # AC: không ai trả lời → COMPLETED sau 48 giờ
+    s = paid_session(ctx, 21)
+    dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 47 * 60})
+    dev("jobs/attendance")
+    check("US-12", "Sau 47 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
+    ended(s["id"], 48 * 60 + 1)
+    v = get_session(mentee, s["id"])
+    t = txs(mentee, s["id"])[0]
+    check("US-12", "Không ai trả lời → COMPLETED 48 giờ sau giờ kết thúc, mentor được trả (giao dịch SUCCESS) (AC)",
+          v["status"] == "COMPLETED" and v["attendanceResolution"] == "NO_ANSWER" and t["status"] == "SUCCESS", (v["status"], t["status"]))
+
+    # AC: trả lời mâu thuẫn → DISPUTED ngay, giao dịch ON_HOLD, không hoàn/không trả
+    s = paid_session(ctx, 22)
+    ended(s["id"], 5)
+    attend(mentee, s["id"], "HELD")
+    v = attend(mentor, s["id"], "MENTEE_NO_SHOW")
+    t = txs(mentee, s["id"])[0]
+    if t["status"] != "ON_HOLD":   # outbox gửi ngay sau commit; lỗi tạm thời → job gửi lại
+        dev("jobs/payment-outbox")
+        t = txs(mentee, s["id"])[0]
+    check("US-12", "Trả lời mâu thuẫn → DISPUTED ngay; giao dịch ON_HOLD, không có refund (AC)",
+          v["status"] == "DISPUTED" and t["status"] == "ON_HOLD" and t["refunds"] == [], (v["status"], t["status"], t["refunds"]))
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/review", {"rating": 1},
+                                           token=mentee["accessToken"]))
+    check("US-12", "Phiên DISPUTED không đánh giá được", status == 409, (status, code))
+    admin_notes = call("GET", f"{MENTORING}/api/mentoring/notifications?limit=100", token=ctx["admin"]["accessToken"])["items"]
+    check("US-12", "Admin nhận thông báo SESSION_DISPUTED (hook US-32)",
+          any(n["type"] == "SESSION_DISPUTED" and s["id"] in n["message"] for n in admin_notes))
+
+    # Mentee báo mentor vắng, mentor im lặng 48 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
+    s = paid_session(ctx, 23)
+    ended(s["id"], 5)
+    attend(mentee, s["id"], "MENTOR_NO_SHOW")
+    ended(s["id"], 48 * 60 + 1)
+    v = get_session(mentee, s["id"])
+    t = txs(mentee, s["id"])[0]
+    if t["status"] != "REFUNDED":
+        dev("jobs/payment-outbox")
+        t = txs(mentee, s["id"])[0]
+    strikes = [n for n in call("GET", f"{MENTORING}/api/mentoring/notifications?limit=50", token=mentor["accessToken"])["items"]
+               if n["type"] == "MENTOR_STRIKE" and "vắng mặt" in n["message"]]
+    check("US-12", "Mentee báo mentor vắng + mentor im lặng → NO_SHOW_MENTOR, giao dịch REFUNDED 100%, mentor bị strike",
+          v["status"] == "NO_SHOW_MENTOR" and v["refundPercent"] == 100 and t["status"] == "REFUNDED"
+          and float(t["refundedAmount"]) == float(t["amount"]) and len(strikes) >= 1, (v["status"], t["status"], len(strikes)))
+
+    # Mentor báo mentee vắng, mentee im lặng → NO_SHOW_MENTEE, không hoàn
+    s = paid_session(ctx, 24)
+    ended(s["id"], 5)
+    attend(mentor, s["id"], "MENTEE_NO_SHOW")
+    ended(s["id"], 48 * 60 + 1)
+    v = get_session(mentee, s["id"])
+    t = txs(mentee, s["id"])[0]
+    check("US-12", "Mentor báo mentee vắng + mentee im lặng → NO_SHOW_MENTEE, không hoàn (SUCCESS)",
+          v["status"] == "NO_SHOW_MENTEE" and t["status"] == "SUCCESS" and t["refunds"] == [], (v["status"], t["status"]))
+
+    # Cả hai báo huỷ trong buổi gọi → CANCELLED, hoàn 100%, không strike
+    s = paid_session(ctx, 25)
+    ended(s["id"], 5)
+    attend(mentee, s["id"], "CANCELLED_ON_CALL")
+    v = attend(mentor, s["id"], "CANCELLED_ON_CALL")
+    t = txs(mentee, s["id"])[0]
+    if t["status"] != "REFUNDED":
+        dev("jobs/payment-outbox")
+        t = txs(mentee, s["id"])[0]
+    check("US-12", "Cả hai CANCELLED_ON_CALL → CANCELLED (cancelReason CANCELLED_ON_CALL), hoàn 100%",
+          v["status"] == "CANCELLED" and v["cancelReason"] == "CANCELLED_ON_CALL" and t["status"] == "REFUNDED", (v["status"], t["status"]))
+    status, code = error_code(lambda: attend(mentee, s["id"], "HELD"))
+    check("US-12", "Phiên đã kết luận không trả lời thêm được (409 ATTENDANCE_CLOSED)", code in ("ATTENDANCE_CLOSED", "ATTENDANCE_ALREADY_ANSWERED"),
+          (status, code))
+
+
+STORIES = {"US-13": us13, "US-12": us12}
 
 
 def main(selected):

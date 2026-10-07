@@ -32,8 +32,8 @@ public class PaymentClient {
     }
 
     /**
-     * US-01 — hoàn {@code percent}% giá phiên. Sprint 1 chỉ dùng 100% (chính sách chỉ có 100% / 0%; 0% không gọi);
-     * hoàn một phần do US-13 bổ sung phía payment-service.
+     * US-01 — hoàn {@code percent}% giá phiên (chính sách hiện chỉ có 100% / 0%; 0% không gọi). payment-service hỗ trợ
+     * hoàn một phần từ US-13. Lỗi → 502 REFUND_FAILED (người dùng thử lại).
      */
     public boolean refund(UUID sessionId, String reason, int percent) {
         try {
@@ -47,6 +47,34 @@ public class PaymentClient {
             return false;
         } catch (RestClientException e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Không thể hoàn tiền, vui lòng thử lại sau");
+        }
+    }
+
+    /**
+     * US-12 (qua outbox) — hoàn {@code percent}% không bọc lỗi: 404 (không có giao dịch đã thu tiền: phiên miễn phí /
+     * đã hoàn đủ) → false; lỗi khác ném RestClientException để outbox phân biệt 4xx (bỏ) với 5xx/mạng (gửi lại).
+     */
+    public boolean refundRaw(UUID sessionId, String reason, int percent) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("sessionId", sessionId.toString());
+            body.put("reason", reason);
+            body.put("percent", percent);
+            restClient.post().uri("/internal/payments/refund").body(body).retrieve().toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
+        }
+    }
+
+    /** US-12 — tạm giữ giao dịch của phiên DISPUTED (SUCCESS → ON_HOLD). 404 = phiên không có giao dịch đã thu tiền. */
+    public boolean hold(UUID sessionId, String reason) {
+        try {
+            restClient.post().uri("/internal/payments/hold")
+                    .body(Map.of("sessionId", sessionId.toString(), "reason", reason)).retrieve().toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
         }
     }
 

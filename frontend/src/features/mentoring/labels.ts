@@ -1,4 +1,4 @@
-import type { SessionDuration, SessionType } from "@/types";
+import type { AttendanceAnswer, AttendanceResolution, SessionDuration, SessionType } from "@/types";
 
 // Nhãn tiếng Việt cho các giá trị enum của mentoring-service (contracts/mentoring-service.yaml).
 
@@ -49,3 +49,27 @@ export function mentoringTone(status: string): "good" | "bad" | "warn" | "neutra
   if (["PENDING", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED"].includes(status)) return "warn";
   return "neutral";
 }
+
+/** US-12 — nhãn câu trả lời xác nhận tham dự. */
+export const ATTENDANCE_LABELS: Record<AttendanceAnswer, string> = {
+  HELD: "Phiên đã diễn ra",
+  MENTOR_NO_SHOW: "Mentor vắng mặt",
+  MENTEE_NO_SHOW: "Mentee vắng mặt",
+  CANCELLED_ON_CALL: "Huỷ trong buổi gọi",
+};
+
+/** Câu trả lời mỗi bên được chọn (không tự báo mình vắng mặt). */
+export const ATTENDANCE_CHOICES: Record<"MENTEE" | "MENTOR", AttendanceAnswer[]> = {
+  MENTEE: ["HELD", "MENTOR_NO_SHOW", "CANCELLED_ON_CALL"],
+  MENTOR: ["HELD", "MENTEE_NO_SHOW", "CANCELLED_ON_CALL"],
+};
+
+export const ATTENDANCE_RESOLUTION_LABELS: Record<AttendanceResolution, string> = {
+  BOTH_HELD: "cả hai xác nhận đã diễn ra",
+  HELD_ONE_SIDE: "một bên xác nhận đã diễn ra, bên kia không phản hồi trong 48 giờ",
+  NO_ANSWER: "không bên nào phản hồi trong 48 giờ",
+  MENTEE_NO_SHOW_REPORTED: "mentor báo mentee vắng mặt, mentee không phản hồi",
+  MENTOR_NO_SHOW_REPORTED: "mentee báo mentor vắng mặt, mentor không phản hồi",
+  CONFLICT: "hai bên xác nhận khác nhau",
+  CANCELLED_ON_CALL: "huỷ trong buổi gọi",
+};

@@ -287,7 +287,11 @@ def main():
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/review",
                                       {"rating": 5}, token=referred_token), 409)
     check(9, "Chưa hoàn thành phiên thì chưa đánh giá được", ok)
+    # US-12: không còn hoàn thành trước giờ kết thúc — dời phiên về quá khứ bằng endpoint dev, mentor "complete"
+    # (= trả lời HELD) và mentee xác nhận HELD → COMPLETED.
+    call("POST", f"{MENTORING}/internal/dev/sessions/{session['id']}/shift", {"endedMinutesAgo": 5}, internal=True)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/complete", token=mentor_token)
+    call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/attendance", {"answer": "HELD"}, token=referred_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/review", {"rating": 4, "comment": "Rat huu ich"}, token=referred_token)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
     check(9, "Mentee đánh giá được; rating mentor được cập nhật", mentor_profile["ratingCount"] == 1 and abs(mentor_profile["rating"] - 4) < 0.01)
