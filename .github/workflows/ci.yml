@@ -123,6 +123,15 @@ jobs:
         run: python3 scripts/seed_demo.py
       - name: Acceptance test (Definition of Done)
         run: python3 scripts/e2e_acceptance.py
+      - name: Sprint end-to-end suites
+        run: |
+          status=0
+          for f in scripts/e2e_p0_*.py scripts/e2e_s[0-9]*_*.py; do
+            echo "::group::$f"
+            python3 "$f" || { echo "::error::$f failed"; status=1; }
+            echo "::endgroup::"
+          done
+          exit $status
       - name: Service logs on failure
         if: failure()
         run: docker compose logs --tail=200
