@@ -7,9 +7,11 @@ import { DOMAINS, profileApi } from "@/features/profile/api";
 import { matchingApi } from "@/features/matching/api";
 import { aiApi } from "@/features/ai/api";
 import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
+import CvConsent from "@/features/ai/CvConsent";
 import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
 import MentorStatusControl from "@/features/profile/MentorStatusControl";
 import BookingSettings from "@/features/profile/BookingSettings";
+import MenteePreferences from "@/features/profile/MenteePreferences";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
@@ -89,6 +91,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
   const [slots, setSlots] = useState<SlotForm[]>([]);
   const [msg, setMsg] = useState<Flash>({});
   const [parsing, setParsing] = useState(false);
+  const [cvConsent, setCvConsent] = useState(false);
   const [cvListKey, setCvListKey] = useState(0);
 
   /** Sau khi xoá CV: ai-service đã gỡ cvFileUrl khỏi hồ sơ (best-effort) → tải lại hồ sơ, và bỏ
@@ -152,7 +155,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
     setParsing(true);
     setMsg({});
     try {
-      const cv = await aiApi.parseCv(file);
+      const cv = await aiApi.parseCv(file, cvConsent);
       const p = cv.parsed;
       setForm((f) => ({
         ...f,
@@ -184,6 +187,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
           <EmbeddingInfo profile={profile} />
           <div className="field">
             <label>Điền nhanh từ CV (PDF)</label>
+            <CvConsent checked={cvConsent} onChange={setCvConsent} audience="MENTOR" disabled={parsing} />
             <input type="file" accept="application/pdf" disabled={parsing} onChange={(e) => prefillFromCv(e.target.files?.[0])} />
             <div className="hint">{parsing ? "Đang phân tích CV..." : "Hệ thống trích xuất kỹ năng và số năm kinh nghiệm."}</div>
             {form.cvFileUrl && (
@@ -328,6 +332,7 @@ function MenteeProfileForm({ user }: { user: SessionUser }) {
         )}
         <button className="btn">Lưu hồ sơ</button>
       </form>
+      {profile && <MenteePreferences key={profile.userId} profile={profile} onChange={setProfile} />}
       <div style={{ maxWidth: 760, marginTop: "var(--spacing-16)" }}>
         <MyCvs onDeleted={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
       </div>

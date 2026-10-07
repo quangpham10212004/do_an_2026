@@ -70,7 +70,21 @@ export interface Cv {
   fileName: string;
   engine: string;
   parsed: ParsedCv;
+  /** US-19: false => CV này chỉ được xử lý bằng engine rule-based (không gửi DeepSeek). */
+  consentExternalAi: boolean;
+  /** US-20: null = chưa duyệt kết quả parse (chatbot chưa bắt đầu). */
+  confirmedFields: ConfirmedCvFields | null;
+  confirmedAt: IsoDateTime | null;
   createdAt: IsoDateTime;
+}
+
+/** US-20: thông tin CV người dùng đã xem lại / sửa / bỏ (PUT /api/ai/cv/{id}/confirmed-fields). */
+export interface ConfirmedCvFields {
+  role: string | null;
+  skills: string[];
+  yearsExperience: number | null;
+  projects: CvProject[];
+  education: string[];
 }
 
 export type EnrichmentSlot =
@@ -90,6 +104,9 @@ export interface EnrichmentMessage {
   answer: string | null;
 }
 
+/** US-21: NONE (chưa xong) → DRAFT → CONFIRMED (đồng bộ hồ sơ) | DISCARDED (không gửi gì). */
+export type EnrichmentGoalStatus = "NONE" | "DRAFT" | "CONFIRMED" | "DISCARDED";
+
 export interface Conversation {
   id: Uuid;
   menteeId: Uuid;
@@ -100,7 +117,12 @@ export interface Conversation {
   currentTurn: number;
   currentQuestion: EnrichmentMessage | null;
   messages: EnrichmentMessage[];
+  /** Goal NHÁP do chatbot tổng hợp — không tự ghi vào hồ sơ (US-21). */
   enrichedGoal: string | null;
+  goalStatus: EnrichmentGoalStatus;
+  /** Goal người dùng đã chọn dùng (có thể đã sửa). */
+  confirmedGoal: string | null;
+  goalDecidedAt: IsoDateTime | null;
   profileSynced: boolean;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
@@ -113,9 +135,11 @@ export interface CvSummary {
   uploadedAt: IsoDateTime;
   /** Dạng /api/ai/cv/{id}/file — cần access token, tải qua apiBlob(). */
   fileUrl: string;
+  consentExternalAi: boolean;
 }
 
 export interface CvUploadResult {
   cv: Cv;
-  conversation: Conversation;
+  /** US-20: null cho tới khi người dùng duyệt thông tin CV và bắt đầu chatbot. */
+  conversation: Conversation | null;
 }

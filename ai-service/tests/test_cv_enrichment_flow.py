@@ -36,9 +36,45 @@ def mentee_id():
     return uuid.uuid4()
 
 
-def upload(client, mentee_id, lines=CV_LINES):
+def upload(client, mentee_id, lines=CV_LINES, consent="false"):
     return client.post(f"/api/ai/mentee/{mentee_id}/cv-upload",
                        files={"file": ("cv.pdf", make_pdf(lines), "application/pdf")},
+                       data={"consentExternalAi": consent}, headers=auth(mentee_id, "MENTEE"))
+
+
+def confirm_parsed(client, mentee_id, cv):
+    """US-20: người dùng giữ nguyên kết quả parse (đổi tên currentRole -> role)."""
+    p = cv["parsed"]
+    fields = {"role": p["currentRole"], "skills": p["skills"], "yearsExperience": p["yearsExperience"],
+              "projects": p["projects"], "education": p["education"]}
+    res = client.put(f"/api/ai/cv/{cv['id']}/confirmed-fields", json=fields, headers=auth(mentee_id, "MENTEE"))
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def start_chat(client, mentee_id, cv_id):
+    return client.post(f"/api/ai/cv/{cv_id}/enrichment-conversation", headers=auth(mentee_id, "MENTEE"))
+
+
+def upload_and_start(client, mentee_id, consent="false", fields=None):
+    """upload → duyệt thông tin (mặc định giữ nguyên kết quả parse) → bắt đầu chatbot; trả về hội thoại."""
+    res = upload(client, mentee_id, consent=consent)
+    assert res.status_code == 200, res.text
+    cv = res.json()["cv"]
+    if fields is None:
+        confirm_parsed(client, mentee_id, cv)
+    else:
+        assert client.put(f"/api/ai/cv/{cv['id']}/confirmed-fields", json=fields,
+                          headers=auth(mentee_id, "MENTEE")).status_code == 200
+    started = start_chat(client, mentee_id, cv["id"])
+    assert started.status_code == 200, started.text
+    return started.json()["conversation"]
+
+
+def confirm_goal(client, mentee_id, conversation, goal=None):
+    """US-21: "Dùng mục tiêu này" — mặc định giữ nguyên bản nháp."""
+    return client.post(f"/api/ai/enrichment/conversations/{conversation['id']}/confirm-goal",
+                       json={"goal": conversation["enrichedGoal"] if goal is None else goal},
                        headers=auth(mentee_id, "MENTEE"))
 
 
@@ -53,23 +89,37 @@ def answer_all(client, conversation, mentee_id):
     return conversation, slots
 
 
-def test_upload_parses_cv_and_opens_conversation(client, db, fake_profile, mentee_id):
+def test_upload_parses_cv_without_starting_chat_or_touching_profile(client, db, fake_profile, mentee_id):
     res = upload(client, mentee_id)
     assert res.status_code == 200, res.text
     body = res.json()
     assert {"Java", "Spring Boot", "Docker"} <= set(body["cv"]["parsed"]["skills"])
     assert body["cv"]["parsed"]["projects"]
-    assert body["conversation"]["status"] == "IN_PROGRESS"
-    assert body["conversation"]["currentQuestion"]["slotLabel"]
+    assert body["cv"]["confirmedFields"] is None
+    assert body["conversation"] is None  # US-20: chatbot chỉ bắt đầu sau bước duyệt
+    assert fake_profile.enrichments == []
 
 
-def test_conversation_completes_and_syncs_profile(client, db, fake_profile, fake_mentoring, mentee_id):
-    conversation, slots = answer_all(client, upload(client, mentee_id).json()["conversation"], mentee_id)
+def test_conversation_opens_after_review(client, db, fake_profile, mentee_id):
+    conversation = upload_and_start(client, mentee_id)
+    assert conversation["status"] == "IN_PROGRESS"
+    assert conversation["currentQuestion"]["slotLabel"]
+    assert fake_profile.enrichments == []
+
+
+def test_conversation_completes_with_draft_and_syncs_profile_after_confirmation(client, db, fake_profile,
+                                                                               fake_mentoring, mentee_id):
+    conversation, slots = answer_all(client, upload_and_start(client, mentee_id), mentee_id)
     assert len(slots) == conversation["maxTurns"]
     assert len(set(slots)) == len(slots), "chatbot không được hỏi lặp cùng một slot"
     assert conversation["status"] == "COMPLETED"
     assert conversation["enrichedGoal"]
-    assert conversation["profileSynced"] is True
+    # US-21: goal là bản nháp, hồ sơ chưa đổi.
+    assert conversation["goalStatus"] == "DRAFT" and conversation["profileSynced"] is False
+    assert fake_profile.enrichments == [] and fake_mentoring.notifications == []
+
+    conversation = confirm_goal(client, mentee_id, conversation).json()
+    assert conversation["goalStatus"] == "CONFIRMED" and conversation["profileSynced"] is True
 
     synced_mentee, goal, skills, cv_url = fake_profile.enrichments[-1]
     assert synced_mentee == mentee_id
@@ -81,8 +131,9 @@ def test_conversation_completes_and_syncs_profile(client, db, fake_profile, fake
 
 def test_profile_sync_is_retried_when_profile_service_fails(client, db, fake_profile, fake_mentoring, mentee_id):
     fake_profile.enrichment_error = httpx.ConnectError("profile-service down")
-    conversation, _ = answer_all(client, upload(client, mentee_id).json()["conversation"], mentee_id)
-    assert conversation["status"] == "COMPLETED"
+    conversation, _ = answer_all(client, upload_and_start(client, mentee_id), mentee_id)
+    conversation = confirm_goal(client, mentee_id, conversation).json()
+    assert conversation["goalStatus"] == "CONFIRMED"
     assert conversation["profileSynced"] is False
     assert fake_profile.enrichments == []
 
@@ -96,10 +147,15 @@ def test_profile_sync_is_retried_when_profile_service_fails(client, db, fake_pro
 def test_latest_returns_cv_and_conversation(client, db, fake_profile, mentee_id):
     assert client.get(f"/api/ai/mentee/{mentee_id}/enrichment/latest",
                       headers=auth(mentee_id, "MENTEE")).status_code == 204
-    uploaded = upload(client, mentee_id).json()
+    conversation = upload_and_start(client, mentee_id)
     latest = client.get(f"/api/ai/mentee/{mentee_id}/enrichment/latest", headers=auth(mentee_id, "MENTEE")).json()
-    assert latest["cv"]["id"] == uploaded["cv"]["id"]
-    assert latest["conversation"]["id"] == uploaded["conversation"]["id"]
+    assert latest["cv"]["id"] == conversation["cvId"]
+    assert latest["conversation"]["id"] == conversation["id"]
+
+    # CV mới hơn chưa duyệt: latest trả CV đó, chưa có hội thoại.
+    newer = upload(client, mentee_id).json()["cv"]
+    latest = client.get(f"/api/ai/mentee/{mentee_id}/enrichment/latest", headers=auth(mentee_id, "MENTEE")).json()
+    assert latest["cv"]["id"] == newer["id"] and latest["conversation"] is None
 
 
 def test_cv_file_download_and_access_rules(client, db, fake_profile, fake_mentoring, mentee_id):
@@ -171,12 +227,12 @@ def test_upload_requires_mentee_profile(client, db, fake_profile, mentee_id):
 def test_cannot_upload_for_another_mentee(client, db, fake_profile, mentee_id):
     res = client.post(f"/api/ai/mentee/{uuid.uuid4()}/cv-upload",
                       files={"file": ("cv.pdf", make_pdf(CV_LINES), "application/pdf")},
-                      headers=auth(mentee_id, "MENTEE"))
+                      data={"consentExternalAi": "false"}, headers=auth(mentee_id, "MENTEE"))
     assert res.status_code == 403
 
 
 def test_cannot_answer_someone_elses_conversation(client, db, fake_profile, mentee_id):
-    conversation = upload(client, mentee_id).json()["conversation"]
+    conversation = upload_and_start(client, mentee_id)
     res = client.post(f"/api/ai/enrichment/conversations/{conversation['id']}/answers",
                       json={"answer": "Xin chao"}, headers=auth(uuid.uuid4(), "MENTEE"))
     assert res.status_code == 403
@@ -191,8 +247,8 @@ def _cv_files(owner_id):
 
 
 def test_owner_deletes_cv_with_conversation_and_file(client, db, fake_profile, mentee_id):
-    created = upload(client, mentee_id).json()
-    cv_id, conversation_id = created["cv"]["id"], created["conversation"]["id"]
+    conversation = upload_and_start(client, mentee_id)
+    cv_id, conversation_id = conversation["cvId"], conversation["id"]
     assert len(_cv_files(mentee_id)) == 1
 
     res = client.delete(f"/api/ai/cv/{cv_id}", headers=auth(mentee_id, "MENTEE"))
@@ -255,7 +311,7 @@ def test_my_cvs_lists_only_callers_cvs_newest_first(client, db, fake_profile, me
     assert res.status_code == 200
     items = res.json()
     assert [i["id"] for i in items] == [second, first]
-    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl"}
+    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl", "consentExternalAi"}
     assert items[0]["fileName"] == "cv.pdf"
     assert items[0]["fileUrl"] == f"/api/ai/cv/{second}/file"
     assert client.get("/api/ai/cv/mine", headers=auth(uuid.uuid4(), "MENTOR")).json() == []

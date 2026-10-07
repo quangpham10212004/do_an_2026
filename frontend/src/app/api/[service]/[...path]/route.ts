@@ -27,7 +27,8 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
   const target = `${base}/api/${params.service}/${params.path.map(encodeURIComponent).join("/")}${url.search}`;
 
   const headers = new Headers();
-  for (const name of ["authorization", "content-type", "accept"]) {
+  // idempotency-key: US-13 — POST /api/payment/charge bắt buộc header này
+  for (const name of ["authorization", "content-type", "accept", "idempotency-key"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }

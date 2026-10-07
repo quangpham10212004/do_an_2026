@@ -15,11 +15,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
-                    make_pdf, multipart_file)
+                    charge, make_pdf, multipart_file)
 
 VN = timezone(timedelta(hours=7))
 # US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
 BOOKING_FORM = {"sessionType": "CAREER_ADVICE", "agenda": "Review CV va dinh huong lo trinh backend Java"}
+# US-14 (Sprint 2): yêu cầu mentoring bắt buộc goal (50–1000 ký tự), sessionType, frequency, expectedDurationMonths
+REQUEST_FORM = {"goal": "Muon tro thanh backend developer Java, nam vung Spring Boot, REST API va microservices.",
+                "sessionType": "CAREER_ADVICE", "frequency": "WEEKLY", "expectedDurationMonths": 3}
 RUN = uuid.uuid4().hex[:6]
 results = []
 
@@ -120,13 +123,19 @@ def main():
 
     # ---------------- DoD 3: CV + chatbot enrichment ----------------
     print("\nDoD 3 — Upload CV, chatbot hỏi thêm, tổng hợp & re-embedding")
-    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES))
+    # Sprint 2 US-19: consentExternalAi bắt buộc (false => rule-based, tất định cho e2e)
+    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES), fields={"consentExternalAi": "false"})
     upload = call("POST", f"{AI}/api/ai/mentee/{mentee['userId']}/cv-upload", token=mentee_token,
                   raw_body=body, content_type=ctype)
     parsed = upload["cv"]["parsed"]
     check(3, "Parse CV: trích xuất kỹ năng", {"Java", "Spring Boot", "Docker"} <= set(parsed["skills"]), parsed["skills"])
     check(3, "Parse CV: trích xuất dự án & kinh nghiệm", len(parsed["projects"]) >= 2 and parsed["yearsExperience"] is not None, parsed)
-    conv = upload["conversation"]
+    # Sprint 2 US-20: upload chỉ parse (chưa có hội thoại); duyệt thông tin (giữ nguyên) rồi mới bắt đầu chatbot
+    check(3, "Upload chỉ parse, chưa mở chatbot (chờ người dùng duyệt)", upload["conversation"] is None)
+    call("PUT", f"{AI}/api/ai/cv/{upload['cv']['id']}/confirmed-fields", {
+        "role": parsed["currentRole"], "skills": parsed["skills"], "yearsExperience": parsed["yearsExperience"],
+        "projects": parsed["projects"], "education": parsed["education"]}, token=mentee_token)
+    conv = call("POST", f"{AI}/api/ai/cv/{upload['cv']['id']}/enrichment-conversation", token=mentee_token)["conversation"]
     first_q = conv["currentQuestion"]["question"]
     check(3, "Câu hỏi đầu dựa trên CV (nhắc lại kỹ năng đã có, không hỏi lại)", "Java" in first_q, first_q)
     answers = ["Toi muon lam backend developer Java trong 6 thang toi", "System design va microservices",
@@ -140,6 +149,12 @@ def main():
     check(3, f"Hội thoại kết thúc sau đúng {conv['maxTurns']} lượt, không lặp slot", len(slots) == conv["maxTurns"] and len(set(slots)) == len(slots), slots)
     check(3, "Mốc thời gian đã nêu ('6 tháng') nên không hỏi lại TIMELINE", "TIMELINE" not in slots, slots)
     check(3, "Tổng hợp goal chuẩn hoá", conv["enrichedGoal"] and "Nền tảng hiện có" in conv["enrichedGoal"])
+    # Sprint 2 US-21: goal là bản nháp — hồ sơ chỉ đổi sau khi mentee "Dùng mục tiêu này"
+    profile_draft = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
+    check(3, "Goal nháp chưa ghi vào hồ sơ trước khi xác nhận", conv["goalStatus"] == "DRAFT"
+          and not conv["profileSynced"] and profile_draft["goal"] != conv["enrichedGoal"], conv["goalStatus"])
+    conv = call("POST", f"{AI}/api/ai/enrichment/conversations/{conv['id']}/confirm-goal",
+                {"goal": conv["enrichedGoal"]}, token=mentee_token)
     profile_after = call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee_token)
     check(3, "Goal được ghi vào profile-service + gộp kỹ năng từ CV", conv["profileSynced"] and profile_after["goal"] == conv["enrichedGoal"]
           and "Spring Boot" in profile_after["skills"])
@@ -166,7 +181,7 @@ def main():
     ids, _ = mentor_ids_in_matching()
     check(5, "Mentor chưa qua AI Interview KHÔNG xuất hiện trong matching", mentor["userId"] not in ids)
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/requests",
-                                      {"mentorId": mentor["userId"]}, token=mentee_token), 400)
+                                      {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token), 400)
     check(5, "Không gửi được yêu cầu tới mentor chưa xác thực", ok)
 
     interview = call("POST", f"{AI}/api/ai/interviews", token=mentor_token)
@@ -228,7 +243,7 @@ def main():
 
     # ---------------- DoD 8: request → accept → book → pay → confirmed ----------------
     print("\nDoD 8 — Yêu cầu → chấp nhận → đặt lịch → thanh toán sandbox → xác nhận")
-    req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao"}, token=referred_token)
+    req = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], "message": "Xin chao", **REQUEST_FORM}, token=referred_token)
     check(8, "Mentee gửi yêu cầu mentoring", req["status"] == "PENDING")
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": next_slot().isoformat(), "durationMinutes": 60, **BOOKING_FORM},
@@ -260,21 +275,21 @@ def main():
     check(8, "Mentee chưa được chấp nhận không đặt được lịch với mentor", ok)
 
     expiry = (datetime.now() + timedelta(days=800)).strftime("%m/%y")
-    declined = call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": {
-        "cardNumber": "4000 0000 0000 0002", "expiry": expiry, "cvv": "123"}}, token=referred_token)
+    declined = charge(session["id"], {
+        "cardNumber": "4000 0000 0000 0002", "expiry": expiry, "cvv": "123"}, referred_token)
     check(8, "Thẻ bị từ chối → giao dịch FAILED", declined["status"] == "FAILED" and declined["failureReason"] == "CARD_DECLINED")
     still = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
     check(8, "Thanh toán thất bại thì phiên vẫn PENDING (FR-6.2)", still["status"] == "PENDING")
-    ok, _ = expect_error(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "amount": 1000, "card": {
-        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}}, token=referred_token), 400)
+    ok, _ = expect_error(lambda: charge(session["id"], {
+        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}, referred_token, amount=1000), 400)
     check(8, "Client sửa số tiền bị từ chối (AMOUNT_MISMATCH)", ok)
-    paid = call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": {
-        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}}, token=referred_token)
+    paid = charge(session["id"], {
+        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token)
     check(8, "Thẻ hợp lệ → giao dịch SUCCESS", paid["status"] == "SUCCESS")
     confirmed = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
     check(8, "Booking được xác nhận sau thanh toán thành công", confirmed["status"] == "CONFIRMED")
-    ok, _ = expect_error(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": session["id"], "card": {
-        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}}, token=referred_token), 409)
+    ok, _ = expect_error(lambda: charge(session["id"], {
+        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token), 409)
     check(8, "Không thanh toán trùng 1 phiên (409)", ok)
 
     # ---------------- DoD 10 (phần 2): points ----------------
@@ -287,7 +302,11 @@ def main():
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/review",
                                       {"rating": 5}, token=referred_token), 409)
     check(9, "Chưa hoàn thành phiên thì chưa đánh giá được", ok)
+    # US-12: không còn hoàn thành trước giờ kết thúc — dời phiên về quá khứ bằng endpoint dev, mentor "complete"
+    # (= trả lời HELD) và mentee xác nhận HELD → COMPLETED.
+    call("POST", f"{MENTORING}/internal/dev/sessions/{session['id']}/shift", {"endedMinutesAgo": 5}, internal=True)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/complete", token=mentor_token)
+    call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/attendance", {"answer": "HELD"}, token=referred_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/review", {"rating": 4, "comment": "Rat huu ich"}, token=referred_token)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
     check(9, "Mentee đánh giá được; rating mentor được cập nhật", mentor_profile["ratingCount"] == 1 and abs(mentor_profile["rating"] - 4) < 0.01)
@@ -305,15 +324,15 @@ def main():
     s2 = call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=4)).isoformat(),
         "durationMinutes": 60, **BOOKING_FORM}, token=referred_token)
-    call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": s2["id"], "card": {
-        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}}, token=referred_token)
+    charge(s2["id"], {
+        "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}, referred_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s2['id']}/cancel", {"reason": "Ban viec"}, token=referred_token)
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{s2['id']}/transactions", token=referred_token)
     check(8, "Huỷ phiên đã thanh toán → giao dịch REFUNDED (FR-6.3)", any(t["status"] == "REFUNDED" for t in txs), txs)
     # Sức chứa: mentor capacity=2, đã nhận 1 → nhận thêm 1 → mentee thứ 3 bị CAPACITY_FULL
-    r2 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"]}, token=mentee_token)
+    r2 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token)
     call("POST", f"{MENTORING}/api/mentoring/requests/{r2['id']}/respond", {"decision": "ACCEPT"}, token=mentor_token)
-    r3 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"]}, token=referrer["accessToken"])
+    r3 = call("POST", f"{MENTORING}/api/mentoring/requests", {"mentorId": mentor["userId"], **REQUEST_FORM}, token=referrer["accessToken"])
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/requests/{r3['id']}/respond",
                                       {"decision": "ACCEPT"}, token=mentor_token), 409)
     check(7, "Mentor đủ sức chứa không nhận thêm mentee (CAPACITY_FULL)", ok)

@@ -5,7 +5,8 @@ liệu này mô tả **chính xác những gì mã nguồn đang làm** với fi
 thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Quang (`ai-service/app/cv`, `app/enrichment`);
 `app/storage.py` là phần dùng chung cần cả Quang và Thắng review (`CONVENTIONS.md` mục 1).
 
-> Nguồn đối chiếu: `ai-service/app/storage.py`, `app/cv/extractor.py`, `app/cv/repository.py`,
+> Nguồn đối chiếu (cập nhật Sprint 2: US-19 đồng ý, US-20 duyệt thông tin, US-21 xác nhận mục tiêu):
+> `ai-service/migrations/002–004`, `app/storage.py`, `app/cv/extractor.py`, `app/cv/repository.py`,
 > `app/routers/cv.py`, `app/enrichment/service.py`, `app/clients/mentoring.py`, `app/clients/profile.py`,
 > `app/config.py`, `db/init/ai-service.sql`, `docker-compose.yml`; mentoring-service
 > `InternalRelationshipController`; profile-service `InternalProfileController.clearCvFile`.
@@ -17,7 +18,7 @@ thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Qua
 | Lưu ở đâu? | File PDF gốc trên volume Docker `cv-storage`; văn bản trích xuất + kết quả parse trong bảng `cv_documents` của `ai_db` | ✅ |
 | Giới hạn đầu vào? | PDF, ≤ 5MB, ≤ 10 trang, không đặt mật khẩu, có lớp văn bản ≥ 50 ký tự | ✅ |
 | Ai đọc được file? | Chủ CV, ADMIN, service nội bộ, và **mentor đang có yêu cầu mentoring (PENDING/ACCEPTED) với chủ CV** | ✅ kiểm tra qua mentoring-service, lỗi thì từ chối (fail-closed) |
-| Có gửi ra ngoài không? | Chỉ khi cấu hình `DEEPSEEK_API_KEY`: toàn văn CV được gửi tới DeepSeek API | ⚠️ cần thông báo người dùng |
+| Có gửi ra ngoài không? | Chỉ khi **cả hai**: server cấu hình `DEEPSEEK_API_KEY` **và** người dùng đánh dấu đồng ý cho CV đó (`consentExternalAi = true`, US-19). Không đồng ý ⇒ chỉ engine rule-based, không request nào tới DeepSeek | ✅ hỏi ý kiến trước khi tải (mục 5) |
 | Lưu bao lâu? | **Vô thời hạn** — không có chính sách hết hạn | ❌ chưa hiện thực |
 | Người dùng tự xoá được không? | **Có** — `DELETE /api/ai/cv/{cvId}` (chủ CV hoặc ADMIN); xem danh sách CV của mình qua `GET /api/ai/cv/mine` | ✅ API + mục "CV của tôi" trên trang `/profile` |
 | Mã hoá khi lưu? | Không — file và văn bản lưu dạng rõ | ❌ chưa hiện thực |
@@ -42,17 +43,30 @@ thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Qua
 | `file_name` | Tên file người dùng đặt lúc upload | Trả lại trong header `Content-Disposition` khi tải |
 | `storage_path` | Đường dẫn tương đối trên volume | |
 | `raw_text` | **Toàn bộ văn bản** trích xuất bằng pypdf | Bản sao thứ hai của nội dung CV, nằm trong CSDL |
-| `parsed_json` | Kết quả parse: vai trò, kỹ năng, số năm kinh nghiệm, dự án, học vấn, tóm tắt | |
+| `parsed_json` | Kết quả parse: vai trò, kỹ năng, số năm kinh nghiệm, dự án, học vấn, tóm tắt | Kết quả máy, giữ nguyên để đối chiếu; **không** được gửi sang hồ sơ |
+| `confirmed_fields` | Thông tin người dùng đã xem lại/sửa/bỏ (US-20): `role`, `skills[]`, `yearsExperience`, `projects[]`, `education[]` | `NULL` = chưa duyệt; CV tải trước Sprint 2 = `NULL` (migration `003`) |
+| `confirmed_at` | Lần duyệt gần nhất | |
 | `engine` | `DEEPSEEK` hoặc `RULE_BASED` | |
+| `consent_external_ai` | Người dùng có đồng ý gửi CV này tới AI bên ngoài (US-19) | Bắt buộc khai báo lúc tải; CV tải trước Sprint 2 = `false` (migration `002`) |
 | `created_at` | Thời điểm upload | |
 
-Liên quan: `enrichment_conversations.cv_id` tham chiếu `cv_documents(id)` (**không** `ON DELETE CASCADE`);
+Liên quan: `enrichment_conversations.cv_id` tham chiếu `cv_documents(id)` (**không** `ON DELETE CASCADE`;
+tối đa một hội thoại mỗi CV); hội thoại lưu goal nháp (`enriched_goal`), quyết định của người dùng
+(`goal_status`: `NONE`/`DRAFT`/`CONFIRMED`/`DISCARDED`) và goal đã xác nhận (`confirmed_goal`) — migration
+`004`;
 `enrichment_messages` chứa câu trả lời chatbot của mentee (xoá theo hội thoại nhờ `ON DELETE CASCADE`).
 
 ### 2.3 Dữ liệu suy ra lan sang service khác
-Khi hội thoại enrichment hoàn tất, ai-service gửi sang profile-service (`POST
-/api/profile/mentee/{id}/enrichment-chat`): goal tổng hợp, **danh sách kỹ năng từ CV** và `cvFileUrl =
-/api/ai/cv/{cvId}/file`. Các giá trị này nằm trong `mentee_profiles` (`profile_db`) và gián tiếp đi vào
+**Tải và parse CV không ghi gì vào hồ sơ** (US-20). Sau khi parse, người dùng xem lại từng trường, sửa hoặc
+bỏ (`PUT /api/ai/cv/{id}/confirmed-fields`, chỉ chủ CV); chatbot chỉ bắt đầu sau bước này
+(`POST /api/ai/cv/{id}/enrichment-conversation`) và chỉ dùng các trường đã duyệt làm ngữ cảnh.
+
+Khi hội thoại xong, goal chỉ là **bản nháp** (`goal_status = DRAFT`, US-21) — hồ sơ chưa đổi. Người dùng
+chọn "Dùng mục tiêu này" (có thể "Sửa" trước; `POST .../confirm-goal`) hoặc "Bỏ qua" (`POST
+.../discard-goal`, không gửi gì). **Chỉ khi xác nhận**, ai-service gửi sang profile-service (`POST
+/api/profile/mentee/{id}/enrichment-chat`) đúng một lần: goal người dùng đã chọn, **chỉ những kỹ năng người
+dùng đã giữ lại** ở bước duyệt (CV chưa duyệt ⇒ danh sách rỗng) và `cvFileUrl = /api/ai/cv/{cvId}/file`.
+profile-service tạm lỗi ⇒ job nền thử lại; job chỉ gửi goal `CONFIRMED`, không bao giờ gửi bản nháp. Các giá trị này nằm trong `mentee_profiles` (`profile_db`) và gián tiếp đi vào
 văn bản embedding ở `matching_db` (chỉ kỹ năng + goal, không phải toàn văn CV).
 
 ## 3. Kiểm tra đầu vào
@@ -75,8 +89,10 @@ file bị từ chối thì không có gì được ghi xuống đĩa hay CSDL.
 
 | Thao tác | Endpoint | Được phép | Ghi chú |
 |---|---|---|---|
-| Mentee upload CV + bắt đầu chatbot | `POST /api/ai/mentee/{menteeId}/cv-upload` | Chính mentee đó, ADMIN, nội bộ | Mentee phải có hồ sơ trước (`PROFILE_REQUIRED`) |
-| Parse CV (mentor điền nhanh hồ sơ) | `POST /api/ai/cv/parse` | Mọi người dùng đã đăng nhập | File được lưu dưới `user_id` của người gọi |
+| Mentee upload CV | `POST /api/ai/mentee/{menteeId}/cv-upload` (multipart `file` + `consentExternalAi`) | Chính mentee đó, ADMIN, nội bộ | Mentee phải có hồ sơ trước (`PROFILE_REQUIRED`); thiếu `consentExternalAi` ⇒ 400 `CONSENT_REQUIRED`, không lưu gì |
+| Parse CV (mentor điền nhanh hồ sơ) | `POST /api/ai/cv/parse` (multipart `file` + `consentExternalAi`) | Mọi người dùng đã đăng nhập | File được lưu dưới `user_id` của người gọi; chỉ trả kết quả, **không ghi hồ sơ** (mentor tự kiểm tra rồi bấm Lưu) |
+| Duyệt thông tin trích xuất | `PUT /api/ai/cv/{cvId}/confirmed-fields` | **Chỉ chủ CV** (ADMIN, mentor ⇒ 403) | Không ghi gì vào hồ sơ |
+| Bắt đầu chatbot | `POST /api/ai/cv/{cvId}/enrichment-conversation` | Chủ CV (MENTEE) | 409 `CV_NOT_REVIEWED` nếu chưa duyệt; mỗi CV một hội thoại |
 | Tải file CV | `GET /api/ai/cv/{cvId}/file` | Chủ CV, ADMIN, nội bộ, mentor **có quan hệ mentoring** với chủ CV | Xem lưu ý dưới |
 | Liệt kê CV của mình | `GET /api/ai/cv/mine` | Mọi người dùng đã đăng nhập — **chỉ trả CV của chính người gọi** (mới nhất trước: `id`, `fileName`, `uploadedAt`, `fileUrl`) | Lời gọi nội bộ (không có user) nhận danh sách rỗng |
 | Xoá CV | `DELETE /api/ai/cv/{cvId}` | **Chủ CV hoặc ADMIN** (204) | Người khác 403 `FORBIDDEN`; không tồn tại 404 `CV_NOT_FOUND`. Mentor có quan hệ cũng **không** xoá được; lời gọi nội bộ không được xoá. Xem mục 6.2 |
@@ -92,18 +108,36 @@ không phản hồi, quá 3 giây, lỗi HTTP, JSON không hợp lệ — đều
 Hệ quả: khi yêu cầu bị từ chối, huỷ hoặc kết thúc (không còn PENDING/ACCEPTED), mentor **mất quyền** tải
 CV đó. Trước bản sửa này, mọi tài khoản MENTOR tải được mọi CV nếu biết `cvId`.
 
-## 5. Xử lý bởi bên thứ ba (DeepSeek)
+## 5. Xử lý bởi bên thứ ba (DeepSeek) và đồng ý của người dùng (US-19)
 
+**Hỏi ý kiến trước khi tải** (`frontend/src/features/ai/CvConsent.tsx`, trên `/cv-enrichment` và ô "Điền
+nhanh từ CV" của mentor ở `/profile`): trước ô chọn file, giao diện giải thích CV đi đâu — (1) lưu trên nền
+tảng, xoá được ở "CV của tôi"; (2) gửi tới DeepSeek khi engine AI bật, **chỉ khi người dùng đánh dấu đồng
+ý**; (3) ai xem được file (mentee: mentor mà mình gửi yêu cầu PENDING/ACCEPTED và ADMIN; mentor: chỉ chính
+mình và ADMIN). Ô đồng ý mặc định **không** đánh dấu.
+
+API bắt buộc trường `consentExternalAi` (thiếu ⇒ 400 `CONSENT_REQUIRED`); giá trị lưu ở
+`cv_documents.consent_external_ai` và áp cho **CV đó**:
+
+- `false`: parse CV và **mọi lượt** chatbot enrichment của CV đó chạy engine rule-based. Việc chọn engine
+  (`app/cv/engine.py::engine_for`) trả `RULE_BASED` mà không hỏi tới client DeepSeek, và được kiểm tra lại
+  ở mỗi lượt từ cột của CV — kể cả khi hội thoại cũ ghi `engine = DEEPSEEK`. Kiểm chứng:
+  `tests/test_cv_consent.py` cài client DeepSeek đã bật với transport làm test FAIL nếu có request.
+- `true`: dùng DeepSeek nếu server có `DEEPSEEK_API_KEY` (lỗi ⇒ tự fallback rule-based).
+
+Phạm vi gửi đi khi đã đồng ý và có `DEEPSEEK_API_KEY`:
 - Không có `DEEPSEEK_API_KEY` (mặc định, cũng là cấu hình demo và CI): CV được parse **hoàn toàn cục bộ**
-  bằng engine rule-based; không dữ liệu nào rời máy chủ.
-- Có `DEEPSEEK_API_KEY`: **toàn bộ văn bản trích xuất** được gửi tới `{DEEPSEEK_BASE_URL}/chat/completions`
+  bằng engine rule-based; không dữ liệu nào rời máy chủ, bất kể lựa chọn của người dùng.
+- Có `DEEPSEEK_API_KEY` và đã đồng ý: **toàn bộ văn bản trích xuất** được gửi tới `{DEEPSEEK_BASE_URL}/chat/completions`
   (bọc trong thẻ `<cv>`, system prompt yêu cầu coi là dữ liệu — `app/cv/deepseek_parser.py`). Câu trả lời
   chatbot enrichment cũng được gửi kèm ngữ cảnh CV đã parse. Dữ liệu khi đó chịu chính sách lưu trữ của
   DeepSeek.
 - Log của ai-service không ghi nội dung CV; khi DeepSeek trả lỗi, log ghi tối đa 300 ký tự phản hồi
   **của API** (không phải của CV).
-- **Chưa hiện thực**: thông báo/xin đồng ý của người dùng trước khi gửi CV ra ngoài; tuỳ chọn tắt LLM
-  theo từng người dùng.
+- CV tải lên trước Sprint 2 được migration `002_cv_consent_external_ai.sql` đặt `consent_external_ai =
+  false` (chưa từng được hỏi ý kiến); hội thoại đang dở của chúng chuyển sang `RULE_BASED`. Dữ liệu đã gửi
+  DeepSeek trước đó (nếu server từng bật) không thu hồi được.
+- Đổi ý: không có API sửa đồng ý của một CV — người dùng xoá CV và tải lại với lựa chọn mới.
 
 ## 6. Thời hạn lưu trữ và xoá dữ liệu
 
@@ -154,8 +188,8 @@ Mạng/đĩa được gọi **sau** khi transaction đã commit (đúng quy ư�
 `cv_file_url` **không** kích hoạt lập lại chỉ mục embedding vì `cv_file_url` không nằm trong văn bản
 chuẩn hoá.
 
-**Không bị xoá** (cần người dùng tự sửa trên trang Hồ sơ nếu muốn): goal tổng hợp và kỹ năng đã gộp từ CV
-vào hồ sơ mentee, và do đó vector trong `matching_db` (chỉ chứa kỹ năng + goal, không chứa toàn văn CV).
+**Không bị xoá** (cần người dùng tự sửa trên trang Hồ sơ nếu muốn): goal người dùng đã xác nhận và kỹ năng
+đã duyệt được gộp vào hồ sơ mentee, và do đó vector trong `matching_db` (chỉ chứa kỹ năng + goal, không chứa toàn văn CV).
 Dữ liệu đã gửi DeepSeek (nếu bật) nằm ngoài tầm kiểm soát của hệ thống.
 
 ### 6.3 Xoá toàn bộ (môi trường demo)
@@ -197,4 +231,4 @@ Kiểm tra: `docker compose exec ai-service ls /data/cv/<USER_ID>` báo không t
 | 3 | ~~Mọi MENTOR tải được mọi CV nếu biết `cvId`~~ | ✅ **Đã sửa**: chỉ mentor có yêu cầu mentoring PENDING/ACCEPTED với mentee (fail-closed) |
 | 4 | `raw_text` nhân đôi nội dung CV trong CSDL | Xoá `raw_text` sau khi parse xong, hoặc chỉ giữ `parsed_json` |
 | 5 | Không mã hoá khi lưu | Mã hoá volume / dùng object storage có mã hoá phía server (S3/MinIO) — `storage.py` đã tách riêng để thay thế |
-| 6 | Không có bước đồng ý trước khi gửi DeepSeek | Hiển thị thông báo trên trang `/cv-enrichment` khi `/health` báo `llmEnabled: true` |
+| 6 | ~~Không có bước đồng ý trước khi gửi DeepSeek~~ | ✅ **Đã sửa (US-19)**: ô đồng ý trước khi tải, lưu theo CV; không đồng ý ⇒ chỉ rule-based (mục 5) |

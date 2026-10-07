@@ -80,12 +80,14 @@ export interface ApiOptions {
   form?: FormData;
   /** false: không gắn access token (đăng nhập, xác thực email...). */
   auth?: boolean;
+  /** Header bổ sung (vd. Idempotency-Key cho POST /api/payment/charge). */
+  headers?: Record<string, string>;
 }
 
 /** Gửi request kèm access token; nhận 401 thì refresh token 1 lần rồi gửi lại. */
 async function send(path: string, options: ApiOptions, retried = false): Promise<Response> {
   const { method = "GET", body, form, auth = true } = options;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...options.headers };
   const session = loadSession();
   if (auth && session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
   let payload: BodyInit | undefined;

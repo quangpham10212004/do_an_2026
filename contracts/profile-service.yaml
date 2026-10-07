@@ -147,9 +147,38 @@ components:
         skills: { type: array, items: { type: string } }
         portfolioLinks: { type: array, items: { type: string } }
         cvFileUrl: { type: string, nullable: true }
+    MenteePreferences:
+      type: object
+      description: >
+        US-16 (PRD-PROF-2) — sở thích tìm mentor. matching-service đọc thẳng các cột này (read-only) và
+        dùng làm giá trị mặc định cho bộ lọc GET /api/matching/mentors khi request không truyền (US-17).
+        Thay toàn bộ: trường bỏ trống/null nghĩa là "không giới hạn".
+      properties:
+        preferredDays:
+          type: array
+          maxItems: 7
+          items: { type: integer, minimum: 1, maximum: 7 }
+          description: "ISO-8601: 1 = Thứ Hai ... 7 = Chủ Nhật; trả về tăng dần, không trùng. Rỗng = mọi ngày"
+        preferredTimeOfDay:
+          type: string
+          enum: [MORNING, AFTERNOON, EVENING]
+          nullable: true
+          description: "MORNING 06–12, AFTERNOON 12–18, EVENING 18–23; null = giờ nào cũng được"
+        budgetMaxPerHour:
+          type: number
+          minimum: 0
+          maximum: 100000000
+          nullable: true
+          description: "VND / giờ; null = không giới hạn; 0 = chỉ mentor miễn phí"
+        languages:
+          type: array
+          maxItems: 5
+          items: { type: string, enum: [vi, en] }
+          description: Rỗng = ngôn ngữ nào cũng được
     MenteeProfile:
       allOf:
         - $ref: "#/components/schemas/MenteeProfileInput"
+        - $ref: "#/components/schemas/MenteePreferences"
         - type: object
           properties:
             userId: { type: string, format: uuid }
@@ -396,6 +425,27 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MenteeProfile" }
+
+  /api/profile/mentee/{userId}/preferences:
+    put:
+      summary: >
+        US-16 (PRD-PROF-2) — mentee lưu sở thích tìm mentor (ngày, buổi, ngân sách, ngôn ngữ), thay toàn bộ.
+        Chỉ chính mentee (hoặc ADMIN). Không thuộc văn bản embedding nên không báo matching-service lập chỉ mục.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MenteePreferences" }
+      responses:
+        "200":
+          description: Hồ sơ mentee sau khi cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenteeProfile" }
+        "400": { description: "INVALID_PREFERENCES — ngày ngoài 1–7, buổi/ngôn ngữ không hợp lệ, ngân sách âm hoặc > 100.000.000" }
+        "403": { description: FORBIDDEN — không phải chính mentee }
+        "404": { description: PROFILE_NOT_FOUND — mentee chưa tạo hồ sơ }
 
   /api/profile/mentee/{userId}/enrichment-chat:
     post:

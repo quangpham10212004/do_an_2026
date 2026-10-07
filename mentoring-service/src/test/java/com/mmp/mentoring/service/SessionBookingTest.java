@@ -39,7 +39,8 @@ class SessionBookingTest {
     @BeforeEach
     void setUp() {
         f = new TestFixtures();
-        MentoringRequest accepted = new MentoringRequest(menteeId, mentorId, null);
+        MentoringRequest accepted = new MentoringRequest(menteeId, mentorId, "x".repeat(60), com.mmp.mentoring.entity.SessionType.CAREER_ADVICE,
+                MentoringRequest.Frequency.WEEKLY, 3, null);
         accepted.setStatus(MentoringRequest.Status.ACCEPTED);
         when(f.requestRepo.findFirstByMenteeIdAndMentorIdAndStatus(menteeId, mentorId, MentoringRequest.Status.ACCEPTED))
                 .thenReturn(Optional.of(accepted));

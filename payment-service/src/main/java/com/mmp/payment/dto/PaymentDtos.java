@@ -1,6 +1,7 @@
 package com.mmp.payment.dto;
 
 import com.mmp.payment.entity.Referral;
+import com.mmp.payment.entity.Refund;
 import com.mmp.payment.entity.RewardEntry;
 import com.mmp.payment.entity.Transaction;
 import jakarta.validation.Valid;
@@ -32,23 +33,45 @@ public final class PaymentDtos {
     public record ChargeRequest(@NotNull UUID sessionId, BigDecimal amount, @NotNull @Valid CardInput card) {
     }
 
+    /**
+     * US-13 — fee / mentorEarning / feeRate chốt lúc charge; refundedAmount = tổng các lần hoàn; refunds = chi tiết
+     * (bảng refunds, không ghi đè giao dịch).
+     */
     public record TransactionResponse(
-            UUID id, UUID sessionId, UUID payerId, UUID mentorId, BigDecimal amount, String currency,
-            String status, String provider, String providerReference, String failureReason,
-            OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+            UUID id, UUID sessionId, UUID payerId, UUID mentorId, BigDecimal amount, BigDecimal fee, BigDecimal mentorEarning,
+            BigDecimal feeRate, BigDecimal refundedAmount, String currency,
+            String status, String provider, String providerReference, String failureReason, String holdReason,
+            List<RefundView> refunds, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 
-        public static TransactionResponse from(Transaction t) {
+        public static TransactionResponse from(Transaction t, List<Refund> refunds) {
+            BigDecimal refunded = refunds.stream().map(Refund::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
             return new TransactionResponse(t.getId(), t.getSessionId(), t.getPayerId(), t.getMentorId(), t.getAmount(),
+                    t.getFee(), t.getMentorEarning(), t.getFeeRate(), refunded,
                     t.getCurrency(), t.getStatus().name(), t.getProvider(), t.getProviderReference(),
-                    t.getFailureReason(), t.getCreatedAt(), t.getUpdatedAt());
+                    t.getFailureReason(), t.getHoldReason(), refunds.stream().map(RefundView::from).toList(),
+                    t.getCreatedAt(), t.getUpdatedAt());
+        }
+    }
+
+    public record RefundView(UUID id, BigDecimal amount, String reason, UUID actorId, OffsetDateTime createdAt) {
+
+        public static RefundView from(Refund r) {
+            return new RefundView(r.getId(), r.getAmount(), r.getReason(), r.getActorId(), r.getCreatedAt());
         }
     }
 
     /**
-     * percent tuỳ chọn (mặc định 100). Sprint 1 chỉ hỗ trợ hoàn toàn bộ — hoàn một phần thuộc US-13.
+     * US-13 — hoàn tiền nội bộ: {@code amount} (VND) HOẶC {@code percent} (% giá gốc, mặc định 100 khi cả hai trống).
+     * Tổng các lần hoàn ≤ giá gốc. actorId = người thực hiện (admin), null = hệ thống.
      */
     public record RefundRequest(@NotNull UUID sessionId, @Size(max = 300) String reason,
-                                @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) Integer percent) {
+                                @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) Integer percent,
+                                @jakarta.validation.constraints.Positive BigDecimal amount,
+                                UUID actorId) {
+    }
+
+    /** US-12 — tạm giữ / giải phóng giao dịch của phiên đang tranh chấp. */
+    public record HoldRequest(@NotNull UUID sessionId, @Size(max = 300) String reason) {
     }
 
     /** US-01 — mentoring-service cộng điểm thưởng (idempotent theo userId + reason + sessionId). */
@@ -85,6 +108,8 @@ public final class PaymentDtos {
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {
     }
 
-    public record PaymentStats(long successCount, long failedCount, long refundedCount, BigDecimal totalRevenue) {
+    /** totalPlatformFee = tổng phí của giao dịch SUCCESS / PARTIALLY_REFUNDED (US-13). */
+    public record PaymentStats(long successCount, long failedCount, long refundedCount, BigDecimal totalRevenue,
+                               long partiallyRefundedCount, long onHoldCount, BigDecimal totalPlatformFee) {
     }
 }

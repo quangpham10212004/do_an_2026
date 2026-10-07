@@ -116,7 +116,9 @@ export default function MyCvs({ refreshKey = 0, onDeleted }: MyCvsProps) {
         <div key={cv.id} className="list-item">
           <div style={{ flex: 1, minWidth: 0 }}>
             <strong>{cv.fileName}</strong>
-            <div className="muted small">Tải lên {formatDateTime(cv.uploadedAt)}</div>
+            <div className="muted small">
+              Tải lên {formatDateTime(cv.uploadedAt)} · {cv.consentExternalAi ? "đồng ý gửi AI bên ngoài (DeepSeek)" : "chỉ xử lý trên nền tảng (rule-based)"}
+            </div>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button type="button" className="btn secondary sm" onClick={() => open(cv, false)}>Xem</button>

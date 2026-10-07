@@ -25,8 +25,9 @@ public class PaymentController {
 
     @PostMapping("/charge")
     @PreAuthorize("hasAnyRole('MENTEE','ADMIN')")
-    public TransactionResponse charge(@Valid @RequestBody ChargeRequest req) {
-        return paymentService.charge(CurrentUser.get(), req);
+    public TransactionResponse charge(@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                      @Valid @RequestBody ChargeRequest req) {
+        return paymentService.charge(CurrentUser.get(), idempotencyKey, req);
     }
 
     @GetMapping("/transactions")

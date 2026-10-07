@@ -17,8 +17,9 @@ import java.time.format.DateTimeFormatter;
 /**
  * Tác vụ nền mỗi phút:
  * - FR-5.5: gửi nhắc lịch cho phiên CONFIRMED sắp diễn ra.
- * - Huỷ phiên PENDING quá hạn thanh toán để giải phóng khung giờ.
- * - Tự hoàn thành phiên CONFIRMED đã kết thúc quá 2 giờ (nếu mentor quên đánh dấu).
+ * - Phiên PENDING quá hạn thanh toán → EXPIRED để giải phóng khung giờ.
+ * - US-12: tới giờ kết thúc CONFIRMED → AWAITING_ATTENDANCE; hết 48 giờ → kết luận tham dự (thay cho tự hoàn thành
+ *   sau 2 giờ của Sprint 1).
  */
 @Component
 public class SessionScheduler {
@@ -28,16 +29,18 @@ public class SessionScheduler {
 
     private final SessionRepository sessionRepo;
     private final NotificationService notifications;
+    private final AttendanceService attendance;
     private final Duration reminderBefore;
     private final Duration paymentHold;
     private final ZoneId zone;
 
-    public SessionScheduler(SessionRepository sessionRepo, NotificationService notifications,
+    public SessionScheduler(SessionRepository sessionRepo, NotificationService notifications, AttendanceService attendance,
                             @Value("${app.reminder.before}") Duration reminderBefore,
                             @Value("${app.booking.payment-hold}") Duration paymentHold,
                             @Value("${app.timezone}") String timezone) {
         this.sessionRepo = sessionRepo;
         this.notifications = notifications;
+        this.attendance = attendance;
         this.reminderBefore = reminderBefore;
         this.paymentHold = paymentHold;
         this.zone = ZoneId.of(timezone);
@@ -61,26 +64,20 @@ public class SessionScheduler {
     @Transactional
     public void expireUnpaidSessions() {
         for (MentoringSession s : sessionRepo.findExpiredPending(OffsetDateTime.now().minus(paymentHold))) {
-            s.setStatus(MentoringSession.Status.CANCELLED);
+            s.setStatus(MentoringSession.Status.EXPIRED);
             s.setCancelledBy("SYSTEM");
             s.setCancelReason("PAYMENT_TIMEOUT");
             s.setRefundPercent(0);
             s.setCancelledAt(OffsetDateTime.now());
-            notifications.notifyUser(s.getMenteeId(), "SESSION_EXPIRED", "Phiên đã bị huỷ",
-                    "Phiên chưa được thanh toán trong " + paymentHold.toMinutes() + " phút nên đã tự động huỷ.", "/mentoring/sessions");
+            notifications.notifyUser(s.getMenteeId(), "SESSION_EXPIRED", "Phiên đã hết hạn",
+                    "Phiên chưa được thanh toán trong " + paymentHold.toMinutes() + " phút nên đã hết hạn và khung giờ được giải phóng.",
+                    "/mentoring/sessions");
         }
     }
 
-    @Scheduled(fixedDelay = 300_000, initialDelay = 60_000)
-    @Transactional
-    public void autoCompleteFinishedSessions() {
-        OffsetDateTime threshold = OffsetDateTime.now().minusHours(2);
-        sessionRepo.findAll().stream()
-                .filter(s -> s.getStatus() == MentoringSession.Status.CONFIRMED && s.endsAt().isBefore(threshold))
-                .forEach(s -> {
-                    s.setStatus(MentoringSession.Status.COMPLETED);
-                    notifications.notifyUser(s.getMenteeId(), "SESSION_COMPLETED", "Phiên mentoring đã hoàn thành",
-                            "Hãy đánh giá mentor sau phiên học nhé!", "/mentoring/sessions");
-                });
+    /** US-12 — CONFIRMED đã kết thúc → AWAITING_ATTENDANCE; AWAITING_ATTENDANCE quá 48 giờ → kết luận. */
+    @Scheduled(fixedDelayString = "${app.attendance.interval:PT1M}", initialDelayString = "PT50S")
+    public void attendanceJob() {
+        attendance.runJob();
     }
 }

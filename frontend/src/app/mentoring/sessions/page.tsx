@@ -4,13 +4,20 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead, Stars, StatusBadge, useDialog, Flash } from "@/components/ui";
+import { Alert, Empty, Loading, PageHead, Stars, useDialog, Flash, type AskFn } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
-import { SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
+import {
+  ATTENDANCE_CHOICES,
+  ATTENDANCE_LABELS,
+  ATTENDANCE_RESOLUTION_LABELS,
+  SESSION_STATUS_LABELS,
+  SESSION_TYPE_LABELS,
+} from "@/features/mentoring/labels";
+import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
+import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
 
 function ReviewForm({ session, onDone }: { session: MentoringSession; onDone: () => void }) {
   const [rating, setRating] = useState(5);
@@ -55,9 +62,93 @@ const FILTERS: [SessionStatus | "", string][] = [
   ["", "Tất cả"],
   ["PENDING", "Chờ thanh toán"],
   ["CONFIRMED", "Đã xác nhận"],
+  ["AWAITING_ATTENDANCE", "Chờ xác nhận tham dự"],
   ["COMPLETED", "Hoàn thành"],
+  ["DISPUTED", "Tranh chấp"],
   ["CANCELLED", "Đã huỷ"],
+  ["EXPIRED", "Hết hạn"],
 ];
+
+/** US-12 — đang trong 48 giờ xác nhận tham dự (job có thể chưa kịp chuyển CONFIRMED → AWAITING_ATTENDANCE). */
+function attendanceOpen(s: MentoringSession, now = Date.now()): boolean {
+  const ended = now >= new Date(s.endsAt).getTime();
+  const beforeDeadline = now < new Date(s.attendanceDeadline).getTime();
+  return (s.status === "AWAITING_ATTENDANCE" || (s.status === "CONFIRMED" && ended)) && beforeDeadline;
+}
+
+/** US-12 — hỏi mỗi bên phiên có diễn ra không (trong 48 giờ sau giờ kết thúc). */
+function AttendancePrompt({ session, isMentor, ask, act }: {
+  session: MentoringSession;
+  isMentor: boolean;
+  ask: AskFn;
+  act: (fn: () => Promise<unknown>, ok: string) => void;
+}) {
+  const mine = isMentor ? session.mentorAttendance : session.menteeAttendance;
+  const other = isMentor ? session.menteeAttendance : session.mentorAttendance;
+  const deadline = formatDateTime(session.attendanceDeadline);
+  if (mine) {
+    return (
+      <div className="alert info" style={{ width: "100%", marginTop: 8 }}>
+        Bạn đã xác nhận: <strong>{ATTENDANCE_LABELS[mine]}</strong>.{" "}
+        {other ? "" : `Đang chờ ${isMentor ? "mentee" : "mentor"} xác nhận (hạn ${deadline}); nếu không phản hồi, câu trả lời của bạn được áp dụng.`}
+      </div>
+    );
+  }
+  const choose = async (answer: AttendanceAnswer) => {
+    if (answer !== "HELD") {
+      const ok = await ask({
+        title: `Xác nhận: ${ATTENDANCE_LABELS[answer]}?`,
+        message: answer === "CANCELLED_ON_CALL"
+          ? "Phiên sẽ được huỷ và mentee được hoàn 100% nếu bên kia đồng ý hoặc không phản hồi trong 48 giờ. Nếu bên kia trả lời khác, phiên chuyển sang tranh chấp."
+          : "Nếu bên kia không phản hồi trong 48 giờ, phiên được ghi nhận vắng mặt. Nếu bên kia trả lời khác, phiên chuyển sang tranh chấp và khoản thanh toán được tạm giữ.",
+        confirmText: "Gửi xác nhận",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    act(() => mentoringApi.answerAttendance(session.id, answer), "Đã ghi nhận xác nhận tham dự");
+  };
+  return (
+    <div className="alert warn" style={{ width: "100%", marginTop: 8 }}>
+      <strong>Phiên đã kết thúc — phiên có diễn ra không?</strong> Hạn xác nhận: {deadline}.
+      {other && <> {isMentor ? "Mentee" : "Mentor"} đã xác nhận.</>}
+      <div className="row" style={{ marginTop: 6 }}>
+        {ATTENDANCE_CHOICES[isMentor ? "MENTOR" : "MENTEE"].map((a) => (
+          <button key={a} className={`btn sm ${a === "HELD" ? "good" : "secondary"}`} onClick={() => choose(a)}>
+            {ATTENDANCE_LABELS[a]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Dòng giải thích kết quả của phiên đã kết luận (US-12) hoặc đã huỷ / hết hạn. */
+function outcomeText(s: MentoringSession): string | null {
+  const paid = Number(s.price) > 0;
+  switch (s.status) {
+    case "NO_SHOW_MENTOR":
+      return `Mentor vắng mặt${paid ? " · mentee được hoàn 100%" : ""}`;
+    case "NO_SHOW_MENTEE":
+      return "Mentee vắng mặt · không hoàn tiền";
+    case "DISPUTED":
+      return `Hai bên xác nhận khác nhau${paid ? " · khoản thanh toán đang được tạm giữ chờ quản trị viên xử lý" : " · chờ quản trị viên xử lý"}`;
+    case "EXPIRED":
+      return "Quá hạn thanh toán, khung giờ đã được giải phóng";
+    case "COMPLETED":
+      return s.attendanceResolution ? `Hoàn thành: ${ATTENDANCE_RESOLUTION_LABELS[s.attendanceResolution]}` : null;
+    case "CANCELLED": {
+      if (!s.cancelledBy) return null;
+      const who = s.cancelReason === "CANCELLED_ON_CALL" ? "Huỷ trong buổi gọi"
+        : `Huỷ bởi ${s.cancelledBy === "MENTEE" ? "mentee" : s.cancelledBy === "MENTOR" ? "mentor" : "hệ thống"}`;
+      const refund = s.refundPercent !== null && paid ? ` · hoàn ${s.refundPercent}%` : "";
+      const reason = s.cancelReason && !["PAYMENT_TIMEOUT", "CANCELLED_ON_CALL"].includes(s.cancelReason) ? ` · ${s.cancelReason}` : "";
+      return who + refund + reason;
+    }
+    default:
+      return null;
+  }
+}
 
 /** US-06 — chọn giờ mới để đề xuất dời lịch. */
 function RescheduleForm({ session, onDone }: { session: MentoringSession; onDone: (ok: string) => void }) {
@@ -140,7 +231,7 @@ function Sessions({ user }: { user: SessionUser }) {
                   <div style={{ flex: 1 }}>
                     <div className="row">
                       <strong>{isMentor ? s.menteeName : <Link href={`/mentors/${s.mentorId}`}>{s.mentorName}</Link>}</strong>
-                      <StatusBadge status={s.status} />
+                      <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
                       {s.reviewed && <Stars value={s.reviewRating} />}
                     </div>
                     <div className="muted small">
@@ -151,14 +242,7 @@ function Sessions({ user }: { user: SessionUser }) {
                     {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
                       <div className="small muted">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
                     )}
-                    {s.status === "CANCELLED" && s.cancelledBy && (
-                      <div className="small muted">
-                        Huỷ bởi {s.cancelledBy === "MENTEE" ? "mentee" : s.cancelledBy === "MENTOR" ? "mentor" : "hệ thống"}
-                        {s.refundPercent !== null && Number(s.price) > 0 && ` · hoàn ${s.refundPercent}%`}
-                        {s.cancelReason && s.cancelReason !== "PAYMENT_TIMEOUT" && ` · ${s.cancelReason}`}
-                        {s.cancelReason === "PAYMENT_TIMEOUT" && " · quá hạn thanh toán"}
-                      </div>
-                    )}
+                    {outcomeText(s) && <div className="small muted">{outcomeText(s)}</div>}
                     {s.agenda && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{s.agenda}</div>}
                     {s.preReadLink && <div className="small"><a href={s.preReadLink} target="_blank" rel="noreferrer">Tài liệu đọc trước</a></div>}
                   </div>
@@ -172,9 +256,6 @@ function Sessions({ user }: { user: SessionUser }) {
                         const link = await ask({ title: "Link phòng họp cho phiên này", message: "Hỗ trợ https Google Meet, Zoom hoặc Microsoft Teams.", input: { label: "Link phòng họp", defaultValue: s.meetingLink || "", maxLength: 500, placeholder: "https://meet.google.com/..." }, confirmText: "Lưu link" });
                         if (link) act(() => mentoringApi.updateMeetingLink(s.id, link.trim()), "Đã cập nhật link phòng họp");
                       }}>Link họp</button>
-                    )}
-                    {isMentor && s.status === "CONFIRMED" && (
-                      <button className="btn good sm" onClick={() => act(() => mentoringApi.completeSession(s.id), "Đã đánh dấu hoàn thành")}>Đánh dấu hoàn thành</button>
                     )}
                     {["PENDING", "CONFIRMED"].includes(s.status) && future && (
                       <button className="btn secondary sm" onClick={async () => {
@@ -201,6 +282,7 @@ function Sessions({ user }: { user: SessionUser }) {
                     )}
                   </div>
                 </div>
+                {attendanceOpen(s) && <AttendancePrompt session={s} isMentor={isMentor} ask={ask} act={act} />}
                 {s.pendingReschedule && (
                   <div className="alert info" style={{ width: "100%", marginTop: 8 }}>
                     Đề xuất dời sang <strong>{formatDateTime(s.pendingReschedule.newStart)}</strong> · hết hạn {formatDateTime(s.pendingReschedule.expiresAt)}

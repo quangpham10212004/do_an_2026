@@ -311,6 +311,23 @@ public class ProfileService {
     }
 
     /**
+     * US-16 — lưu sở thích tìm mentor (thay toàn bộ). Không thuộc text embedding nên không báo
+     * matching-service: matching đọc thẳng các cột này từ profile_db ở mỗi lượt tìm (US-17).
+     */
+    public MenteeProfileResponse updatePreferences(UUID userId, MenteePreferencesInput in) {
+        Integer[] days = MenteeRules.normalizeDays(in.preferredDays());
+        MenteeProfile.TimeOfDay timeOfDay = MenteeRules.parseTimeOfDay(in.preferredTimeOfDay());
+        BigDecimal budget = MenteeRules.normalizeBudget(in.budgetMaxPerHour());
+        String[] languages = MenteeRules.normalizeLanguages(in.languages());
+        tx.executeWithoutResult(s -> {
+            MenteeProfile p = findMentee(userId);
+            p.updatePreferences(days, timeOfDay, budget, languages);
+            menteeRepo.save(p);
+        });
+        return MenteeProfileResponse.from(findMentee(userId));
+    }
+
+    /**
      * FR-8.5 — nhận goal đã được chatbot làm rõ, cập nhật hồ sơ (goal + gộp kỹ năng
      * trích từ CV); matching-service lập lại chỉ mục sau đó.
      */

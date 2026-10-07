@@ -108,6 +108,16 @@ class SessionCancelTest {
     }
 
     @Test
+    void paymentArrivingAfterExpiryIsRefunded() {
+        // US-12 — phiên quá hạn thanh toán nay là EXPIRED (trước là CANCELLED) vẫn phải được hoàn khi tiền về muộn
+        session.setScheduledAt(OffsetDateTime.now().plusDays(2));
+        session.setStatus(MentoringSession.Status.EXPIRED);
+        f.service().markPaid(id, UUID.randomUUID());
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
+        verify(f.paymentClient).refund(id, "SESSION_ALREADY_CANCELLED");
+    }
+
+    @Test
     void startedSessionCannotBeCancelled() {
         session.setScheduledAt(OffsetDateTime.now().minusMinutes(5));
         assertThatThrownBy(() -> f.service().cancel(mentee, id, null)).hasMessageContaining("đã bắt đầu");

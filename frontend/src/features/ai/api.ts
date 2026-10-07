@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -13,16 +13,23 @@ export const aiApi = {
     api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // CV + chatbot enrichment
-  uploadCv: (menteeId: Uuid, file: File) => {
+  // US-19: consentExternalAi bắt buộc — false => chỉ engine rule-based cho CV này (parse + chatbot)
+  uploadCv: (menteeId: Uuid, file: File, consentExternalAi: boolean) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("consentExternalAi", String(consentExternalAi));
     return api<CvUploadResult>(`/api/ai/mentee/${menteeId}/cv-upload`, { method: "POST", form });
   },
-  parseCv: (file: File) => {
+  parseCv: (file: File, consentExternalAi: boolean) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("consentExternalAi", String(consentExternalAi));
     return api<Cv>("/api/ai/cv/parse", { method: "POST", form });
   },
+  // US-20: lưu thông tin đã duyệt (chỉ chủ CV), rồi mới bắt đầu chatbot (409 CV_NOT_REVIEWED nếu chưa duyệt)
+  confirmCvFields: (cvId: Uuid, fields: ConfirmedCvFields) =>
+    api<Cv>(`/api/ai/cv/${cvId}/confirmed-fields`, { method: "PUT", body: fields }),
+  startEnrichment: (cvId: Uuid) => api<CvUploadResult>(`/api/ai/cv/${cvId}/enrichment-conversation`, { method: "POST" }),
   cvFileUrl: (cvId: Uuid) => `/api/ai/cv/${cvId}/file`,
   /** File PDF gốc (cần đăng nhập) — `url` là cvFileUrl / CvSummary.fileUrl. */
   cvFile: (url: string) => apiBlob(url),
@@ -33,4 +40,8 @@ export const aiApi = {
   latestEnrichment: (menteeId: Uuid) => api<CvUploadResult | null>(`/api/ai/mentee/${menteeId}/enrichment/latest`),
   answerEnrichment: (id: Uuid, answer: string) =>
     api<Conversation>(`/api/ai/enrichment/conversations/${id}/answers`, { method: "POST", body: { answer } }),
+  // US-21: goal nháp chỉ vào hồ sơ khi người dùng xác nhận (gọi lại không đồng bộ lần hai); bỏ qua = không gửi gì
+  confirmGoal: (id: Uuid, goal: string) =>
+    api<Conversation>(`/api/ai/enrichment/conversations/${id}/confirm-goal`, { method: "POST", body: { goal } }),
+  discardGoal: (id: Uuid) => api<Conversation>(`/api/ai/enrichment/conversations/${id}/discard-goal`, { method: "POST" }),
 };

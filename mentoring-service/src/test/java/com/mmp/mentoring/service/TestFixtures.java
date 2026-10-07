@@ -43,6 +43,6 @@ class TestFixtures {
     SessionService service() {
         return new SessionService(sessionRepo, requestRepo, reviewRepo, lateCancelRepo, policy, outbox, strikes, proposalRepo,
                 profileClient, paymentClient, notifications, tx,
-                "Asia/Ho_Chi_Minh", Duration.ofHours(1), Duration.ofDays(60));
+                "Asia/Ho_Chi_Minh", Duration.ofHours(1), Duration.ofDays(60), Duration.ofHours(48));
     }
 }

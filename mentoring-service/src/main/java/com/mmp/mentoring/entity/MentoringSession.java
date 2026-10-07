@@ -10,8 +10,15 @@ import java.util.UUID;
 @Table(name = "sessions")
 public class MentoringSession {
 
-    /** PENDING (chờ thanh toán) → CONFIRMED → COMPLETED; PENDING/CONFIRMED → CANCELLED */
-    public enum Status { PENDING, CONFIRMED, COMPLETED, CANCELLED }
+    /**
+     * PENDING (chờ thanh toán) → CONFIRMED | EXPIRED (quá hạn thanh toán); PENDING/CONFIRMED → CANCELLED (trước giờ bắt đầu);
+     * CONFIRMED → AWAITING_ATTENDANCE (tới giờ kết thúc, US-12) → COMPLETED | NO_SHOW_MENTEE | NO_SHOW_MENTOR | DISPUTED |
+     * CANCELLED (huỷ trong buổi gọi).
+     */
+    public enum Status { PENDING, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED }
+
+    /** US-12 — câu trả lời xác nhận tham dự của mỗi bên. */
+    public enum Attendance { HELD, MENTOR_NO_SHOW, MENTEE_NO_SHOW, CANCELLED_ON_CALL }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -69,6 +76,26 @@ public class MentoringSession {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mentee_attendance")
+    private Attendance menteeAttendance;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mentor_attendance")
+    private Attendance mentorAttendance;
+
+    @Column(name = "mentee_attended_at")
+    private OffsetDateTime menteeAttendedAt;
+
+    @Column(name = "mentor_attended_at")
+    private OffsetDateTime mentorAttendedAt;
+
+    @Column(name = "attendance_resolution")
+    private String attendanceResolution;
+
+    @Column(name = "resolved_at")
+    private OffsetDateTime resolvedAt;
 
     @Column(name = "reminder_sent", nullable = false)
     private boolean reminderSent;
@@ -129,6 +156,30 @@ public class MentoringSession {
     public void setRescheduleCount(int rescheduleCount) { this.rescheduleCount = rescheduleCount; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
+    public Attendance getMenteeAttendance() { return menteeAttendance; }
+    public Attendance getMentorAttendance() { return mentorAttendance; }
+    public OffsetDateTime getMenteeAttendedAt() { return menteeAttendedAt; }
+    public OffsetDateTime getMentorAttendedAt() { return mentorAttendedAt; }
+
+    public void answerAsMentee(Attendance answer, OffsetDateTime at) {
+        this.menteeAttendance = answer;
+        this.menteeAttendedAt = at;
+    }
+
+    public void answerAsMentor(Attendance answer, OffsetDateTime at) {
+        this.mentorAttendance = answer;
+        this.mentorAttendedAt = at;
+    }
+
+    public String getAttendanceResolution() { return attendanceResolution; }
+    public OffsetDateTime getResolvedAt() { return resolvedAt; }
+
+    public void resolve(Status outcome, String resolution, OffsetDateTime at) {
+        this.status = outcome;
+        this.attendanceResolution = resolution;
+        this.resolvedAt = at;
+    }
+
     public boolean isReminderSent() { return reminderSent; }
     public void setReminderSent(boolean reminderSent) { this.reminderSent = reminderSent; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

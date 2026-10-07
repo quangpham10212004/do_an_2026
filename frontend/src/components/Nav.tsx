@@ -25,6 +25,7 @@ const LINKS: Record<Role, [href: string, label: string][]> = {
     ["/interview", "AI Interview"],
     ["/mentoring/requests", "Yêu cầu"],
     ["/mentoring/sessions", "Phiên học"],
+    ["/payment/transactions", "Thu nhập"],
     ["/learning", "Learning Hub"],
     ["/referral", "Giới thiệu"],
   ],

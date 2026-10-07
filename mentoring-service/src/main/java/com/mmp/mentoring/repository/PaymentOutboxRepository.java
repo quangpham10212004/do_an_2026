@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface PaymentOutboxRepository extends JpaRepository<PaymentOutbox, UUID> {
 
     List<PaymentOutbox> findTop50BySentAtIsNullOrderByCreatedAtAsc();
+
+    List<PaymentOutbox> findBySessionIdAndSentAtIsNullOrderByCreatedAtAsc(java.util.UUID sessionId);
 }

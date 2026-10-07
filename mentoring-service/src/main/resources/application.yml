@@ -34,6 +34,8 @@ app:
   services:
     profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+    matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}   # US-15 — gợi ý mentor tương tự (best-effort)
+    matching-timeout: PT3S
   timezone: Asia/Ho_Chi_Minh
   booking:
     min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
@@ -55,6 +57,13 @@ app:
     proposal-ttl: PT24H             # đề xuất hết hạn sau 24 giờ ...
     expire-before-start: PT1H       # ... hoặc 1 giờ trước giờ bắt đầu gốc (lấy mốc sớm hơn)
     expire-interval: PT1M
+  requests:                        # US-14 / US-15 — yêu cầu mentoring
+    max-pending: 3                  # mỗi mentee tối đa 3 yêu cầu PENDING (409 TOO_MANY_PENDING_REQUESTS)
+    expire-after: PT72H             # US-15 — PENDING không được phản hồi sau 72 giờ → EXPIRED
+    expire-interval: PT5M           # chu kỳ job hết hạn yêu cầu
+  attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
+    window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
+    interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:

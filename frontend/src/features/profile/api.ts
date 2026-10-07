@@ -7,6 +7,7 @@ import type {
   AvailabilityExceptionInput,
   AvailabilityExceptionResult,
   AvailabilitySlot,
+  MenteePreferences,
   MenteeProfile,
   MenteeProfileInput,
   MentorCard,
@@ -16,6 +17,7 @@ import type {
   MentorStatus,
   MentorStatusInput,
   PageResponse,
+  TimeOfDay,
   Uuid,
 } from "@/types";
 
@@ -42,6 +44,9 @@ export const profileApi = {
     api<null>(`/api/profile/mentor/${id}/exceptions/${exceptionId}`, { method: "DELETE" }),
   getMentee: (id: Uuid) => api<MenteeProfile>(`/api/profile/mentee/${id}`),
   saveMentee: (id: Uuid, body: MenteeProfileInput) => api<MenteeProfile>(`/api/profile/mentee/${id}`, { method: "PUT", body }),
+  // US-16 — sở thích tìm mentor
+  saveMenteePreferences: (id: Uuid, body: MenteePreferences) =>
+    api<MenteeProfile>(`/api/profile/mentee/${id}/preferences`, { method: "PUT", body }),
   searchMentors: ({ domain = "", q = "", page = 0, size = 12, includeUnverified = false }: MentorSearchParams = {}) =>
     api<PageResponse<MentorCard>>(
       `/api/profile/mentors?domain=${encodeURIComponent(domain)}&q=${encodeURIComponent(q)}&page=${page}&size=${size}&includeUnverified=${includeUnverified}`,
@@ -89,6 +94,12 @@ export const SESSION_TYPE_LABELS: Record<SessionType, string> = {
   CODE_REVIEW: "Review code",
   MOCK_INTERVIEW: "Phỏng vấn thử",
   PROJECT_GUIDANCE: "Hướng dẫn dự án",
+};
+
+export const TIME_OF_DAY_LABELS: Record<TimeOfDay, string> = {
+  MORNING: "Buổi sáng (6h–12h)",
+  AFTERNOON: "Buổi chiều (12h–18h)",
+  EVENING: "Buổi tối (18h–23h)",
 };
 
 export const LANGUAGE_LABELS: Record<LanguageCode, string> = { vi: "Tiếng Việt", en: "Tiếng Anh" };

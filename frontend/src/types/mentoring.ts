@@ -2,10 +2,47 @@ import type { IsoDateTime, Uuid } from "./common";
 import type { SessionType } from "./profile";
 
 // contracts/mentoring-service.yaml
-export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED";
-export type SessionStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+/** US-15 — EXPIRED: mentor không phản hồi trong 72 giờ. */
+export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "EXPIRED";
+/** US-12 — PENDING = chờ thanh toán; EXPIRED = quá hạn thanh toán; AWAITING_ATTENDANCE = chờ hai bên xác nhận tham dự. */
+export type SessionStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "AWAITING_ATTENDANCE"
+  | "COMPLETED"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "NO_SHOW_MENTEE"
+  | "NO_SHOW_MENTOR"
+  | "DISPUTED";
+/** US-12 — câu trả lời xác nhận tham dự. Mentee: HELD | MENTOR_NO_SHOW | CANCELLED_ON_CALL; mentor: HELD | MENTEE_NO_SHOW | CANCELLED_ON_CALL. */
+export type AttendanceAnswer = "HELD" | "MENTOR_NO_SHOW" | "MENTEE_NO_SHOW" | "CANCELLED_ON_CALL";
+export type AttendanceResolution =
+  | "BOTH_HELD"
+  | "HELD_ONE_SIDE"
+  | "NO_ANSWER"
+  | "MENTEE_NO_SHOW_REPORTED"
+  | "MENTOR_NO_SHOW_REPORTED"
+  | "CONFLICT"
+  | "CANCELLED_ON_CALL";
 /** US-03 — thời lượng phiên được phép (phút). */
 export type SessionDuration = 30 | 45 | 60 | 90 | 120;
+
+/** US-14 — tần suất mong muốn của quan hệ mentoring. */
+export type RequestFrequency = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "ONE_OFF";
+/** US-14 — thời gian dự kiến (tháng). */
+export type ExpectedDurationMonths = 1 | 3 | 6;
+/** US-14 — lý do mentor từ chối. */
+export type RejectReason = "FULL" | "NOT_MY_EXPERTISE" | "SCHEDULE" | "OTHER";
+
+/** US-14 — tóm tắt hồ sơ mentee hiển thị cho mentor (null khi mentee tự xem / không lấy được). */
+export interface MenteeSummary {
+  displayName: string;
+  domain: string;
+  currentLevel: string | null;
+  goal: string;
+  skills: string[];
+}
 
 export interface MentoringRequest {
   id: Uuid;
@@ -14,10 +51,28 @@ export interface MentoringRequest {
   mentorId: Uuid;
   mentorName: string;
   message: string | null;
+  goal: string;
+  sessionType: SessionType | null;
+  frequency: RequestFrequency;
+  expectedDurationMonths: number;
   status: RequestStatus;
+  rejectReason: RejectReason | null;
   responseNote: string | null;
   createdAt: IsoDateTime;
   respondedAt: IsoDateTime | null;
+  /** US-15 — thời điểm hết hạn (status EXPIRED). */
+  expiredAt: IsoDateTime | null;
+  menteeProfile: MenteeSummary | null;
+}
+
+/** US-14 — POST /api/mentoring/requests */
+export interface CreateRequestInput {
+  mentorId: Uuid;
+  goal: string;
+  sessionType: SessionType;
+  frequency: RequestFrequency;
+  expectedDurationMonths: ExpectedDurationMonths;
+  message?: string;
 }
 
 export interface MentoringSession {
@@ -43,6 +98,11 @@ export interface MentoringSession {
   refundPercent: number | null;
   rescheduleCount: number;
   pendingReschedule: RescheduleProposal | null;
+  menteeAttendance: AttendanceAnswer | null;
+  mentorAttendance: AttendanceAnswer | null;
+  /** endsAt + 48 giờ — hạn xác nhận tham dự. */
+  attendanceDeadline: IsoDateTime;
+  attendanceResolution: AttendanceResolution | null;
   reviewed: boolean;
   reviewRating: number | null;
   createdAt: IsoDateTime;
@@ -139,4 +199,9 @@ export interface MentoringStats {
   confirmedSessions: number;
   completedSessions: number;
   cancelledSessions: number;
+  awaitingAttendanceSessions: number;
+  expiredSessions: number;
+  noShowMenteeSessions: number;
+  noShowMentorSessions: number;
+  disputedSessions: number;
 }

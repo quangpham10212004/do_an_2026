@@ -54,6 +54,7 @@ public class SessionService {
     private final ZoneId zone;
     private final Duration minLeadTime;
     private final Duration maxAdvance;
+    private final Duration attendanceWindow;
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
                           LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
@@ -62,7 +63,8 @@ public class SessionService {
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
                           @Value("${app.booking.min-lead-time}") Duration minLeadTime,
-                          @Value("${app.booking.max-advance}") Duration maxAdvance) {
+                          @Value("${app.booking.max-advance}") Duration maxAdvance,
+                          @Value("${app.attendance.window:PT48H}") Duration attendanceWindow) {
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.reviewRepo = reviewRepo;
@@ -78,6 +80,7 @@ public class SessionService {
         this.zone = ZoneId.of(timezone);
         this.minLeadTime = minLeadTime;
         this.maxAdvance = maxAdvance;
+        this.attendanceWindow = attendanceWindow;
     }
 
     /**
@@ -295,8 +298,8 @@ public class SessionService {
             }
             return ss;
         });
-        if (session.getStatus() == MentoringSession.Status.CANCELLED) {
-            // Phiên đã bị huỷ (ví dụ quá hạn giữ chỗ) trước khi tiền về → hoàn tiền ngay
+        if (session.getStatus() == MentoringSession.Status.CANCELLED || session.getStatus() == MentoringSession.Status.EXPIRED) {
+            // Phiên đã bị huỷ / hết hạn giữ chỗ (EXPIRED) trước khi tiền về → hoàn tiền ngay
             log.warn("Payment {} arrived for cancelled session {}, refunding", transactionId, sessionId);
             paymentClient.refund(sessionId, "SESSION_ALREADY_CANCELLED");
             notifications.notifyUser(session.getMenteeId(), "PAYMENT_REFUNDED", "Đã hoàn tiền",
@@ -405,27 +408,6 @@ public class SessionService {
 
     private static String money(java.math.BigDecimal amount) {
         return String.format("%,d", amount.longValue()).replace(',', '.') + "đ";
-    }
-
-    /**
-     * Mentor đánh dấu phiên đã diễn ra. (Job SessionScheduler cũng tự hoàn thành
-     * các phiên đã kết thúc quá 2 giờ.)
-     */
-    public SessionView complete(AuthUser user, UUID sessionId) {
-        MentoringSession session = tx.execute(s -> {
-            MentoringSession ss = find(sessionId);
-            if (!user.isAdmin() && !ss.getMentorId().equals(user.userId())) {
-                throw ApiException.forbidden("Chỉ mentor của phiên mới được đánh dấu hoàn thành");
-            }
-            if (ss.getStatus() != MentoringSession.Status.CONFIRMED) {
-                throw ApiException.conflict("SESSION_NOT_CONFIRMED", "Chỉ phiên đã xác nhận mới có thể hoàn thành");
-            }
-            ss.setStatus(MentoringSession.Status.COMPLETED);
-            return ss;
-        });
-        notifications.notifyUser(session.getMenteeId(), "SESSION_COMPLETED", "Phiên mentoring đã hoàn thành",
-                "Hãy dành 1 phút đánh giá mentor để giúp cộng đồng nhé!", "/mentoring/sessions");
-        return toView(session);
     }
 
     /** US-04 — mentor (hoặc admin) đặt link phòng họp riêng cho phiên chưa kết thúc. */
@@ -543,7 +525,11 @@ public class SessionService {
                     s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
                     MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(),
                     s.getCancelledBy(), s.getCancelReason(), s.getRefundPercent(),
-                    s.getRescheduleCount(), pending.containsKey(s.getId()) ? RescheduleService.toView(pending.get(s.getId())) : null, r != null, r == null ? null : r.getRating(), s.getCreatedAt());
+                    s.getRescheduleCount(), pending.containsKey(s.getId()) ? RescheduleService.toView(pending.get(s.getId())) : null,
+                    s.getMenteeAttendance() == null ? null : s.getMenteeAttendance().name(),
+                    s.getMentorAttendance() == null ? null : s.getMentorAttendance().name(),
+                    AttendanceRules.deadline(s, attendanceWindow), s.getAttendanceResolution(),
+                    r != null, r == null ? null : r.getRating(), s.getCreatedAt());
         }).toList();
     }
 
@@ -553,7 +539,12 @@ public class SessionService {
                 sessionRepo.countByStatus(MentoringSession.Status.PENDING),
                 sessionRepo.countByStatus(MentoringSession.Status.CONFIRMED),
                 sessionRepo.countByStatus(MentoringSession.Status.COMPLETED),
-                sessionRepo.countByStatus(MentoringSession.Status.CANCELLED));
+                sessionRepo.countByStatus(MentoringSession.Status.CANCELLED),
+                sessionRepo.countByStatus(MentoringSession.Status.AWAITING_ATTENDANCE),
+                sessionRepo.countByStatus(MentoringSession.Status.EXPIRED),
+                sessionRepo.countByStatus(MentoringSession.Status.NO_SHOW_MENTEE),
+                sessionRepo.countByStatus(MentoringSession.Status.NO_SHOW_MENTOR),
+                sessionRepo.countByStatus(MentoringSession.Status.DISPUTED));
     }
 
     private static SessionInternalView toInternal(MentoringSession s) {

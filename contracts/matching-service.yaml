@@ -3,12 +3,13 @@ info:
   title: matching-service
   version: 1.0.0
   description: >
-    AI Matching pipeline: embedding (sentence-transformers all-MiniLM-L6-v2, 384 chiều) +
-    pgvector top-K retrieval → hard filter → re-rank → giải thích. Sở hữu bởi Thảo.
+    AI Matching pipeline: embedding (sentence-transformers all-MiniLM-L6-v2, 384 chiều);
+    hard filter (ràng buộc hệ thống + bộ lọc người dùng, US-17) → pgvector top-K chỉ trong mentor hợp lệ
+    → re-rank → giải thích. Sở hữu bởi Thảo.
     Sở hữu TOÀN BỘ chỉ mục embedding: vector, hash text nguồn và trạng thái index nằm trong
     matching_db (mentor_embeddings, mentee_embeddings) — profile-service không lưu vector.
-    Đọc trực tiếp (READ-ONLY, role matching_reader) bảng mentor_profiles, mentee_profiles,
-    mentor_availability trong DB của profile-service — ngoại lệ đã được duyệt (CONVENTIONS.md mục 7).
+    Đọc trực tiếp (READ-ONLY, role matching_reader) bảng mentor_profiles, mentee_profiles (kể cả cột
+    sở thích US-16), mentor_availability trong DB của profile-service — ngoại lệ đã được duyệt (CONVENTIONS.md mục 7).
 servers:
   - url: http://localhost:8090
 components:
@@ -48,15 +49,47 @@ components:
         indexedAt: { type: string, format: date-time, nullable: true }
     PipelineStats:
       type: object
+      description: >
+        US-17 — thứ tự pipeline: hard filter trên profile_db (ràng buộc hệ thống + bộ lọc người dùng)
+        → top-K cosine CHỈ trong các mentor hợp lệ → re-rank → explain.
       properties:
-        k: { type: integer }
-        retrieved: { type: integer, description: Số ứng viên lấy được ở bước top-K }
+        considered: { type: integer, description: Số hồ sơ mentor được xét (toàn bộ mentor_profiles) }
         excluded:
           type: object
-          description: "Số mentor bị loại theo lý do: notVerified, unavailable (status hiệu lực ≠ ACCEPTING — PAUSED/ON_LEAVE/SUSPENDED), noSchedule, fullCapacity, domainMismatch"
+          description: >
+            Số mentor bị ràng buộc HỆ THỐNG loại (đếm trên toàn bộ mentor, mỗi mentor tính 1 lý do đầu tiên
+            theo thứ tự): notVerified, unavailable (status hiệu lực ≠ ACCEPTING — PAUSED/ON_LEAVE/SUSPENDED),
+            noSchedule, fullCapacity, domainMismatch
           additionalProperties: { type: integer }
+        eligible: { type: integer, description: Số mentor qua mọi ràng buộc hệ thống VÀ mọi bộ lọc người dùng }
+        k: { type: integer, description: "Số mentor hợp lệ gần nhất về vector được đưa vào re-rank = max(50, 5 × limit)" }
+        retrieved: { type: integer, description: Số mentor hợp lệ đã có vector và được lấy ở bước top-K (≤ k) }
         returned: { type: integer }
         weights: { type: object, additionalProperties: { type: number } }
+    TimeOfDay:
+      type: string
+      enum: [MORNING, AFTERNOON, EVENING]
+      description: >
+        MORNING 06:00–12:00, AFTERNOON 12:00–18:00, EVENING 18:00–23:00. Mentor khớp nếu có một khung lịch
+        rảnh hằng tuần GIAO với cửa sổ (start < cửa sổ.end và end > cửa sổ.start) vào một trong các ngày
+        `days` đã chọn, hoặc vào bất kỳ ngày nào nếu không chọn ngày. So theo giờ địa phương của mentor.
+    EffectiveFilters:
+      type: object
+      description: >
+        US-17 — bộ lọc người dùng THỰC SỰ áp dụng cho lượt tìm (request + sở thích hồ sơ). Tên trường = tên
+        query param. Giá trị null / mảng rỗng / false = bộ lọc không bật.
+      properties:
+        maxRate: { type: number, nullable: true, description: "hourlyRate ≤ maxRate (VND/giờ)" }
+        days: { type: array, items: { type: integer, minimum: 1, maximum: 7 }, description: "ISO 1 = Thứ Hai … 7 = Chủ Nhật" }
+        timeOfDay: { allOf: [{ $ref: "#/components/schemas/TimeOfDay" }], nullable: true }
+        language: { type: array, items: { type: string, enum: [vi, en] }, description: Mentor nói ít nhất một ngôn ngữ trong danh sách }
+        sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE], nullable: true }
+        minRating: { type: number, nullable: true, description: "rating ≥ minRating (mentor chưa có đánh giá có rating 0)" }
+        freeOnly: { type: boolean, description: hourlyRate = 0 }
+        fromProfileDefaults:
+          type: array
+          items: { type: string, enum: [maxRate, days, timeOfDay, language] }
+          description: Các bộ lọc có giá trị lấy từ sở thích hồ sơ mentee (US-16) vì request không truyền
 paths:
   /health:
     get:
@@ -95,6 +128,43 @@ paths:
         "400": { description: BAD_REQUEST — userId không hợp lệ }
         "403": { description: Thiếu/sai X-Internal-Token }
         "404": { description: PROFILE_NOT_FOUND — không có hồ sơ với userId này }
+
+  /internal/matching/similar-mentors:
+    get:
+      summary: >
+        Nội bộ (mentoring-service, US-15) — mentor phù hợp nhất cho một mentee, trừ excludeMentorId (vd.
+        mentor vừa từ chối/không phản hồi yêu cầu). Cùng pipeline với /api/matching/mentors: luôn giữ 5
+        ràng buộc hệ thống (APPROVED, ACCEPTING, có lịch, còn chỗ, cùng lĩnh vực); áp sở thích hồ sơ mentee
+        làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc sở thích và bổ sung (kết quả vòng sở thích đứng
+        trước). Best-effort: mentee chưa có hồ sơ/chỉ mục => 200 với danh sách rỗng.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: excludeMentorId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 3, minimum: 1, maximum: 10 } }
+      responses:
+        "200":
+          description: Tối đa `limit` mentor, xếp theo finalScore giảm dần trong từng vòng
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mentors]
+                properties:
+                  mentors:
+                    type: array
+                    items:
+                      type: object
+                      required: [mentorId, fullName, score]
+                      properties:
+                        mentorId: { type: string, format: uuid }
+                        fullName: { type: string, description: display_name trong hồ sơ mentor }
+                        score: { type: number, format: float, description: finalScore của pipeline (0–1) }
+              example:
+                mentors:
+                  - { mentorId: "3f1c2a9e-0000-4000-8000-000000000001", fullName: "Nguyễn Hoàng Long", score: 0.77 }
+        "400": { description: "BAD_REQUEST / VALIDATION_ERROR — menteeId/excludeMentorId không phải UUID, thiếu param, limit ngoài 1–10" }
+        "403": { description: FORBIDDEN — thiếu/sai X-Internal-Token }
 
   /api/matching/index-status:
     get:
@@ -135,9 +205,36 @@ paths:
     get:
       summary: FR-4.3 → FR-4.6 Danh sách mentor phù hợp cho mentee (mentee chỉ truy vấn cho chính mình; ADMIN mọi mentee)
       security: [{ bearerAuth: [] }]
+      description: >
+        US-17 (PRD-MATCH-1/2) — bộ lọc là HARD FILTER áp dụng TRƯỚC khi xếp hạng vector: chỉ mentor thoả
+        mọi ràng buộc hệ thống và mọi bộ lọc mới được xếp hạng, nên có ≥ limit mentor hợp lệ (đã lập chỉ
+        mục) thì luôn trả đủ limit. Với useProfileDefaults=true (mặc định), bộ lọc không truyền lấy từ sở
+        thích hồ sơ mentee: maxRate ← budgetMaxPerHour, days ← preferredDays, timeOfDay ←
+        preferredTimeOfDay, language ← languages. Truyền param = ghi đè cho lượt tìm này (không lưu hồ sơ);
+        để bỏ một bộ lọc mặc định, gửi useProfileDefaults=false kèm các bộ lọc muốn giữ.
       parameters:
         - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
         - { name: limit, in: query, required: false, schema: { type: integer, default: 10, minimum: 1, maximum: 50 } }
+        - { name: maxRate, in: query, required: false, schema: { type: number, minimum: 0 }, description: "hourlyRate ≤ maxRate (VND/giờ)" }
+        - name: days
+          in: query
+          required: false
+          description: "Lặp (?days=1&days=3) hoặc phân tách dấu phẩy (?days=1,3); ISO 1 = Thứ Hai … 7 = Chủ Nhật"
+          schema: { type: array, items: { type: integer, minimum: 1, maximum: 7 } }
+          style: form
+          explode: true
+        - { name: timeOfDay, in: query, required: false, schema: { $ref: "#/components/schemas/TimeOfDay" } }
+        - name: language
+          in: query
+          required: false
+          description: Lặp hoặc phân tách dấu phẩy; mentor khớp nếu nói ít nhất một ngôn ngữ
+          schema: { type: array, items: { type: string, enum: [vi, en] } }
+          style: form
+          explode: true
+        - { name: sessionType, in: query, required: false, schema: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] } }
+        - { name: minRating, in: query, required: false, schema: { type: number, minimum: 0, maximum: 5 } }
+        - { name: freeOnly, in: query, required: false, schema: { type: boolean }, description: Chỉ mentor miễn phí (hourlyRate = 0) }
+        - { name: useProfileDefaults, in: query, required: false, schema: { type: boolean, default: true } }
       responses:
         "200":
           description: Danh sách mentor đã xếp hạng
@@ -149,6 +246,17 @@ paths:
                   menteeId: { type: string, format: uuid }
                   mentors: { type: array, items: { $ref: "#/components/schemas/RankedMentor" } }
                   pipeline: { $ref: "#/components/schemas/PipelineStats" }
+                  filters: { $ref: "#/components/schemas/EffectiveFilters" }
+                  excludedBy:
+                    type: object
+                    description: >
+                      US-18 (PRD-MATCH-5) — với MỖI bộ lọc người dùng đang bật (khoá = tên trong filters):
+                      số mentor đã qua ràng buộc hệ thống và qua mọi bộ lọc KHÁC nhưng trượt riêng bộ lọc
+                      này, tức số mentor sẽ có thêm nếu chỉ bỏ bộ lọc đó. Có mặt cả khi bằng 0; rỗng khi
+                      không bật bộ lọc nào.
+                    additionalProperties: { type: integer }
+                    example: { maxRate: 12, language: 0 }
+        "400": { description: "BAD_REQUEST / VALIDATION_ERROR — menteeId, days, language, timeOfDay, sessionType, minRating, maxRate không hợp lệ" }
         "401": { description: UNAUTHORIZED }
         "403": { description: FORBIDDEN — truy vấn cho mentee khác }
         "404":
