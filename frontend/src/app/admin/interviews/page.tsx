@@ -14,6 +14,7 @@ const TABS: [InterviewStatus | "", string][] = [
   ["IN_PROGRESS", "Đang phỏng vấn"],
   ["APPROVED", "Đã duyệt"],
   ["REJECTED", "Từ chối"],
+  ["RETAKE_REQUESTED", "Yêu cầu làm lại"],
   ["", "Tất cả"],
 ];
 

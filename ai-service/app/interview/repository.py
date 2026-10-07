@@ -4,7 +4,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db import Db
-from app.interview.models import TurnRecord
+from app.interview.models import TurnEvaluation, TurnRecord
 
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
@@ -70,12 +70,17 @@ async def insert_turn(conn: Db, interview_id: UUID, turn_no: int, topic: str, st
         interview_id, turn_no, topic, strategy, question)
 
 
-async def answer_turn(conn: Db, turn_id: UUID, answer: str, score: float, feedback: str) -> bool:
-    """Ghi câu trả lời; trả False nếu lượt đã được trả lời (chống double-submit)."""
+async def answer_turn(conn: Db, turn_id: UUID, answer: str, evaluation: TurnEvaluation, flags: list[str],
+                      engine: str, model: str | None, prompt_version: str, fallback_used: bool) -> bool:
+    """Ghi câu trả lời + điểm rubric + thông tin tái lập; trả False nếu lượt đã được trả lời (chống double-submit)."""
+    r = evaluation.rubric
     row = await conn.fetchrow(
-        """UPDATE interview_turns SET answer = $2, score = $3, feedback = $4, answered_at = now()
+        """UPDATE interview_turns SET answer = $2, score = $3, feedback = $4, answered_at = now(),
+                  score_technical = $5, score_depth = $6, score_communication = $7, score_mentoring = $8,
+                  flags = $9, engine = $10, model = $11, prompt_version = $12, fallback_used = $13
            WHERE id = $1 AND answer IS NULL RETURNING id""",
-        turn_id, answer, score, feedback)
+        turn_id, answer, evaluation.score, evaluation.feedback, r.technical, r.depth, r.communication, r.mentoring,
+        flags, engine, model, prompt_version, fallback_used)
     return row is not None
 
 
@@ -94,7 +99,8 @@ async def complete(conn: Db, interview_id: UUID, overall_score: float, summary: 
 
 async def review(conn: Db, interview_id: UUID, status: str, reviewed_by: UUID,
                  note: str | None) -> asyncpg.Record | None:
-    """Chỉ duyệt được buổi đang PENDING_REVIEW — điều kiện nằm trong WHERE để tránh race."""
+    """Chỉ duyệt được buổi đang PENDING_REVIEW — điều kiện nằm trong WHERE để tránh race.
+    status: APPROVED | REJECTED | RETAKE_REQUESTED."""
     return await conn.fetchrow(
         f"""UPDATE interviews SET status = $2, reviewed_by = $3, review_note = $4, reviewed_at = now()
             WHERE id = $1 AND status = 'PENDING_REVIEW' RETURNING {INTERVIEW_COLUMNS}""",
@@ -104,4 +110,14 @@ async def review(conn: Db, interview_id: UUID, status: str, reviewed_by: UUID,
 def to_record(turn: asyncpg.Record) -> TurnRecord:
     """1 lượt trong DB → lịch sử hội thoại đưa vào engine."""
     return TurnRecord(turn_no=turn["turn_no"], topic=turn["topic"], strategy=turn["strategy"],
-                      question=turn["question"], answer=turn["answer"], score=turn["score"])
+                      question=turn["question"], answer=turn["answer"],
+                      score=None if turn["score"] is None else round(turn["score"], 1),
+                      flags=list(turn["flags"] or []))
+
+
+async def review_counts(conn: Db) -> list[asyncpg.Record]:
+    """US-24 — số buổi đã được admin quyết định theo (quyết định, khuyến nghị AI)."""
+    return await conn.fetch(
+        """SELECT status, recommendation, COUNT(*) AS total FROM interviews
+            WHERE status IN ('APPROVED', 'REJECTED', 'RETAKE_REQUESTED') AND reviewed_at IS NOT NULL
+            GROUP BY status, recommendation""")

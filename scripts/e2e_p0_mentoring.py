@@ -66,7 +66,7 @@ def approved_mentor(admin_token, name, hourly_rate):
               "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
     while interview["status"] == "IN_PROGRESS":
         interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": answer}, token=t)
-    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok"}, token=admin_token)
+    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "Duyet de chay e2e"}, token=admin_token)
     return m
 
 

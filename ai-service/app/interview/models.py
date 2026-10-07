@@ -1,5 +1,6 @@
 from typing import Literal
 
+from app.interview.rubric import RubricScores
 from app.schemas import CamelModel
 
 Strategy = Literal["OPENING", "DEEPEN", "PIVOT"]
@@ -23,6 +24,7 @@ class TurnRecord(CamelModel):
     question: str
     answer: str | None = None
     score: float | None = None
+    flags: list[str] = []
 
 
 class QuestionPlan(CamelModel):
@@ -32,9 +34,14 @@ class QuestionPlan(CamelModel):
 
 
 class TurnEvaluation(CamelModel):
-    """Chấm 1 câu trả lời (0-10) kèm nhận xét và câu hỏi tiếp theo nếu còn lượt."""
+    """
+    Chấm 1 câu trả lời: điểm 4 tiêu chí rubric, điểm câu (0-10, = rubric.turn_score), nhận xét, cờ
+    (PROMPT_INJECTION / COPIED_ANSWER) và câu hỏi tiếp theo nếu còn lượt.
+    """
+    rubric: RubricScores
     score: float
     feedback: str
+    flags: list[str] = []
     next: QuestionPlan | None = None
 
 

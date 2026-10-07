@@ -12,7 +12,9 @@ export const aiApi = {
   adminInterviewEligibility: (mentorId: Uuid) => api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/eligibility`),
   unlockInterviews: (mentorId: Uuid, note: string) =>
     api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/unlock`, { method: "POST", body: { note } }),
-  answerInterview: (id: Uuid, answer: string) => api<Interview>(`/api/ai/interviews/${id}/answers`, { method: "POST", body: { answer } }),
+  // pastedLargeText: dán > 500 ký tự trong một lần (PRD-AIV-2) — chỉ gắn cờ cho admin, không chặn
+  answerInterview: (id: Uuid, answer: string, pastedLargeText = false) =>
+    api<Interview>(`/api/ai/interviews/${id}/answers`, { method: "POST", body: { answer, pastedLargeText } }),
   interview: (id: Uuid) => api<Interview>(`/api/ai/interviews/${id}`),
   adminInterviews: (status: InterviewStatus | "" = "") => api<Interview[]>(`/api/ai/admin/interviews?status=${status}`),
   reviewInterview: (id: Uuid, decision: ReviewDecision, note: string) =>

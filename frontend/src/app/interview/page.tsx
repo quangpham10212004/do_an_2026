@@ -57,6 +57,8 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
 function Interview() {
   const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
   const [answer, setAnswer] = useState("");
+  // PRD-AIV-2: dán > 500 ký tự trong một lần => gắn cờ cho admin (không chặn)
+  const [pasted, setPasted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode>("");
   const [eligibility, setEligibility] = useState<InterviewEligibility | null>(null);
@@ -89,8 +91,9 @@ function Interview() {
     setBusy(true);
     setError("");
     try {
-      setInterview(await aiApi.answerInterview(interview.id, answer));
+      setInterview(await aiApi.answerInterview(interview.id, answer, pasted));
       setAnswer("");
+      setPasted(false);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -121,7 +124,7 @@ function Interview() {
             <div ref={bottom} />
             {inProgress && (
               <form onSubmit={send} style={{ marginTop: "1rem" }}>
-                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={5000} disabled={busy} placeholder="Nhập câu trả lời của bạn..." style={{ minHeight: 140 }} />
+                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onPaste={(e) => { if (e.clipboardData.getData("text").length > 500) setPasted(true); }} maxLength={5000} disabled={busy} placeholder="Nhập câu trả lời của bạn..." style={{ minHeight: 140 }} />
                 <div className="row" style={{ marginTop: 8 }}>
                   <button className="btn" disabled={busy || !answer.trim()}>{busy ? "AI đang đánh giá..." : "Gửi câu trả lời"}</button>
                   <span className="muted small">{answer.length}/5000</span>
@@ -132,6 +135,12 @@ function Interview() {
           <div className="stack">
             {interview.status === "PENDING_REVIEW" && <Alert type="info">Bạn đã hoàn thành phỏng vấn. Kết quả đang chờ quản trị viên xem xét.</Alert>}
             {interview.status === "APPROVED" && <Alert type="success">Tài khoản mentor đã được kích hoạt. Bạn sẽ xuất hiện trong kết quả gợi ý cho mentee.</Alert>}
+            {interview.status === "RETAKE_REQUESTED" && (
+              <div className="card">
+                <Alert type="info">Quản trị viên đề nghị bạn phỏng vấn lại. Lần này không bị tính vào số lần phỏng vấn.</Alert>
+                <button className="btn" onClick={() => { setInterview(null); }}>Phỏng vấn lại</button>
+              </div>
+            )}
             {interview.status === "REJECTED" && (
               <div className="card">
                 <Alert>Hồ sơ chưa được duyệt. Bạn có thể cập nhật hồ sơ và phỏng vấn lại.</Alert>

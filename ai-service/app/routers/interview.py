@@ -37,7 +37,7 @@ async def get(interview_id: UUID, user: AuthUser = Depends(require_user)) -> Int
 @router.post("/interviews/{interview_id}/answers", response_model=InterviewView, response_model_by_alias=True)
 async def answer(interview_id: UUID, body: AnswerInput,
                  user: AuthUser = Depends(require_role("MENTOR"))) -> InterviewView:
-    return await service.answer(user, interview_id, body.answer)
+    return await service.answer(user, interview_id, body.answer, body.pasted_large_text)
 
 
 @router.get("/admin/interviews", response_model=list[InterviewView], response_model_by_alias=True)

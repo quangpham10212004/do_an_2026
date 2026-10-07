@@ -39,8 +39,26 @@ components:
         strategy: { type: string, enum: [OPENING, DEEPEN, PIVOT] }
         question: { type: string }
         answer: { type: string, nullable: true }
-        score: { type: number, nullable: true, description: "0-10; null với mentor khi buổi phỏng vấn chưa kết thúc" }
+        score:
+          type: number
+          nullable: true
+          description: >
+            Điểm câu 0-10 = 0.4·technical + 0.3·depth + 0.15·communication + 0.15·mentoring (US-23; lượt trước Sprint 3
+            giữ điểm cũ). null với mentor khi buổi phỏng vấn chưa kết thúc.
         feedback: { type: string, nullable: true }
+        rubric:
+          allOf: [{ $ref: "#/components/schemas/RubricScores" }]
+          nullable: true
+          description: US-23 — null với lượt trước Sprint 3 hoặc khi điểm đang ẩn với mentor
+        flags:
+          type: array
+          items: { type: string, enum: [PROMPT_INJECTION, COPIED_ANSWER] }
+          description: Chỉ trả cho admin
+        engine: { type: string, nullable: true, enum: [DEEPSEEK, RULE_BASED], description: "PRD-AIV-7 (chỉ admin): engine thực sự chấm lượt này" }
+        model: { type: string, nullable: true, description: Model LLM (null với rule-based) — chỉ admin }
+        promptVersion: { type: string, nullable: true, description: "vd. deepseek-interview-rubric-v1 | rule-based-rubric-v1 — chỉ admin" }
+        fallbackUsed: { type: boolean, nullable: true, description: Lượt của buổi DeepSeek được chấm bằng rule-based — chỉ admin }
+        durationSeconds: { type: integer, nullable: true, description: "PRD-AIV-2: thời gian từ lúc hỏi tới lúc trả lời" }
         askedAt: { type: string, format: date-time }
         answeredAt: { type: string, format: date-time, nullable: true }
     Interview:
@@ -51,7 +69,7 @@ components:
         mentorName: { type: string, nullable: true, description: Chỉ trả về cho admin }
         domain: { type: string }
         skills: { type: array, items: { type: string } }
-        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED] }
+        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED] }
         engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
         maxTurns: { type: integer }
         currentTurn: { type: integer }
@@ -61,12 +79,26 @@ components:
         summary: { type: string, nullable: true }
         strengths: { type: array, items: { type: string } }
         weaknesses: { type: array, items: { type: string } }
-        recommendation: { type: string, nullable: true, enum: [APPROVE, REJECT, NEEDS_REVIEW] }
+        recommendation:
+          type: string
+          nullable: true
+          enum: [APPROVE, REJECT, NEEDS_REVIEW]
+          description: "US-23: overallScore ≥ 70 APPROVE, 50–69.9 NEEDS_REVIEW, < 50 REJECT; có lượt bị gắn cờ => NEEDS_REVIEW"
+        flagged: { type: boolean, description: Có lượt bị gắn cờ — chỉ admin }
         reviewNote: { type: string, nullable: true }
         selfAnswerAcknowledged: { type: boolean, description: "US-22: mentor đã xác nhận tự trả lời (false với buổi trước Sprint 3)" }
         createdAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time, nullable: true }
         reviewedAt: { type: string, format: date-time, nullable: true }
+    RubricScores:
+      type: object
+      description: "US-23 (PRD 6.1) — mỗi tiêu chí 0-10. Trọng số 40/30/15/15."
+      required: [technical, depth, communication, mentoring]
+      properties:
+        technical: { type: number, minimum: 0, maximum: 10, description: "Độ chính xác kỹ thuật (40%)" }
+        depth: { type: number, minimum: 0, maximum: 10, description: "Chiều sâu / kinh nghiệm (30%)" }
+        communication: { type: number, minimum: 0, maximum: 10, description: "Giao tiếp (15%)" }
+        mentoring: { type: number, minimum: 0, maximum: 10, description: "Năng lực hướng dẫn (15%)" }
     InterviewEligibility:
       type: object
       description: >
@@ -215,6 +247,10 @@ components:
       required: [answer]
       properties:
         answer: { type: string, minLength: 1, maxLength: 5000 }
+        pastedLargeText:
+          type: boolean
+          default: false
+          description: "PRD-AIV-2: trình duyệt phát hiện dán > 500 ký tự trong một lần => lượt bị gắn cờ COPIED_ANSWER (không chặn)"
 security:
   - bearerAuth: []
 paths:
@@ -293,12 +329,18 @@ paths:
     get:
       summary: (ADMIN) Danh sách buổi phỏng vấn
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED] } }
+        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED] } }
       responses:
         "200": { description: "Interview[]" }
   /api/ai/admin/interviews/{id}/review:
     post:
-      summary: FR-7.5 (ADMIN) Duyệt/từ chối kết quả; đồng bộ trạng thái xác thực sang profile-service
+      summary: >
+        FR-7.5 / US-23 (ADMIN) Quyết định cuối cùng; đồng bộ trạng thái xác thực sang profile-service
+        (APPROVE → APPROVED, REJECT → REJECTED, REQUEST_RETAKE → PENDING_INTERVIEW) và ghi audit log
+        INTERVIEW_APPROVED | INTERVIEW_REJECTED | INTERVIEW_RETAKE_REQUESTED (targetType INTERVIEW).
+        REQUEST_RETAKE: buổi chuyển RETAKE_REQUESTED, không tính vào số lần, mentor bắt đầu lại được ngay.
+        Bắt buộc note ≥ 10 ký tự khi quyết định ngược khuyến nghị AI: APPROVE khi AI = REJECT, REJECT khi AI = APPROVE,
+        REQUEST_RETAKE khi AI = APPROVE/REJECT. AI = NEEDS_REVIEW (hoặc buổi cũ không có khuyến nghị) => không bắt buộc.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -308,10 +350,11 @@ paths:
               type: object
               required: [decision]
               properties:
-                decision: { type: string, enum: [APPROVE, REJECT] }
+                decision: { type: string, enum: [APPROVE, REJECT, REQUEST_RETAKE] }
                 note: { type: string, maxLength: 2000 }
       responses:
         "200": { description: Interview }
+        "400": { description: REVIEW_NOTE_REQUIRED | VALIDATION_ERROR }
         "409": { description: INTERVIEW_NOT_PENDING_REVIEW }
   /api/ai/admin/interviews/mentors/{mentorId}/eligibility:
     get:

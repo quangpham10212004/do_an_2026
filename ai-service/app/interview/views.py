@@ -6,6 +6,7 @@ import asyncpg
 from pydantic import Field
 
 from app.interview.models import Recommendation, Strategy
+from app.interview.rubric import RubricScores, is_flagged
 from app.schemas import CamelModel
 
 
@@ -17,6 +18,16 @@ class InterviewTurnView(CamelModel):
     answer: str | None = None
     score: float | None = None
     feedback: str | None = None
+    # US-23: điểm 4 tiêu chí (null với lượt trước Sprint 3 hoặc khi điểm đang bị ẩn với mentor)
+    rubric: RubricScores | None = None
+    flags: list[str] = []
+    # PRD-AIV-7 (chỉ admin): engine thực sự chấm lượt này, model, phiên bản prompt, có fallback không
+    engine: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    fallback_used: bool | None = None
+    # PRD-AIV-2: thời gian trả lời (giây) từ lúc câu hỏi được đưa ra
+    duration_seconds: int | None = None
     asked_at: datetime
     answered_at: datetime | None = None
 
@@ -39,6 +50,8 @@ class InterviewView(CamelModel):
     weaknesses: list[str] = []
     recommendation: Recommendation | None = None
     review_note: str | None = None
+    # US-23: có lượt bị gắn cờ (PROMPT_INJECTION / COPIED_ANSWER) — chỉ admin
+    flagged: bool = False
     self_answer_acknowledged: bool = False
     created_at: datetime
     completed_at: datetime | None = None
@@ -68,10 +81,12 @@ class UnlockInput(CamelModel):
 
 class AnswerInput(CamelModel):
     answer: str = Field(min_length=1, max_length=5000)
+    # PRD-AIV-2: trình duyệt phát hiện dán > 500 ký tự trong một lần => gắn cờ COPIED_ANSWER (không chặn)
+    pasted_large_text: bool = False
 
 
 class ReviewInterviewInput(CamelModel):
-    decision: str = Field(pattern="^(APPROVE|REJECT)$")
+    decision: str = Field(pattern="^(APPROVE|REJECT|REQUEST_RETAKE)$")
     note: str | None = Field(default=None, max_length=2000)
 
 
@@ -86,12 +101,29 @@ def _split(text: str | None) -> list[str]:
     return [line for line in (text or "").split("\n") if line.strip()]
 
 
-def turn_view(turn: asyncpg.Record, reveal_scores: bool) -> InterviewTurnView:
+def _r1(v: float | None) -> float | None:
+    """Cột REAL (float4) => làm tròn 1 chữ số để JSON không ra 7.800000190734863."""
+    return None if v is None else round(v, 1)
+
+
+def _rubric(turn: asyncpg.Record) -> RubricScores | None:
+    values = {k: _r1(turn["score_" + k]) for k in ("technical", "depth", "communication", "mentoring")}
+    return None if any(v is None for v in values.values()) else RubricScores(**values)
+
+
+def turn_view(turn: asyncpg.Record, reveal_scores: bool, for_admin: bool = False) -> InterviewTurnView:
+    answered = turn["answered_at"]
     return InterviewTurnView(
         turn_no=turn["turn_no"], topic=turn["topic"], strategy=turn["strategy"], question=turn["question"],
-        answer=turn["answer"], score=turn["score"] if reveal_scores else None,
+        answer=turn["answer"], score=_r1(turn["score"]) if reveal_scores else None,
         feedback=turn["feedback"] if reveal_scores else None,
-        asked_at=turn["asked_at"], answered_at=turn["answered_at"])
+        rubric=_rubric(turn) if reveal_scores else None,
+        flags=list(turn["flags"] or []) if for_admin else [],
+        engine=turn["engine"] if for_admin else None, model=turn["model"] if for_admin else None,
+        prompt_version=turn["prompt_version"] if for_admin else None,
+        fallback_used=turn["fallback_used"] if for_admin else None,
+        duration_seconds=None if answered is None else int((answered - turn["asked_at"]).total_seconds()),
+        asked_at=turn["asked_at"], answered_at=answered)
 
 
 def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_admin: bool,
@@ -102,15 +134,16 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
     """
     in_progress = interview["status"] == "IN_PROGRESS"
     reveal = for_admin or not in_progress
-    turn_views = [turn_view(t, reveal) for t in turns]
+    turn_views = [turn_view(t, reveal, for_admin) for t in turns]
     current = next((t for t in turn_views if t.answer is None), None) if in_progress else None
     return InterviewView(
         id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name, domain=interview["domain"],
         skills=list(interview["skills"] or []), status=interview["status"], engine=interview["engine"],
         max_turns=interview["max_turns"], current_turn=interview["current_turn"], current_question=current,
-        turns=turn_views, overall_score=interview["overall_score"], summary=interview["summary"],
+        turns=turn_views, overall_score=_r1(interview["overall_score"]), summary=interview["summary"],
         strengths=_split(interview["strengths"]), weaknesses=_split(interview["weaknesses"]),
         recommendation=interview["recommendation"], review_note=interview["review_note"],
+        flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
         self_answer_acknowledged=interview["self_answer_acknowledged"],
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"])
