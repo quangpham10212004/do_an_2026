@@ -6,3 +6,4 @@ export * from "./mentoring";
 export * from "./payment";
 export * from "./learning";
 export * from "./ai";
+export * from "./relationship";

@@ -105,7 +105,10 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
               <div>
                 <h2>Đặt lịch phiên mentoring</h2>
                 <p className="muted small">Chọn thời lượng, loại phiên, khung giờ và nội dung muốn trao đổi.</p>
-                <Link className="btn" href={`/mentoring/book/${id}`}>Đặt lịch</Link>
+                <div className="row">
+                  <Link className="btn" href={`/mentoring/book/${id}`}>Đặt lịch</Link>
+                  <Link className="btn secondary" href={`/mentoring/relationships/${request.id}`}>Không gian mentoring</Link>
+                </div>
               </div>
             )}
             <p className="small row" style={{ marginTop: "1rem" }}>

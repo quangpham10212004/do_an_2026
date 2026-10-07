@@ -225,7 +225,100 @@ def us27():
     check("Sau khi gỡ: mentor xuất hiện lại trong AI Matching", mentor["userId"] in suggested_ids(mentee))
 
 
-STORIES = {"us27": us27}
+# ---------------------------------------------------------------- US-28
+def us28():
+    print("\nUS-28 — Không gian mentoring (mục tiêu + buổi học)")
+    admin = admin_token()
+    mentor = approved_mentor("ws")
+    mentee = mentee_with_profile("ws")
+    stranger = mentee_with_profile("wsx")
+    base = f"{MENTORING}/api/mentoring/relationships"
+
+    req = send_request(mentee, mentor)
+    status, code = error_of(lambda: call("GET", f"{base}/{req['id']}", token=mentee["accessToken"]))
+    check("Yêu cầu PENDING chưa có không gian → 404 RELATIONSHIP_NOT_FOUND", (status, code) == (404, "RELATIONSHIP_NOT_FOUND"), (status, code))
+    accept(mentor, req["id"])
+    rid = req["id"]
+    session = book(mentee, mentor, at(4, 15))
+
+    ws = call("GET", f"{base}/{rid}", token=mentee["accessToken"])
+    goals = ws["goals"]
+    check("Mở lần đầu: 1 mục tiêu tạo từ goal của yêu cầu", len(goals) == 1 and goals[0]["text"] == GOAL
+          and goals[0]["status"] == "TODO" and goals[0]["createdBy"] is None, goals)
+    check("Tóm tắt quan hệ: mentor, mentee, loại phiên, tần suất, trạng thái", ws["request"]["mentorId"] == mentor["userId"]
+          and ws["request"]["menteeId"] == mentee["userId"] and ws["request"]["sessionType"] == "CODE_REVIEW"
+          and ws["request"]["frequency"] == "WEEKLY" and ws["request"]["status"] == "ACCEPTED", ws["request"])
+    check("Buổi học của cặp này có trong workspace", [s["id"] for s in ws["sessions"]] == [session["id"]], ws["sessions"])
+    check("Mentee sửa được (canEdit, không readOnly)", ws["canEdit"] is True and ws["readOnly"] is False)
+    again = call("GET", f"{base}/{rid}", token=mentor["accessToken"])
+    check("Mở lại (mentor): không tạo thêm mục tiêu", len(again["goals"]) == 1 and again["canEdit"] is True, len(again["goals"]))
+
+    # Thêm tới 5 mục tiêu (cả hai bên)
+    added = []
+    for i, who in enumerate([mentee, mentor, mentee, mentor]):
+        added.append(call("POST", f"{base}/{rid}/goals", {"text": f"Muc tieu so {i + 2} cua e2e"}, token=who["accessToken"]))
+    check("Hai bên thêm mục tiêu → tổng 5", len(call("GET", f"{base}/{rid}", token=mentee["accessToken"])["goals"]) == 5)
+    status, code = error_of(lambda: call("POST", f"{base}/{rid}/goals", {"text": "Muc tieu thu sau"}, token=mentee["accessToken"]))
+    check("Mục tiêu thứ 6 → 409 GOAL_LIMIT_REACHED", (status, code) == (409, "GOAL_LIMIT_REACHED"), (status, code))
+    status, code = error_of(lambda: call("POST", f"{base}/{rid}/goals", {"text": "abc"}, token=mentee["accessToken"]))
+    check("Nội dung < 5 ký tự → 400 INVALID_GOAL", (status, code) == (400, "INVALID_GOAL"), (status, code))
+
+    # Sửa trạng thái / nội dung
+    g = call("PUT", f"{base}/{rid}/goals/{goals[0]['id']}", {"status": "IN_PROGRESS"}, token=mentor["accessToken"])
+    check("Mentor đổi trạng thái mục tiêu → IN_PROGRESS", g["status"] == "IN_PROGRESS", g)
+    g = call("PUT", f"{base}/{rid}/goals/{added[0]['id']}", {"text": "Nam vung Docker Compose", "status": "DONE"},
+             token=mentee["accessToken"])
+    check("Mentee sửa nội dung + DONE", g["text"] == "Nam vung Docker Compose" and g["status"] == "DONE", g)
+
+    # Sắp xếp lại
+    ids = [x["id"] for x in call("GET", f"{base}/{rid}", token=mentee["accessToken"])["goals"]]
+    reordered = call("PUT", f"{base}/{rid}/goals/order", {"goalIds": list(reversed(ids))}, token=mentor["accessToken"])
+    check("Sắp xếp lại theo thứ tự mới", [x["id"] for x in reordered] == list(reversed(ids))
+          and [x["position"] for x in reordered] == list(range(len(ids))), reordered)
+    status, code = error_of(lambda: call("PUT", f"{base}/{rid}/goals/order", {"goalIds": ids[:2]}, token=mentor["accessToken"]))
+    check("Thứ tự thiếu mục tiêu → 400 INVALID_GOAL_ORDER", (status, code) == (400, "INVALID_GOAL_ORDER"), (status, code))
+
+    # Xoá xuống còn 1, không xoá được mục tiêu cuối
+    current = [x["id"] for x in call("GET", f"{base}/{rid}", token=mentee["accessToken"])["goals"]]
+    for gid in current[1:]:
+        call("DELETE", f"{base}/{rid}/goals/{gid}", token=mentee["accessToken"])
+    left = call("GET", f"{base}/{rid}", token=mentee["accessToken"])["goals"]
+    check("Xoá còn 1 mục tiêu", len(left) == 1 and left[0]["position"] == 0, left)
+    status, code = error_of(lambda: call("DELETE", f"{base}/{rid}/goals/{left[0]['id']}", token=mentor["accessToken"]))
+    check("Xoá mục tiêu cuối cùng → 409 LAST_GOAL", (status, code) == (409, "LAST_GOAL"), (status, code))
+
+    # Quyền
+    status, _ = error_of(lambda: call("GET", f"{base}/{rid}", token=stranger["accessToken"]))
+    check("Người ngoài xem → 403", status == 403, status)
+    status, _ = error_of(lambda: call("POST", f"{base}/{rid}/goals", {"text": "Muc tieu nguoi ngoai"}, token=stranger["accessToken"]))
+    check("Người ngoài thêm mục tiêu → 403", status == 403, status)
+    seen = call("GET", f"{base}/{rid}", token=admin)
+    check("Admin xem được, chỉ đọc (canEdit=false)", seen["canEdit"] is False and len(seen["goals"]) == 1, seen["canEdit"])
+    status, _ = error_of(lambda: call("PUT", f"{base}/{rid}/goals/{left[0]['id']}", {"status": "DONE"}, token=admin))
+    check("Admin sửa mục tiêu → 403", status == 403, status)
+
+    # Chỉ đọc khi quan hệ không còn ACCEPTED: dùng POST /requests/{id}/end của Team A (US-31) nếu đã có,
+    # không thì /complete (COMPLETED) — workspace coi mọi trạng thái khác ACCEPTED là chỉ đọc.
+    try:
+        call("POST", f"{MENTORING}/api/mentoring/requests/{rid}/end", {"reason": "GOAL_REACHED", "note": "e2e"},
+             token=mentee["accessToken"])
+        ended_with = "ENDED"
+    except ApiError as e:
+        if e.status not in (404, 405):
+            raise
+        info("POST /api/mentoring/requests/{id}/end (US-31, Team A) chưa có — kiểm tra chỉ đọc bằng /complete")
+        call("POST", f"{MENTORING}/api/mentoring/requests/{rid}/complete", token=mentor["accessToken"])
+        ended_with = "COMPLETED"
+    ro = call("GET", f"{base}/{rid}", token=mentee["accessToken"])
+    check(f"Sau khi kết thúc ({ended_with}): readOnly, vẫn xem được mục tiêu + buổi học",
+          ro["readOnly"] is True and ro["canEdit"] is False and len(ro["goals"]) == 1, (ro["request"]["status"], ro["readOnly"]))
+    status, code = error_of(lambda: call("POST", f"{base}/{rid}/goals", {"text": "Muc tieu sau khi ket thuc"}, token=mentee["accessToken"]))
+    check("Thêm mục tiêu khi đã kết thúc → 409 RELATIONSHIP_READ_ONLY", (status, code) == (409, "RELATIONSHIP_READ_ONLY"), (status, code))
+    status, code = error_of(lambda: call("PUT", f"{base}/{rid}/goals/{left[0]['id']}", {"status": "DONE"}, token=mentor["accessToken"]))
+    check("Sửa mục tiêu khi đã kết thúc → 409 RELATIONSHIP_READ_ONLY", (status, code) == (409, "RELATIONSHIP_READ_ONLY"), (status, code))
+
+
+STORIES = {"us27": us27, "us28": us28}
 
 
 def main(selected):
