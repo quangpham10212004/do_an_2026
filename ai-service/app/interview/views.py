@@ -39,9 +39,31 @@ class InterviewView(CamelModel):
     weaknesses: list[str] = []
     recommendation: Recommendation | None = None
     review_note: str | None = None
+    self_answer_acknowledged: bool = False
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
+
+
+class StartInterviewInput(CamelModel):
+    """US-22 (PRD-AIV-1): bắt buộc xác nhận "Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"."""
+    self_answer_acknowledged: bool = False
+
+
+class EligibilityView(CamelModel):
+    """US-22 (PRD-AIV-4): số lần đã dùng / còn lại, thời điểm hết thời gian chờ, bị khoá hay không."""
+    attempts_used: int
+    attempts_left: int
+    max_attempts: int
+    cooldown_until: datetime | None = None
+    locked: bool
+    can_start: bool
+    reason: str | None = None
+    question_count: int = 5
+
+
+class UnlockInput(CamelModel):
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class AnswerInput(CamelModel):
@@ -89,5 +111,6 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         turns=turn_views, overall_score=interview["overall_score"], summary=interview["summary"],
         strengths=_split(interview["strengths"]), weaknesses=_split(interview["weaknesses"]),
         recommendation=interview["recommendation"], review_note=interview["review_note"],
+        self_answer_acknowledged=interview["self_answer_acknowledged"],
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"])

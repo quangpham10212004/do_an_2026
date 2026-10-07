@@ -1,11 +1,17 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
   // AI Interview — /interviews/me trả 204 (null) khi mentor chưa phỏng vấn lần nào
   myInterview: () => api<Interview | null>("/api/ai/interviews/me"),
-  startInterview: () => api<Interview>("/api/ai/interviews", { method: "POST" }),
+  // US-22: bắt buộc selfAnswerAcknowledged = true (400 SELF_ANSWER_ACK_REQUIRED); 409 INTERVIEW_COOLDOWN / INTERVIEW_LOCKED
+  startInterview: (selfAnswerAcknowledged: boolean) =>
+    api<Interview>("/api/ai/interviews", { method: "POST", body: { selfAnswerAcknowledged } }),
+  interviewEligibility: () => api<InterviewEligibility>("/api/ai/interviews/eligibility"),
+  adminInterviewEligibility: (mentorId: Uuid) => api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/eligibility`),
+  unlockInterviews: (mentorId: Uuid, note: string) =>
+    api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/unlock`, { method: "POST", body: { note } }),
   answerInterview: (id: Uuid, answer: string) => api<Interview>(`/api/ai/interviews/${id}/answers`, { method: "POST", body: { answer } }),
   interview: (id: Uuid) => api<Interview>(`/api/ai/interviews/${id}`),
   adminInterviews: (status: InterviewStatus | "" = "") => api<Interview[]>(`/api/ai/admin/interviews?status=${status}`),

@@ -37,9 +37,23 @@ export interface Interview {
   weaknesses: string[];
   recommendation: Recommendation | null;
   reviewNote: string | null;
+  /** US-22: mentor đã xác nhận tự trả lời (false với buổi phỏng vấn trước Sprint 3). */
+  selfAnswerAcknowledged: boolean;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
   reviewedAt: IsoDateTime | null;
+}
+
+/** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
+export interface InterviewEligibility {
+  attemptsUsed: number;
+  attemptsLeft: number;
+  maxAttempts: number;
+  cooldownUntil: IsoDateTime | null;
+  locked: boolean;
+  canStart: boolean;
+  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | null;
+  questionCount: number;
 }
 
 export interface InterviewStats {

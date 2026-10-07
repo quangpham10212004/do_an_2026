@@ -63,9 +63,25 @@ components:
         weaknesses: { type: array, items: { type: string } }
         recommendation: { type: string, nullable: true, enum: [APPROVE, REJECT, NEEDS_REVIEW] }
         reviewNote: { type: string, nullable: true }
+        selfAnswerAcknowledged: { type: boolean, description: "US-22: mentor đã xác nhận tự trả lời (false với buổi trước Sprint 3)" }
         createdAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time, nullable: true }
         reviewedAt: { type: string, format: date-time, nullable: true }
+    InterviewEligibility:
+      type: object
+      description: >
+        US-22 (PRD-AIV-4). Một lần = buổi đã có kết quả (PENDING_REVIEW/APPROVED/REJECTED); IN_PROGRESS và
+        RETAKE_REQUESTED không tính. Bị từ chối INTERVIEW_MAX_ATTEMPTS (3) lần => locked cho tới khi admin mở khoá
+        (chỉ tính các buổi sau lần mở khoá gần nhất). Buổi gần nhất REJECTED => chờ INTERVIEW_COOLDOWN_DAYS (7) ngày.
+      properties:
+        attemptsUsed: { type: integer }
+        attemptsLeft: { type: integer }
+        maxAttempts: { type: integer }
+        cooldownUntil: { type: string, format: date-time, nullable: true }
+        locked: { type: boolean }
+        canStart: { type: boolean, description: true khi được bắt đầu buổi mới hoặc đang có buổi dở }
+        reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, LOCKED, COOLDOWN] }
+        questionCount: { type: integer, description: Số câu hỏi của một buổi (INTERVIEW_MAX_TURNS) }
     InterviewStats:
       type: object
       properties:
@@ -213,14 +229,38 @@ paths:
   /api/ai/interviews:
     post:
       summary: FR-7.1 (MENTOR) Bắt đầu phỏng vấn (hoặc trả về buổi đang dở). Cần có hồ sơ mentor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [selfAnswerAcknowledged]
+              properties:
+                selfAnswerAcknowledged:
+                  type: boolean
+                  description: 'US-22 (PRD-AIV-1): phải là true — "Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"'
       responses:
         "200":
           description: Buổi phỏng vấn với câu hỏi đầu tiên
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Interview" }
-        "400": { description: PROFILE_REQUIRED }
-        "409": { description: INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED }
+        "400": { description: SELF_ANSWER_ACK_REQUIRED (thiếu body / không phải true) | PROFILE_REQUIRED }
+        "409":
+          description: >
+            INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED (bị từ chối 3 lần, chờ admin mở khoá) |
+            INTERVIEW_COOLDOWN — body lỗi có thêm `retryAfter` (date-time), vd.
+            {"error":{"code":"INTERVIEW_COOLDOWN","message":"...","retryAfter":"2026-11-17T03:00:00Z"}}
+  /api/ai/interviews/eligibility:
+    get:
+      summary: US-22 (MENTOR) Số lần phỏng vấn đã dùng / còn lại, thời gian chờ, bị khoá
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InterviewEligibility" }
   /api/ai/interviews/me:
     get:
       summary: (MENTOR) Buổi phỏng vấn gần nhất của tôi
@@ -273,6 +313,37 @@ paths:
       responses:
         "200": { description: Interview }
         "409": { description: INTERVIEW_NOT_PENDING_REVIEW }
+  /api/ai/admin/interviews/mentors/{mentorId}/eligibility:
+    get:
+      summary: US-22 (ADMIN) Quy tắc số lần phỏng vấn của một mentor
+      parameters: [{ name: mentorId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InterviewEligibility" }
+  /api/ai/admin/interviews/mentors/{mentorId}/unlock:
+    post:
+      summary: >
+        US-22 (ADMIN) Mở khoá mentor bị từ chối đủ số lần tối đa: số lần đã dùng tính lại từ 0, không còn thời gian chờ.
+        Ghi audit log INTERVIEW_ATTEMPTS_UNLOCKED (targetType MENTOR).
+      parameters: [{ name: mentorId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: Quy tắc sau khi mở khoá
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InterviewEligibility" }
+        "409": { description: INTERVIEW_NOT_LOCKED }
   /api/ai/admin/stats:
     get:
       summary: (ADMIN) Thống kê AI Interview cho bảng điều khiển quản trị

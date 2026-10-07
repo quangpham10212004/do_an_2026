@@ -59,7 +59,7 @@ def approved_mentor(admin_token, name, hourly_rate, capacity=5):
         "yearsExperience": 6, "hourlyRate": hourly_rate, "capacity": capacity, "isAvailable": True, "portfolioLinks": []}, token=t)
     call("PUT", f"{PROFILE}/api/profile/mentor/{m['userId']}/availability", {
         "slots": [{"dayOfWeek": d, "startTime": "06:00", "endTime": "23:00"} for d in range(1, 8)]}, token=t)
-    interview = call("POST", f"{AI}/api/ai/interviews", token=t)
+    interview = call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=t)
     answer = ("Toi dung Redis cache-aside voi TTL, invalidation khi ghi; trade-off consistency va hieu nang; index, "
               "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
     while interview["status"] == "IN_PROGRESS":

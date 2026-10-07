@@ -8,7 +8,7 @@ from app.interview.models import TurnRecord
 
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
-                       created_at, completed_at, reviewed_at"""
+                       created_at, completed_at, reviewed_at, self_answer_acknowledged"""
 
 
 async def find(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -34,10 +34,27 @@ async def count_by_status(conn: Db) -> dict[str, int]:
 
 async def insert(conn: Db, mentor_id: UUID, domain: str, skills: list[str], max_turns: int,
                  engine: str) -> asyncpg.Record:
+    """Chỉ gọi sau khi mentor đã xác nhận tự trả lời (US-22) => self_answer_acknowledged = true."""
     return await conn.fetchrow(
-        f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine)
-            VALUES ($1, $2, $3, $4, $5) RETURNING {INTERVIEW_COLUMNS}""",
+        f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged)
+            VALUES ($1, $2, $3, $4, $5, true) RETURNING {INTERVIEW_COLUMNS}""",
         mentor_id, domain, skills, max_turns, engine)
+
+
+async def outcomes_since_unlock(conn: Db, mentor_id: UUID) -> list[asyncpg.Record]:
+    """US-22 — các buổi của mentor tạo sau lần admin mở khoá gần nhất (chưa từng mở khoá => tất cả)."""
+    return await conn.fetch(
+        """SELECT status, created_at, reviewed_at FROM interviews i
+            WHERE i.mentor_id = $1
+              AND i.created_at > COALESCE((SELECT max(u.created_at) FROM interview_attempt_unlocks u
+                                            WHERE u.mentor_id = $1), '-infinity'::timestamptz)
+            ORDER BY i.created_at""", mentor_id)
+
+
+async def insert_unlock(conn: Db, mentor_id: UUID, unlocked_by: UUID | None, note: str | None) -> None:
+    await conn.execute(
+        "INSERT INTO interview_attempt_unlocks (mentor_id, unlocked_by, note) VALUES ($1, $2, $3)",
+        mentor_id, unlocked_by, note)
 
 
 async def turns_of(conn: Db, interview_id: UUID) -> list[asyncpg.Record]:

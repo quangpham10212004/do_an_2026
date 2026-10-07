@@ -5,6 +5,14 @@ import type { Interview, InterviewStrategy } from "@/types";
 
 const STRATEGY_LABELS: Record<InterviewStrategy, string> = { OPENING: "Mở đầu", DEEPEN: "Đào sâu", PIVOT: "Chủ đề mới" };
 
+/** Rubric chấm điểm AI Interview (PRD 6.1) — mỗi tiêu chí 0–10, điểm câu = tổng có trọng số. */
+export const RUBRIC: { key: "technical" | "depth" | "communication" | "mentoring"; label: string; weight: number; bands: [string, string, string] }[] = [
+  { key: "technical", label: "Độ chính xác kỹ thuật", weight: 40, bands: ["Sai hoặc lạc đề", "Đúng nhưng chung chung", "Đúng, nêu được đánh đổi và giới hạn"] },
+  { key: "depth", label: "Chiều sâu / kinh nghiệm", weight: 30, bands: ["Không có ví dụ cụ thể", "Một ví dụ, ít chi tiết", "Dự án thực tế, số liệu, giải thích quyết định"] },
+  { key: "communication", label: "Giao tiếp", weight: 15, bands: ["Khó theo dõi", "Dễ hiểu", "Có cấu trúc, phù hợp người mới"] },
+  { key: "mentoring", label: "Năng lực hướng dẫn", weight: 15, bands: ["Không có góc nhìn hướng dẫn", "Có một số chỉ dẫn", "Kế hoạch rõ ràng để dạy / gỡ vướng cho mentee"] },
+];
+
 export function InterviewTranscript({ interview }: { interview: Interview }) {
   return (
     <div className="chat">

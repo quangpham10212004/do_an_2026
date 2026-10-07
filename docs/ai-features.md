@@ -389,7 +389,22 @@ ngược lại                                                → PIVOT  (chủ 
 - Trong lúc phỏng vấn, mentor **không thấy** điểm/nhận xét từng câu (tránh "học tủ" theo phản hồi);
   sau khi hoàn thành mới hiển thị toàn bộ.
 - Admin thấy toàn bộ hội thoại, điểm từng câu, khuyến nghị AI và nhập nhận xét gửi mentor.
-- Mentor bị từ chối có thể cập nhật hồ sơ và phỏng vấn lại.
+- Mentor bị từ chối có thể cập nhật hồ sơ và phỏng vấn lại — theo quy tắc số lần bên dưới.
+
+**Màn hình giới thiệu & số lần phỏng vấn (US-22, PRD-AIV-1/4)**
+- Trước khi bắt đầu, `/interview` hiển thị: số câu hỏi (5), thời gian dự kiến 15–20 phút, 4 tiêu chí chấm kèm
+  trọng số, "quản trị viên quyết định cuối cùng", số lần đã dùng / còn lại và ô bắt buộc
+  **"Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"**. API `POST /api/ai/interviews` từ chối (400
+  `SELF_ANSWER_ACK_REQUIRED`) nếu body không có `selfAnswerAcknowledged: true`; giá trị được lưu ở
+  `interviews.self_answer_acknowledged`.
+- Một **lần** = một buổi đã có kết quả (`PENDING_REVIEW`, `APPROVED`, `REJECTED`). Buổi đang làm và buổi admin
+  yêu cầu làm lại (`RETAKE_REQUESTED`) không tính. Hệ thống chưa có trạng thái `ABANDONED` (PRD-AIV-3 ngoài phạm vi).
+- Tối đa `INTERVIEW_MAX_ATTEMPTS = 3` lần. Buổi gần nhất bị từ chối ⇒ chờ `INTERVIEW_COOLDOWN_DAYS = 7` ngày kể từ lúc
+  admin từ chối (409 `INTERVIEW_COOLDOWN`, body lỗi có thêm `retryAfter`). Bị từ chối 3 lần ⇒ 409 `INTERVIEW_LOCKED`
+  cho tới khi admin bấm **Mở khoá phỏng vấn** trên trang chi tiết (`POST /api/ai/admin/interviews/mentors/{id}/unlock`,
+  ghi audit log `INTERVIEW_ATTEMPTS_UNLOCKED`); sau khi mở khoá chỉ các buổi mới được tính.
+- `GET /api/ai/interviews/eligibility` → `{attemptsUsed, attemptsLeft, maxAttempts, cooldownUntil, locked, canStart, reason}`.
+  Logic thuần ở `app/interview/attempts.py` (unit test `tests/test_interview_attempts.py`).
 
 ### 2.8 Ví dụ (kiểm thử e2e, engine rule-based)
 Mentor backend (Java, Spring Boot, Redis, System Design), trả lời chi tiết có số liệu và trade-off:

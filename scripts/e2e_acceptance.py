@@ -184,7 +184,7 @@ def main():
                                       {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token), 400)
     check(5, "Không gửi được yêu cầu tới mentor chưa xác thực", ok)
 
-    interview = call("POST", f"{AI}/api/ai/interviews", token=mentor_token)
+    interview = call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=mentor_token)
     strong = ("Toi dung Redis theo cache-aside voi TTL, invalidation khi ghi. Trong du an thuc te latency giam tu 300ms "
               "xuong 40ms. Toi can nhac trade-off giua consistency va hieu nang, dung index, transaction, "
               "REST API versioning va status code 201/404, pagination, idempotent. Vi du cu the o production.")

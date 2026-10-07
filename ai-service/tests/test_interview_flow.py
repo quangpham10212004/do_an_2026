@@ -17,6 +17,10 @@ def mentor_id():
     return uuid.uuid4()
 
 
+def start(client, mentor_id, ack=True):
+    return client.post("/api/ai/interviews", json={"selfAnswerAcknowledged": ack}, headers=auth(mentor_id, "MENTOR"))
+
+
 def answer_all(client, interview, mentor_id, text=STRONG_ANSWER):
     turns = 0
     while interview["status"] == "IN_PROGRESS":
@@ -29,7 +33,7 @@ def answer_all(client, interview, mentor_id, text=STRONG_ANSWER):
 
 
 def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id):
-    started = client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR"))
+    started = start(client, mentor_id)
     assert started.status_code == 200, started.text
     interview = started.json()
     assert interview["status"] == "IN_PROGRESS"
@@ -52,7 +56,7 @@ def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id
 
 
 def test_admin_review_syncs_verification(client, db, fake_profile, fake_mentoring, mentor_id):
-    interview = client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR")).json()
+    interview = start(client, mentor_id).json()
     interview, _ = answer_all(client, interview, mentor_id)
 
     admin = auth(uuid.uuid4(), "ADMIN")
@@ -73,7 +77,7 @@ def test_admin_review_syncs_verification(client, db, fake_profile, fake_mentorin
 
 
 def test_stats_count_by_status(client, db, fake_profile, fake_mentoring, mentor_id):
-    client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR"))
+    start(client, mentor_id)
     stats = client.get("/api/ai/admin/stats", headers=auth(uuid.uuid4(), "ADMIN")).json()
     assert stats == {"interviewsInProgress": 1, "interviewsPendingReview": 0,
                      "mentorsApproved": 0, "mentorsRejected": 0}
@@ -81,19 +85,19 @@ def test_stats_count_by_status(client, db, fake_profile, fake_mentoring, mentor_
 
 def test_start_requires_mentor_profile(client, db, fake_profile, mentor_id):
     fake_profile.mentor = None
-    res = client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR"))
+    res = start(client, mentor_id)
     assert res.status_code == 400
     assert res.json()["error"]["code"] == "PROFILE_REQUIRED"
 
 
 def test_start_twice_returns_the_open_interview(client, db, fake_profile, mentor_id):
-    first = client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR")).json()
-    second = client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR")).json()
+    first = start(client, mentor_id).json()
+    second = start(client, mentor_id).json()
     assert first["id"] == second["id"]
 
 
 def test_cannot_answer_someone_elses_interview(client, db, fake_profile, mentor_id):
-    interview = client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR")).json()
+    interview = start(client, mentor_id).json()
     res = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": "Xin chao"},
                       headers=auth(uuid.uuid4(), "MENTOR"))
     assert res.status_code == 403

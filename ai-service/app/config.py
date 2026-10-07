@@ -13,6 +13,9 @@ AI_DB_URL = os.getenv("AI_DB_URL", "postgresql://postgres:postgres@localhost:543
 # Service khác mà ai-service gọi tới (header X-Internal-Token).
 PROFILE_SERVICE_URL = os.getenv("PROFILE_SERVICE_URL", "http://localhost:8082")
 MENTORING_SERVICE_URL = os.getenv("MENTORING_SERVICE_URL", "http://localhost:8083")
+# auth-service giữ nhật ký kiểm toán (US-30): POST /internal/audit, gọi kiểu bắn-rồi-quên.
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8081")
+AUDIT_TIMEOUT_SECONDS = float(os.getenv("AUDIT_TIMEOUT_SECONDS", "3"))
 SERVICE_TIMEOUT_SECONDS = float(os.getenv("SERVICE_TIMEOUT_SECONDS", "20"))
 # Kiểm tra quyền mentor tải CV (gọi mentoring-service) nằm trên đường request => timeout ngắn.
 RELATIONSHIP_CHECK_TIMEOUT_SECONDS = float(os.getenv("RELATIONSHIP_CHECK_TIMEOUT_SECONDS", "3"))
@@ -27,6 +30,10 @@ DEEPSEEK_TIMEOUT_SECONDS = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "60"))
 # FR-7.3 / FR-8.4 — số lượt hỏi-đáp cố định của mỗi tính năng.
 INTERVIEW_MAX_TURNS = int(os.getenv("INTERVIEW_MAX_TURNS", "5"))
 ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))
+
+# US-22 (PRD-AIV-4) — số lần phỏng vấn tối đa (lần = buổi đã có kết quả) và thời gian chờ sau khi bị từ chối.
+INTERVIEW_MAX_ATTEMPTS = int(os.getenv("INTERVIEW_MAX_ATTEMPTS", "3"))
+INTERVIEW_COOLDOWN_DAYS = float(os.getenv("INTERVIEW_COOLDOWN_DAYS", "7"))
 MAX_ANSWER_LENGTH = 5000
 
 # Lưu file CV (docker volume). Có thể thay bằng object storage (S3/MinIO) khi triển khai thật.

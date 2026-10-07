@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 
-from app.clients import mentoring, profile
+from app.clients import audit, mentoring, profile
 
 MENTOR = {
     "userId": None,
@@ -94,4 +94,22 @@ def fake_mentoring(monkeypatch) -> FakeMentoring:
     monkeypatch.setattr(mentoring, "notify_user", fake.notify_user)
     monkeypatch.setattr(mentoring, "notify_role", fake.notify_role)
     monkeypatch.setattr(mentoring, "is_related", fake.is_related)
+    return fake
+
+
+class FakeAudit:
+    """Thay auth-service POST /internal/audit — ghi lại các dòng nhật ký (không gọi mạng trong unit test)."""
+
+    def __init__(self) -> None:
+        self.records: list[dict] = []
+
+    async def record(self, actor_id, actor_role, action, target_type, target_id, before, after):
+        self.records.append({"actorId": actor_id, "actorRole": actor_role, "action": action,
+                             "targetType": target_type, "targetId": target_id, "before": before, "after": after})
+
+
+@pytest.fixture(autouse=True)
+def fake_audit(monkeypatch) -> FakeAudit:
+    fake = FakeAudit()
+    monkeypatch.setattr(audit, "record", fake.record)
     return fake
