@@ -30,6 +30,61 @@ components:
         dayOfWeek: { type: integer, minimum: 1, maximum: 7, description: "ISO-8601: 1 = Thứ Hai … 7 = Chủ Nhật" }
         startTime: { type: string, example: "19:00" }
         endTime: { type: string, example: "21:00" }
+    AvailabilityException:
+      type: object
+      description: >
+        US-07 (PRD-PROF-4) — ngoại lệ lịch rảnh trong một ngày cụ thể, giờ theo múi giờ của mentor.
+        startTime = endTime = null nghĩa là nghỉ cả ngày.
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        date: { type: string, format: date, example: "2026-10-20" }
+        startTime: { type: string, nullable: true, example: "09:00", description: "HH:mm; null = cả ngày" }
+        endTime: { type: string, nullable: true, example: "12:00", description: "HH:mm; null = cả ngày" }
+        reason: { type: string, nullable: true, maxLength: 300 }
+    AvailabilityExceptionInput:
+      type: object
+      required: [date]
+      properties:
+        date: { type: string, format: date, description: "Từ hôm nay (giờ mentor) tới tối đa 365 ngày tới" }
+        startTime: { type: string, nullable: true, example: "09:00", description: "Nhập cả hai giờ, hoặc bỏ trống cả hai (cả ngày)" }
+        endTime: { type: string, nullable: true, example: "12:00" }
+        reason: { type: string, nullable: true, maxLength: 300 }
+    AvailabilityExceptionResult:
+      type: object
+      properties:
+        exception: { $ref: "#/components/schemas/AvailabilityException" }
+        warning:
+          type: string
+          nullable: true
+          description: >
+            Lưu thành công nhưng mentor cần tự kiểm tra. Hiện LUÔN có giá trị: profile-service không
+            xem được phiên của mentoring-service nên không kiểm tra trùng với phiên CONFIRMED; phiên đã
+            xác nhận không bị tự huỷ. mentoring-service tôn trọng ngoại lệ cho các lần đặt lịch MỚI.
+    SessionType:
+      type: string
+      enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE]
+    BookingSettingsInput:
+      type: object
+      required: [bufferMinutes, minNoticeHours, languages, sessionTypes]
+      description: US-04 — thay toàn bộ cài đặt đặt lịch
+      properties:
+        meetingLink:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: "null/rỗng = xoá. Bắt buộc https, host meet.google.com | zoom.us | *.zoom.us | teams.microsoft.com, không kèm user:password"
+        bufferMinutes: { type: integer, enum: [0, 15, 30] }
+        minNoticeHours: { type: integer, minimum: 1, maximum: 72 }
+        languages: { type: array, minItems: 1, items: { type: string, enum: [vi, en] } }
+        sessionTypes: { type: array, minItems: 1, items: { $ref: "#/components/schemas/SessionType" } }
+        timezone: { type: string, nullable: true, description: "Múi giờ IANA dạng vùng; null = Asia/Ho_Chi_Minh" }
+    MentorStatus:
+      type: string
+      enum: [ACCEPTING, PAUSED, ON_LEAVE, SUSPENDED]
+      description: >
+        US-08 (PRD-PROF-5). Trạng thái HIỆU LỰC: ON_LEAVE tự về ACCEPTING sau ngày onLeaveUntil (tính khi
+        đọc + job ghi lại DB mỗi 10 phút). Chỉ ACCEPTING được gợi ý trong AI Matching và nhận yêu cầu mới.
+        SUSPENDED chỉ đặt/gỡ bởi ADMIN (US-27) hoặc mentoring-service (PUT /internal/mentor/{id}/status).
     MentorProfileInput:
       type: object
       required: [displayName, skills, domain, bio]
@@ -43,7 +98,12 @@ components:
         portfolioLinks: { type: array, items: { type: string } }
         hourlyRate: { type: number, description: "VNĐ/giờ, 0 = miễn phí" }
         capacity: { type: integer, minimum: 1, maximum: 50, description: Số mentee tối đa cùng lúc }
-        isAvailable: { type: boolean }
+        isAvailable:
+          type: boolean
+          deprecated: true
+          description: >
+            US-08: thay bằng PUT /api/profile/mentor/{userId}/status. Vẫn nhận để tương thích:
+            true → ACCEPTING, false → PAUSED; bỏ qua nếu trùng trạng thái hiện tại hoặc mentor đang SUSPENDED.
     MentorProfile:
       allOf:
         - $ref: "#/components/schemas/MentorProfileInput"
@@ -54,7 +114,28 @@ components:
             rating: { type: number, format: float }
             ratingCount: { type: integer }
             verificationStatus: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
+            isAvailable: { type: boolean, description: "Chỉ đọc — = (status == ACCEPTING). Giữ cho bên gọi cũ." }
+            status: { $ref: "#/components/schemas/MentorStatus" }
+            onLeaveUntil: { type: string, format: date, nullable: true, description: "Chỉ có khi status = ON_LEAVE (nghỉ đến hết ngày này, giờ mentor)" }
+            statusReason: { type: string, nullable: true, description: Lý do của lần đổi trạng thái gần nhất (vd. lý do đình chỉ) }
+            meetingLink:
+              type: string
+              nullable: true
+              description: >
+                US-04 — chỉ trả cho chủ hồ sơ, ADMIN và /internal/** (mentoring-service); người khác nhận null.
+            bufferMinutes: { type: integer, enum: [0, 15, 30], description: "US-04 — nghỉ giữa 2 phiên (mặc định 15)" }
+            minNoticeHours: { type: integer, minimum: 1, maximum: 72, description: "US-04 — đặt trước tối thiểu (mặc định 12)" }
+            languages: { type: array, items: { type: string, enum: [vi, en] }, description: "US-04 — mặc định [vi]" }
+            sessionTypes:
+              type: array
+              description: US-04 — mặc định cả 4 loại
+              items: { $ref: "#/components/schemas/SessionType" }
+            timezone: { type: string, example: Asia/Ho_Chi_Minh, description: "US-04 — múi giờ IANA; lịch rảnh, ngoại lệ, nghỉ phép tính theo múi giờ này" }
             availability: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
+            exceptions:
+              type: array
+              description: US-07 — ngoại lệ lịch rảnh từ hôm nay (giờ mentor) tới 60 ngày tới (gồm hôm nay)
+              items: { $ref: "#/components/schemas/AvailabilityException" }
     MenteeProfileInput:
       type: object
       required: [displayName, goal, domain]
@@ -83,9 +164,11 @@ components:
         rating: { type: number }
         ratingCount: { type: integer }
         hourlyRate: { type: number }
-        isAvailable: { type: boolean }
+        isAvailable: { type: boolean, description: "= (status == ACCEPTING)" }
         hasCapacity: { type: boolean }
         verificationStatus: { type: string }
+        status: { $ref: "#/components/schemas/MentorStatus" }
+        onLeaveUntil: { type: string, format: date, nullable: true }
     ProfileSummary:
       type: object
       properties:
@@ -156,6 +239,49 @@ paths:
               schema: { $ref: "#/components/schemas/MentorProfile" }
         "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
 
+  /api/profile/mentor/{userId}/booking-settings:
+    put:
+      summary: US-04 Cập nhật link họp + cài đặt đặt lịch (chủ hồ sơ MENTOR hoặc ADMIN)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingSettingsInput" }
+      responses:
+        "200":
+          description: Hồ sơ sau khi lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "400": { description: "INVALID_MEETING_LINK · INVALID_BOOKING_SETTINGS · INVALID_TIMEZONE · VALIDATION_ERROR" }
+
+  /api/profile/mentor/{userId}/status:
+    put:
+      summary: >
+        US-08 Mentor đổi trạng thái nhận mentee (chủ hồ sơ MENTOR hoặc ADMIN). Không đặt/gỡ được SUSPENDED
+        qua endpoint này (dùng /api/profile/admin/mentors/{id}/suspend|unsuspend).
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [ACCEPTING, PAUSED, ON_LEAVE] }
+                onLeaveUntil: { type: string, format: date, description: "Bắt buộc khi ON_LEAVE; từ hôm nay tới tối đa 365 ngày" }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Hồ sơ sau khi đổi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "400": { description: "VALIDATION_ERROR (status = SUSPENDED/khác) · INVALID_STATUS (thiếu/sai onLeaveUntil)" }
+        "409": { description: MENTOR_SUSPENDED — mentor đang bị đình chỉ }
+
   /api/profile/mentor/{userId}/availability:
     get:
       summary: Lịch rảnh hằng tuần của mentor
@@ -185,6 +311,63 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/AvailabilitySlot" } }
         "400": { description: INVALID_SLOT / OVERLAPPING_SLOTS }
+
+  /api/profile/mentor/{userId}/exceptions:
+    get:
+      summary: US-07 Ngoại lệ lịch rảnh chưa qua của mentor (người dùng đã đăng nhập)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: Theo ngày tăng dần; trong cùng ngày, nghỉ cả ngày đứng trước
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AvailabilityException" } }
+        "404": { description: PROFILE_NOT_FOUND }
+    post:
+      summary: US-07 Thêm ngoại lệ (chủ hồ sơ MENTOR hoặc ADMIN)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityExceptionInput" }
+      responses:
+        "201":
+          description: Đã lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AvailabilityExceptionResult" }
+        "400": { description: "INVALID_EXCEPTION (ngày đã qua / quá 1 năm / chỉ nhập 1 giờ) · INVALID_SLOT · TOO_MANY_EXCEPTIONS (tối đa 100 ngoại lệ sắp tới)" }
+        "409": { description: OVERLAPPING_EXCEPTION — trùng ngoại lệ khác trong cùng ngày }
+
+  /api/profile/mentor/{userId}/exceptions/{exceptionId}:
+    put:
+      summary: US-07 Sửa ngoại lệ (chủ hồ sơ hoặc ADMIN) — không sửa được ngoại lệ của ngày đã qua
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - { name: exceptionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityExceptionInput" }
+      responses:
+        "200":
+          description: Đã lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AvailabilityExceptionResult" }
+        "400": { description: INVALID_EXCEPTION / INVALID_SLOT }
+        "404": { description: EXCEPTION_NOT_FOUND }
+        "409": { description: OVERLAPPING_EXCEPTION }
+    delete:
+      summary: US-07 Xoá ngoại lệ (chủ hồ sơ hoặc ADMIN)
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - { name: exceptionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Đã xoá }
+        "404": { description: EXCEPTION_NOT_FOUND }
 
   /api/profile/mentee/{userId}:
     get:
@@ -255,7 +438,12 @@ paths:
 
   /internal/mentor/{userId}:
     get:
-      summary: Nội bộ — hồ sơ mentor đầy đủ (giá, sức chứa, lịch rảnh) cho mentoring-service
+      summary: >
+        Nội bộ (interface 1) — hồ sơ mentor đầy đủ cho mentoring-service. Ngoài các trường cũ (giữ nguyên) có:
+        status (hiệu lực), onLeaveUntil, bufferMinutes, minNoticeHours, meetingLink, timezone, languages,
+        sessionTypes và exceptions (ngoại lệ từ hôm nay tới 60 ngày tới, giờ "HH:mm" theo timezone của mentor;
+        startTime/endTime null = nghỉ cả ngày). mentoring-service phải chặn đặt lịch mới rơi vào exceptions
+        và chỉ nhận yêu cầu mới khi status = ACCEPTING.
       security: [{ internalToken: [] }]
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:
@@ -281,6 +469,33 @@ paths:
                 status: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
       responses:
         "200": { description: Hồ sơ mentor sau cập nhật }
+
+  /internal/mentor/{userId}/status:
+    put:
+      summary: >
+        Nội bộ (interface 2) — mentoring-service đặt trạng thái mentor: PAUSED sau 3 lần vi phạm,
+        SUSPENDED khi tranh chấp, ACCEPTING để gỡ (gỡ được cả SUSPENDED). profile-service KHÔNG gọi lại
+        mentoring-service ở luồng này và không ghi audit (bên gọi tự chịu trách nhiệm).
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [PAUSED, SUSPENDED, ACCEPTING] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Hồ sơ mentor sau cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "400": { description: VALIDATION_ERROR }
+        "404": { description: PROFILE_NOT_FOUND }
 
   /internal/mentor/{userId}/rating:
     put:

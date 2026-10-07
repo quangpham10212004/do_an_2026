@@ -6,6 +6,7 @@ import com.mmp.profile.security.AuthUser;
 import com.mmp.profile.security.CurrentUser;
 import com.mmp.profile.service.ProfileService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,7 +36,16 @@ public class ProfileController {
 
     @GetMapping("/mentor/{userId}")
     public MentorProfileResponse getMentor(@PathVariable UUID userId) {
-        return profileService.getMentor(userId);
+        MentorProfileResponse res = profileService.getMentor(userId);
+        // US-04: link họp chỉ chủ hồ sơ/admin thấy; mentee nhận link qua phiên đã xác nhận (mentoring-service).
+        return CurrentUser.get().canAccess(userId) ? res : res.withoutMeetingLink();
+    }
+
+    /** US-04 — cài đặt đặt lịch (link họp, buffer, báo trước, ngôn ngữ, loại phiên, múi giờ). */
+    @PutMapping("/mentor/{userId}/booking-settings")
+    public MentorProfileResponse updateBookingSettings(@PathVariable UUID userId, @Valid @RequestBody BookingSettingsInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.updateBookingSettings(userId, input);
     }
 
     @PutMapping("/mentor/{userId}")
@@ -53,6 +63,42 @@ public class ProfileController {
     public List<AvailabilitySlot> replaceAvailability(@PathVariable UUID userId, @Valid @RequestBody AvailabilityInput input) {
         requireOwnerWithRole(userId, "MENTOR");
         return profileService.replaceAvailability(userId, input);
+    }
+
+    /** US-08 — mentor đổi trạng thái nhận mentee (ACCEPTING / PAUSED / ON_LEAVE). */
+    @PutMapping("/mentor/{userId}/status")
+    public MentorProfileResponse changeStatus(@PathVariable UUID userId, @Valid @RequestBody MentorStatusInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.changeOwnStatus(userId, input);
+    }
+
+    // ---- US-07: ngoại lệ lịch rảnh ----
+
+    @GetMapping("/mentor/{userId}/exceptions")
+    public List<AvailabilityExceptionDto> listExceptions(@PathVariable UUID userId) {
+        return profileService.upcomingExceptions(userId);
+    }
+
+    @PostMapping("/mentor/{userId}/exceptions")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AvailabilityExceptionResult createException(@PathVariable UUID userId,
+                                                       @Valid @RequestBody AvailabilityExceptionInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.createException(userId, input);
+    }
+
+    @PutMapping("/mentor/{userId}/exceptions/{exceptionId}")
+    public AvailabilityExceptionResult updateException(@PathVariable UUID userId, @PathVariable UUID exceptionId,
+                                                       @Valid @RequestBody AvailabilityExceptionInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.updateException(userId, exceptionId, input);
+    }
+
+    @DeleteMapping("/mentor/{userId}/exceptions/{exceptionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteException(@PathVariable UUID userId, @PathVariable UUID exceptionId) {
+        requireOwnerWithRole(userId, "MENTOR");
+        profileService.deleteException(userId, exceptionId);
     }
 
     // ---- Mentee ----

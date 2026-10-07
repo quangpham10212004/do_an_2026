@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, Stars, StatusBadge, Flash } from "@/components/ui";
-import { profileApi } from "@/features/profile/api";
+import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { DAY_NAMES, formatDate, formatDateTime, formatMoney, formatRate } from "@/lib/format";
@@ -82,6 +82,7 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
     <>
       <PageHead title={mentor.displayName} subtitle={`${mentor.domain} · ${mentor.yearsExperience} năm kinh nghiệm · ${formatRate(mentor.hourlyRate)}`}>
         <StatusBadge status={mentor.verificationStatus} />
+        <span className={`badge ${mentor.status === "ACCEPTING" ? "good" : mentor.status === "SUSPENDED" ? "bad" : ""}`}>{mentorStatusText(mentor.status, mentor.onLeaveUntil)}</span>
       </PageHead>
       <Alert type="success">{msg.ok}</Alert>
       <Alert>{msg.error}</Alert>
@@ -91,6 +92,10 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
             <h2>Giới thiệu</h2>
             <p style={{ whiteSpace: "pre-wrap" }}>{mentor.bio}</p>
             <div className="chips">{mentor.skills.map((s) => <span className="chip" key={s}>{s}</span>)}</div>
+            <p className="small muted" style={{ marginTop: "0.75rem" }}>
+              Ngôn ngữ: {mentor.languages.map((l) => LANGUAGE_LABELS[l]).join(", ")} · Nhận: {mentor.sessionTypes.map((t) => SESSION_TYPE_LABELS[t]).join(", ")}
+              <br />Đặt trước tối thiểu {mentor.minNoticeHours} giờ · Múi giờ {mentor.timezone}
+            </p>
             {mentor.portfolioLinks.length > 0 && (
               <ul className="small" style={{ marginTop: "0.75rem" }}>
                 {mentor.portfolioLinks.map((l) => <li key={l}><a href={l} target="_blank" rel="noreferrer">{l}</a></li>)}
@@ -106,6 +111,17 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
                 <span>{s.startTime.slice(0, 5)} – {s.endTime.slice(0, 5)}</span>
               </div>
             ))}
+            {mentor.exceptions.length > 0 && (
+              <>
+                <h3 style={{ marginTop: "1rem" }}>Ngày nghỉ / bận sắp tới</h3>
+                {mentor.exceptions.map((x) => (
+                  <div key={x.id} className="row between small list-item">
+                    <span>{formatLocalDate(x.date)}</span>
+                    <span>{exceptionTimeLabel(x)}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
           <div className="card">
             <h2>Đánh giá ({mentor.ratingCount})</h2>

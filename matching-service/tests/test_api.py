@@ -169,3 +169,23 @@ def test_dev_secret_fallbacks_are_flagged(monkeypatch):
     monkeypatch.setattr(config, "JWT_SECRET", "x" * 64)
     monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-noi-bo-that")
     assert config.dev_secret_warnings() == []
+
+
+def test_prod_mode_rejects_dev_secrets(monkeypatch):
+    """NFR-9 — APP_ENV=prod: khởi động thất bại nếu còn khoá dev mặc định."""
+    monkeypatch.setattr(config, "APP_ENV", "prod")
+    monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-noi-bo-that")
+    assert config.prod_secret_errors() == ["JWT_SECRET"]
+    with pytest.raises(RuntimeError, match="NFR-9"):
+        with TestClient(app):
+            pass
+    monkeypatch.setattr(config, "JWT_SECRET", "x" * 64)
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", config._DEV_INTERNAL_API_KEY)
+    assert config.prod_secret_errors() == ["INTERNAL_API_KEY"]
+    monkeypatch.setattr(config, "INTERNAL_API_KEY", "khoa-noi-bo-that")
+    assert config.prod_secret_errors() == []
+    # Ngoài prod chỉ cảnh báo, không chặn.
+    monkeypatch.setattr(config, "APP_ENV", "dev")
+    monkeypatch.setattr(config, "JWT_SECRET", config._DEV_JWT_SECRET)
+    assert config.prod_secret_errors() == []

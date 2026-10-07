@@ -7,6 +7,9 @@ import { DOMAINS, profileApi } from "@/features/profile/api";
 import { matchingApi } from "@/features/matching/api";
 import { aiApi } from "@/features/ai/api";
 import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
+import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
+import MentorStatusControl from "@/features/profile/MentorStatusControl";
+import BookingSettings from "@/features/profile/BookingSettings";
 import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
@@ -72,7 +75,6 @@ interface MentorForm {
   yearsExperience: number | string;
   hourlyRate: number | string;
   capacity: number | string;
-  isAvailable: boolean;
   portfolioLinks: string;
   cvFileUrl?: string | null;
 }
@@ -83,7 +85,7 @@ const trimSlot = (s: AvailabilitySlot): SlotForm => ({ ...s, startTime: s.startT
 
 function MentorProfileForm({ user }: { user: SessionUser }) {
   const [profile, setProfile] = useState<MentorProfile | null | undefined>(undefined);
-  const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, isAvailable: true, portfolioLinks: "" });
+  const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, portfolioLinks: "" });
   const [slots, setSlots] = useState<SlotForm[]>([]);
   const [msg, setMsg] = useState<Flash>({});
   const [parsing, setParsing] = useState(false);
@@ -107,7 +109,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
   useEffect(() => {
     profileApi.getMentor(user.userId).then((p) => {
       setProfile(p);
-      setForm({ displayName: p.displayName, skills: p.skills.join(", "), domain: p.domain, bio: p.bio || "", yearsExperience: p.yearsExperience, hourlyRate: p.hourlyRate, capacity: p.capacity, isAvailable: p.isAvailable, portfolioLinks: p.portfolioLinks.join("\n"), cvFileUrl: p.cvFileUrl });
+      setForm({ displayName: p.displayName, skills: p.skills.join(", "), domain: p.domain, bio: p.bio || "", yearsExperience: p.yearsExperience, hourlyRate: p.hourlyRate, capacity: p.capacity, portfolioLinks: p.portfolioLinks.join("\n"), cvFileUrl: p.cvFileUrl });
       setSlots(p.availability.map(trimSlot));
     }).catch(() => setProfile(null));
   }, [user]);
@@ -203,17 +205,26 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
             <div className="field"><label>Sức chứa (số mentee tối đa)</label><input type="number" min={1} max={50} value={form.capacity} onChange={set("capacity")} /></div>
           </div>
           <div className="field"><label>Portfolio / liên kết</label><textarea style={{ minHeight: 60 }} value={form.portfolioLinks} onChange={set("portfolioLinks")} placeholder="Mỗi dòng một liên kết" /></div>
-          <div className="field"><label><input type="checkbox" checked={form.isAvailable} onChange={set("isAvailable")} /> Đang nhận mentee mới</label></div>
           <button className="btn">Lưu hồ sơ</button>
         </form>
 
         <div className="stack">
+        {profile && (
+          <div className="card" id="status">
+            <MentorStatusControl profile={profile} onChange={setProfile} />
+          </div>
+        )}
+        {profile && (
+          <div className="card" id="booking-settings">
+            <BookingSettings key={profile.userId} profile={profile} onChange={setProfile} />
+          </div>
+        )}
         <div className="card" id="availability">
           <h2>Lịch rảnh hằng tuần</h2>
           {!profile && <Alert type="info">Hãy lưu hồ sơ trước khi khai báo lịch rảnh.</Alert>}
           {profile && (
             <>
-              <p className="muted small">Giờ Việt Nam (GMT+7). Mentee chỉ đặt được phiên nằm trọn trong các khung giờ này.</p>
+              <p className="muted small">Theo múi giờ {profile.timezone}. Mentee chỉ đặt được phiên nằm trọn trong các khung giờ này.</p>
               {slots.map((s, i) => (
                 <div className="slot-row" key={i}>
                   <select value={s.dayOfWeek} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, dayOfWeek: e.target.value } : x)))}>
@@ -229,6 +240,8 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
                 <span className="spacer" />
                 <button type="button" className="btn" onClick={saveSlots}>Lưu lịch rảnh</button>
               </div>
+              <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
+              <AvailabilityExceptions mentorId={user.userId} />
               <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
               <div className="row between small">
                 <span>Mentee đang hướng dẫn: <strong>{profile.activeMenteeCount}/{profile.capacity}</strong></span>

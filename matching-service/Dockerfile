@@ -9,5 +9,6 @@ RUN pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch
 ARG EMBEDDING_MODEL=all-MiniLM-L6-v2
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')"
 COPY app ./app
+COPY migrations ./migrations
 EXPOSE 8090
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]

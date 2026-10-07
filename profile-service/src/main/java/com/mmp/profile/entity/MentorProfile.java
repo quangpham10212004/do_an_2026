@@ -3,6 +3,7 @@ package com.mmp.profile.entity;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -16,6 +17,9 @@ import java.util.UUID;
 public class MentorProfile {
 
     public enum VerificationStatus { PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED }
+
+    /** US-08 — trạng thái nhận mentee (thay cho cờ is_available cũ, nay là cột sinh tự động). */
+    public enum Status { ACCEPTING, PAUSED, ON_LEAVE, SUSPENDED }
 
     @Id
     @Column(name = "user_id")
@@ -50,8 +54,38 @@ public class MentorProfile {
     @Column(name = "active_mentee_count", nullable = false)
     private int activeMenteeCount;
 
-    @Column(name = "is_available", nullable = false)
-    private boolean available = true;
+    // is_available là cột GENERATED (status = 'ACCEPTING') — không map để Hibernate không ghi vào.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Status status = Status.ACCEPTING;
+
+    @Column(name = "on_leave_until")
+    private LocalDate onLeaveUntil;
+
+    @Column(name = "status_reason")
+    private String statusReason;
+
+    @Column(name = "status_changed_at")
+    private OffsetDateTime statusChangedAt;
+
+    // US-04 — cài đặt đặt lịch
+    @Column(name = "meeting_link")
+    private String meetingLink;
+
+    @Column(name = "buffer_minutes", nullable = false)
+    private int bufferMinutes = 15;
+
+    @Column(name = "min_notice_hours", nullable = false)
+    private int minNoticeHours = 12;
+
+    @Column(columnDefinition = "text[]", nullable = false)
+    private String[] languages = {"vi"};
+
+    @Column(name = "session_types", columnDefinition = "text[]", nullable = false)
+    private String[] sessionTypes = {"CAREER_ADVICE", "CODE_REVIEW", "MOCK_INTERVIEW", "PROJECT_GUIDANCE"};
+
+    @Column(nullable = false)
+    private String timezone = "Asia/Ho_Chi_Minh";
 
     @Column(nullable = false)
     private float rating;
@@ -102,8 +136,35 @@ public class MentorProfile {
     public void setCapacity(int capacity) { this.capacity = capacity; }
     public int getActiveMenteeCount() { return activeMenteeCount; }
     public void setActiveMenteeCount(int activeMenteeCount) { this.activeMenteeCount = activeMenteeCount; }
-    public boolean isAvailable() { return available; }
-    public void setAvailable(boolean available) { this.available = available; }
+    /** Trạng thái đã lưu (chưa áp dụng nghỉ phép hết hạn — dùng MentorRules.effectiveStatus). */
+    public Status getStatus() { return status; }
+    public LocalDate getOnLeaveUntil() { return onLeaveUntil; }
+    public String getStatusReason() { return statusReason; }
+    public OffsetDateTime getStatusChangedAt() { return statusChangedAt; }
+
+    public String getMeetingLink() { return meetingLink; }
+    public int getBufferMinutes() { return bufferMinutes; }
+    public int getMinNoticeHours() { return minNoticeHours; }
+    public String[] getLanguages() { return languages; }
+    public String[] getSessionTypes() { return sessionTypes; }
+    public String getTimezone() { return timezone; }
+
+    public void updateBookingSettings(String meetingLink, int bufferMinutes, int minNoticeHours,
+                                      String[] languages, String[] sessionTypes, String timezone) {
+        this.meetingLink = meetingLink;
+        this.bufferMinutes = bufferMinutes;
+        this.minNoticeHours = minNoticeHours;
+        this.languages = languages;
+        this.sessionTypes = sessionTypes;
+        this.timezone = timezone;
+    }
+
+    public void changeStatus(Status status, LocalDate onLeaveUntil, String reason) {
+        this.status = status;
+        this.onLeaveUntil = status == Status.ON_LEAVE ? onLeaveUntil : null;
+        this.statusReason = reason;
+        this.statusChangedAt = OffsetDateTime.now();
+    }
     public float getRating() { return rating; }
     public void setRating(float rating) { this.rating = rating; }
     public int getRatingCount() { return ratingCount; }
