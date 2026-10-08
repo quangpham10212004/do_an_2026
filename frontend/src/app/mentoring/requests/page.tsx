@@ -111,10 +111,10 @@ function IntroPanel({ r, isMentor, act, ask }: {
       <div className="card stack" style={box}>
         <strong className="small">Làm quen trước khi bắt đầu</strong>
         {isMentor ? (
-          <span className="muted small">{intro ? "Buổi làm quen trước đã huỷ — đang chờ mentee chọn giờ mới." : "Đang chờ mentee chọn giờ cho buổi làm quen (15 phút, miễn phí). Yêu cầu này chưa chiếm chỗ của bạn."}</span>
+          <div className="muted small">{intro ? "Buổi làm quen trước đã huỷ — đang chờ mentee chọn giờ mới." : "Đang chờ mentee chọn giờ cho buổi làm quen (15 phút, miễn phí). Yêu cầu này chưa chiếm chỗ của bạn."}</div>
         ) : (
           <>
-            <span className="muted small">{intro ? "Buổi làm quen trước đã bị huỷ. Hãy chọn giờ khác." : "Mentor muốn trò chuyện ngắn trước khi nhận bạn. Hãy chọn giờ cho buổi làm quen (15 phút, miễn phí)."}</span>
+            <div className="muted small">{intro ? "Buổi làm quen trước đã bị huỷ. Hãy chọn giờ khác." : "Mentor muốn trò chuyện ngắn trước khi nhận bạn. Hãy chọn giờ cho buổi làm quen (15 phút, miễn phí)."}</div>
             {!booking && <div className="row"><button className="btn sm" onClick={() => setBooking(true)}>Chọn giờ làm quen</button></div>}
           </>
         )}
@@ -126,25 +126,25 @@ function IntroPanel({ r, isMentor, act, ask }: {
     <div className="card stack" style={box}>
       <strong className="small">Buổi làm quen · {intro!.durationMinutes} phút · {formatDateTime(intro!.scheduledAt)}</strong>
       {intro!.status === "CONFIRMED" && (
-        <span className="muted small">
+        <div className="muted small">
           Đã xác nhận.{" "}
           {intro!.meetingLink && <a href={intro!.meetingLink} target="_blank" rel="noreferrer">Link phòng họp</a>}
           {" "}Sau buổi, cả hai xác nhận tham dự ở <Link href="/mentoring/sessions">Phiên học</Link>, rồi quay lại đây để chọn tiếp tục hay không.
-        </span>
+        </div>
       )}
       {(intro!.status === "AWAITING_ATTENDANCE" || intro!.status === "DISPUTED") && (
-        <span className="muted small">Buổi đã kết thúc. Hãy xác nhận tham dự ở <Link href="/mentoring/sessions">Phiên học</Link> để mở bước quyết định.</span>
+        <div className="muted small">Buổi đã kết thúc. Hãy xác nhận tham dự ở <Link href="/mentoring/sessions">Phiên học</Link> để mở bước quyết định.</div>
       )}
       {intro!.status === "COMPLETED" && (
         mine ? (
-          <span className="small">
+          <div className="small">
             Bạn đã chọn <strong>{mine === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}</strong>.{" "}
             {theirs ? `Phía ${other} đã chọn ${theirs === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}.` : `Đang chờ ${other} quyết định.`}
-          </span>
+          </div>
         ) : (
           <>
-            <span className="small">Buổi làm quen đã diễn ra. Bạn muốn làm việc cùng {isMentor ? "mentee này" : "mentor này"} chứ?
-              {theirs && ` (${other[0].toUpperCase() + other.slice(1)} đã chọn ${theirs === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}.)`}</span>
+            <div className="small">Buổi làm quen đã diễn ra. Bạn muốn làm việc cùng {isMentor ? "mentee này" : "mentor này"} chứ?
+              {theirs && ` (${other[0].toUpperCase() + other.slice(1)} đã chọn ${theirs === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}.)`}</div>
             <div className="row">
               <button className="btn good sm" onClick={() => decide("CONTINUE")}>Tiếp tục</button>
               <button className="btn danger sm" onClick={() => decide("DECLINE")}>Không tiếp tục</button>

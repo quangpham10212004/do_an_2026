@@ -37,7 +37,7 @@ export default function IntroBooker({ request, onBooked }: { request: MentoringR
   return (
     <div className="card stack" style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8, width: "100%" }}>
       <strong className="small">Chọn giờ cho buổi làm quen với {request.mentorName}</strong>
-      <span className="muted small">Buổi trò chuyện ngắn, miễn phí. Sau buổi này cả hai bên quyết định có làm việc cùng nhau hay không.</span>
+      <div className="muted small">Buổi trò chuyện ngắn, miễn phí. Sau buổi này cả hai bên quyết định có làm việc cùng nhau hay không.</div>
       <SlotPicker mentorId={request.mentorId} durationMinutes={15} value={value} onChange={setValue}
         refreshKey={refreshKey} loadSlots={loadSlots} />
       <Alert>{error}</Alert>
