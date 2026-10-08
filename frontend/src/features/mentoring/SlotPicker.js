@@ -14,8 +14,9 @@ function dayKey(date, timeZone) {
  * Bộ chọn khung giờ đặt lịch (FR-5.4): hiển thị 14 ngày tới, chỉ cho chọn thời điểm mentoring-service
  * báo còn trống (trong lịch rảnh, không trùng phiên của mentor hoặc của chính mentee).
  * `value` là startAt (ISO) đang chọn; đổi `refreshKey` để tải lại sau khi đặt lịch thất bại.
+ * `excludeSessionId`: bỏ qua một phiên khi tính khung giờ trống (dùng khi chọn giờ mới để dời chính phiên đó).
  */
-export default function SlotPicker({ mentorId, durationMinutes, value, onChange, refreshKey }) {
+export default function SlotPicker({ mentorId, durationMinutes, value, onChange, refreshKey, excludeSessionId }) {
   const [data, setData] = useState(undefined);
   const [error, setError] = useState("");
   const [day, setDay] = useState(null);
@@ -24,11 +25,11 @@ export default function SlotPicker({ mentorId, durationMinutes, value, onChange,
     let cancelled = false;
     setData(undefined);
     setError("");
-    mentoringApi.availableSlots(mentorId, durationMinutes, DAYS)
+    mentoringApi.availableSlots(mentorId, durationMinutes, DAYS, excludeSessionId)
       .then((d) => !cancelled && setData(d))
       .catch((e) => { if (!cancelled) { setError(e.message); setData(null); } });
     return () => { cancelled = true; };
-  }, [mentorId, durationMinutes, refreshKey]);
+  }, [mentorId, durationMinutes, refreshKey, excludeSessionId]);
 
   const timeZone = data?.timezone || "Asia/Ho_Chi_Minh";
   const { days, byDay } = useMemo(() => {

@@ -34,3 +34,13 @@ app:
     payment-hold: PT30M           # phiên chưa thanh toán sau 30 phút sẽ tự huỷ để giải phóng khung giờ
   reminder:
     before: ${REMINDER_BEFORE:PT24H}   # FR-5.5 — nhắc lịch trước giờ bắt đầu
+  intro:                               # buổi làm quen trước khi chốt quan hệ mentoring
+    duration-minutes: ${INTRO_DURATION_MINUTES:15}
+    max-open-per-mentor: ${INTRO_MAX_OPEN_PER_MENTOR:5}   # số yêu cầu đang ở giai đoạn làm quen tối đa của 1 mentor
+  reschedule:
+    free-window: ${RESCHEDULE_FREE_WINDOW:PT24H}   # mentee đổi lịch trước giờ hẹn ít nhất bằng khoảng này thì tự áp dụng
+    max-per-session: ${RESCHEDULE_MAX_PER_SESSION:2}
+  packages:                            # gói buổi (combo)
+    tiers: ${PACKAGE_TIERS:4:10,8:15}  # "số buổi:phần trăm giảm giá", phân tách bằng dấu phẩy
+    validity: ${PACKAGE_VALIDITY:P90D} # thời hạn sử dụng kể từ lúc thanh toán
+    refund-fee-percent: ${PACKAGE_REFUND_FEE_PERCENT:0}   # phí giữ lại khi hoàn tiền các buổi chưa dùng

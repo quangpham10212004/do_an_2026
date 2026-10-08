@@ -13,6 +13,9 @@ public class MentoringSession {
     /** PENDING (chờ thanh toán) → CONFIRMED → COMPLETED; PENDING/CONFIRMED → CANCELLED */
     public enum Status { PENDING, CONFIRMED, COMPLETED, CANCELLED }
 
+    /** INTRO: buổi làm quen miễn phí trước khi chốt quan hệ; REGULAR: buổi mentoring chính thức. */
+    public enum Type { INTRO, REGULAR }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -43,6 +46,24 @@ public class MentoringSession {
 
     @Column(name = "reminder_sent", nullable = false)
     private boolean reminderSent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "session_type", nullable = false)
+    private Type type = Type.REGULAR;
+
+    /** Gói buổi đã trừ 1 buổi cho phiên này (null nếu phiên lẻ). */
+    @Column(name = "package_id")
+    private UUID packageId;
+
+    @Column(name = "reschedule_count", nullable = false)
+    private int rescheduleCount;
+
+    /** Đề xuất đổi lịch đang chờ bên còn lại đồng ý. */
+    @Column(name = "proposed_at")
+    private OffsetDateTime proposedAt;
+
+    @Column(name = "proposed_by")
+    private UUID proposedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -84,6 +105,18 @@ public class MentoringSession {
     public void setStatus(Status status) { this.status = status; }
     public boolean isReminderSent() { return reminderSent; }
     public void setReminderSent(boolean reminderSent) { this.reminderSent = reminderSent; }
+    public Type getType() { return type; }
+    public void setType(Type type) { this.type = type; }
+    public UUID getPackageId() { return packageId; }
+    public void setPackageId(UUID packageId) { this.packageId = packageId; }
+    public int getRescheduleCount() { return rescheduleCount; }
+    public void setRescheduleCount(int rescheduleCount) { this.rescheduleCount = rescheduleCount; }
+    public OffsetDateTime getProposedAt() { return proposedAt; }
+    public void setProposedAt(OffsetDateTime proposedAt) { this.proposedAt = proposedAt; }
+    public UUID getProposedBy() { return proposedBy; }
+    public void setProposedBy(UUID proposedBy) { this.proposedBy = proposedBy; }
+    public boolean hasPendingProposal() { return proposedAt != null; }
+    public void clearProposal() { this.proposedAt = null; this.proposedBy = null; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

@@ -20,6 +20,8 @@ public interface MentoringRequestRepository extends JpaRepository<MentoringReque
 
     Optional<MentoringRequest> findFirstByMenteeIdAndMentorIdAndStatus(UUID menteeId, UUID mentorId, MentoringRequest.Status status);
 
+    long countByMentorIdAndStatus(UUID mentorId, MentoringRequest.Status status);
+
     @Query("SELECT COUNT(DISTINCT r.menteeId) FROM MentoringRequest r WHERE r.mentorId = :mentorId AND r.status = 'ACCEPTED'")
     long countActiveMentees(@Param("mentorId") UUID mentorId);
 }

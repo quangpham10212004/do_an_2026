@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { ROLE_LABELS } from "@/lib/format";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const LINKS = {
   MENTEE: [
@@ -72,6 +73,7 @@ export default function Nav() {
         </div>
         {user ? (
           <div className="nav-user">
+            <ThemeToggle />
             <Link href="/notifications" className="bell" title="Thông báo">
               🔔{unread > 0 && <span className="dot">{unread}</span>}
             </Link>
@@ -90,6 +92,7 @@ export default function Nav() {
           </div>
         ) : (
           <div className="nav-user">
+            <ThemeToggle />
             <Link href="/login" className="btn secondary sm">Đăng nhập</Link>
             <Link href="/register" className="btn sm">Đăng ký</Link>
           </div>

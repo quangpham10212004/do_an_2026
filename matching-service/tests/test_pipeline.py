@@ -118,3 +118,29 @@ def test_explain_goal_match_requires_whole_word():
     [c] = re_rank([mentor(skills=["Go"])])
     reasons, matched = explain(c, {"domain": "backend", "skills": [], "goal": "Tôi muốn học Google Cloud"})
     assert matched == []
+
+
+def test_pipeline_widens_k_when_hard_filter_starves_results(monkeypatch):
+    import asyncio
+
+    from app.services import matching_pipeline as mp
+
+    calls: list[int] = []
+
+    async def fake_mentee(_):
+        return {"domain": "backend", "goal": "", "skills": [], "has_embedding": True}
+
+    async def fake_top_k(_, k):
+        calls.append(k)
+        # 60 mentor gần nhất đều chưa duyệt; chỉ mentor thứ 61+ mới hợp lệ
+        pool = [mentor(mentor_id=f"x{i}", verification_status="PENDING_REVIEW") for i in range(60)]
+        pool += [mentor(mentor_id=f"ok{i}") for i in range(5)]
+        return pool[:k]
+
+    monkeypatch.setattr(mp, "get_mentee", fake_mentee)
+    monkeypatch.setattr(mp, "top_k_retrieval", fake_top_k)
+
+    result = asyncio.run(mp.match_mentors_for_mentee("m", limit=3))
+    assert calls == [50, 100]
+    assert [m["mentor_id"] for m in result["mentors"]] == ["ok0", "ok1", "ok2"]
+    assert result["stats"]["k"] == 100

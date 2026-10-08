@@ -28,23 +28,28 @@ public final class PaymentDtos {
     /**
      * Số tiền KHÔNG lấy từ client mà lấy từ mentoring-service (giá của phiên) để
      * tránh client sửa số tiền. Trường amount chỉ dùng để đối chiếu nếu client gửi.
+     * Chọn đúng MỘT đối tượng thanh toán: {@code sessionId} (phiên lẻ) hoặc {@code packageId} (gói buổi).
      */
-    public record ChargeRequest(@NotNull UUID sessionId, BigDecimal amount, @NotNull @Valid CardInput card) {
+    public record ChargeRequest(UUID sessionId, UUID packageId, BigDecimal amount, @NotNull @Valid CardInput card) {
     }
 
     public record TransactionResponse(
-            UUID id, UUID sessionId, UUID payerId, UUID mentorId, BigDecimal amount, String currency,
-            String status, String provider, String providerReference, String failureReason,
+            UUID id, UUID sessionId, UUID packageId, UUID payerId, UUID mentorId, BigDecimal amount, BigDecimal refundedAmount,
+            String currency, String status, String provider, String providerReference, String failureReason,
             OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 
         public static TransactionResponse from(Transaction t) {
-            return new TransactionResponse(t.getId(), t.getSessionId(), t.getPayerId(), t.getMentorId(), t.getAmount(),
-                    t.getCurrency(), t.getStatus().name(), t.getProvider(), t.getProviderReference(),
-                    t.getFailureReason(), t.getCreatedAt(), t.getUpdatedAt());
+            return new TransactionResponse(t.getId(), t.getSessionId(), t.getPackageId(), t.getPayerId(), t.getMentorId(),
+                    t.getAmount(), t.getRefundedAmount(), t.getCurrency(), t.getStatus().name(), t.getProvider(),
+                    t.getProviderReference(), t.getFailureReason(), t.getCreatedAt(), t.getUpdatedAt());
         }
     }
 
-    public record RefundRequest(@NotNull UUID sessionId, @Size(max = 300) String reason) {
+    /**
+     * Hoàn tiền một phiên lẻ (toàn bộ) HOẶC một gói buổi. Với gói, {@code refundedTotal} là TỔNG số tiền đã hoàn tính
+     * luỹ kế mong muốn (idempotent: gọi lại cùng giá trị không hoàn thêm), nên mentoring-service thử lại an toàn.
+     */
+    public record RefundRequest(UUID sessionId, UUID packageId, BigDecimal refundedTotal, @Size(max = 300) String reason) {
     }
 
     public record RegisterReferralRequest(@NotBlank String code, @NotNull UUID refereeId) {

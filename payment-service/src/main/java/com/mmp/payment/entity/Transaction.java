@@ -10,15 +10,20 @@ import java.util.UUID;
 @Table(name = "transactions")
 public class Transaction {
 
-    /** FR-6.3 — vòng đời: PENDING → SUCCESS | FAILED; SUCCESS → REFUNDED */
-    public enum Status { PENDING, SUCCESS, FAILED, REFUNDED }
+    /** FR-6.3 — vòng đời: PENDING → SUCCESS | FAILED; SUCCESS → PARTIALLY_REFUNDED → REFUNDED (hoàn một phần khi gói còn buổi chưa dùng) */
+    public enum Status { PENDING, SUCCESS, FAILED, PARTIALLY_REFUNDED, REFUNDED }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false)
+    /** Thanh toán một phiên lẻ (chính xác một trong sessionId/packageId khác null). */
+    @Column(name = "session_id")
     private UUID sessionId;
+
+    /** Hoặc thanh toán một gói buổi. */
+    @Column(name = "package_id")
+    private UUID packageId;
 
     @Column(name = "payer_id", nullable = false)
     private UUID payerId;
@@ -45,6 +50,9 @@ public class Transaction {
     @Column(name = "failure_reason")
     private String failureReason;
 
+    @Column(name = "refunded_amount", nullable = false)
+    private BigDecimal refundedAmount = BigDecimal.ZERO;
+
     @Column(name = "session_synced", nullable = false)
     private boolean sessionSynced;
 
@@ -68,6 +76,12 @@ public class Transaction {
     public UUID getId() { return id; }
     public UUID getSessionId() { return sessionId; }
     public void setSessionId(UUID sessionId) { this.sessionId = sessionId; }
+    public UUID getPackageId() { return packageId; }
+    public void setPackageId(UUID packageId) { this.packageId = packageId; }
+    public BigDecimal getRefundedAmount() { return refundedAmount; }
+    public void setRefundedAmount(BigDecimal refundedAmount) { this.refundedAmount = refundedAmount; }
+    /** Số tiền còn có thể hoàn. */
+    public BigDecimal refundableAmount() { return amount.subtract(refundedAmount); }
     public UUID getPayerId() { return payerId; }
     public void setPayerId(UUID payerId) { this.payerId = payerId; }
     public UUID getMentorId() { return mentorId; }

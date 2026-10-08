@@ -8,5 +8,5 @@ PROFILE_DB_URL = os.getenv(
 )
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-internal-key")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
 PRELOAD_MODEL = os.getenv("PRELOAD_MODEL", "true").lower() == "true"

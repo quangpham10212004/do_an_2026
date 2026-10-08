@@ -3,7 +3,7 @@ info:
   title: matching-service
   version: 1.0.0
   description: >
-    AI Matching pipeline: embedding (sentence-transformers all-MiniLM-L6-v2, 384 chiều) +
+    AI Matching pipeline: embedding (sentence-transformers paraphrase-multilingual-MiniLM-L12-v2, 384 chiều) +
     pgvector top-K retrieval → hard filter → re-rank → giải thích. Sở hữu bởi Thảo.
     Đọc trực tiếp (READ-ONLY, role matching_reader) bảng mentor_profiles, mentee_profiles,
     mentor_availability trong DB của profile-service — ngoại lệ đã được duyệt (CONVENTIONS.md mục 7).

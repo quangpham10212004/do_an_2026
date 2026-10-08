@@ -35,6 +35,15 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
 
     long countByStatus(MentoringSession.Status status);
 
+    /** Buổi làm quen còn hiệu lực (chưa huỷ) của một yêu cầu. */
+    @Query("SELECT s FROM MentoringSession s WHERE s.requestId = :requestId AND s.type = 'INTRO' AND s.status <> 'CANCELLED' ORDER BY s.scheduledAt DESC")
+    List<MentoringSession> findActiveIntro(@Param("requestId") UUID requestId);
+
+    /** Mọi phiên chưa kết thúc của một yêu cầu (dùng khi mentee huỷ yêu cầu đang ở giai đoạn làm quen). */
+    List<MentoringSession> findByRequestIdAndStatusIn(UUID requestId, java.util.Collection<MentoringSession.Status> statuses);
+
+    List<MentoringSession> findByPackageId(UUID packageId);
+
     /** Khoá tư vấn (advisory lock) theo mentor trong transaction — tránh 2 mentee đặt trùng 1 khung giờ cùng lúc. */
     @Query(value = "SELECT pg_advisory_xact_lock(hashtext(CAST(:mentorId AS text)))", nativeQuery = true)
     Object lockMentorSchedule(@Param("mentorId") UUID mentorId);

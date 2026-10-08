@@ -20,6 +20,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     List<Transaction> findBySessionIdOrderByCreatedAtDesc(UUID sessionId);
 
+    List<Transaction> findByPackageIdOrderByCreatedAtDesc(UUID packageId);
+
+    boolean existsByPackageIdAndStatusIn(UUID packageId, java.util.Collection<Transaction.Status> statuses);
+
+    Optional<Transaction> findFirstByPackageIdAndStatusIn(UUID packageId, java.util.Collection<Transaction.Status> statuses);
+
     Optional<Transaction> findFirstBySessionIdAndStatus(UUID sessionId, Transaction.Status status);
 
     boolean existsBySessionIdAndStatus(UUID sessionId, Transaction.Status status);
@@ -31,8 +37,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     @Query("SELECT t FROM Transaction t WHERE (:status IS NULL OR t.status = :status) ORDER BY t.createdAt DESC")
     Page<Transaction> search(@Param("status") Transaction.Status status, Pageable pageable);
 
-    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = :status")
-    BigDecimal sumByStatus(@Param("status") Transaction.Status status);
+    /** Doanh thu ròng = số đã thu trừ số đã hoàn, trên các giao dịch đã thu tiền. */
+    @Query("SELECT COALESCE(SUM(t.amount - t.refundedAmount), 0) FROM Transaction t WHERE t.status IN ('SUCCESS', 'PARTIALLY_REFUNDED')")
+    BigDecimal netRevenue();
 
     long countByStatus(Transaction.Status status);
 }

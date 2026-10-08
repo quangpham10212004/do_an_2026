@@ -3,8 +3,10 @@ import { api } from "@/lib/api";
 // payment-service (Thắng)
 export const paymentApi = {
   charge: (sessionId, amount, card) => api("/api/payment/charge", { method: "POST", body: { sessionId, amount, card } }),
+  chargePackage: (packageId, amount, card) => api("/api/payment/charge", { method: "POST", body: { packageId, amount, card } }),
   transactions: () => api("/api/payment/transactions"),
   sessionTransactions: (sessionId) => api(`/api/payment/sessions/${sessionId}/transactions`),
+  packageTransactions: (packageId) => api(`/api/payment/packages/${packageId}/transactions`),
   myReferral: () => api("/api/payment/referrals/me"),
   adminTransactions: (status = "", page = 0) => api(`/api/payment/admin/transactions?status=${status}&page=${page}`),
   adminStats: () => api("/api/payment/admin/stats"),

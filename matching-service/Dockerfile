@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir -r requirements.txt
 # Tải sẵn model vào image để container khởi động không cần Internet
-ARG EMBEDDING_MODEL=all-MiniLM-L6-v2
+ARG EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')"
 COPY app ./app
 EXPOSE 8090

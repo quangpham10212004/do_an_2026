@@ -1,10 +1,13 @@
-from sentence_transformers import SentenceTransformer
+from typing import TYPE_CHECKING
 
 from app import config
 
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
+
 # Model được load 1 lần lúc startup app (xem app/main.py), không load lại
 # mỗi request — load lại mỗi request sẽ rất chậm.
-_model: SentenceTransformer | None = None
+_model: "SentenceTransformer | None" = None
 
 EMBEDDING_DIM = 384
 
@@ -12,6 +15,9 @@ EMBEDDING_DIM = 384
 def load_model() -> None:
     global _model
     if _model is None:
+        # Import muộn: thư viện nặng, chỉ cần khi thực sự load model (test không cần).
+        from sentence_transformers import SentenceTransformer
+
         _model = SentenceTransformer(config.EMBEDDING_MODEL)
 
 

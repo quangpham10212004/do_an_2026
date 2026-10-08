@@ -9,8 +9,15 @@ import java.util.UUID;
 @Table(name = "mentoring_requests")
 public class MentoringRequest {
 
-    /** PENDING → ACCEPTED | REJECTED | CANCELLED; ACCEPTED → COMPLETED (kết thúc quan hệ mentoring) */
-    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED }
+    /**
+     * PENDING → ACCEPTED | INTRO | REJECTED | CANCELLED;
+     * INTRO (đang làm quen, chưa chiếm chỗ của mentor) → ACCEPTED khi cả hai CONTINUE | REJECTED | CANCELLED;
+     * ACCEPTED → COMPLETED (kết thúc quan hệ mentoring)
+     */
+    public enum Status { PENDING, INTRO, ACCEPTED, REJECTED, CANCELLED, COMPLETED }
+
+    /** Quyết định của mỗi bên sau buổi làm quen. */
+    public enum Decision { CONTINUE, DECLINE }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -30,6 +37,14 @@ public class MentoringRequest {
 
     @Column(name = "response_note")
     private String responseNote;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mentee_decision")
+    private Decision menteeDecision;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mentor_decision")
+    private Decision mentorDecision;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
@@ -54,6 +69,10 @@ public class MentoringRequest {
     public void setStatus(Status status) { this.status = status; }
     public String getResponseNote() { return responseNote; }
     public void setResponseNote(String responseNote) { this.responseNote = responseNote; }
+    public Decision getMenteeDecision() { return menteeDecision; }
+    public void setMenteeDecision(Decision menteeDecision) { this.menteeDecision = menteeDecision; }
+    public Decision getMentorDecision() { return mentorDecision; }
+    public void setMentorDecision(Decision mentorDecision) { this.mentorDecision = mentorDecision; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getRespondedAt() { return respondedAt; }
     public void setRespondedAt(OffsetDateTime respondedAt) { this.respondedAt = respondedAt; }

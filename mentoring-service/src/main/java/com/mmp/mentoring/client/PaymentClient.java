@@ -9,6 +9,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,6 +35,21 @@ public class PaymentClient {
             return true;
         } catch (HttpClientErrorException.NotFound e) {
             return false;
+        } catch (RestClientException e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Không thể hoàn tiền, vui lòng thử lại sau");
+        }
+    }
+
+    /**
+     * Hoàn tiền cho gói buổi (các buổi chưa dùng). {@code refundedTotal} là TỔNG số tiền đã hoàn luỹ kế mong muốn
+     * (idempotent: gửi lại cùng giá trị không hoàn thêm). Ném {@link ApiException} 502 nếu payment-service từ chối
+     * hoặc không phản hồi; người gọi giữ cờ {@code refund_pending} để thử lại.
+     */
+    public void refundPackage(UUID packageId, BigDecimal refundedTotal, String reason) {
+        try {
+            restClient.post().uri("/internal/payments/refund")
+                    .body(Map.of("packageId", packageId.toString(), "refundedTotal", refundedTotal, "reason", reason))
+                    .retrieve().toBodilessEntity();
         } catch (RestClientException e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Không thể hoàn tiền, vui lòng thử lại sau");
         }

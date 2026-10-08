@@ -3,7 +3,7 @@ info:
   title: payment-service
   version: 1.0.0
   description: >
-    Thanh toán phiên mentoring qua cổng sandbox + Referral/Affiliate. Sở hữu bởi Thắng.
+    Thanh toán phiên mentoring và gói buổi qua cổng sandbox (hỗ trợ hoàn tiền một phần) + Referral/Affiliate. Sở hữu bởi Thắng.
     Thẻ test: 4242 4242 4242 4242 (thành công), 4000 0000 0000 0002 (CARD_DECLINED),
     4000 0000 0000 9995 (INSUFFICIENT_FUNDS).
 servers:
@@ -17,12 +17,17 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        sessionId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid, nullable: true, description: Giao dịch thanh toán 1 phiên lẻ (chính xác một trong sessionId/packageId) }
+        packageId: { type: string, format: uuid, nullable: true, description: Giao dịch thanh toán 1 gói buổi }
         payerId: { type: string, format: uuid }
         mentorId: { type: string, format: uuid }
         amount: { type: number }
+        refundedAmount: { type: number, description: Tổng số tiền đã hoàn (hoàn một phần khi gói còn buổi chưa dùng) }
         currency: { type: string, example: VND }
-        status: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED] }
+        status:
+          type: string
+          enum: [PENDING, SUCCESS, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+          description: PARTIALLY_REFUNDED = đã thu và đã hoàn một phần; vẫn tính là đã thanh toán
         provider: { type: string, example: SANDBOX }
         providerReference: { type: string, nullable: true }
         failureReason: { type: string, nullable: true, example: CARD_DECLINED }
@@ -52,18 +57,19 @@ paths:
   /api/payment/charge:
     post:
       summary: >
-        FR-6.1 → FR-6.3 Thanh toán 1 phiên PENDING (MENTEE chủ phiên). Số tiền lấy từ
-        mentoring-service; nếu client gửi amount khác giá phiên → AMOUNT_MISMATCH.
-        SUCCESS → xử lý referral + báo mentoring-service xác nhận phiên (FR-6.2).
+        FR-6.1 → FR-6.3 Thanh toán 1 phiên PENDING hoặc 1 gói buổi PENDING_PAYMENT (MENTEE chủ phiên/gói) — chọn đúng một
+        trong sessionId / packageId. Số tiền lấy từ mentoring-service; nếu client gửi amount khác giá → AMOUNT_MISMATCH.
+        SUCCESS → xử lý referral + báo mentoring-service xác nhận phiên / kích hoạt gói (FR-6.2).
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [sessionId, card]
+              required: [card]
               properties:
-                sessionId: { type: string, format: uuid }
+                sessionId: { type: string, format: uuid, description: Thanh toán 1 phiên lẻ }
+                packageId: { type: string, format: uuid, description: Thanh toán 1 gói buổi (loại trừ với sessionId) }
                 amount: { type: number, description: Tuỳ chọn, dùng để đối chiếu }
                 card:
                   type: object
@@ -79,9 +85,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
-        "400": { description: AMOUNT_MISMATCH / FREE_SESSION }
-        "403": { description: Không phải mentee của phiên }
-        "409": { description: ALREADY_PAID / SESSION_NOT_PAYABLE }
+        "400": { description: INVALID_TARGET / AMOUNT_MISMATCH / FREE_SESSION / FREE_PACKAGE }
+        "403": { description: Không phải mentee của phiên / gói }
+        "409": { description: ALREADY_PAID / SESSION_NOT_PAYABLE / PACKAGE_NOT_PAYABLE }
 
   /api/payment/transactions:
     get:
@@ -108,6 +114,18 @@ paths:
       summary: Lịch sử giao dịch của 1 phiên
       parameters:
         - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Transaction" } }
+
+  /api/payment/packages/{packageId}/transactions:
+    get:
+      summary: Lịch sử giao dịch của 1 gói buổi
+      parameters:
+        - { name: packageId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "200":
           description: OK
@@ -148,14 +166,14 @@ paths:
     get:
       summary: (ADMIN) Giám sát giao dịch
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [PENDING, SUCCESS, FAILED, REFUNDED] } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, SUCCESS, FAILED, PARTIALLY_REFUNDED, REFUNDED] } }
         - { name: page, in: query, schema: { type: integer, default: 0 } }
         - { name: size, in: query, schema: { type: integer, default: 20 } }
       responses:
         "200": { description: "{ items: Transaction[], page, size, totalItems, totalPages }" }
   /api/payment/admin/stats:
     get:
-      summary: (ADMIN) Thống kê giao dịch
+      summary: (ADMIN) Thống kê giao dịch — successCount gồm cả PARTIALLY_REFUNDED; totalRevenue là doanh thu ròng (đã thu trừ đã hoàn)
       responses:
         "200": { description: "{ successCount, failedCount, refundedCount, totalRevenue }" }
   /api/payment/admin/referrals:
@@ -193,7 +211,9 @@ paths:
         "409": { description: ALREADY_REFERRED }
   /internal/payments/refund:
     post:
-      summary: Nội bộ — mentoring-service yêu cầu hoàn tiền khi phiên đã thanh toán bị huỷ
+      summary: >
+        Nội bộ — mentoring-service yêu cầu hoàn tiền: toàn bộ khi phiên lẻ đã thanh toán bị huỷ (sessionId), hoặc các buổi chưa
+        dùng khi gói hết hạn/bị huỷ (packageId + refundedTotal). Chọn đúng một trong sessionId / packageId.
       security: [{ internalToken: [] }]
       requestBody:
         required: true
@@ -201,14 +221,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [sessionId]
               properties:
                 sessionId: { type: string, format: uuid }
+                packageId: { type: string, format: uuid }
+                refundedTotal:
+                  type: number
+                  description: >
+                    Chỉ với packageId: TỔNG số tiền đã hoàn tính luỹ kế mong muốn. Idempotent: chỉ hoàn phần chênh so với số đã hoàn,
+                    nên gọi lại cùng giá trị (thử lại sau lỗi mạng) không hoàn trùng. Bỏ trống = hoàn hết phần còn lại.
                 reason: { type: string }
       responses:
         "200":
-          description: Giao dịch sau khi hoàn tiền (status = REFUNDED)
+          description: Giao dịch sau khi hoàn (REFUNDED, hoặc PARTIALLY_REFUNDED với gói)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { description: INVALID_TARGET / INVALID_REFUND_AMOUNT }
         "404": { description: NO_SUCCESS_TRANSACTION }
+        "502": { description: REFUND_FAILED (cổng thanh toán từ chối) }

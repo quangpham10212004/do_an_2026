@@ -33,20 +33,20 @@ function Transactions() {
           <div className="row" style={{ marginBottom: "1rem" }}>
             <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} style={{ maxWidth: 220 }}>
               <option value="">Mọi trạng thái</option>
-              {["PENDING", "SUCCESS", "FAILED", "REFUNDED"].map((s) => <option key={s} value={s}>{s}</option>)}
+              {["PENDING", "SUCCESS", "FAILED", "PARTIALLY_REFUNDED", "REFUNDED"].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           {!data ? <Loading /> : (
             <div className="card table-wrap">
               <table>
-                <thead><tr><th>Thời gian</th><th>Mã giao dịch</th><th>Phiên</th><th>Số tiền</th><th>Trạng thái</th><th>Lý do</th><th>Tham chiếu</th></tr></thead>
+                <thead><tr><th>Thời gian</th><th>Mã giao dịch</th><th>Đối tượng</th><th>Số tiền</th><th>Trạng thái</th><th>Lý do</th><th>Tham chiếu</th></tr></thead>
                 <tbody>
                   {data.items.map((t) => (
                     <tr key={t.id}>
                       <td>{formatDateTime(t.createdAt)}</td>
                       <td className="small">{t.id.slice(0, 8)}</td>
-                      <td className="small">{t.sessionId.slice(0, 8)}</td>
-                      <td>{formatMoney(t.amount)}</td>
+                      <td className="small">{t.packageId ? `Gói ${t.packageId.slice(0, 8)}` : `Phiên ${t.sessionId.slice(0, 8)}`}</td>
+                      <td>{formatMoney(t.amount)}{Number(t.refundedAmount) > 0 && <div className="muted small">Đã hoàn {formatMoney(t.refundedAmount)}</div>}</td>
                       <td><StatusBadge status={t.status} /></td>
                       <td className="small">{t.failureReason || "—"}</td>
                       <td className="small">{t.providerReference || "—"}</td>

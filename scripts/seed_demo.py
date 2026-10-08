@@ -13,7 +13,7 @@ hoạ việc bị loại khỏi kết quả matching.
 """
 import sys
 
-from common import AUTH, PROFILE, ApiError, call, register_or_login
+from common import AUTH, MENTORING, PROFILE, ApiError, call, register_or_login
 
 PASSWORD = "Demo@123"
 
@@ -49,6 +49,29 @@ MENTEES = [
 ]
 
 
+# (mentee, mentor, quyết định của mentor): dựng sẵn trạng thái để trình diễn luồng buổi làm quen và gói buổi
+DEMO_REQUESTS = [
+    ("mentee@demo.local", "mentor.java@demo.local", "ACCEPT"),            # đã nhận → thử mua gói, đặt lịch, đổi lịch
+    ("mentee.frontend@demo.local", "mentor.react@demo.local", "INTRO"),   # đang làm quen → thử đặt buổi làm quen
+]
+
+
+def seed_requests():
+    print("\nSeed yêu cầu mentoring mẫu:")
+    for mentee_email, mentor_email, decision in DEMO_REQUESTS:
+        mentee = call("POST", f"{AUTH}/api/auth/login", {"email": mentee_email, "password": PASSWORD})
+        mentor = call("POST", f"{AUTH}/api/auth/login", {"email": mentor_email, "password": PASSWORD})
+        try:
+            req = call("POST", f"{MENTORING}/api/mentoring/requests",
+                       {"mentorId": mentor["userId"], "message": "Em muốn được anh/chị hướng dẫn"}, token=mentee["accessToken"])
+            call("POST", f"{MENTORING}/api/mentoring/requests/{req['id']}/respond", {"decision": decision}, token=mentor["accessToken"])
+            print(f"  {mentee_email} → {mentor_email}: {decision}")
+        except ApiError as e:
+            if e.status != 409:  # 409 = đã tồn tại từ lần seed trước
+                raise
+            print(f"  {mentee_email} → {mentor_email}: đã có từ trước")
+
+
 def main():
     print(f"Seeding demo data via {AUTH} / {PROFILE}")
     for email, name, domain, skills, years, bio, rate, capacity, slots, approve in MENTORS:
@@ -71,6 +94,8 @@ def main():
             "displayName": name, "goal": goal, "domain": domain, "currentLevel": level, "skills": skills, "portfolioLinks": [],
         }, token=auth["accessToken"])
         print(f"  mentee  {email}")
+
+    seed_requests()
 
     print(f"\nXong. Mật khẩu mọi tài khoản demo: {PASSWORD}. Admin: admin@mmp.local / Admin@123")
 

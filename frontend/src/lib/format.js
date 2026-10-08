@@ -37,6 +37,13 @@ export const STATUS_LABELS = {
   SUCCESS: "Thành công",
   FAILED: "Thất bại",
   REFUNDED: "Đã hoàn tiền",
+  PARTIALLY_REFUNDED: "Hoàn một phần",
+  INTRO: "Đang làm quen",
+  PENDING_PAYMENT: "Chờ thanh toán",
+  EXHAUSTED: "Đã dùng hết",
+  EXPIRED: "Hết hạn",
+  CONTINUE: "Muốn tiếp tục",
+  DECLINE: "Không tiếp tục",
   IN_PROGRESS: "Đang diễn ra",
   PENDING_REVIEW: "Chờ admin duyệt",
   APPROVED: "Đã duyệt",
@@ -56,7 +63,7 @@ export const ROLE_LABELS = { MENTEE: "Mentee", MENTOR: "Mentor", ADMIN: "Quản 
 
 export function statusTone(status) {
   if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE"].includes(status)) return "good";
-  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT"].includes(status)) return "bad";
-  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW"].includes(status)) return "warn";
+  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "EXPIRED", "DECLINE"].includes(status)) return "bad";
+  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "INTRO", "PENDING_PAYMENT", "PARTIALLY_REFUNDED", "CONTINUE"].includes(status)) return "warn";
   return "neutral";
 }

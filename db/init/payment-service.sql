@@ -5,19 +5,23 @@
 
 CREATE TABLE IF NOT EXISTS transactions (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id          UUID NOT NULL,
+    session_id          UUID,                              -- thanh toán 1 phiên lẻ
+    package_id          UUID,                              -- hoặc thanh toán 1 gói buổi
     payer_id            UUID NOT NULL,
     mentor_id           UUID NOT NULL,
     amount              NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
     currency            TEXT NOT NULL DEFAULT 'VND',
     status              TEXT NOT NULL DEFAULT 'PENDING'
-        CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
+        CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'PARTIALLY_REFUNDED', 'REFUNDED')),
     provider            TEXT NOT NULL DEFAULT 'SANDBOX',
     provider_reference  TEXT,
     failure_reason      TEXT,
-    session_synced      BOOLEAN NOT NULL DEFAULT false,   -- đã báo mentoring-service xác nhận/hoàn phiên
+    refunded_amount     NUMERIC(12,2) NOT NULL DEFAULT 0, -- hoàn một phần khi gói còn buổi chưa dùng
+    session_synced      BOOLEAN NOT NULL DEFAULT false,   -- đã báo mentoring-service xác nhận phiên/gói
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (num_nonnulls(session_id, package_id) = 1),
+    CHECK (refunded_amount >= 0 AND refunded_amount <= amount)
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_session ON transactions (session_id);
@@ -26,6 +30,12 @@ CREATE INDEX IF NOT EXISTS idx_transactions_payer ON transactions (payer_id, cre
 -- Chỉ cho phép tối đa 1 giao dịch SUCCESS cho mỗi session (chống thanh toán trùng)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_session_success
     ON transactions (session_id) WHERE status = 'SUCCESS';
+
+CREATE INDEX IF NOT EXISTS idx_transactions_package ON transactions (package_id);
+
+-- Tương tự cho gói buổi (giao dịch gói đã hoàn một phần vẫn tính là đã thanh toán)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_package_success
+    ON transactions (package_id) WHERE status IN ('SUCCESS', 'PARTIALLY_REFUNDED');
 
 -- ---------- Referral / Affiliate (FR-6.4 → FR-6.6) ----------
 

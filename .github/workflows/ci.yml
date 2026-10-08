@@ -97,6 +97,8 @@ jobs:
         run: python3 scripts/seed_demo.py
       - name: Acceptance test (Definition of Done)
         run: python3 scripts/e2e_acceptance.py
+      - name: Booking flows (intro call, reschedule, session packages)
+        run: python3 scripts/e2e_booking_v2.py
       - name: Service logs on failure
         if: failure()
         run: docker compose logs --tail=200

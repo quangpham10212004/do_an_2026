@@ -17,9 +17,9 @@ function scoreParts(m, weights) {
   const experience = Math.min(m.yearsExperience / 10, 1) * weights.experience;
   const rating = Math.max(0, m.finalScore - similarity - experience);
   return [
-    { key: "similarity", label: "Tương đồng hồ sơ", value: similarity, color: "var(--color-eager-green)" },
-    { key: "rating", label: m.ratingCount > 0 ? "Đánh giá" : "Đánh giá (trung tính)", value: rating, color: "var(--color-spark-blue)" },
-    { key: "experience", label: "Kinh nghiệm", value: experience, color: "var(--color-night-ink)" },
+    { key: "similarity", label: "Tương đồng hồ sơ", value: similarity, color: "var(--color-brand-indigo)" },
+    { key: "rating", label: m.ratingCount > 0 ? "Đánh giá" : "Đánh giá (trung tính)", value: rating, color: "var(--color-brand-cyan)" },
+    { key: "experience", label: "Kinh nghiệm", value: experience, color: "var(--color-brand-violet)" },
   ];
 }
 

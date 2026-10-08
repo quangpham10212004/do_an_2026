@@ -93,7 +93,7 @@ services:
   # ---------- Backend services ----------
   auth-service:
     build: ./auth-service
-    ports: ["8081:8081"]
+    ports: ["18081:8081"]
     environment:
       <<: *common-env
       DB_HOST: auth-db
@@ -140,6 +140,14 @@ services:
       PROFILE_SERVICE_URL: http://profile-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8084
       REMINDER_BEFORE: ${REMINDER_BEFORE:-PT24H}
+      # Buổi làm quen, đổi lịch, gói buổi — xem docs/booking-flows.md
+      INTRO_DURATION_MINUTES: ${INTRO_DURATION_MINUTES:-15}
+      INTRO_MAX_OPEN_PER_MENTOR: ${INTRO_MAX_OPEN_PER_MENTOR:-5}
+      RESCHEDULE_FREE_WINDOW: ${RESCHEDULE_FREE_WINDOW:-PT24H}
+      RESCHEDULE_MAX_PER_SESSION: ${RESCHEDULE_MAX_PER_SESSION:-2}
+      PACKAGE_TIERS: ${PACKAGE_TIERS:-4:10,8:15}
+      PACKAGE_VALIDITY: ${PACKAGE_VALIDITY:-P90D}
+      PACKAGE_REFUND_FEE_PERCENT: ${PACKAGE_REFUND_FEE_PERCENT:-0}
     depends_on:
       mentoring-db: { condition: service_healthy }
     healthcheck:

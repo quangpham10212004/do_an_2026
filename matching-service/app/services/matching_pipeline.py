@@ -15,6 +15,9 @@ from app.db import get_pool
 
 # K mặc định: lấy dư so với limit vì một phần ứng viên sẽ bị hard filter loại bỏ.
 DEFAULT_K = 50
+# Trần K khi mở rộng: nếu hard filter loại quá nhiều khiến không đủ `limit` kết quả,
+# pipeline lấy lại top-K với K gấp đôi (tối đa MAX_K) thay vì trả danh sách thiếu.
+MAX_K = 400
 
 # Trọng số re-rank — lý do lựa chọn được trình bày trong docs/ai-features.md:
 # độ tương đồng nội dung là tín hiệu chính (0.7); rating (0.2) và kinh nghiệm
@@ -157,9 +160,14 @@ async def match_mentors_for_mentee(mentee_id: str, limit: int = 10) -> dict | No
     if mentee is None or not mentee["has_embedding"]:
         return None
 
-    k = max(DEFAULT_K, limit * 5)
-    candidates = await top_k_retrieval(mentee_id, k=k)
-    filtered, excluded = hard_filter(candidates, mentee["domain"])
+    k = min(max(DEFAULT_K, limit * 5), MAX_K)
+    while True:
+        candidates = await top_k_retrieval(mentee_id, k=k)
+        filtered, excluded = hard_filter(candidates, mentee["domain"])
+        # Đủ kết quả, hoặc DB đã hết ứng viên (trả về ít hơn K), hoặc chạm trần K => dừng.
+        if len(filtered) >= limit or len(candidates) < k or k >= MAX_K:
+            break
+        k = min(k * 2, MAX_K)
     ranked = re_rank(filtered)[:limit]
     for c in ranked:
         c["reasons"], c["matched_skills"] = explain(c, mentee)

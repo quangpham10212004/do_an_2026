@@ -26,9 +26,14 @@ public class InternalPaymentController {
         return referralService.registerReferee(req.code(), req.refereeId());
     }
 
-    /** Gọi bởi mentoring-service khi phiên đã thanh toán bị huỷ. */
+    /** Gọi bởi mentoring-service khi phiên đã thanh toán bị huỷ, hoặc khi gói buổi hết hạn/bị huỷ còn buổi chưa dùng. */
     @PostMapping("/payments/refund")
     public TransactionResponse refund(@Valid @RequestBody RefundRequest req) {
-        return paymentService.refund(req.sessionId(), req.reason());
+        if ((req.sessionId() == null) == (req.packageId() == null)) {
+            throw com.mmp.payment.exception.ApiException.badRequest("INVALID_TARGET", "Chỉ chọn một trong phiên hoặc gói");
+        }
+        return req.packageId() != null
+                ? paymentService.refundPackage(req.packageId(), req.refundedTotal(), req.reason())
+                : paymentService.refund(req.sessionId(), req.reason());
     }
 }
