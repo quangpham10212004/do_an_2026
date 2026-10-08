@@ -156,6 +156,7 @@ public class SessionService {
             session.setPrice(BookingRules.price(mentor.hourlyRate(), duration));
             // Phiên miễn phí được xác nhận ngay; phiên có phí chờ thanh toán (FR-6.2)
             session.setStatus(session.getPrice().signum() == 0 ? MentoringSession.Status.CONFIRMED : MentoringSession.Status.PENDING);
+            requestRepo.clearInactivityWarning(request.getId()); // US-31 — đặt phiên mới = còn hoạt động
             return sessionRepo.save(session);
         });
 

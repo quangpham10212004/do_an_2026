@@ -31,12 +31,19 @@ components:
         expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
         status:
           type: string
-          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED]
+          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, EXPIRED, ENDED]
           description: >
+            US-31: ACCEPTED → ENDED (thay COMPLETED cũ; migration V12 đổi COMPLETED → ENDED, giá trị COMPLETED còn sót được
+            trả về là ENDED).
             US-15: PENDING không được mentor phản hồi sau 72 giờ (app.requests.expire-after) → EXPIRED (job mỗi 5 phút).
             active_mentee_count của mentor không đổi. Mentee nhận thông báo REQUEST_EXPIRED (link /matching) kèm tối đa 3
             mentor tương tự lấy từ matching-service GET /internal/matching/similar-mentors (best-effort: lỗi/404 → không gợi ý).
         expiredAt: { type: string, format: date-time, nullable: true, description: "US-15 — thời điểm hết hạn" }
+        endedBy: { type: string, nullable: true, enum: [MENTEE, MENTOR, ADMIN, SYSTEM], description: "US-31 — null với dữ liệu cũ" }
+        endReason: { type: string, nullable: true, enum: [GOAL_REACHED, NO_LONGER_NEEDED, NOT_A_FIT, OTHER, INACTIVE] }
+        endNote: { type: string, nullable: true, maxLength: 500 }
+        endedAt: { type: string, format: date-time, nullable: true }
+        inactivityWarnedAt: { type: string, format: date-time, nullable: true, description: "US-31 — đã nhắc 'Bạn có muốn tiếp tục?' (30 ngày không có phiên); đặt phiên mới xoá" }
         rejectReason: { allOf: [{ $ref: "#/components/schemas/RejectReason" }], nullable: true, description: "US-14 — có khi REJECTED" }
         responseNote: { type: string, nullable: true, description: "Ghi chú tuỳ chọn của mentor khi phản hồi" }
         createdAt: { type: string, format: date-time }
@@ -267,12 +274,43 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Request }
+  /api/mentoring/requests/{id}/end:
+    post:
+      summary: >
+        US-31 (PRD-REQ-6) — mentee hoặc mentor (hoặc ADMIN) kết thúc quan hệ ACCEPTED → ENDED (endedBy, endReason, endedAt),
+        giải phóng 1 slot sức chứa (active-mentee sync chỉ đếm ACCEPTED). Các phiên sắp tới PENDING/CONFIRMED của cặp bị huỷ
+        theo chính sách huỷ như thể người kết thúc huỷ (mentee < 72 giờ → hoàn 0%, ≥ 72 giờ → 100%; mentor → hoàn 100% +
+        20 điểm xin lỗi + strike; admin → SYSTEM hoàn 100%). Báo bên còn lại. Job: ACCEPTED không có phiên (đã lên lịch hoặc
+        đã diễn ra) 30 ngày → nhắc hai bên; thêm 7 ngày không có phiên mới → ENDED reason INACTIVE, endedBy SYSTEM. Chưa có
+        nhắn tin nên điều kiện "không có tin nhắn" của PRD chưa áp dụng.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [GOAL_REACHED, NO_LONGER_NEEDED, NOT_A_FIT, OTHER] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Request (status ENDED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "400": { description: INVALID_END_REASON (INACTIVE chỉ hệ thống dùng) | VALIDATION_ERROR }
+        "403": { description: Không thuộc quan hệ này }
+        "409": { description: REQUEST_NOT_ACTIVE }
+        "502": { description: REFUND_FAILED khi huỷ phiên đã thanh toán — quan hệ vẫn ACCEPTED, gọi lại an toàn }
   /api/mentoring/requests/{id}/complete:
     post:
-      summary: Kết thúc quan hệ mentoring (giải phóng 1 slot sức chứa)
+      deprecated: true
+      summary: "Giữ cho client cũ — = POST /requests/{id}/end với reason OTHER (US-31)"
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
-        "200": { description: Request }
+        "200": { description: Request (status ENDED) }
 
   # ---------------- Sessions ----------------
   /api/mentoring/sessions:
@@ -752,12 +790,27 @@ paths:
       responses:
         "200": { description: "{ id, createdAt, status }" }
         "404": { description: REQUEST_NOT_FOUND }
+  /internal/dev/requests/{id}/inactivity:
+    post:
+      summary: "DEV/E2E — US-31: lùi lúc tạo/chấp nhận về lastActivityDaysAgo ngày trước và đặt inactivity_warned_at = warnedDaysAgo ngày trước (null = chưa nhắc). Không có ở profile prod."
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lastActivityDaysAgo: { type: integer }
+                warnedDaysAgo: { type: integer, nullable: true }
+      responses:
+        "200": { description: "{ id, lastActivity, inactivityWarnedAt }" }
   /internal/dev/jobs/{job}:
     post:
-      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15). Không có ở profile prod."
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
       security: [{ internalToken: [] }]
       parameters:
-        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, request-expiry] } }
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, request-expiry, inactivity] } }
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }

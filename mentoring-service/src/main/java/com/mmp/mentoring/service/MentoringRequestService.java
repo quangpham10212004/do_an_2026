@@ -134,26 +134,6 @@ public class MentoringRequestService {
         return toView(r, names(r), Map.of());
     }
 
-    /** Kết thúc quan hệ mentoring → giải phóng 1 slot sức chứa của mentor. */
-    public RequestView complete(AuthUser user, UUID requestId) {
-        MentoringRequest r = tx.execute(s -> {
-            MentoringRequest req = find(requestId);
-            if (!user.isAdmin() && !req.getMentorId().equals(user.userId()) && !req.getMenteeId().equals(user.userId())) {
-                throw ApiException.forbidden("Bạn không thuộc quan hệ mentoring này");
-            }
-            if (req.getStatus() != MentoringRequest.Status.ACCEPTED) {
-                throw ApiException.conflict("REQUEST_NOT_ACTIVE", "Quan hệ mentoring không còn hoạt động");
-            }
-            req.setStatus(MentoringRequest.Status.COMPLETED);
-            return req;
-        });
-        syncActiveMentees(r.getMentorId());
-        UUID other = user.userId().equals(r.getMentorId()) ? r.getMenteeId() : r.getMentorId();
-        notifications.notifyUser(other, "MENTORING_ENDED", "Kết thúc mentoring",
-                "Quan hệ mentoring đã được đánh dấu hoàn thành.", "/mentoring/requests");
-        return toView(r, names(r), Map.of());
-    }
-
     public List<RequestView> mine(AuthUser user) {
         List<MentoringRequest> list = switch (user.role()) {
             case "MENTOR" -> requestRepo.findByMentorIdOrderByCreatedAtDesc(user.userId());
@@ -207,8 +187,10 @@ public class MentoringRequestService {
                 names.get(r.getMentorId()), r.getMessage(), r.getGoal(),
                 r.getSessionType() == null ? null : r.getSessionType().name(),
                 r.getFrequency() == null ? null : r.getFrequency().name(), r.getExpectedDurationMonths(),
-                r.getStatus().name(), r.getRejectReason() == null ? null : r.getRejectReason().name(),
-                r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), r.getExpiredAt(), profiles.get(r.getMenteeId()));
+                r.effectiveStatus().name(), r.getRejectReason() == null ? null : r.getRejectReason().name(),
+                r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), r.getExpiredAt(), profiles.get(r.getMenteeId()),
+                r.getEndedBy(), r.getEndReason() == null ? null : r.getEndReason().name(), r.getEndNote(), r.getEndedAt(),
+                r.getInactivityWarnedAt());
     }
 
     static String trimToNull(String s) {

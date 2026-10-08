@@ -2,8 +2,10 @@ import type { IsoDateTime, Uuid } from "./common";
 import type { SessionType } from "./profile";
 
 // contracts/mentoring-service.yaml
-/** US-15 — EXPIRED: mentor không phản hồi trong 72 giờ. */
-export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "EXPIRED";
+/** US-15 — EXPIRED: mentor không phản hồi trong 72 giờ. US-31 — ENDED thay COMPLETED (COMPLETED chỉ còn ở dữ liệu cũ). */
+export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "EXPIRED" | "ENDED";
+/** US-31 — lý do kết thúc mentoring; INACTIVE chỉ hệ thống dùng. */
+export type EndReason = "GOAL_REACHED" | "NO_LONGER_NEEDED" | "NOT_A_FIT" | "OTHER" | "INACTIVE";
 /** US-12 — PENDING = chờ thanh toán; EXPIRED = quá hạn thanh toán; AWAITING_ATTENDANCE = chờ hai bên xác nhận tham dự. */
 export type SessionStatus =
   | "PENDING"
@@ -65,6 +67,13 @@ export interface MentoringRequest {
   /** US-15 — thời điểm hết hạn (status EXPIRED). */
   expiredAt: IsoDateTime | null;
   menteeProfile: MenteeSummary | null;
+  /** US-31 — kết thúc mentoring. */
+  endedBy: "MENTEE" | "MENTOR" | "ADMIN" | "SYSTEM" | null;
+  endReason: EndReason | null;
+  endNote: string | null;
+  endedAt: IsoDateTime | null;
+  /** US-31 — đã nhắc "Bạn có muốn tiếp tục?" (30 ngày không có phiên). */
+  inactivityWarnedAt: IsoDateTime | null;
 }
 
 /** US-14 — POST /api/mentoring/requests */

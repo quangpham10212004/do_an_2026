@@ -40,7 +40,13 @@ public final class MentoringDtos {
     public record RequestView(UUID id, UUID menteeId, String menteeName, UUID mentorId, String mentorName, String message,
                               String goal, String sessionType, String frequency, int expectedDurationMonths,
                               String status, String rejectReason, String responseNote, OffsetDateTime createdAt,
-                              OffsetDateTime respondedAt, OffsetDateTime expiredAt, MenteeSummary menteeProfile) {
+                              OffsetDateTime respondedAt, OffsetDateTime expiredAt, MenteeSummary menteeProfile,
+                              String endedBy, String endReason, String endNote, OffsetDateTime endedAt,
+                              OffsetDateTime inactivityWarnedAt) {
+    }
+
+    /** US-31 — kết thúc mentoring: reason bắt buộc (INACTIVE chỉ hệ thống dùng), note ≤ 500. */
+    public record EndRequestInput(@NotNull com.mmp.mentoring.entity.MentoringRequest.EndReason reason, @Size(max = 500) String note) {
     }
 
     // ---------- Sessions ----------

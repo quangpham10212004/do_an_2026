@@ -5,6 +5,7 @@ import type {
   BookSessionInput,
   CancelPreview,
   CreateRequestInput,
+  EndReason,
   Dispute,
   DisputeStatus,
   OpenDisputeInput,
@@ -37,7 +38,11 @@ export const mentoringApi = {
   respond: (id: Uuid, decision: "ACCEPT" | "REJECT", note: string, rejectReason?: RejectReason) =>
     api<MentoringRequest>(`/api/mentoring/requests/${id}/respond`, { method: "POST", body: { decision, note, rejectReason } }),
   cancelRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/cancel`, { method: "POST" }),
+  /** @deprecated US-31 — dùng endRequest (có lý do). */
   completeRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/complete`, { method: "POST" }),
+  /** US-31 — kết thúc quan hệ mentoring; Team B dùng lại ở /mentoring/relationships/[id]. */
+  endRequest: (id: Uuid, reason: Exclude<EndReason, "INACTIVE">, note?: string) =>
+    api<MentoringRequest>(`/api/mentoring/requests/${id}/end`, { method: "POST", body: { reason, note } }),
   // Phiên mentoring
   sessions: (status: SessionStatus | "" = "") => api<MentoringSession[]>(`/api/mentoring/sessions?status=${status}`),
   session: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}`),

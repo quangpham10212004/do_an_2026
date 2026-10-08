@@ -338,7 +338,85 @@ def us32(ctx):
               (v["status"], t["status"], row))
 
 
-STORIES = {"US-25": us25, "US-32": us32}
+# ------------------------------------------------------------------ US-31
+def end_request(user, rid, reason="GOAL_REACHED", note=None):
+    return call("POST", f"{MENTORING}/api/mentoring/requests/{rid}/end", {"reason": reason, "note": note}, token=user["accessToken"])
+
+
+def my_request(user, rid):
+    return next(r for r in call("GET", f"{MENTORING}/api/mentoring/requests", token=user["accessToken"]) if r["id"] == rid)
+
+
+def us31(ctx):
+    print("US-31 — Kết thúc mentoring")
+    admin = ctx["admin"]["accessToken"]
+    mentor = approved_mentor(admin, "end")
+    mentee = accepted_mentee(mentor, "end")
+
+    late = paid(mentee, mentor, at(2, 15))          # < 72h → mentee kết thúc: hoàn 0%
+    early = paid(mentee, mentor, at(6, 9))          # ≥ 72h → hoàn 100%
+    unpaid = book(mentee, mentor, at(8, 9))         # PENDING chưa thanh toán
+    status, code = error_code(lambda: end_request(mentee, mentee["requestId"], reason="INACTIVE"))
+    check("US-31", "reason INACTIVE (chỉ hệ thống) → 400 INVALID_END_REASON", status == 400 and code == "INVALID_END_REASON", (status, code))
+    stranger = mentee_with_profile("end-stranger")
+    status, code = error_code(lambda: end_request(stranger, mentee["requestId"]))
+    check("US-31", "Người ngoài quan hệ → 403", status == 403, (status, code))
+
+    r = end_request(mentee, mentee["requestId"], note="Da dat muc tieu, cam on anh")
+    check("US-31", "Mentee kết thúc → ENDED kèm endedBy/endReason/endNote/endedAt",
+          r["status"] == "ENDED" and r["endedBy"] == "MENTEE" and r["endReason"] == "GOAL_REACHED"
+          and r["endNote"] == "Da dat muc tieu, cam on anh" and r["endedAt"], r)
+    v_late, v_early, v_unpaid = (get_session(mentee, x["id"]) for x in (late, early, unpaid))
+    t_late, t_early = txs(mentee, late["id"])[0], txs(mentee, early["id"])[0]
+    check("US-31", "Phiên < 72h bị huỷ như mentee huỷ: hoàn 0%, giao dịch vẫn SUCCESS",
+          v_late["status"] == "CANCELLED" and v_late["cancelledBy"] == "MENTEE" and v_late["refundPercent"] == 0
+          and t_late["status"] == "SUCCESS" and t_late["refunds"] == [], (v_late["status"], v_late["refundPercent"], t_late["status"]))
+    check("US-31", "Phiên ≥ 72h bị huỷ: hoàn 100% (REFUNDED)",
+          v_early["status"] == "CANCELLED" and v_early["refundPercent"] == 100 and t_early["status"] == "REFUNDED",
+          (v_early["status"], v_early["refundPercent"], t_early["status"]))
+    check("US-31", "Phiên chờ thanh toán cũng bị huỷ", v_unpaid["status"] == "CANCELLED", v_unpaid["status"])
+    check("US-31", "Mentor được báo MENTORING_ENDED", notes(mentor, "MENTORING_ENDED"))
+    status, code = error_code(lambda: end_request(mentor, mentee["requestId"]))
+    check("US-31", "Kết thúc lần 2 → 409 REQUEST_NOT_ACTIVE", status == 409 and code == "REQUEST_NOT_ACTIVE", (status, code))
+    status, code = error_code(lambda: book(mentee, mentor, at(9, 9)))
+    check("US-31", "Sau khi kết thúc không đặt lịch được (400 NOT_ACCEPTED)", status == 400 and code == "NOT_ACCEPTED", (status, code))
+    count = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
+    check("US-31", "activeMenteeCount đồng bộ chỉ đếm ACCEPTED (= 0)", count == 0, count)
+
+    m2 = accepted_mentee(mentor, "end-by-mentor")
+    s2 = paid(m2, mentor, at(6, 11))
+    r2 = end_request(mentor, m2["requestId"], reason="NOT_A_FIT")
+    v2 = get_session(m2, s2["id"])
+    check("US-31", "Mentor kết thúc → phiên sắp tới huỷ như mentor huỷ (hoàn 100%, cancelledBy MENTOR)",
+          r2["endedBy"] == "MENTOR" and v2["status"] == "CANCELLED" and v2["cancelledBy"] == "MENTOR" and v2["refundPercent"] == 100
+          and txs(m2, s2["id"])[0]["status"] == "REFUNDED", (r2["endedBy"], v2["status"], v2["cancelledBy"]))
+
+    # Không hoạt động: 30 ngày → nhắc; đặt phiên → xoá nhắc
+    m3 = accepted_mentee(mentor, "idle-warn")
+    dev(f"requests/{m3['requestId']}/inactivity", {"lastActivityDaysAgo": 29})
+    dev("jobs/inactivity")
+    check("US-31", "29 ngày không hoạt động → chưa nhắc", my_request(m3, m3["requestId"])["inactivityWarnedAt"] is None)
+    dev(f"requests/{m3['requestId']}/inactivity", {"lastActivityDaysAgo": 31})
+    dev("jobs/inactivity")
+    r3 = my_request(m3, m3["requestId"])
+    check("US-31", "31 ngày không có phiên → nhắc 'Bạn có muốn tiếp tục?' cho cả hai, ghi inactivityWarnedAt",
+          r3["status"] == "ACCEPTED" and r3["inactivityWarnedAt"] and notes(m3, "MENTORING_INACTIVE") and notes(mentor, "MENTORING_INACTIVE"), r3)
+    book(m3, mentor, at(10, 9))
+    check("US-31", "Đặt phiên mới xoá nhắc", my_request(m3, m3["requestId"])["inactivityWarnedAt"] is None)
+
+    # Đã nhắc + 7 ngày không có phiên → ENDED INACTIVE (SYSTEM)
+    m4 = accepted_mentee(mentor, "idle-end")
+    dev(f"requests/{m4['requestId']}/inactivity", {"lastActivityDaysAgo": 37, "warnedDaysAgo": 6})
+    dev("jobs/inactivity")
+    check("US-31", "Nhắc được 6 ngày → vẫn ACCEPTED", my_request(m4, m4["requestId"])["status"] == "ACCEPTED")
+    dev(f"requests/{m4['requestId']}/inactivity", {"lastActivityDaysAgo": 38, "warnedDaysAgo": 8})
+    dev("jobs/inactivity")
+    r4 = my_request(m4, m4["requestId"])
+    check("US-31", "Nhắc + 7 ngày không có phiên mới → ENDED reason INACTIVE, endedBy SYSTEM",
+          r4["status"] == "ENDED" and r4["endReason"] == "INACTIVE" and r4["endedBy"] == "SYSTEM", r4)
+
+
+STORIES = {"US-25": us25, "US-32": us32, "US-31": us31}
 
 
 def main(selected):

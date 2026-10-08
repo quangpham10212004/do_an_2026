@@ -34,6 +34,34 @@ public interface MentoringRequestRepository extends JpaRepository<MentoringReque
     @Query(value = "UPDATE mentoring_requests SET created_at = :createdAt WHERE id = :id", nativeQuery = true)
     int overrideCreatedAt(@Param("id") UUID id, @Param("createdAt") java.time.OffsetDateTime createdAt);
 
+    /**
+     * US-31 — yêu cầu ACCEPTED kèm mốc hoạt động gần nhất: max(lúc chấp nhận, lúc tạo phiên mới nhất của cặp, giờ bắt đầu
+     * phiên chưa huỷ/hết hạn muộn nhất — phiên tương lai nên luôn "đang hoạt động") và inactivity_warned_at.
+     * Cột: id (text), last_activity, inactivity_warned_at.
+     */
+    @Query(value = """
+            SELECT CAST(r.id AS text) AS id,
+                   GREATEST(COALESCE(r.responded_at, r.created_at),
+                            COALESCE(MAX(s.created_at), r.created_at),
+                            COALESCE(MAX(s.scheduled_at) FILTER (WHERE s.status NOT IN ('CANCELLED', 'EXPIRED')), r.created_at)) AS last_activity,
+                   r.inactivity_warned_at AS warned_at
+            FROM mentoring_requests r
+            LEFT JOIN sessions s ON s.mentee_id = r.mentee_id AND s.mentor_id = r.mentor_id
+            WHERE r.status = 'ACCEPTED'
+            GROUP BY r.id
+            """, nativeQuery = true)
+    List<Object[]> findAcceptedActivity();
+
+    /** US-31 — đặt lịch phiên mới xoá nhắc "không hoạt động". */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "UPDATE mentoring_requests SET inactivity_warned_at = NULL WHERE id = :id AND inactivity_warned_at IS NOT NULL", nativeQuery = true)
+    int clearInactivityWarning(@Param("id") UUID id);
+
+    /** Chỉ dùng cho endpoint dev (e2e) — lùi mốc chấp nhận / nhắc không hoạt động. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "UPDATE mentoring_requests SET created_at = :at, responded_at = :at, inactivity_warned_at = :warnedAt WHERE id = :id", nativeQuery = true)
+    int overrideActivity(@Param("id") UUID id, @Param("at") java.time.OffsetDateTime at, @Param("warnedAt") java.time.OffsetDateTime warnedAt);
+
     /** Khoá dòng yêu cầu khi phản hồi / hết hạn để hai thao tác không ghi đè nhau. */
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM MentoringRequest r WHERE r.id = :id")

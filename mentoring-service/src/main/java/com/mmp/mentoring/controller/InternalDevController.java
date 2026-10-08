@@ -33,17 +33,24 @@ public class InternalDevController {
     public record ShiftRequestInput(Integer createdHoursAgo) {
     }
 
+    /** US-31 — lùi mốc hoạt động (lúc tạo + chấp nhận) và lúc nhắc không hoạt động (null = chưa nhắc). */
+    public record InactivityInput(Integer lastActivityDaysAgo, Integer warnedDaysAgo) {
+    }
+
     private final SessionRepository sessionRepo;
     private final AttendanceService attendance;
     private final PaymentOutboxService outbox;
     private final SessionScheduler scheduler;
     private final MentoringRequestRepository requestRepo;
     private final RequestExpiryService requestExpiry;
+    private final com.mmp.mentoring.service.MentorshipEndService endService;
     private final TransactionTemplate tx;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
                                  SessionScheduler scheduler, MentoringRequestRepository requestRepo,
-                                 RequestExpiryService requestExpiry, TransactionTemplate tx) {
+                                 RequestExpiryService requestExpiry, com.mmp.mentoring.service.MentorshipEndService endService,
+                                 TransactionTemplate tx) {
+        this.endService = endService;
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.requestExpiry = requestExpiry;
@@ -77,7 +84,20 @@ public class InternalDevController {
         return Map.of("id", r.getId(), "createdAt", createdAt, "status", r.getStatus().name());
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry. */
+    @PostMapping("/requests/{id}/inactivity")
+    public Map<String, Object> shiftActivity(@PathVariable UUID id, @RequestBody InactivityInput in) {
+        OffsetDateTime at = OffsetDateTime.now().minusDays(in.lastActivityDaysAgo() == null ? 0 : in.lastActivityDaysAgo());
+        OffsetDateTime warned = in.warnedDaysAgo() == null ? null : OffsetDateTime.now().minusDays(in.warnedDaysAgo());
+        Integer updated = tx.execute(st -> requestRepo.overrideActivity(id, at, warned));
+        if (updated == null || updated == 0) throw ApiException.notFound("REQUEST_NOT_FOUND", "Không tìm thấy yêu cầu");
+        java.util.Map<String, Object> out = new java.util.HashMap<>();
+        out.put("id", id);
+        out.put("lastActivity", at);
+        out.put("inactivityWarnedAt", warned);
+        return out;
+    }
+
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry | inactivity. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
@@ -85,6 +105,7 @@ public class InternalDevController {
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
+            case "inactivity" -> endService.runInactivity(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);
         }
         return Map.of("job", job, "status", "DONE");

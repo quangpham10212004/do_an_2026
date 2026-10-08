@@ -4,9 +4,11 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead, useDialog, Flash } from "@/components/ui";
+import { Alert, Empty, Loading, PageHead, Flash } from "@/components/ui";
+import EndMentorshipDialog from "@/features/mentoring/EndMentorshipDialog";
 import { mentoringApi } from "@/features/mentoring/api";
 import {
+  END_REASON_LABELS,
   FREQUENCY_LABELS,
   LEVEL_LABELS,
   REJECT_REASONS,
@@ -69,6 +71,18 @@ function RequestDetails({ r, isMentor }: { r: MentoringRequest; isMentor: boolea
         <div className="small muted">Lý do từ chối: {REJECT_REASON_LABELS[r.rejectReason]}</div>
       )}
       {r.responseNote && <div className="small muted">Phản hồi: {r.responseNote}</div>}
+      {r.status === "ACCEPTED" && r.inactivityWarnedAt && (
+        <div className="small"><strong>Chưa có phiên mới từ lâu — bạn có muốn tiếp tục?</strong> Hãy đặt một phiên trước{" "}
+          {formatDateTime(new Date(new Date(r.inactivityWarnedAt).getTime() + 7 * 24 * 3600 * 1000).toISOString())}, nếu không mentoring sẽ tự kết thúc.</div>
+      )}
+      {(r.status === "ENDED" || r.status === "COMPLETED") && (
+        <div className="small muted">
+          Đã kết thúc{r.endedAt && ` lúc ${formatDateTime(r.endedAt)}`}
+          {r.endedBy && ` bởi ${r.endedBy === "MENTEE" ? "mentee" : r.endedBy === "MENTOR" ? "mentor" : r.endedBy === "ADMIN" ? "quản trị viên" : "hệ thống"}`}
+          {r.endReason && ` · ${END_REASON_LABELS[r.endReason]}`}
+          {r.endNote && ` · “${r.endNote}”`}
+        </div>
+      )}
       {r.status === "EXPIRED" && (
         <div className="small muted">
           {isMentor ? "Yêu cầu đã hết hạn vì bạn không phản hồi trong 72 giờ" : "Mentor không phản hồi trong 72 giờ nên yêu cầu đã hết hạn"}
@@ -84,7 +98,7 @@ function Requests({ user }: { user: SessionUser }) {
   const [items, setItems] = useState<MentoringRequest[] | undefined>(undefined);
   const [msg, setMsg] = useState<Flash>(params.get("sent") ? { ok: "Đã gửi yêu cầu mentoring. Mentor sẽ được thông báo." } : {});
   const [rejecting, setRejecting] = useState<string | null>(null);
-  const [dialog, ask] = useDialog();
+  const [ending, setEnding] = useState<MentoringRequest | null>(null);
   const isMentor = user.role === "MENTOR";
   const load = useCallback(
     () => mentoringApi.requests().then(setItems).catch((e) => { setItems((cur) => cur ?? []); setMsg({ error: errorMessage(e) }); }),
@@ -112,7 +126,10 @@ function Requests({ user }: { user: SessionUser }) {
       <PageHead title="Yêu cầu mentoring" subtitle={isMentor ? "Mentee gửi yêu cầu được bạn hướng dẫn." : "Các yêu cầu bạn đã gửi tới mentor."}>
         {!isMentor && <Link className="btn" href="/mentors">Tìm mentor</Link>}
       </PageHead>
-      {dialog}
+      {ending && (
+        <EndMentorshipDialog request={ending} isMentor={isMentor} onClose={() => setEnding(null)}
+          onEnded={() => { setEnding(null); setMsg({ ok: "Đã kết thúc mentoring. Các phiên sắp tới đã được huỷ theo chính sách huỷ." }); load(); }} />
+      )}
       <Alert type="success">{msg.ok}</Alert>
       <Alert>{msg.error}</Alert>
       <div className="card">
@@ -148,9 +165,7 @@ function Requests({ user }: { user: SessionUser }) {
                 )}
                 {!isMentor && r.status === "ACCEPTED" && <Link className="btn sm" href={`/mentoring/book/${r.mentorId}`}>Đặt lịch</Link>}
                 {r.status === "ACCEPTED" && (
-                  <button className="btn secondary sm" onClick={async () => (await ask({ title: "Kết thúc quan hệ mentoring này?", message: "Mentor sẽ được giải phóng một chỗ. Bạn cần gửi yêu cầu mới nếu muốn học tiếp.", confirmText: "Kết thúc", danger: true })) && act(() => mentoringApi.completeRequest(r.id), "Đã kết thúc mentoring")}>
-                    Kết thúc
-                  </button>
+                  <button className="btn secondary sm" onClick={() => setEnding(r)}>Kết thúc mentoring</button>
                 )}
               </div>
             </div>

@@ -4,6 +4,7 @@ import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.security.CurrentUser;
 import com.mmp.mentoring.service.AttendanceService;
 import com.mmp.mentoring.service.DisputeService;
+import com.mmp.mentoring.service.MentorshipEndService;
 import com.mmp.mentoring.service.MentoringRequestService;
 import com.mmp.mentoring.service.NotificationService;
 import com.mmp.mentoring.service.RescheduleService;
@@ -26,16 +27,19 @@ public class MentoringController {
     private final RescheduleService rescheduleService;
     private final AttendanceService attendanceService;
     private final DisputeService disputeService;
+    private final MentorshipEndService endService;
 
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
                                NotificationService notificationService, RescheduleService rescheduleService,
-                               AttendanceService attendanceService, DisputeService disputeService) {
+                               AttendanceService attendanceService, DisputeService disputeService,
+                               MentorshipEndService endService) {
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
         this.rescheduleService = rescheduleService;
         this.attendanceService = attendanceService;
         this.disputeService = disputeService;
+        this.endService = endService;
     }
 
     // ---- Mentoring requests (FR-5.2, FR-5.3) ----
@@ -64,9 +68,17 @@ public class MentoringController {
         return requestService.cancel(CurrentUser.get(), id);
     }
 
+    /** US-31 — mentee / mentor (hoặc admin) kết thúc quan hệ ACCEPTED → ENDED, huỷ phiên sắp tới theo chính sách huỷ. */
+    @PostMapping("/requests/{id}/end")
+    public RequestView endRequest(@PathVariable UUID id, @Valid @RequestBody EndRequestInput in) {
+        return endService.end(CurrentUser.get(), id, in);
+    }
+
+    /** @deprecated US-31 — giữ cho client cũ: = /end với reason OTHER. */
+    @Deprecated
     @PostMapping("/requests/{id}/complete")
     public RequestView completeRequest(@PathVariable UUID id) {
-        return requestService.complete(CurrentUser.get(), id);
+        return endService.end(CurrentUser.get(), id, new EndRequestInput(com.mmp.mentoring.entity.MentoringRequest.EndReason.OTHER, null));
     }
 
     // ---- Sessions (FR-5.4 → FR-5.7) ----

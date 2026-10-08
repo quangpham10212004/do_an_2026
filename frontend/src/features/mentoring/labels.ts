@@ -2,6 +2,7 @@ import type {
   AttendanceAnswer,
   AttendanceResolution,
   DisputeOutcome,
+  EndReason,
   DisputeType,
   ExpectedDurationMonths,
   RejectReason,
@@ -88,6 +89,17 @@ export const ATTENDANCE_RESOLUTION_LABELS: Record<AttendanceResolution, string> 
   CANCELLED_ON_CALL: "huỷ trong buổi gọi",
   DISPUTE_RESOLVED: "quản trị viên kết luận tranh chấp",
 };
+
+// ---- US-31 — kết thúc mentoring ----
+
+export const END_REASON_LABELS: Record<EndReason, string> = {
+  GOAL_REACHED: "Đã đạt mục tiêu",
+  NO_LONGER_NEEDED: "Không còn nhu cầu",
+  NOT_A_FIT: "Không phù hợp",
+  OTHER: "Lý do khác",
+  INACTIVE: "Không hoạt động (hệ thống)",
+};
+export const END_REASONS: Exclude<EndReason, "INACTIVE">[] = ["GOAL_REACHED", "NO_LONGER_NEEDED", "NOT_A_FIT", "OTHER"];
 
 // ---- US-32 — tranh chấp ----
 
