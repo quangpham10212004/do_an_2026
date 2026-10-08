@@ -196,6 +196,12 @@ public class AttendanceService {
         String when = when(s);
         switch (r.outcome()) {
             case COMPLETED -> {
+                if (s.getKind() == MentoringSession.Kind.INTRO) {
+                    String m = "Buổi làm quen lúc " + when + " đã diễn ra. Hãy vào trang Yêu cầu để chọn tiếp tục hay không.";
+                    notifications.notifyUser(s.getMenteeId(), "INTRO_COMPLETED", "Buổi làm quen đã xong", m, "/mentoring/requests");
+                    notifications.notifyUser(s.getMentorId(), "INTRO_COMPLETED", "Buổi làm quen đã xong", m, "/mentoring/requests");
+                    return;
+                }
                 notifications.notifyUser(s.getMenteeId(), "SESSION_COMPLETED", "Phiên mentoring đã hoàn thành",
                         "Phiên lúc " + when + " đã hoàn thành. Hãy dành 1 phút đánh giá mentor để giúp cộng đồng nhé!", LINK);
                 notifications.notifyUser(s.getMentorId(), "SESSION_COMPLETED", "Phiên mentoring đã hoàn thành",

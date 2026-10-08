@@ -23,6 +23,9 @@ public interface MentoringRequestRepository extends JpaRepository<MentoringReque
     @Query("SELECT COUNT(DISTINCT r.menteeId) FROM MentoringRequest r WHERE r.mentorId = :mentorId AND r.status = 'ACCEPTED'")
     long countActiveMentees(@Param("mentorId") UUID mentorId);
 
+    /** Số yêu cầu đang ở trạng thái {@code status} của 1 mentor (giới hạn số yêu cầu INTRO đồng thời). */
+    long countByMentorIdAndStatus(UUID mentorId, MentoringRequest.Status status);
+
     long countByMenteeIdAndStatus(UUID menteeId, MentoringRequest.Status status);
 
     /** US-15 — yêu cầu PENDING tạo trước {@code before} (đã quá hạn phản hồi). */

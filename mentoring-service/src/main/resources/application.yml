@@ -61,6 +61,9 @@ app:
     max-pending: 3                  # mỗi mentee tối đa 3 yêu cầu PENDING (409 TOO_MANY_PENDING_REQUESTS)
     expire-after: PT72H             # US-15 — PENDING không được phản hồi sau 72 giờ → EXPIRED
     expire-interval: PT5M           # chu kỳ job hết hạn yêu cầu
+  intro:                           # buổi làm quen trước khi nhận hẳn mentee (request INTRO)
+    duration-minutes: ${INTRO_DURATION_MINUTES:15}       # thời lượng cố định, miễn phí
+    max-open-per-mentor: ${INTRO_MAX_OPEN_PER_MENTOR:5}  # số yêu cầu INTRO đồng thời tối đa của một mentor (409 INTRO_LIMIT)
   attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
     window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
     interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn

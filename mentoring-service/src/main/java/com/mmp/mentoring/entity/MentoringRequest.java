@@ -10,10 +10,14 @@ import java.util.UUID;
 public class MentoringRequest {
 
     /**
-     * PENDING → ACCEPTED | REJECTED | CANCELLED | EXPIRED (US-15: không phản hồi sau 72 giờ);
+     * PENDING → ACCEPTED | REJECTED | CANCELLED | EXPIRED (US-15: không phản hồi sau 72 giờ) | INTRO (mentor muốn
+     * trò chuyện ngắn trước); INTRO → ACCEPTED (cả hai bấm tiếp tục) | REJECTED (một bên từ chối) | CANCELLED;
      * ACCEPTED → COMPLETED (kết thúc quan hệ mentoring)
      */
-    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED }
+    public enum Status { PENDING, INTRO, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED }
+
+    /** Quyết định của mỗi bên sau buổi làm quen. */
+    public enum Decision { CONTINUE, DECLINE }
 
     /** US-14 — tần suất mong muốn. */
     public enum Frequency { WEEKLY, BIWEEKLY, MONTHLY, ONE_OFF }
@@ -59,6 +63,14 @@ public class MentoringRequest {
     @Column(name = "reject_reason")
     private RejectReason rejectReason;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mentee_decision")
+    private Decision menteeDecision;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mentor_decision")
+    private Decision mentorDecision;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -96,6 +108,10 @@ public class MentoringRequest {
     public void setResponseNote(String responseNote) { this.responseNote = responseNote; }
     public RejectReason getRejectReason() { return rejectReason; }
     public void setRejectReason(RejectReason rejectReason) { this.rejectReason = rejectReason; }
+    public Decision getMenteeDecision() { return menteeDecision; }
+    public void setMenteeDecision(Decision menteeDecision) { this.menteeDecision = menteeDecision; }
+    public Decision getMentorDecision() { return mentorDecision; }
+    public void setMentorDecision(Decision mentorDecision) { this.mentorDecision = mentorDecision; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getRespondedAt() { return respondedAt; }
     public void setRespondedAt(OffsetDateTime respondedAt) { this.respondedAt = respondedAt; }

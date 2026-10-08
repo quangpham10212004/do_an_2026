@@ -3,8 +3,10 @@ package com.mmp.mentoring.service;
 import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.entity.MentoringRequest;
+import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
+import com.mmp.mentoring.repository.SessionRepository;
 import com.mmp.mentoring.security.AuthUser;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -22,24 +24,32 @@ import java.util.stream.Stream;
 @Service
 public class MentoringRequestService {
 
-    /** Yêu cầu "đang mở": mentor đang xét (PENDING) hoặc đang hướng dẫn (ACCEPTED). */
+    /** Yêu cầu "đang mở": mentor đang xét (PENDING), đang làm quen (INTRO) hoặc đang hướng dẫn (ACCEPTED). */
     static final List<MentoringRequest.Status> OPEN_STATUSES =
-            List.of(MentoringRequest.Status.PENDING, MentoringRequest.Status.ACCEPTED);
+            List.of(MentoringRequest.Status.PENDING, MentoringRequest.Status.INTRO, MentoringRequest.Status.ACCEPTED);
 
     private final MentoringRequestRepository requestRepo;
     private final ProfileClient profileClient;
     private final NotificationService notifications;
     private final TransactionTemplate tx;
     private final int maxPending;
+    private final SessionRepository sessionRepo;
+    private final SessionService sessionService;
+    private final int maxOpenIntro;
 
     public MentoringRequestService(MentoringRequestRepository requestRepo, ProfileClient profileClient,
                                    NotificationService notifications, TransactionTemplate tx,
-                                   @Value("${app.requests.max-pending:3}") int maxPending) {
+                                   @Value("${app.requests.max-pending:3}") int maxPending,
+                                   SessionRepository sessionRepo, SessionService sessionService,
+                                   @Value("${app.intro.max-open-per-mentor:5}") int maxOpenIntro) {
         this.requestRepo = requestRepo;
         this.profileClient = profileClient;
         this.notifications = notifications;
         this.tx = tx;
         this.maxPending = maxPending;
+        this.sessionRepo = sessionRepo;
+        this.sessionService = sessionService;
+        this.maxOpenIntro = maxOpenIntro;
     }
 
     /**
@@ -80,7 +90,10 @@ public class MentoringRequestService {
         return toView(saved, Map.of(mentee.userId(), menteeName, mentor.userId(), mentor.displayName()), Map.of());
     }
 
-    /** FR-5.3 / US-14 — mentor chấp nhận/từ chối (từ chối bắt buộc lý do). Chấp nhận chỉ khi còn sức chứa. */
+    /**
+     * FR-5.3 / US-14 — mentor chấp nhận / làm quen trước / từ chối (từ chối bắt buộc lý do). Chấp nhận chỉ khi còn sức
+     * chứa. INTRO không chiếm sức chứa nhưng mỗi mentor chỉ giữ tối đa {@code app.intro.max-open-per-mentor} yêu cầu INTRO.
+     */
     public RequestView respond(AuthUser mentor, UUID requestId, RespondRequestInput in) {
         boolean reject = "REJECT".equals(in.decision());
         if (reject && in.rejectReason() == null) {
@@ -100,6 +113,12 @@ public class MentoringRequestService {
                     throw ApiException.conflict("CAPACITY_FULL", "Bạn đã nhận đủ số mentee tối đa (" + capacity + ")");
                 }
                 r.setStatus(MentoringRequest.Status.ACCEPTED);
+            } else if ("INTRO".equals(in.decision())) {
+                if (requestRepo.countByMentorIdAndStatus(r.getMentorId(), MentoringRequest.Status.INTRO) >= maxOpenIntro) {
+                    throw ApiException.conflict("INTRO_LIMIT", "Bạn đang làm quen với " + maxOpenIntro
+                            + " mentee. Hãy hoàn tất bớt trước khi mời thêm.");
+                }
+                r.setStatus(MentoringRequest.Status.INTRO);
             } else {
                 r.setStatus(MentoringRequest.Status.REJECTED);
                 r.setRejectReason(in.rejectReason());
@@ -108,7 +127,16 @@ public class MentoringRequestService {
             r.setRespondedAt(OffsetDateTime.now());
             return r;
         });
-        syncActiveMentees(updated.getMentorId());
+        if (updated.getStatus() != MentoringRequest.Status.INTRO) {
+            syncActiveMentees(updated.getMentorId()); // INTRO không đổi số mentee đang hướng dẫn
+        }
+        if (updated.getStatus() == MentoringRequest.Status.INTRO) {
+            notifications.notifyUser(updated.getMenteeId(), "REQUEST_INTRO", "Mentor muốn trò chuyện ngắn trước",
+                    "Hãy đặt một buổi làm quen ngắn (miễn phí) để hai bên hiểu nhau trước khi bắt đầu."
+                            + (updated.getResponseNote() == null ? "" : " Lời nhắn: " + updated.getResponseNote()),
+                    "/mentoring/requests");
+            return view(updated);
+        }
         boolean accepted = updated.getStatus() == MentoringRequest.Status.ACCEPTED;
         notifications.notifyUser(updated.getMenteeId(), accepted ? "REQUEST_ACCEPTED" : "REQUEST_REJECTED",
                 accepted ? "Yêu cầu mentoring được chấp nhận" : "Yêu cầu mentoring bị từ chối",
@@ -116,7 +144,7 @@ public class MentoringRequestService {
                         + (updated.getRejectReason() == null ? "" : " Lý do: " + RequestRules.rejectReasonLabel(updated.getRejectReason()) + ".")
                         + (updated.getResponseNote() == null ? "" : " Lời nhắn: " + updated.getResponseNote()),
                 accepted ? "/mentoring/requests" : "/matching");
-        return toView(updated, names(updated), Map.of());
+        return view(updated);
     }
 
     public RequestView cancel(AuthUser mentee, UUID requestId) {
@@ -125,13 +153,24 @@ public class MentoringRequestService {
             if (!mentee.isAdmin() && !req.getMenteeId().equals(mentee.userId())) {
                 throw ApiException.forbidden("Bạn không thể huỷ yêu cầu của người khác");
             }
-            if (req.getStatus() != MentoringRequest.Status.PENDING) {
-                throw ApiException.conflict("REQUEST_NOT_PENDING", "Chỉ huỷ được yêu cầu đang chờ phản hồi");
+            if (req.getStatus() != MentoringRequest.Status.PENDING && req.getStatus() != MentoringRequest.Status.INTRO) {
+                throw ApiException.conflict("REQUEST_NOT_PENDING", "Chỉ huỷ được yêu cầu đang chờ phản hồi hoặc đang làm quen");
             }
             req.setStatus(MentoringRequest.Status.CANCELLED);
             return req;
         });
-        return toView(r, names(r), Map.of());
+        cancelIntroSessions(r, mentee);
+        return view(r);
+    }
+
+    /** Huỷ các buổi làm quen chưa diễn ra của một yêu cầu vừa bị huỷ (miễn phí nên không có hoàn tiền). */
+    private void cancelIntroSessions(MentoringRequest r, AuthUser actor) {
+        List<MentoringSession> upcoming = sessionRepo.findByRequestIdAndKindAndStatusIn(r.getId(), MentoringSession.Kind.INTRO,
+                Set.of(MentoringSession.Status.CONFIRMED));
+        for (MentoringSession s : upcoming) {
+            if (!s.getScheduledAt().isAfter(OffsetDateTime.now())) continue;
+            sessionService.cancelWithPolicy(s, SessionService.actorOf(actor, s), "Yêu cầu mentoring đã bị huỷ");
+        }
     }
 
     /** Kết thúc quan hệ mentoring → giải phóng 1 slot sức chứa của mentor. */
@@ -151,7 +190,7 @@ public class MentoringRequestService {
         UUID other = user.userId().equals(r.getMentorId()) ? r.getMenteeId() : r.getMentorId();
         notifications.notifyUser(other, "MENTORING_ENDED", "Kết thúc mentoring",
                 "Quan hệ mentoring đã được đánh dấu hoàn thành.", "/mentoring/requests");
-        return toView(r, names(r), Map.of());
+        return view(r);
     }
 
     public List<RequestView> mine(AuthUser user) {
@@ -163,7 +202,32 @@ public class MentoringRequestService {
         Map<UUID, String> names = profileClient.displayNames(
                 list.stream().flatMap(r -> Stream.of(r.getMenteeId(), r.getMentorId())).toList());
         Map<UUID, MenteeSummary> profiles = "MENTEE".equals(user.role()) ? Map.of() : menteeProfiles(list);
-        return list.stream().map(r -> toView(r, names, profiles)).toList();
+        Map<UUID, IntroInfo> intros = introsOf(list);
+        return list.stream().map(r -> toView(r, names, profiles, intros.get(r.getId()))).toList();
+    }
+
+    /** Dạng hiển thị của một yêu cầu đã tải (kèm tên và buổi làm quen). */
+    public RequestView view(MentoringRequest r) {
+        return toView(r, names(r), Map.of(), introsOf(List.of(r)).get(r.getId()));
+    }
+
+    /**
+     * Buổi làm quen gần nhất của mỗi yêu cầu: ưu tiên buổi còn sống (chưa bị huỷ); nếu chỉ còn buổi bị huỷ thì
+     * hiện buổi đó để mentee biết cần đặt lại.
+     */
+    private Map<UUID, IntroInfo> introsOf(List<MentoringRequest> list) {
+        List<UUID> ids = list.stream().map(MentoringRequest::getId).toList();
+        if (ids.isEmpty()) return Map.of();
+        Map<UUID, IntroInfo> result = new java.util.HashMap<>();
+        for (MentoringSession s : sessionRepo.findByRequestIdInAndKindOrderByScheduledAtDesc(ids, MentoringSession.Kind.INTRO)) {
+            IntroInfo current = result.get(s.getRequestId());
+            boolean alive = IntroService.ACTIVE_INTRO.contains(s.getStatus());
+            if (current == null || (alive && !IntroService.ACTIVE_INTRO.contains(MentoringSession.Status.valueOf(current.status())))) {
+                result.put(s.getRequestId(), new IntroInfo(s.getId(), s.getScheduledAt(), s.getDurationMinutes(), s.getStatus().name(),
+                        MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null));
+            }
+        }
+        return result;
     }
 
     /**
@@ -203,12 +267,18 @@ public class MentoringRequestService {
     }
 
     static RequestView toView(MentoringRequest r, Map<UUID, String> names, Map<UUID, MenteeSummary> profiles) {
+        return toView(r, names, profiles, null);
+    }
+
+    static RequestView toView(MentoringRequest r, Map<UUID, String> names, Map<UUID, MenteeSummary> profiles, IntroInfo intro) {
         return new RequestView(r.getId(), r.getMenteeId(), names.get(r.getMenteeId()), r.getMentorId(),
                 names.get(r.getMentorId()), r.getMessage(), r.getGoal(),
                 r.getSessionType() == null ? null : r.getSessionType().name(),
                 r.getFrequency() == null ? null : r.getFrequency().name(), r.getExpectedDurationMonths(),
                 r.getStatus().name(), r.getRejectReason() == null ? null : r.getRejectReason().name(),
-                r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), r.getExpiredAt(), profiles.get(r.getMenteeId()));
+                r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), r.getExpiredAt(), profiles.get(r.getMenteeId()),
+                r.getMenteeDecision() == null ? null : r.getMenteeDecision().name(),
+                r.getMentorDecision() == null ? null : r.getMentorDecision().name(), intro);
     }
 
     static String trimToNull(String s) {

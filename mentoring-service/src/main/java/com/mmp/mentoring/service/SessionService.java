@@ -262,6 +262,15 @@ public class SessionService {
         if (!BookingRules.isAllowedDuration(durationMinutes)) {
             throw ApiException.badRequest("INVALID_DURATION", "Thời lượng phải là 30, 45, 60, 90 hoặc 120 phút");
         }
+        return slots(caller, mentorId, durationMinutes, days, excludeSessionId);
+    }
+
+    /** Như {@link #availableSlots} nhưng không giới hạn thời lượng ở tập {30,45,60,90,120} — dùng cho buổi làm quen. */
+    AvailableSlotsView slotsForDuration(AuthUser caller, UUID mentorId, int durationMinutes, int days) {
+        return slots(caller, mentorId, durationMinutes, days, null);
+    }
+
+    private AvailableSlotsView slots(AuthUser caller, UUID mentorId, int durationMinutes, int days, UUID excludeSessionId) {
         if (days < 1 || days > 28) {
             throw ApiException.badRequest("INVALID_RANGE", "Chỉ xem được lịch trong 1–28 ngày tới");
         }
@@ -443,6 +452,9 @@ public class SessionService {
             if (!session.getMenteeId().equals(mentee.userId())) {
                 throw ApiException.forbidden("Chỉ mentee của phiên mới được đánh giá");
             }
+            if (session.getKind() == MentoringSession.Kind.INTRO) {
+                throw ApiException.conflict("INTRO_NOT_REVIEWABLE", "Buổi làm quen không có đánh giá");
+            }
             if (session.getStatus() != MentoringSession.Status.COMPLETED) {
                 throw ApiException.conflict("SESSION_NOT_COMPLETED", "Chỉ đánh giá được sau khi phiên kết thúc");
             }
@@ -523,7 +535,7 @@ public class SessionService {
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
                     names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
                     s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
-                    MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getStatus().name(),
+                    MeetingLinks.visibleFor(s.getStatus()) ? s.getMeetingLink() : null, s.getKind().name(), s.getStatus().name(),
                     s.getCancelledBy(), s.getCancelReason(), s.getRefundPercent(),
                     s.getRescheduleCount(), pending.containsKey(s.getId()) ? RescheduleService.toView(pending.get(s.getId())) : null,
                     s.getMenteeAttendance() == null ? null : s.getMenteeAttendance().name(),

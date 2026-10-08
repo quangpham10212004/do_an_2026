@@ -28,7 +28,7 @@ public final class MentoringDtos {
     }
 
     /** US-14 (PRD-REQ-2) — REJECT bắt buộc rejectReason; note tuỳ chọn (≤ 500). */
-    public record RespondRequestInput(@NotNull @Pattern(regexp = "ACCEPT|REJECT") String decision,
+    public record RespondRequestInput(@NotNull @Pattern(regexp = "ACCEPT|REJECT|INTRO") String decision,
                                       com.mmp.mentoring.entity.MentoringRequest.RejectReason rejectReason,
                                       @Size(max = 500) String note) {
     }
@@ -40,7 +40,22 @@ public final class MentoringDtos {
     public record RequestView(UUID id, UUID menteeId, String menteeName, UUID mentorId, String mentorName, String message,
                               String goal, String sessionType, String frequency, int expectedDurationMonths,
                               String status, String rejectReason, String responseNote, OffsetDateTime createdAt,
-                              OffsetDateTime respondedAt, OffsetDateTime expiredAt, MenteeSummary menteeProfile) {
+                              OffsetDateTime respondedAt, OffsetDateTime expiredAt, MenteeSummary menteeProfile,
+                              String menteeDecision, String mentorDecision, IntroInfo intro) {
+    }
+
+    /** Buổi làm quen gần nhất của một yêu cầu (hiển thị ngay trên thẻ yêu cầu). */
+    public record IntroInfo(UUID sessionId, OffsetDateTime scheduledAt, int durationMinutes, String status,
+                            String meetingLink) {
+    }
+
+    /** Đặt buổi làm quen: chỉ cần giờ bắt đầu; agenda tuỳ chọn (mặc định lấy từ mục tiêu của yêu cầu). */
+    public record BookIntroInput(@NotNull @Future OffsetDateTime scheduledAt, @Size(max = 500) String agenda) {
+    }
+
+    /** Quyết định sau buổi làm quen: CONTINUE hoặc DECLINE. */
+    public record IntroDecisionInput(@NotNull com.mmp.mentoring.entity.MentoringRequest.Decision decision,
+                                     @Size(max = 500) String note) {
     }
 
     // ---------- Sessions ----------
@@ -77,7 +92,7 @@ public final class MentoringDtos {
     public record SessionView(UUID id, UUID requestId, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
                               OffsetDateTime scheduledAt, OffsetDateTime endsAt, int durationMinutes, BigDecimal price,
                               String topic, String sessionType, String agenda, String preReadLink,
-                              String meetingLink, String status, String cancelledBy, String cancelReason, Integer refundPercent,
+                              String meetingLink, String kind, String status, String cancelledBy, String cancelReason, Integer refundPercent,
                               int rescheduleCount, RescheduleView pendingReschedule,
                               String menteeAttendance, String mentorAttendance, OffsetDateTime attendanceDeadline,
                               String attendanceResolution,

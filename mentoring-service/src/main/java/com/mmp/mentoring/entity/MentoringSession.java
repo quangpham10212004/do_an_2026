@@ -17,6 +17,9 @@ public class MentoringSession {
      */
     public enum Status { PENDING, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED }
 
+    /** REGULAR = phiên có phí theo giá mentor; INTRO = buổi làm quen miễn phí, ngắn, gắn với yêu cầu đang INTRO. */
+    public enum Kind { REGULAR, INTRO }
+
     /** US-12 — câu trả lời xác nhận tham dự của mỗi bên. */
     public enum Attendance { HELD, MENTOR_NO_SHOW, MENTEE_NO_SHOW, CANCELLED_ON_CALL }
 
@@ -75,6 +78,10 @@ public class MentoringSession {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    private Kind kind = Kind.REGULAR;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private Status status = Status.PENDING;
 
     @Enumerated(EnumType.STRING)
@@ -122,6 +129,8 @@ public class MentoringSession {
     }
 
     public UUID getId() { return id; }
+    public Kind getKind() { return kind; }
+    public void setKind(Kind kind) { this.kind = kind; }
     public UUID getRequestId() { return requestId; }
     public void setRequestId(UUID requestId) { this.requestId = requestId; }
     public UUID getMenteeId() { return menteeId; }

@@ -3,6 +3,7 @@ package com.mmp.mentoring.controller;
 import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.security.CurrentUser;
 import com.mmp.mentoring.service.AttendanceService;
+import com.mmp.mentoring.service.IntroService;
 import com.mmp.mentoring.service.MentoringRequestService;
 import com.mmp.mentoring.service.NotificationService;
 import com.mmp.mentoring.service.RescheduleService;
@@ -24,10 +25,12 @@ public class MentoringController {
     private final NotificationService notificationService;
     private final RescheduleService rescheduleService;
     private final AttendanceService attendanceService;
+    private final IntroService introService;
 
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
                                NotificationService notificationService, RescheduleService rescheduleService,
-                               AttendanceService attendanceService) {
+                               AttendanceService attendanceService, IntroService introService) {
+        this.introService = introService;
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
@@ -64,6 +67,29 @@ public class MentoringController {
     @PostMapping("/requests/{id}/complete")
     public RequestView completeRequest(@PathVariable UUID id) {
         return requestService.complete(CurrentUser.get(), id);
+    }
+
+    // ---- Buổi làm quen (request INTRO) ----
+
+    /** Khung giờ trống cho buổi làm quen (thời lượng cố định theo cấu hình). */
+    @GetMapping("/requests/{id}/intro-slots")
+    @PreAuthorize("hasAnyRole('MENTEE','ADMIN')")
+    public AvailableSlotsView introSlots(@PathVariable UUID id, @RequestParam(defaultValue = "14") int days) {
+        return introService.availableSlots(CurrentUser.get(), id, days);
+    }
+
+    @PostMapping("/requests/{id}/intro-session")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('MENTEE','ADMIN')")
+    public SessionView bookIntro(@PathVariable UUID id, @Valid @RequestBody BookIntroInput in) {
+        return introService.bookIntro(CurrentUser.get(), id, in);
+    }
+
+    /** Sau buổi làm quen: mỗi bên CONTINUE hoặc DECLINE. */
+    @PostMapping("/requests/{id}/decision")
+    @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")
+    public RequestView introDecision(@PathVariable UUID id, @Valid @RequestBody IntroDecisionInput in) {
+        return requestService.view(introService.decide(CurrentUser.get(), id, in));
     }
 
     // ---- Sessions (FR-5.4 → FR-5.7) ----

@@ -37,6 +37,14 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     @Query("SELECT s FROM MentoringSession s WHERE s.status = 'PENDING' AND s.createdAt < :before")
     List<MentoringSession> findExpiredPending(@Param("before") OffsetDateTime before);
 
+    /** Buổi làm quen của các yêu cầu (mới nhất trước) — hiển thị trên trang yêu cầu. */
+    List<MentoringSession> findByRequestIdInAndKindOrderByScheduledAtDesc(java.util.Collection<UUID> requestIds,
+                                                                          MentoringSession.Kind kind);
+
+    /** Buổi làm quen của 1 yêu cầu có trạng thái nằm trong {@code statuses}. */
+    List<MentoringSession> findByRequestIdAndKindAndStatusIn(UUID requestId, MentoringSession.Kind kind,
+                                                             java.util.Collection<MentoringSession.Status> statuses);
+
     long countByStatus(MentoringSession.Status status);
 
     /** US-12 — khoá dòng phiên (SELECT … FOR UPDATE) khi trả lời / kết luận tham dự. */

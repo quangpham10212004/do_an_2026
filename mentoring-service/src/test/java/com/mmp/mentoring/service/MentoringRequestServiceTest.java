@@ -34,7 +34,10 @@ class MentoringRequestServiceTest {
     private final ProfileClient profileClient = mock(ProfileClient.class);
     private final NotificationService notifications = mock(NotificationService.class);
     private final TransactionTemplate tx = mock(TransactionTemplate.class);
-    private final MentoringRequestService service = new MentoringRequestService(repo, profileClient, notifications, tx, 3);
+    private final com.mmp.mentoring.repository.SessionRepository sessionRepo = mock(com.mmp.mentoring.repository.SessionRepository.class);
+    private final SessionService sessionService = mock(SessionService.class);
+    private final MentoringRequestService service = new MentoringRequestService(repo, profileClient, notifications, tx, 3,
+            sessionRepo, sessionService, 2);
 
     private final UUID menteeId = UUID.randomUUID();
     private final UUID mentorId = UUID.randomUUID();
@@ -68,7 +71,7 @@ class MentoringRequestServiceTest {
     void relationshipCountsOnlyPendingOrAcceptedRequests() {
         // Quyền mentor tải CV mentee (ai-service) dựa trên kết quả này — chỉ yêu cầu đang mở mới tính.
         assertThat(MentoringRequestService.OPEN_STATUSES)
-                .containsExactlyInAnyOrder(MentoringRequest.Status.PENDING, MentoringRequest.Status.ACCEPTED);
+                .containsExactlyInAnyOrder(MentoringRequest.Status.PENDING, MentoringRequest.Status.INTRO, MentoringRequest.Status.ACCEPTED);
         UUID mentor = UUID.randomUUID();
         UUID mentee = UUID.randomUUID();
         when(repo.existsByMenteeIdAndMentorIdAndStatusIn(mentee, mentor, MentoringRequestService.OPEN_STATUSES))
@@ -81,7 +84,7 @@ class MentoringRequestServiceTest {
         assertThat(view.menteeId()).isEqualTo(mentee);
         assertThat(service.relationship(UUID.randomUUID(), mentee).related()).isFalse();
         verify(repo).existsByMenteeIdAndMentorIdAndStatusIn(eq(mentee), eq(mentor), eq(List.of(
-                MentoringRequest.Status.PENDING, MentoringRequest.Status.ACCEPTED)));
+                MentoringRequest.Status.PENDING, MentoringRequest.Status.INTRO, MentoringRequest.Status.ACCEPTED)));
     }
 
     @Test
@@ -150,5 +153,63 @@ class MentoringRequestServiceTest {
         assertThat(views.get(0).menteeProfile().currentLevel()).isEqualTo("BEGINNER");
         assertThat(service.mine(mentee).isEmpty()).isTrue();
         verify(profileClient, times(1)).menteeProfile(menteeId);
+    }
+
+    // ---------- buổi làm quen ----------
+
+    private MentoringRequest pendingRequest(UUID id) {
+        MentoringRequest r = new MentoringRequest(menteeId, mentorId, GOAL, SessionType.CODE_REVIEW, MentoringRequest.Frequency.ONE_OFF, 1, null);
+        ReflectionTestUtils.setField(r, "id", id);
+        when(repo.findForUpdate(id)).thenReturn(Optional.of(r));
+        return r;
+    }
+
+    @Test
+    void introMovesRequestToIntroWithoutTouchingCapacity() {
+        UUID id = UUID.randomUUID();
+        MentoringRequest r = pendingRequest(id);
+        when(repo.countByMentorIdAndStatus(mentorId, MentoringRequest.Status.INTRO)).thenReturn(0L);
+
+        var view = service.respond(mentor, id, new RespondRequestInput("INTRO", null, " Hẹn trò chuyện nhé "));
+
+        assertThat(view.status()).isEqualTo("INTRO");
+        assertThat(r.getStatus()).isEqualTo(MentoringRequest.Status.INTRO);
+        assertThat(view.responseNote()).isEqualTo("Hẹn trò chuyện nhé");
+        verify(repo, never()).countActiveMentees(any());
+        verify(notifications).notifyUser(eq(menteeId), eq("REQUEST_INTRO"), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void introIsLimitedPerMentor() {
+        UUID id = UUID.randomUUID();
+        pendingRequest(id);
+        when(repo.countByMentorIdAndStatus(mentorId, MentoringRequest.Status.INTRO)).thenReturn(2L);
+
+        assertThat(code(() -> service.respond(mentor, id, new RespondRequestInput("INTRO", null, null)))).isEqualTo("INTRO_LIMIT");
+    }
+
+    @Test
+    void cancellingAnIntroRequestCancelsUpcomingIntroSessions() {
+        UUID id = UUID.randomUUID();
+        MentoringRequest r = pendingRequest(id);
+        r.setStatus(MentoringRequest.Status.INTRO);
+        com.mmp.mentoring.entity.MentoringSession upcoming = new com.mmp.mentoring.entity.MentoringSession();
+        upcoming.setMenteeId(menteeId);
+        upcoming.setMentorId(mentorId);
+        upcoming.setScheduledAt(java.time.OffsetDateTime.now().plusDays(1));
+        when(sessionRepo.findByRequestIdAndKindAndStatusIn(eq(id), eq(com.mmp.mentoring.entity.MentoringSession.Kind.INTRO), any()))
+                .thenReturn(List.of(upcoming));
+
+        var view = service.cancel(mentee, id);
+
+        assertThat(view.status()).isEqualTo("CANCELLED");
+        verify(sessionService).cancelWithPolicy(eq(upcoming), eq(CancellationPolicy.Actor.MENTEE), anyString());
+    }
+
+    @Test
+    void acceptedRequestsCannotBeCancelledByTheMentee() {
+        UUID id = UUID.randomUUID();
+        pendingRequest(id).setStatus(MentoringRequest.Status.ACCEPTED);
+        assertThat(code(() -> service.cancel(mentee, id))).isEqualTo("REQUEST_NOT_PENDING");
     }
 }
