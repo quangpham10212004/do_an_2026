@@ -36,6 +36,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> lockBySessionIdAndStatusIn(@Param("sessionId") UUID sessionId,
                                                  @Param("statuses") Collection<Transaction.Status> statuses);
 
+    /** US-25 — khoá 1 giao dịch theo id (giải phóng thu nhập). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Transaction t WHERE t.id = :id")
+    Optional<Transaction> lockById(@Param("id") UUID id);
+
+    /** US-25 — giao dịch "đã từng thu tiền" của mentor (SUCCESS / ON_HOLD / PARTIALLY_REFUNDED / REFUNDED). */
+    List<Transaction> findByMentorIdAndStatusInOrderByCreatedAtDesc(UUID mentorId, Collection<Transaction.Status> statuses);
+
     @Query("SELECT COALESCE(SUM(t.fee), 0) FROM Transaction t WHERE t.status IN :statuses")
     BigDecimal sumFeeByStatusIn(@Param("statuses") Collection<Transaction.Status> statuses);
 

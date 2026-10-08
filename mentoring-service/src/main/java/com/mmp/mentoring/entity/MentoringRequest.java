@@ -11,9 +11,13 @@ public class MentoringRequest {
 
     /**
      * PENDING → ACCEPTED | REJECTED | CANCELLED | EXPIRED (US-15: không phản hồi sau 72 giờ);
-     * ACCEPTED → COMPLETED (kết thúc quan hệ mentoring)
+     * ACCEPTED → ENDED (US-31 kết thúc quan hệ mentoring). COMPLETED = giá trị cũ trước US-31 (migration V12 đã đổi sang
+     * ENDED; chỉ còn để đọc an toàn, API trả về ENDED).
      */
-    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED }
+    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED, ENDED }
+
+    /** US-31 — lý do kết thúc; INACTIVE chỉ do hệ thống. */
+    public enum EndReason { GOAL_REACHED, NO_LONGER_NEEDED, NOT_A_FIT, OTHER, INACTIVE }
 
     /** US-14 — tần suất mong muốn. */
     public enum Frequency { WEEKLY, BIWEEKLY, MONTHLY, ONE_OFF }
@@ -68,6 +72,23 @@ public class MentoringRequest {
     @Column(name = "expired_at")
     private OffsetDateTime expiredAt;
 
+    /** US-31 — MENTEE | MENTOR | ADMIN | SYSTEM. */
+    @Column(name = "ended_by")
+    private String endedBy;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "end_reason")
+    private EndReason endReason;
+
+    @Column(name = "end_note")
+    private String endNote;
+
+    @Column(name = "ended_at")
+    private OffsetDateTime endedAt;
+
+    @Column(name = "inactivity_warned_at")
+    private OffsetDateTime inactivityWarnedAt;
+
     protected MentoringRequest() {
     }
 
@@ -100,6 +121,34 @@ public class MentoringRequest {
     public OffsetDateTime getRespondedAt() { return respondedAt; }
     public void setRespondedAt(OffsetDateTime respondedAt) { this.respondedAt = respondedAt; }
     public OffsetDateTime getExpiredAt() { return expiredAt; }
+
+    /** Trạng thái hiển thị: COMPLETED cũ được đọc như ENDED. */
+    public Status effectiveStatus() {
+        return status == Status.COMPLETED ? Status.ENDED : status;
+    }
+
+    /** US-31 — ACCEPTED → ENDED. */
+    public void end(String by, EndReason reason, String note, OffsetDateTime at) {
+        this.status = Status.ENDED;
+        this.endedBy = by;
+        this.endReason = reason;
+        this.endNote = note;
+        this.endedAt = at;
+    }
+
+    public void warnInactive(OffsetDateTime at) {
+        this.inactivityWarnedAt = at;
+    }
+
+    public void clearInactivityWarning() {
+        this.inactivityWarnedAt = null;
+    }
+
+    public String getEndedBy() { return endedBy; }
+    public EndReason getEndReason() { return endReason; }
+    public String getEndNote() { return endNote; }
+    public OffsetDateTime getEndedAt() { return endedAt; }
+    public OffsetDateTime getInactivityWarnedAt() { return inactivityWarnedAt; }
 
     /** US-15 — PENDING quá hạn phản hồi. */
     public void expire(OffsetDateTime at) {

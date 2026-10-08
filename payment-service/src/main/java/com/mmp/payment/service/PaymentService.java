@@ -1,9 +1,11 @@
 package com.mmp.payment.service;
 
+import com.mmp.payment.client.AuditClient;
 import com.mmp.payment.client.MentoringClient;
 import com.mmp.payment.client.MentoringClient.SessionInfo;
 import com.mmp.payment.dto.PaymentDtos.*;
 import com.mmp.payment.entity.ChargeIdempotencyKey;
+import com.mmp.payment.entity.LedgerEntry;
 import com.mmp.payment.entity.Refund;
 import com.mmp.payment.entity.Transaction;
 import com.mmp.payment.exception.ApiException;
@@ -50,13 +52,16 @@ public class PaymentService {
     private final PaymentGateway gateway;
     private final MentoringClient mentoringClient;
     private final ReferralService referralService;
+    private final EarningService earnings;
+    private final AuditClient audit;
     private final TransactionTemplate tx;
     private final BigDecimal feeRate;
     private final Duration idempotencyTtl;
 
     public PaymentService(TransactionRepository transactionRepository, RefundRepository refundRepository,
                           ChargeIdempotencyKeyRepository idemRepository, PaymentGateway gateway,
-                          MentoringClient mentoringClient, ReferralService referralService, TransactionTemplate tx,
+                          MentoringClient mentoringClient, ReferralService referralService, EarningService earnings,
+                          AuditClient audit, TransactionTemplate tx,
                           @Value("${app.payment.platform-fee-rate:0.15}") BigDecimal feeRate,
                           @Value("${app.payment.idempotency-ttl:PT24H}") Duration idempotencyTtl) {
         this.transactionRepository = transactionRepository;
@@ -65,6 +70,8 @@ public class PaymentService {
         this.gateway = gateway;
         this.mentoringClient = mentoringClient;
         this.referralService = referralService;
+        this.earnings = earnings;
+        this.audit = audit;
         this.tx = tx;
         PaymentRules.split(BigDecimal.ZERO, feeRate); // kiểm tra cấu hình ngay khi khởi động
         this.feeRate = feeRate;
@@ -172,7 +179,9 @@ public class PaymentService {
                 t.setProviderReference(result.providerReference());
                 if (result.success()) {
                     t.setStatus(Transaction.Status.SUCCESS);
-                    referralService.onSuccessfulTransaction(transactionRepository.saveAndFlush(t));
+                    Transaction flushed = transactionRepository.saveAndFlush(t);
+                    referralService.onSuccessfulTransaction(flushed);
+                    earnings.recordPending(flushed); // US-25 — EARNING_PENDING khi phiên được xác nhận
                 } else {
                     t.setStatus(Transaction.Status.FAILED);
                     t.setFailureReason(result.failureReason());
@@ -191,6 +200,13 @@ public class PaymentService {
         }
 
         if (updated.getStatus() == Transaction.Status.SUCCESS) {
+            audit.record(payer.userId(), payer.role(), "CHARGE_SUCCEEDED", "TRANSACTION", updated.getId().toString(), null,
+                    AuditClient.fields("sessionId", updated.getSessionId(), "amount", updated.getAmount(), "fee", updated.getFee(),
+                            "mentorEarning", updated.getMentorEarning()));
+            if (updated.getMentorEarning().signum() > 0) {
+                audit.system("EARNING_PENDING", "TRANSACTION", updated.getId(), AuditClient.fields("sessionId", updated.getSessionId(),
+                        "mentorId", updated.getMentorId(), "amount", updated.getMentorEarning()));
+            }
             syncSession(updated.getId());
         }
         return view(transactionRepository.findById(updated.getId()).orElseThrow());
@@ -208,6 +224,7 @@ public class PaymentService {
      * Gateway sandbox chạy trong tiến trình nên được gọi trong transaction; gateway thật cần bản ghi refund PENDING.
      */
     public TransactionResponse refund(UUID sessionId, String reason, Integer percent, BigDecimal amount, UUID actorId) {
+        List<Object> moved = new java.util.ArrayList<>(); // [Refund, Optional<LedgerEntry>, statusBefore]
         Transaction updated = tx.execute(s -> {
             Transaction t = transactionRepository.lockBySessionIdAndStatusIn(sessionId, Transaction.PAID_STATUSES).stream()
                     .findFirst()
@@ -227,44 +244,72 @@ public class PaymentService {
             if (!result.success()) {
                 throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Cổng thanh toán từ chối hoàn tiền");
             }
-            refundRepository.save(new Refund(t.getId(), calc.amount(), reason == null ? "SESSION_CANCELLED" : reason, actorId,
+            Refund saved = refundRepository.save(new Refund(t.getId(), calc.amount(), reason == null ? "SESSION_CANCELLED" : reason, actorId,
                     result.providerReference()));
+            moved.add(saved);
+            moved.add(earnings.recordReversal(t, saved, refunded)); // US-25 — REVERSAL theo tỉ lệ phần hoàn
+            moved.add(t.getStatus().name());
             t.setStatus(PaymentRules.statusAfterRefund(t.getAmount(), refunded.add(calc.amount())));
             log.info("Refunded {} of transaction {} (session {}) → {}", calc.amount(), t.getId(), sessionId, t.getStatus());
             return t;
         });
+        Refund r = (Refund) moved.get(0);
+        audit.record(actorId, actorId == null ? "SYSTEM" : "ADMIN", "REFUND_CREATED", "TRANSACTION", updated.getId().toString(),
+                AuditClient.fields("status", moved.get(2)),
+                AuditClient.fields("status", updated.getStatus(), "sessionId", sessionId, "refundId", r.getId(), "amount", r.getAmount(),
+                        "reason", r.getReason()));
+        @SuppressWarnings("unchecked")
+        Optional<LedgerEntry> reversal = (Optional<LedgerEntry>) moved.get(1);
+        reversal.ifPresent(x -> audit.system("EARNING_REVERSED", "TRANSACTION", updated.getId(),
+                AuditClient.fields("sessionId", sessionId, "mentorId", x.getMentorId(), "amount", x.getAmount(), "refundId", r.getId())));
         return view(updated);
     }
 
     /** US-12 — phiên tranh chấp: SUCCESS → ON_HOLD (đã ON_HOLD → trả về như cũ). */
     public TransactionResponse hold(UUID sessionId, String reason) {
+        boolean[] changed = {false};
         Transaction t = tx.execute(s -> {
             Transaction x = transactionRepository.lockBySessionIdAndStatusIn(sessionId, Transaction.PAID_STATUSES).stream()
                     .findFirst()
                     .orElseThrow(() -> ApiException.notFound("NO_SUCCESS_TRANSACTION", "Phiên chưa có giao dịch thành công"));
             switch (x.getStatus()) {
                 case ON_HOLD -> { }
-                case SUCCESS -> x.hold(reason == null ? "SESSION_DISPUTED" : reason);
+                case SUCCESS -> {
+                    x.hold(reason == null ? "SESSION_DISPUTED" : reason);
+                    changed[0] = true;
+                }
                 default -> throw ApiException.conflict("TRANSACTION_NOT_HOLDABLE", "Chỉ tạm giữ được giao dịch thành công chưa hoàn tiền");
             }
             return x;
         });
+        if (changed[0]) {
+            audit.record(null, "SYSTEM", "PAYMENT_HELD", "TRANSACTION", t.getId().toString(), AuditClient.fields("status", "SUCCESS"),
+                    AuditClient.fields("status", "ON_HOLD", "sessionId", sessionId, "reason", t.getHoldReason()));
+        }
         return view(t);
     }
 
     /** US-12 — hết tranh chấp: ON_HOLD → SUCCESS (đã SUCCESS → trả về như cũ). */
     public TransactionResponse release(UUID sessionId) {
+        boolean[] changed = {false};
         Transaction t = tx.execute(s -> {
             Transaction x = transactionRepository.lockBySessionIdAndStatusIn(sessionId, Transaction.PAID_STATUSES).stream()
                     .findFirst()
                     .orElseThrow(() -> ApiException.notFound("NO_SUCCESS_TRANSACTION", "Phiên chưa có giao dịch thành công"));
             switch (x.getStatus()) {
                 case SUCCESS -> { }
-                case ON_HOLD -> x.release();
+                case ON_HOLD -> {
+                    x.release();
+                    changed[0] = true;
+                }
                 default -> throw ApiException.conflict("TRANSACTION_NOT_ON_HOLD", "Giao dịch không ở trạng thái tạm giữ");
             }
             return x;
         });
+        if (changed[0]) {
+            audit.record(null, "SYSTEM", "PAYMENT_RELEASED", "TRANSACTION", t.getId().toString(), AuditClient.fields("status", "ON_HOLD"),
+                    AuditClient.fields("status", "SUCCESS", "sessionId", sessionId));
+        }
         return view(t);
     }
 

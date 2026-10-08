@@ -153,6 +153,7 @@ services:
       PROFILE_SERVICE_URL: http://profile-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8084
       MATCHING_SERVICE_URL: http://matching-service:8090
+      AUTH_SERVICE_URL: http://auth-service:8081
       REMINDER_BEFORE: ${REMINDER_BEFORE:-PT24H}
     depends_on:
       mentoring-db: { condition: service_healthy }
@@ -169,6 +170,7 @@ services:
       DB_PORT: 5432
       DB_NAME: payment_db
       MENTORING_SERVICE_URL: http://mentoring-service:8083
+      AUTH_SERVICE_URL: http://auth-service:8081
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       payment-db: { condition: service_healthy }

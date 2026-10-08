@@ -37,6 +37,47 @@ export interface Transaction {
   updatedAt: IsoDateTime;
 }
 
+/** US-25 — kiểu dòng sổ thu nhập mentor (append-only). */
+export type LedgerEntryType = "EARNING_PENDING" | "EARNING_AVAILABLE" | "REVERSAL" | "PAYOUT";
+
+/** US-25 — GET /api/payment/earnings/summary */
+export interface EarningSummary {
+  pending: number;
+  available: number;
+  paidOut: number;
+  reversed: number;
+  earned: number;
+  currency: string;
+  releaseDelayHours: number;
+}
+
+export interface LedgerEntry {
+  id: Uuid;
+  type: LedgerEntryType;
+  amount: number;
+  refundId: Uuid | null;
+  createdAt: IsoDateTime;
+}
+
+/** US-25 — GET /api/payment/earnings (1 dòng / phiên có phí). */
+export interface EarningRow {
+  sessionId: Uuid;
+  transactionId: Uuid;
+  amount: number;
+  mentorEarning: number;
+  transactionStatus: TransactionStatus;
+  pending: number;
+  available: number;
+  paidOut: number;
+  reversed: number;
+  finalState: string | null;
+  endedAt: IsoDateTime | null;
+  releaseAt: IsoDateTime | null;
+  releasedAt: IsoDateTime | null;
+  createdAt: IsoDateTime;
+  entries: LedgerEntry[];
+}
+
 export interface CardInput {
   cardNumber: string;
   cardHolder?: string;

@@ -41,6 +41,8 @@ class PaymentServiceTest {
     private final MentoringClient mentoring = mock(MentoringClient.class);
     private final ReferralService referrals = mock(ReferralService.class);
     private final TransactionTemplate tx = mock(TransactionTemplate.class);
+    private final EarningService earnings = mock(EarningService.class);
+    private final com.mmp.payment.client.AuditClient audit = mock(com.mmp.payment.client.AuditClient.class);
 
     /** "Bảng" giao dịch / key / refund trong bộ nhớ. */
     private final Map<UUID, Transaction> transactions = new HashMap<>();
@@ -99,7 +101,7 @@ class PaymentServiceTest {
                 new PaymentGateway.ChargeResult(true, "sbx_ch_" + inv.getArgument(0), null));
         when(gateway.refund(any(), any())).thenReturn(new PaymentGateway.ChargeResult(true, "sbx_re_1", null));
 
-        service = new PaymentService(txRepo, refundRepo, idemRepo, gateway, mentoring, referrals, tx,
+        service = new PaymentService(txRepo, refundRepo, idemRepo, gateway, mentoring, referrals, earnings, audit, tx,
                 new BigDecimal("0.15"), Duration.ofHours(24));
     }
 
@@ -149,12 +151,21 @@ class PaymentServiceTest {
         assertThat(res.mentorEarning()).isEqualByComparingTo("255000");
         assertThat(res.feeRate()).isEqualByComparingTo("0.15");
         assertThat(keys.get(mentee + "/key-1").getTransactionId()).isEqualTo(res.id());
+        // US-25 — EARNING_PENDING ghi trong transaction charge
+        verify(earnings).recordPending(argThat(t -> t.getId().equals(res.id())));
+    }
+
+    @Test
+    void failedChargeWritesNoEarning() {
+        when(gateway.charge(any(), any(), any(), any())).thenReturn(new PaymentGateway.ChargeResult(false, null, "CARD_DECLINED"));
+        service.charge(payer, "key-1", request);
+        verify(earnings, never()).recordPending(any());
     }
 
     @Test
     void laterRateChangeDoesNotAlterExistingTransactions() {
         TransactionResponse first = service.charge(payer, "key-1", request);
-        PaymentService raised = new PaymentService(txRepo, refundRepo, idemRepo, gateway, mentoring, referrals, tx,
+        PaymentService raised = new PaymentService(txRepo, refundRepo, idemRepo, gateway, mentoring, referrals, earnings, audit, tx,
                 new BigDecimal("0.20"), Duration.ofHours(24));
 
         TransactionResponse reread = raised.get(payer, first.id());
@@ -244,6 +255,9 @@ class PaymentServiceTest {
         TransactionResponse rest = service.refund(sessionId, "REST", null, new BigDecimal("150000"), UUID.randomUUID());
         assertThat(rest.status()).isEqualTo("REFUNDED");
         assertThat(rest.refunds()).hasSize(2);
+        // US-25 — mỗi lần hoàn ghi REVERSAL, kèm số đã hoàn trước đó
+        verify(earnings).recordReversal(eq(t), any(), argThat(b -> b.compareTo(BigDecimal.ZERO) == 0));
+        verify(earnings).recordReversal(eq(t), any(), argThat(b -> b.compareTo(new BigDecimal("150000")) == 0));
     }
 
     @Test

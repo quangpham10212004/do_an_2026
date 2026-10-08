@@ -6,10 +6,13 @@ import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead, Stars, useDialog, Flash, type AskFn } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
+import DisputeForm, { canReportIssue } from "@/features/mentoring/DisputeForm";
 import {
   ATTENDANCE_CHOICES,
   ATTENDANCE_LABELS,
   ATTENDANCE_RESOLUTION_LABELS,
+  DISPUTE_OUTCOME_LABELS,
+  MENTORING_STATUS_LABELS,
   SESSION_STATUS_LABELS,
   SESSION_TYPE_LABELS,
 } from "@/features/mentoring/labels";
@@ -150,6 +153,15 @@ function outcomeText(s: MentoringSession): string | null {
   }
 }
 
+/** US-32 — dòng trạng thái tranh chấp của phiên. */
+function disputeText(s: MentoringSession): string | null {
+  const d = s.dispute;
+  if (!d) return null;
+  if (d.status !== "RESOLVED") return `Báo cáo sự cố: ${MENTORING_STATUS_LABELS[d.status]} — quản trị viên phản hồi trong 48 giờ`;
+  const outcome = d.outcome ? DISPUTE_OUTCOME_LABELS[d.outcome] : "";
+  return `Báo cáo sự cố đã giải quyết: ${outcome}${d.outcome === "PARTIAL_REFUND" && d.refundPercent ? ` (${d.refundPercent}%)` : ""}`;
+}
+
 /** US-06 — chọn giờ mới để đề xuất dời lịch. */
 function RescheduleForm({ session, onDone }: { session: MentoringSession; onDone: (ok: string) => void }) {
   const [newStart, setNewStart] = useState<string | null>(null);
@@ -187,6 +199,7 @@ function Sessions({ user }: { user: SessionUser }) {
   const [filter, setFilter] = useState<SessionStatus | "">("");
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<string | null>(null);
+  const [reporting, setReporting] = useState<string | null>(null);
   const [dialog, ask] = useDialog();
   const [msg, setMsg] = useState<Flash>(params.get("booked") ? { ok: "Đặt lịch thành công!" } : params.get("paid") ? { ok: "Thanh toán thành công, phiên đã được xác nhận." } : {});
   const isMentor = user.role === "MENTOR";
@@ -243,6 +256,7 @@ function Sessions({ user }: { user: SessionUser }) {
                       <div className="small muted">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
                     )}
                     {outcomeText(s) && <div className="small muted">{outcomeText(s)}</div>}
+                    {disputeText(s) && <div className="small"><strong>{disputeText(s)}</strong></div>}
                     {s.agenda && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{s.agenda}</div>}
                     {s.preReadLink && <div className="small"><a href={s.preReadLink} target="_blank" rel="noreferrer">Tài liệu đọc trước</a></div>}
                   </div>
@@ -277,6 +291,9 @@ function Sessions({ user }: { user: SessionUser }) {
                       && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
                       <button className="btn secondary sm" onClick={() => setRescheduling(rescheduling === s.id ? null : s.id)}>Dời lịch</button>
                     )}
+                    {canReportIssue(s) && (
+                      <button className="btn secondary sm" onClick={() => setReporting(reporting === s.id ? null : s.id)}>Báo cáo sự cố</button>
+                    )}
                     {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
                       <button className="btn sm" onClick={() => setReviewing(reviewing === s.id ? null : s.id)}>Đánh giá</button>
                     )}
@@ -301,6 +318,12 @@ function Sessions({ user }: { user: SessionUser }) {
                 {rescheduling === s.id && (
                   <div style={{ width: "100%" }}>
                     <RescheduleForm session={s} onDone={(ok) => { setRescheduling(null); setMsg({ ok }); load(); }} />
+                  </div>
+                )}
+                {reporting === s.id && (
+                  <div style={{ width: "100%" }}>
+                    <DisputeForm session={s} onCancel={() => setReporting(null)}
+                      onDone={(ok) => { setReporting(null); setMsg({ ok }); load(); }} />
                   </div>
                 )}
                 {reviewing === s.id && (
