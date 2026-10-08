@@ -13,6 +13,14 @@ export const paymentApi = {
       body: { sessionId, amount, card },
       headers: { "Idempotency-Key": idempotencyKey },
     }),
+  /** Thanh toán một gói buổi (cùng quy tắc Idempotency-Key như charge phiên lẻ). */
+  chargePackage: (packageId: Uuid, amount: number, card: CardInput, idempotencyKey: string) =>
+    api<Transaction>("/api/payment/charge", {
+      method: "POST",
+      body: { packageId, amount, card },
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+  packageTransactions: (packageId: Uuid) => api<Transaction[]>(`/api/payment/packages/${packageId}/transactions`),
   transactions: () => api<Transaction[]>("/api/payment/transactions"),
   sessionTransactions: (sessionId: Uuid) => api<Transaction[]>(`/api/payment/sessions/${sessionId}/transactions`),
   myReferral: () => api<MyReferral>("/api/payment/referrals/me"),
@@ -53,6 +61,10 @@ export const PAYMENT_REASON_LABELS: Record<string, string> = {
   SESSION_CANCELLED_BY_MENTOR: "Mentor huỷ phiên",
   SESSION_CANCELLED_BY_SYSTEM: "Hệ thống huỷ phiên",
   SESSION_ALREADY_CANCELLED: "Phiên đã huỷ trước khi thanh toán xong",
+  PACKAGE_CANCELLED: "Huỷ gói buổi",
+  PACKAGE_EXPIRED: "Gói buổi hết hạn",
+  PACKAGE_UNUSED_SESSIONS: "Hoàn buổi chưa dùng",
+  RELATIONSHIP_ENDED: "Kết thúc mentoring",
   MENTOR_NO_SHOW: "Mentor vắng mặt",
   CANCELLED_ON_CALL: "Huỷ trong buổi gọi",
 };

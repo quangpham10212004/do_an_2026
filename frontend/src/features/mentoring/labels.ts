@@ -46,6 +46,10 @@ export const MENTORING_STATUS_LABELS: Record<string, string> = {
   REFUNDED: "Đã hoàn tiền",
   PARTIALLY_REFUNDED: "Hoàn một phần",
   ON_HOLD: "Tạm giữ",
+  // Gói buổi
+  PENDING_PAYMENT: "Chờ thanh toán",
+  ACTIVE: "Đang dùng",
+  EXHAUSTED: "Hết buổi",
 };
 
 /** Nhãn riêng cho trạng thái PENDING của phiên (chờ thanh toán). */
@@ -53,9 +57,9 @@ export const SESSION_STATUS_LABELS: Record<string, string> = { ...MENTORING_STAT
 
 /** Màu badge theo trạng thái (cùng lớp CSS với StatusBadge). */
 export function mentoringTone(status: string): "good" | "bad" | "warn" | "neutral" {
-  if (["CONFIRMED", "COMPLETED", "ACCEPTED", "SUCCESS"].includes(status)) return "good";
-  if (["CANCELLED", "REJECTED", "FAILED", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED"].includes(status)) return "bad";
-  if (["PENDING", "INTRO", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED"].includes(status)) return "warn";
+  if (["CONFIRMED", "COMPLETED", "ACCEPTED", "SUCCESS", "ACTIVE"].includes(status)) return "good";
+  if (["CANCELLED", "REJECTED", "FAILED", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "EXHAUSTED"].includes(status)) return "bad";
+  if (["PENDING", "INTRO", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "PENDING_PAYMENT"].includes(status)) return "warn";
   return "neutral";
 }
 

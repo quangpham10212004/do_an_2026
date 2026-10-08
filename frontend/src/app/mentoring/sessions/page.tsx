@@ -17,7 +17,7 @@ import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
+import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionPackage, SessionStatus, SessionUser } from "@/types";
 
 function ReviewForm({ session, onDone }: { session: MentoringSession; onDone: () => void }) {
   const [rating, setRating] = useState(5);
@@ -181,17 +181,67 @@ function RescheduleForm({ session, onDone }: { session: MentoringSession; onDone
   );
 }
 
+/** Gói buổi của người dùng: còn bao nhiêu buổi, hạn dùng, hoàn tiền; mentee có thể thanh toán / huỷ gói. */
+function PackagesCard({ packages, isMentor, onCancel }: {
+  packages: SessionPackage[];
+  isMentor: boolean;
+  onCancel: (p: SessionPackage) => void;
+}) {
+  if (packages.length === 0) return null;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h2>Gói buổi</h2>
+      {packages.map((p) => (
+        <div key={p.id} className="list-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          <div className="row" style={{ width: "100%" }}>
+            <div style={{ flex: 1 }}>
+              <div className="row">
+                <strong>{isMentor ? p.menteeName : <Link href={`/mentors/${p.mentorId}`}>{p.mentorName}</Link>}</strong>
+                <MentoringStatusBadge status={p.status} />
+                <span className="muted small">{p.sessionsTotal} buổi × {p.durationMinutes} phút · {formatMoney(p.totalPrice)}</span>
+              </div>
+              <div className="small">
+                {p.status === "ACTIVE" || p.status === "EXHAUSTED" ? <>Còn <strong>{p.sessionsRemaining}/{p.sessionsTotal}</strong> buổi</> : null}
+                {p.expiresAt && p.status === "ACTIVE" && <span className="muted"> · hết hạn {formatDateTime(p.expiresAt)}</span>}
+                {p.status === "PENDING_PAYMENT" && <span className="muted">Chờ thanh toán (tự huỷ sau 30 phút)</span>}
+              </div>
+              {Number(p.refundDue) > 0 && (
+                <div className="small muted">
+                  Hoàn tiền buổi chưa dùng: {formatMoney(p.refundedAmount)}/{formatMoney(p.refundDue)}{p.refundPending ? " (đang xử lý)" : ""}
+                </div>
+              )}
+            </div>
+            {!isMentor && (
+              <div className="row">
+                {p.status === "PENDING_PAYMENT" && <Link className="btn sm" href={`/payment/package/${p.id}`}>Thanh toán</Link>}
+                {p.status === "ACTIVE" && <Link className="btn sm" href={`/mentoring/book/${p.mentorId}`}>Đặt buổi</Link>}
+                {(p.status === "ACTIVE" || p.status === "PENDING_PAYMENT") && (
+                  <button className="btn secondary sm" onClick={() => onCancel(p)}>Huỷ gói</button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Sessions({ user }: { user: SessionUser }) {
   const params = useSearchParams();
   const [items, setItems] = useState<MentoringSession[] | undefined>(undefined);
   const [filter, setFilter] = useState<SessionStatus | "">("");
+  const [packages, setPackages] = useState<SessionPackage[]>([]);
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<string | null>(null);
   const [dialog, ask] = useDialog();
-  const [msg, setMsg] = useState<Flash>(params.get("booked") ? { ok: "Đặt lịch thành công!" } : params.get("paid") ? { ok: "Thanh toán thành công, phiên đã được xác nhận." } : {});
+  const [msg, setMsg] = useState<Flash>(params.get("booked") ? { ok: "Đặt lịch thành công!" } : params.get("paid") ? { ok: "Thanh toán thành công, phiên đã được xác nhận." } : params.get("packagePaid") ? { ok: "Thanh toán gói thành công. Bạn có thể đặt từng buổi trong gói." } : {});
   const isMentor = user.role === "MENTOR";
   const load = useCallback(
-    () => mentoringApi.sessions(filter).then(setItems).catch((e) => { setItems((cur) => cur ?? []); setMsg({ error: errorMessage(e) }); }),
+    () => {
+      mentoringApi.packages().then(setPackages).catch(() => {});
+      return mentoringApi.sessions(filter).then(setItems).catch((e) => { setItems((cur) => cur ?? []); setMsg({ error: errorMessage(e) }); });
+    },
     [filter]
   );
   useEffect(() => {
@@ -215,6 +265,17 @@ function Sessions({ user }: { user: SessionUser }) {
       {dialog}
       <Alert type="success">{msg.ok}</Alert>
       <Alert>{msg.error}</Alert>
+      <PackagesCard packages={packages} isMentor={isMentor} onCancel={async (p) => {
+        const paid = p.status === "ACTIVE";
+        const ok = await ask({
+          title: "Huỷ gói buổi?",
+          message: paid
+            ? `Các buổi chưa dùng (${p.sessionsRemaining} buổi × ${formatMoney(p.unitPrice)}) sẽ được hoàn tiền. Những phiên đã đặt vẫn giữ nguyên.`
+            : "Gói chưa thanh toán sẽ bị huỷ.",
+          confirmText: "Huỷ gói", cancelText: "Giữ gói", danger: true,
+        });
+        if (ok) act(() => mentoringApi.cancelPackage(p.id), paid ? "Đã huỷ gói, tiền các buổi chưa dùng đang được hoàn lại." : "Đã huỷ gói");
+      }} />
       <div className="tabs">
         {FILTERS.map(([v, l]) => (
           <button key={v} className={filter === v ? "active" : ""} onClick={() => setFilter(v)}>{l}</button>
@@ -233,6 +294,7 @@ function Sessions({ user }: { user: SessionUser }) {
                       <strong>{isMentor ? s.menteeName : <Link href={`/mentors/${s.mentorId}`}>{s.mentorName}</Link>}</strong>
                       <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
                       {s.kind === "INTRO" && <span className="badge neutral">Buổi làm quen</span>}
+                      {s.packageId && <span className="badge neutral">Dùng gói</span>}
                       {s.reviewed && <Stars value={s.reviewRating} />}
                     </div>
                     <div className="muted small">

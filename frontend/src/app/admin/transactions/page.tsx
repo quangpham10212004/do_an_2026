@@ -45,14 +45,14 @@ function Transactions() {
           {!data ? (error ? null : <Loading />) : (
             <div className="card table-wrap">
               <table>
-                <thead><tr><th>Thời gian</th><th>Mã giao dịch</th><th>Phiên</th><th>Số tiền</th><th>Trạng thái</th><th>Lý do</th><th>Tham chiếu</th></tr></thead>
+                <thead><tr><th>Thời gian</th><th>Mã giao dịch</th><th>Phiên / Gói</th><th>Số tiền</th><th>Trạng thái</th><th>Lý do</th><th>Tham chiếu</th></tr></thead>
                 <tbody>
                   {data.items.length === 0 && <tr><td colSpan={7} className="muted" style={{ textAlign: "center" }}>Không có giao dịch nào.</td></tr>}
                   {data.items.map((t) => (
                     <tr key={t.id}>
                       <td>{formatDateTime(t.createdAt)}</td>
                       <td className="small">{t.id.slice(0, 8)}</td>
-                      <td className="small">{t.sessionId.slice(0, 8)}</td>
+                      <td className="small">{t.sessionId ? t.sessionId.slice(0, 8) : `Gói ${(t.packageId || "").slice(0, 8)}`}</td>
                       <td>{formatMoney(t.amount)}</td>
                       <td><StatusBadge status={t.status} /></td>
                       <td className="small">{t.failureReason || "—"}</td>

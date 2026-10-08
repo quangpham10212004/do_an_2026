@@ -7,11 +7,12 @@ import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
+import PackagePanel from "@/features/mentoring/PackagePanel";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { AGENDA_MAX, AGENDA_MIN, SESSION_DURATIONS, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
 import { formatDateTime, formatMoney, formatRate } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { IsoDateTime, MentorProfile, MentoringRequest, SessionDuration, SessionType, SessionUser } from "@/types";
+import type { IsoDateTime, MentorProfile, MentoringRequest, SessionDuration, SessionPackage, SessionType, SessionUser } from "@/types";
 
 interface BookingForm {
   scheduledAt: IsoDateTime | null;
@@ -29,6 +30,8 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
   const [mentor, setMentor] = useState<MentorProfile | null | undefined>(undefined);
   const [request, setRequest] = useState<MentoringRequest | null | undefined>(undefined);
   const [form, setForm] = useState<BookingForm>(INITIAL);
+  const [packages, setPackages] = useState<SessionPackage[]>([]);
+  const [usePackageId, setUsePackageId] = useState<string>("");
   const [slotsVersion, setSlotsVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,7 +42,19 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
     mentoringApi.requests()
       .then((rs) => setRequest(rs.find((r) => r.mentorId === mentorId && r.status === "ACCEPTED") || null))
       .catch(() => setRequest(null));
+    mentoringApi.packages().then((list) => setPackages(list.filter((p) => p.mentorId === mentorId))).catch(() => {});
   }, [mentorId]);
+
+  const now = Date.now();
+  // Gói dùng được cho thời lượng đang chọn: ACTIVE, còn buổi, chưa hết hạn
+  const usable = packages.filter((p) => p.status === "ACTIVE" && p.sessionsRemaining > 0 && p.durationMinutes === form.durationMinutes
+    && (!p.expiresAt || new Date(p.expiresAt).getTime() > now));
+  const unpaid = packages.find((p) => p.status === "PENDING_PAYMENT") || null;
+  const chosen = usable.find((p) => p.id === usePackageId) || null;
+  // Chỉ giữ lựa chọn gói khi gói đó còn dùng được cho thời lượng đang chọn
+  useEffect(() => {
+    if (usePackageId && !usable.some((p) => p.id === usePackageId)) setUsePackageId("");
+  }, [usePackageId, usable]);
 
   const agenda = form.agenda.trim();
   const agendaValid = agenda.length >= AGENDA_MIN && agenda.length <= AGENDA_MAX;
@@ -59,6 +74,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
         sessionType: form.sessionType,
         agenda,
         preReadLink: form.preReadLink.trim() || undefined,
+        packageId: chosen ? chosen.id : undefined,
       });
       if (session.status === "PENDING") router.push(`/payment/${session.id}`);
       else router.push("/mentoring/sessions?booked=1");
@@ -121,17 +137,31 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
             onChange={(e) => setForm({ ...form, preReadLink: e.target.value })} />
           {!linkValid && <span className="small" style={{ color: "var(--danger, #c92a2a)" }}>Link phải bắt đầu bằng http:// hoặc https://</span>}
         </div>
+        {usable.length > 0 && (
+          <div className="field">
+            <label htmlFor="usePackage">Thanh toán bằng</label>
+            <select id="usePackage" value={usePackageId} onChange={(e) => setUsePackageId(e.target.value)}>
+              <option value="">Trả tiền buổi lẻ ({formatMoney(price)})</option>
+              {usable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  Dùng gói {p.sessionsTotal} buổi — còn {p.sessionsRemaining} buổi{p.expiresAt ? ` (hết hạn ${formatDateTime(p.expiresAt)})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <p>
           <span className="small">{form.scheduledAt ? `${formatDateTime(form.scheduledAt)} · ${form.durationMinutes} phút · ${SESSION_TYPE_LABELS[form.sessionType]}` : <span className="muted">Chọn một khung giờ để tiếp tục</span>}<br /></span>
-          <strong>Chi phí: {formatMoney(price)}</strong>
+          <strong>Chi phí: {chosen ? "0 đ — trừ 1 buổi trong gói" : formatMoney(price)}</strong>
         </p>
         <div className="row">
           <button className="btn" disabled={busy || !form.scheduledAt || !agendaValid || !linkValid}>
-            {busy ? "Đang kiểm tra lịch..." : price > 0 ? "Xác nhận & thanh toán" : "Xác nhận đặt lịch"}
+            {busy ? "Đang kiểm tra lịch..." : price > 0 && !chosen ? "Xác nhận & thanh toán" : "Xác nhận đặt lịch"}
           </button>
           <Link href={`/mentors/${mentorId}`} className="btn secondary">Xem hồ sơ mentor</Link>
         </div>
       </form>
+      {price > 0 && <PackagePanel mentorId={mentorId} durationMinutes={form.durationMinutes} pending={unpaid} />}
     </>
   );
 }

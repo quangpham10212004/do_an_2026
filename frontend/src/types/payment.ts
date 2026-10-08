@@ -16,7 +16,10 @@ export type ReferralRejectReason = "REFERRER_IS_SESSION_MENTOR" | "DAILY_LIMIT_E
 
 export interface Transaction {
   id: Uuid;
-  sessionId: Uuid;
+  /** Phiên được thanh toán; null nếu giao dịch này thanh toán một gói buổi. */
+  sessionId: Uuid | null;
+  /** Gói buổi được thanh toán; null nếu là phiên lẻ. */
+  packageId: Uuid | null;
   payerId: Uuid;
   mentorId: Uuid;
   amount: number;

@@ -110,6 +110,8 @@ export interface MentoringSession {
   /** US-04 — chỉ có giá trị khi phiên đã CONFIRMED (hoặc sau đó). */
   meetingLink: string | null;
   kind: SessionKind;
+  /** Gói buổi đã trả cho phiên này (giá 0); null = phiên lẻ. */
+  packageId: Uuid | null;
   status: SessionStatus;
   cancelledBy: CancelActor | null;
   cancelReason: string | null;
@@ -135,6 +137,8 @@ export interface BookSessionInput {
   agenda: string;
   preReadLink?: string;
   topic?: string;
+  /** Dùng một buổi trong gói đã mua (không thu tiền thêm). */
+  packageId?: Uuid;
 }
 
 /**
@@ -147,6 +151,48 @@ export interface LegacyBookSessionInput {
   scheduledAt: IsoDateTime;
   durationMinutes: number;
   topic?: string;
+}
+
+/** Gói buổi (combo): mua N buổi giá ưu đãi, mỗi lần đặt phiên trừ 1 buổi. */
+export type PackageStatus = "PENDING_PAYMENT" | "ACTIVE" | "EXHAUSTED" | "EXPIRED" | "CANCELLED";
+
+export interface SessionPackage {
+  id: Uuid;
+  menteeId: Uuid;
+  menteeName: string;
+  mentorId: Uuid;
+  mentorName: string;
+  sessionsTotal: number;
+  sessionsRemaining: number;
+  durationMinutes: number;
+  discountPercent: number;
+  unitPrice: number;
+  totalPrice: number;
+  status: PackageStatus;
+  /** Hạn dùng — có sau khi thanh toán. */
+  expiresAt: IsoDateTime | null;
+  /** Còn khoản hoàn tiền buổi chưa dùng đang chờ gửi sang payment-service. */
+  refundPending: boolean;
+  refundDue: number;
+  refundedAmount: number;
+  createdAt: IsoDateTime;
+}
+
+export interface PackageOption {
+  sessions: number;
+  discountPercent: number;
+  unitPrice: number;
+  totalPrice: number;
+  /** Tiết kiệm so với mua lẻ cùng số buổi. */
+  savings: number;
+  validityDays: number;
+}
+
+export interface PackageOptions {
+  mentorId: Uuid;
+  durationMinutes: number;
+  singlePrice: number;
+  options: PackageOption[];
 }
 
 export type RescheduleStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";

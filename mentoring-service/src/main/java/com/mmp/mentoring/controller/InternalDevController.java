@@ -5,7 +5,9 @@ import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
 import com.mmp.mentoring.repository.SessionRepository;
+import com.mmp.mentoring.repository.SessionPackageRepository;
 import com.mmp.mentoring.service.AttendanceService;
+import com.mmp.mentoring.service.PackageService;
 import com.mmp.mentoring.service.PaymentOutboxService;
 import com.mmp.mentoring.service.RequestExpiryService;
 import com.mmp.mentoring.service.SessionScheduler;
@@ -33,6 +35,9 @@ public class InternalDevController {
     public record ShiftRequestInput(Integer createdHoursAgo) {
     }
 
+    public record ShiftPackageInput(Integer expiredDaysAgo) {
+    }
+
     private final SessionRepository sessionRepo;
     private final AttendanceService attendance;
     private final PaymentOutboxService outbox;
@@ -40,10 +45,15 @@ public class InternalDevController {
     private final MentoringRequestRepository requestRepo;
     private final RequestExpiryService requestExpiry;
     private final TransactionTemplate tx;
+    private final SessionPackageRepository packageRepo;
+    private final PackageService packages;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
                                  SessionScheduler scheduler, MentoringRequestRepository requestRepo,
-                                 RequestExpiryService requestExpiry, TransactionTemplate tx) {
+                                 RequestExpiryService requestExpiry, TransactionTemplate tx,
+                                SessionPackageRepository packageRepo, PackageService packages) {
+        this.packageRepo = packageRepo;
+        this.packages = packages;
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.requestExpiry = requestExpiry;
@@ -77,7 +87,19 @@ public class InternalDevController {
         return Map.of("id", r.getId(), "createdAt", createdAt, "status", r.getStatus().name());
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry. */
+    /** Đưa hạn dùng của gói về {@code expiredDaysAgo} ngày trước (kiểm thử gói hết hạn → hoàn tiền buổi chưa dùng). */
+    @PostMapping("/packages/{id}/shift")
+    public Map<String, Object> shiftPackage(@PathVariable UUID id, @RequestBody ShiftPackageInput in) {
+        int ago = in.expiredDaysAgo() == null ? 1 : in.expiredDaysAgo();
+        var p = tx.execute(st -> {
+            var pkg = packageRepo.findById(id).orElseThrow(() -> ApiException.notFound("PACKAGE_NOT_FOUND", "Không tìm thấy gói"));
+            pkg.setExpiresAt(OffsetDateTime.now().minusDays(ago));
+            return pkg;
+        });
+        return Map.of("id", p.getId(), "expiresAt", p.getExpiresAt(), "status", p.getStatus().name());
+    }
+
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry | package-expiry. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
@@ -85,6 +107,11 @@ public class InternalDevController {
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
+            case "package-expiry" -> {
+                packages.expireUnpaid();
+                packages.expireDue();
+                packages.retryRefunds();
+            }
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);
         }
         return Map.of("job", job, "status", "DONE");

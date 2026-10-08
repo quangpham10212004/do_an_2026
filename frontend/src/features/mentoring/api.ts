@@ -13,7 +13,9 @@ import type {
   MentoringSession,
   MentoringStats,
   NotificationList,
+  PackageOptions,
   Review,
+  SessionPackage,
   SessionStatus,
   Uuid,
 } from "@/types";
@@ -69,6 +71,13 @@ export const mentoringApi = {
   acceptReschedule: (proposalId: Uuid) => api<MentoringSession>(`/api/mentoring/reschedules/${proposalId}/accept`, { method: "POST" }),
   declineReschedule: (proposalId: Uuid) =>
     api<RescheduleProposal>(`/api/mentoring/reschedules/${proposalId}/decline`, { method: "POST" }),
+  // Gói buổi
+  packageOptions: (mentorId: Uuid, durationMinutes = 60) =>
+    api<PackageOptions>(`/api/mentoring/mentors/${mentorId}/package-options?durationMinutes=${durationMinutes}`),
+  purchasePackage: (mentorId: Uuid, sessions: number, durationMinutes: number) =>
+    api<SessionPackage>("/api/mentoring/packages", { method: "POST", body: { mentorId, sessions, durationMinutes } }),
+  packages: () => api<SessionPackage[]>("/api/mentoring/packages"),
+  cancelPackage: (id: Uuid) => api<SessionPackage>(`/api/mentoring/packages/${id}/cancel`, { method: "POST" }),
   // Thông báo
   notifications: (limit = 50) => api<NotificationList>(`/api/mentoring/notifications?limit=${limit}`),
   markRead: (id: Uuid) => api<null>(`/api/mentoring/notifications/${id}/read`, { method: "POST" }),
