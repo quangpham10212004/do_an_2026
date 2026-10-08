@@ -106,6 +106,7 @@ class EarningRulesTest {
     void releasableStates() {
         assertThat(EarningRules.releasableState("COMPLETED")).isTrue();
         assertThat(EarningRules.releasableState("NO_SHOW_MENTEE")).isTrue();
+        assertThat(EarningRules.releasableState("DISPUTE_RESOLVED")).isTrue();
         assertThat(EarningRules.releasableState("NO_SHOW_MENTOR")).isFalse();
         assertThat(EarningRules.releasableState("DISPUTED")).isFalse();
     }

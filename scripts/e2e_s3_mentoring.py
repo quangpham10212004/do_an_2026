@@ -229,7 +229,116 @@ def us25(ctx):
           and float(sm["reversed"]) == 382500 and sm["releaseDelayHours"] == 48, sm)
 
 
-STORIES = {"US-25": us25}
+# ------------------------------------------------------------------ US-32
+def open_dispute(user, sid, dtype="QUALITY", description=DESC, links=None):
+    return call("POST", f"{MENTORING}/api/mentoring/sessions/{sid}/disputes",
+                {"type": dtype, "description": description, "evidenceLinks": links or []}, token=user["accessToken"])
+
+
+def admin_call(ctx, method, path, body=None):
+    return call(method, f"{MENTORING}/api/mentoring/admin/disputes{path}", body, token=ctx["admin"]["accessToken"])
+
+
+def us32(ctx):
+    print("US-32 — Tranh chấp")
+    admin = ctx["admin"]["accessToken"]
+    mentor = approved_mentor(admin, "dispute")
+    mentee = accepted_mentee(mentor, "dispute")
+
+    s = paid(mentee, mentor, at(6, 10))
+    status, code = error_code(lambda: open_dispute(mentee, s["id"]))
+    check("US-32", "Phiên chưa diễn ra (CONFIRMED) → 409 DISPUTE_NOT_ALLOWED", status == 409 and code == "DISPUTE_NOT_ALLOWED", (status, code))
+    completed(mentee, mentor, s["id"])
+
+    status, code = error_code(lambda: open_dispute(mentee, s["id"], description="Qua ngan"))
+    check("US-32", "Mô tả < 20 ký tự → 400 INVALID_DESCRIPTION", status == 400 and code == "INVALID_DESCRIPTION", (status, code))
+    status, code = error_code(lambda: open_dispute(mentee, s["id"], links=["http://khong-an-toan.example/x"]))
+    check("US-32", "Link bằng chứng không phải https → 400 INVALID_EVIDENCE_LINK", status == 400 and code == "INVALID_EVIDENCE_LINK", (status, code))
+    status, code = error_code(lambda: open_dispute(mentee, s["id"], links=[f"https://e.example/{i}" for i in range(6)]))
+    check("US-32", "> 5 link bằng chứng → 400 TOO_MANY_EVIDENCE_LINKS", status == 400 and code == "TOO_MANY_EVIDENCE_LINKS", (status, code))
+
+    d = open_dispute(mentee, s["id"], links=["https://drive.google.com/file/d/evidence"])
+    t = txs(mentee, s["id"])[0]
+    if t["status"] != "ON_HOLD":
+        dev("jobs/payment-outbox")
+        t = txs(mentee, s["id"])[0]
+    check("US-32", "Mentee mở 'Báo cáo sự cố' → OPEN, giao dịch ON_HOLD",
+          d["status"] == "OPEN" and d["openedByRole"] == "MENTEE" and t["status"] == "ON_HOLD", (d["status"], t["status"]))
+    status, code = error_code(lambda: open_dispute(mentor, s["id"], dtype="BEHAVIOR"))
+    check("US-32", "Mở tranh chấp thứ 2 cho cùng phiên → 409 DISPUTE_ALREADY_OPEN", status == 409 and code == "DISPUTE_ALREADY_OPEN", (status, code))
+    check("US-32", "Hai bên + admin được báo DISPUTE_OPENED",
+          notes(mentee, "DISPUTE_OPENED") and notes(mentor, "DISPUTE_OPENED") and notes(ctx["admin"], "DISPUTE_OPENED"))
+    pay_dev(f"earnings/{s['id']}/due")
+    pay_dev("jobs/earning-release")
+    row = earning_row(mentor, s["id"])
+    check("US-32", "Tranh chấp đang mở chặn giải phóng thu nhập (đủ 48h vẫn pending, ON_HOLD)",
+          row["transactionStatus"] == "ON_HOLD" and float(row["available"]) == 0 and float(row["pending"]) == 255000, row)
+
+    status, code = error_code(lambda: call("GET", f"{MENTORING}/api/mentoring/admin/disputes", token=mentor["accessToken"]))
+    check("US-32", "Không phải admin → 403 ở /admin/disputes", status == 403, (status, code))
+    active = admin_call(ctx, "GET", "?status=ACTIVE")
+    item = next((x for x in active if x["id"] == d["id"]), None)
+    check("US-32", "Admin thấy tranh chấp trong danh sách ACTIVE kèm SLA (hạn phản hồi = tạo + 48h, chưa quá hạn)",
+          item is not None and item["firstResponseDueAt"] and item["overdue"] is False and item["session"]["mentorId"] == mentor["userId"],
+          item)
+    detail = admin_call(ctx, "GET", f"/{d['id']}")
+    check("US-32", "Chi tiết tranh chấp có mô tả + bằng chứng", detail["evidenceLinks"] == ["https://drive.google.com/file/d/evidence"]
+          and detail["description"] == DESC, detail)
+    r = admin_call(ctx, "POST", f"/{d['id']}/start-review")
+    check("US-32", "start-review: OPEN → IN_REVIEW, ghi firstResponseAt", r["status"] == "IN_REVIEW" and r["firstResponseAt"], r)
+    status, code = error_code(lambda: admin_call(ctx, "POST", f"/{d['id']}/resolve", {"outcome": "PARTIAL_REFUND", "note": "x"}))
+    check("US-32", "PARTIAL_REFUND thiếu refundPercent → 400 INVALID_REFUND_PERCENT", status == 400 and code == "INVALID_REFUND_PERCENT", (status, code))
+    status, code = error_code(lambda: admin_call(ctx, "POST", f"/{d['id']}/resolve", {"outcome": "NO_REFUND"}))
+    check("US-32", "Thiếu ghi chú → 400", status == 400, (status, code))
+
+    res = admin_call(ctx, "POST", f"/{d['id']}/resolve", {"outcome": "PARTIAL_REFUND", "refundPercent": 50, "note": "Mentor vao muon"})
+    t = txs(mentee, s["id"])[0]
+    row = earning_row(mentor, s["id"])
+    if float(row["available"]) == 0:
+        dev("jobs/payment-outbox")
+        t = txs(mentee, s["id"])[0]
+        row = earning_row(mentor, s["id"])
+    check("US-32", "Resolve PARTIAL 50% → 1 dòng refund 150.000, giao dịch PARTIALLY_REFUNDED (AC)",
+          res["status"] == "RESOLVED" and res["outcome"] == "PARTIAL_REFUND" and t["status"] == "PARTIALLY_REFUNDED"
+          and len(t["refunds"]) == 1 and float(t["refunds"][0]["amount"]) == 150000, (res["status"], t))
+    check("US-32", "… và phần thu nhập còn lại 127.500 được giải phóng ngay (AVAILABLE) (AC)",
+          float(row["available"]) == 127500 and float(row["reversed"]) == 127500 and float(row["pending"]) == 0, row)
+    check("US-32", "Hai bên được báo DISPUTE_RESOLVED", notes(mentee, "DISPUTE_RESOLVED") and notes(mentor, "DISPUTE_RESOLVED"))
+    status, code = error_code(lambda: admin_call(ctx, "POST", f"/{d['id']}/resolve", {"outcome": "NO_REFUND", "note": "x"}))
+    check("US-32", "Resolve lần 2 → 409 DISPUTE_ALREADY_RESOLVED", status == 409 and code == "DISPUTE_ALREADY_RESOLVED", (status, code))
+    v = get_session(mentee, s["id"])
+    check("US-32", "Phiên hiển thị tranh chấp gần nhất (RESOLVED, 50%)", v["dispute"] and v["dispute"]["status"] == "RESOLVED"
+          and v["refundPercent"] == 50, v.get("dispute"))
+
+    # > 7 ngày sau giờ kết thúc → 409
+    s2 = paid(mentee, mentor, at(7, 10))
+    completed(mentee, mentor, s2["id"])
+    dev(f"sessions/{s2['id']}/shift", {"endedMinutesAgo": 7 * 24 * 60 + 30})
+    status, code = error_code(lambda: open_dispute(mentor, s2["id"]))
+    check("US-32", "Mở sau 7 ngày kể từ giờ kết thúc → 409 DISPUTE_WINDOW_CLOSED", status == 409 and code == "DISPUTE_WINDOW_CLOSED", (status, code))
+
+    # Phiên DISPUTED (US-12) → tranh chấp NO_SHOW tự tạo; NO_REFUND → COMPLETED, trả mentor
+    s3 = paid(mentee, mentor, at(8, 10))
+    ended(s3["id"], 5)
+    attend(mentee, s3["id"], "HELD")
+    attend(mentor, s3["id"], "MENTEE_NO_SHOW")
+    dev("jobs/payment-outbox")
+    auto = admin_call(ctx, "GET", "?status=OPEN")
+    a = next((x for x in auto if x["sessionId"] == s3["id"]), None)
+    check("US-32", "Phiên DISPUTED → hệ thống tự mở tranh chấp NO_SHOW (openedByRole SYSTEM), giao dịch ON_HOLD",
+          a is not None and a["type"] == "NO_SHOW" and a["openedByRole"] == "SYSTEM" and txs(mentee, s3["id"])[0]["status"] == "ON_HOLD", a)
+    if a:
+        admin_call(ctx, "POST", f"/{a['id']}/resolve", {"outcome": "NO_REFUND", "note": "Phien da dien ra theo log"})
+        dev("jobs/payment-outbox")
+        v = get_session(mentee, s3["id"])
+        t = txs(mentee, s3["id"])[0]
+        row = earning_row(mentor, s3["id"])
+        check("US-32", "NO_REFUND → phiên COMPLETED, giao dịch SUCCESS, thu nhập 255.000 AVAILABLE",
+              v["status"] == "COMPLETED" and t["status"] == "SUCCESS" and t["refunds"] == [] and float(row["available"]) == 255000,
+              (v["status"], t["status"], row))
+
+
+STORIES = {"US-25": us25, "US-32": us32}
 
 
 def main(selected):

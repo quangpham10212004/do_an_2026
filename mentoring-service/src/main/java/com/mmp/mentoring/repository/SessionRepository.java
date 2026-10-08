@@ -39,6 +39,19 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
 
     long countByStatus(MentoringSession.Status status);
 
+    /** US-27 — phiên sắp tới đang giữ chỗ (PENDING/CONFIRMED, chưa bắt đầu) của mentor. */
+    @Query("SELECT s FROM MentoringSession s WHERE s.mentorId = :mentorId AND s.status IN ('PENDING', 'CONFIRMED') AND s.scheduledAt > :now ORDER BY s.scheduledAt")
+    List<MentoringSession> findUpcomingHoldingByMentor(@Param("mentorId") UUID mentorId, @Param("now") OffsetDateTime now);
+
+    /** US-31 — phiên sắp tới đang giữ chỗ của 1 cặp mentee–mentor. */
+    @Query("""
+            SELECT s FROM MentoringSession s
+            WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.status IN ('PENDING', 'CONFIRMED') AND s.scheduledAt > :now
+            ORDER BY s.scheduledAt
+            """)
+    List<MentoringSession> findUpcomingHoldingByPair(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId,
+                                                    @Param("now") OffsetDateTime now);
+
     /** US-12 — khoá dòng phiên (SELECT … FOR UPDATE) khi trả lời / kết luận tham dự. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM MentoringSession s WHERE s.id = :id")

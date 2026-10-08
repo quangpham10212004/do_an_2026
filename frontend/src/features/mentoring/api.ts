@@ -5,6 +5,10 @@ import type {
   BookSessionInput,
   CancelPreview,
   CreateRequestInput,
+  Dispute,
+  DisputeStatus,
+  OpenDisputeInput,
+  ResolveDisputeInput,
   RejectReason,
   RescheduleProposal,
   LegacyBookSessionInput,
@@ -62,6 +66,16 @@ export const mentoringApi = {
   acceptReschedule: (proposalId: Uuid) => api<MentoringSession>(`/api/mentoring/reschedules/${proposalId}/accept`, { method: "POST" }),
   declineReschedule: (proposalId: Uuid) =>
     api<RescheduleProposal>(`/api/mentoring/reschedules/${proposalId}/decline`, { method: "POST" }),
+  // Tranh chấp (US-32)
+  openDispute: (sessionId: Uuid, body: OpenDisputeInput) =>
+    api<Dispute>(`/api/mentoring/sessions/${sessionId}/disputes`, { method: "POST", body }),
+  sessionDisputes: (sessionId: Uuid) => api<Dispute[]>(`/api/mentoring/sessions/${sessionId}/disputes`),
+  /** status: OPEN | IN_REVIEW | RESOLVED | ACTIVE (OPEN + IN_REVIEW) | "" (tất cả). */
+  adminDisputes: (status: DisputeStatus | "ACTIVE" | "" = "") => api<Dispute[]>(`/api/mentoring/admin/disputes?status=${status}`),
+  adminDispute: (id: Uuid) => api<Dispute>(`/api/mentoring/admin/disputes/${id}`),
+  startDisputeReview: (id: Uuid) => api<Dispute>(`/api/mentoring/admin/disputes/${id}/start-review`, { method: "POST" }),
+  resolveDispute: (id: Uuid, body: ResolveDisputeInput) =>
+    api<Dispute>(`/api/mentoring/admin/disputes/${id}/resolve`, { method: "POST", body }),
   // Thông báo
   notifications: (limit = 50) => api<NotificationList>(`/api/mentoring/notifications?limit=${limit}`),
   markRead: (id: Uuid) => api<null>(`/api/mentoring/notifications/${id}/read`, { method: "POST" }),

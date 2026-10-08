@@ -94,8 +94,10 @@ components:
         attendanceResolution:
           type: string
           nullable: true
-          enum: [BOTH_HELD, HELD_ONE_SIDE, NO_ANSWER, MENTEE_NO_SHOW_REPORTED, MENTOR_NO_SHOW_REPORTED, CONFLICT, CANCELLED_ON_CALL]
-          description: US-12 — cách phiên được kết luận (null với phiên chưa kết luận hoặc hoàn thành trước US-12)
+          enum: [BOTH_HELD, HELD_ONE_SIDE, NO_ANSWER, MENTEE_NO_SHOW_REPORTED, MENTOR_NO_SHOW_REPORTED, CONFLICT, CANCELLED_ON_CALL, DISPUTE_RESOLVED]
+          description: >
+            US-12 — cách phiên được kết luận (null với phiên chưa kết luận hoặc hoàn thành trước US-12). DISPUTE_RESOLVED
+            (US-32) — phiên DISPUTED / AWAITING_ATTENDANCE thành COMPLETED do tranh chấp kết luận NO_REFUND / WARNING.
         pendingReschedule:
           allOf: [{ $ref: "#/components/schemas/RescheduleProposal" }]
           nullable: true
@@ -103,6 +105,57 @@ components:
         reviewed: { type: boolean }
         reviewRating: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
+        dispute:
+          type: object
+          nullable: true
+          description: US-32 — tranh chấp gần nhất của phiên (null nếu chưa có)
+          properties:
+            id: { type: string, format: uuid }
+            status: { type: string, enum: [OPEN, IN_REVIEW, RESOLVED] }
+            outcome: { type: string, nullable: true, enum: [FULL_REFUND, PARTIAL_REFUND, NO_REFUND, WARNING, SUSPEND] }
+            refundPercent: { type: integer, nullable: true }
+    Dispute:
+      type: object
+      description: >
+        US-32 (PRD-ADM-1) — tranh chấp. Mở → giao dịch ON_HOLD (chặn giải phóng thu nhập US-25). Kết luận: FULL_REFUND
+        → hoàn 100%; PARTIAL_REFUND → hoàn refundPercent% và giải phóng ngay phần thu nhập còn lại của mentor; NO_REFUND /
+        WARNING → giải phóng thu nhập (phiên DISPUTED / AWAITING_ATTENDANCE thành COMPLETED); SUSPEND → hoàn 100% + mentor
+        SUSPENDED (profile-service) + huỷ & hoàn các phiên sắp tới. Các kết luận có hoàn tiền giữ nguyên trạng thái phiên
+        (vd. DISPUTED) và ghi Session.refundPercent.
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        openedBy: { type: string, format: uuid, nullable: true, description: "null = hệ thống (phiên DISPUTED)" }
+        openedByRole: { type: string, enum: [MENTEE, MENTOR, SYSTEM] }
+        openedByName: { type: string, nullable: true }
+        type: { type: string, enum: [NO_SHOW, QUALITY, BEHAVIOR, PAYMENT, OTHER] }
+        description: { type: string, minLength: 20, maxLength: 2000 }
+        evidenceLinks: { type: array, maxItems: 5, items: { type: string, format: uri, description: https } }
+        status: { type: string, enum: [OPEN, IN_REVIEW, RESOLVED] }
+        outcome: { type: string, nullable: true, enum: [FULL_REFUND, PARTIAL_REFUND, NO_REFUND, WARNING, SUSPEND] }
+        refundPercent: { type: integer, nullable: true, description: "% đã hoàn cho mentee (FULL/SUSPEND 100, PARTIAL 1–99, còn lại 0)" }
+        resolutionNote: { type: string, nullable: true }
+        resolvedBy: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        firstResponseAt: { type: string, format: date-time, nullable: true, description: "start-review hoặc resolve đầu tiên" }
+        firstResponseDueAt: { type: string, format: date-time, description: "SLA — createdAt + 48h (app.disputes.first-response-sla)" }
+        overdue: { type: boolean, description: "Chưa phản hồi mà đã quá firstResponseDueAt (hoặc phản hồi trễ)" }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        session:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            menteeId: { type: string, format: uuid }
+            menteeName: { type: string }
+            mentorId: { type: string, format: uuid }
+            mentorName: { type: string }
+            scheduledAt: { type: string, format: date-time }
+            endsAt: { type: string, format: date-time }
+            price: { type: number }
+            status: { $ref: "#/components/schemas/SessionStatus" }
+            menteeAttendance: { type: string, nullable: true }
+            mentorAttendance: { type: string, nullable: true }
+            refundPercent: { type: integer, nullable: true }
     RescheduleProposal:
       type: object
       properties:
@@ -430,6 +483,42 @@ paths:
         "400": { description: "INVALID_ATTENDANCE_ANSWER (tự báo mình vắng mặt) / VALIDATION_ERROR" }
         "403": { description: Không tham gia phiên }
         "409": { description: "ATTENDANCE_NOT_OPEN (chưa tới giờ kết thúc) / ATTENDANCE_WINDOW_CLOSED (quá 48 giờ) / ATTENDANCE_ALREADY_ANSWERED / ATTENDANCE_CLOSED (đã kết luận)" }
+  /api/mentoring/sessions/{id}/disputes:
+    post:
+      summary: >
+        (MENTEE/MENTOR của phiên) US-32 "Báo cáo sự cố" — phiên COMPLETED / NO_SHOW_MENTEE / NO_SHOW_MENTOR /
+        AWAITING_ATTENDANCE, trong 7 ngày sau giờ kết thúc (app.disputes.open-window). Phiên có phí → giao dịch ON_HOLD.
+        Báo cho hai bên và admin.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, description]
+              properties:
+                type: { type: string, enum: [NO_SHOW, QUALITY, BEHAVIOR, PAYMENT, OTHER] }
+                description: { type: string, minLength: 20, maxLength: 2000 }
+                evidenceLinks: { type: array, maxItems: 5, items: { type: string, description: "URL https" } }
+      responses:
+        "201":
+          description: Tranh chấp (status OPEN)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dispute" }
+        "400": { description: INVALID_DESCRIPTION | TOO_MANY_EVIDENCE_LINKS | INVALID_EVIDENCE_LINK | VALIDATION_ERROR }
+        "403": { description: Không phải mentee/mentor của phiên }
+        "409": { description: DISPUTE_ALREADY_OPEN (1 tranh chấp đang mở / phiên) | DISPUTE_WINDOW_CLOSED (> 7 ngày) | DISPUTE_NOT_ALLOWED (trạng thái phiên) }
+    get:
+      summary: (người tham gia phiên / ADMIN) US-32 — các tranh chấp của phiên, mới nhất trước
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Dispute" } }
   /api/mentoring/sessions/{id}/review:
     post:
       summary: FR-5.6 (MENTEE) Đánh giá sau phiên COMPLETED (không đánh giá được NO_SHOW_*/DISPUTED/CANCELLED) — rating trung bình đồng bộ sang profile-service
@@ -500,6 +589,66 @@ paths:
       summary: (ADMIN) Thống kê phiên mentoring (số liệu AI Interview ở GET /api/ai/admin/stats)
       responses:
         "200": { description: "{ pendingSessions, confirmedSessions, completedSessions, cancelledSessions, awaitingAttendanceSessions, expiredSessions, noShowMenteeSessions, noShowMentorSessions, disputedSessions }" }
+
+  /api/mentoring/admin/disputes:
+    get:
+      summary: (ADMIN) US-32 — danh sách tranh chấp kèm SLA (firstResponseDueAt, overdue)
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [OPEN, IN_REVIEW, RESOLVED, ACTIVE] }, description: "ACTIVE = OPEN + IN_REVIEW (cũ nhất trước); trống = tất cả (mới nhất trước)" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Dispute" } }
+  /api/mentoring/admin/disputes/{id}:
+    get:
+      summary: (ADMIN) US-32 — chi tiết tranh chấp
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dispute" }
+        "404": { description: DISPUTE_NOT_FOUND }
+  /api/mentoring/admin/disputes/{id}/start-review:
+    post:
+      summary: (ADMIN) US-32 — OPEN → IN_REVIEW, ghi firstResponseAt; báo hai bên. Ghi audit DISPUTE_REVIEW_STARTED.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dispute" }
+        "409": { description: DISPUTE_NOT_OPEN }
+  /api/mentoring/admin/disputes/{id}/resolve:
+    post:
+      summary: >
+        (ADMIN) US-32 — kết luận (từ OPEN hoặc IN_REVIEW). Tiền qua outbox theo thứ tự: giải phóng ON_HOLD → hoàn % →
+        final-state DISPUTE_RESOLVED releaseNow (trừ FULL_REFUND / SUSPEND). SUSPEND: mentor SUSPENDED + huỷ & hoàn các phiên
+        sắp tới. Báo hai bên; ghi audit DISPUTE_RESOLVED (+ MENTOR_SUSPENDED).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, note]
+              properties:
+                outcome: { type: string, enum: [FULL_REFUND, PARTIAL_REFUND, NO_REFUND, WARNING, SUSPEND] }
+                refundPercent: { type: integer, minimum: 1, maximum: 99, description: "Bắt buộc với PARTIAL_REFUND, không gửi với kết luận khác" }
+                note: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: Tranh chấp (status RESOLVED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dispute" }
+        "400": { description: INVALID_REFUND_PERCENT | NOTE_REQUIRED | VALIDATION_ERROR }
+        "409": { description: DISPUTE_ALREADY_RESOLVED }
 
   # ---------------- Internal (payment-service, ai-service) ----------------
   /internal/sessions/{id}:

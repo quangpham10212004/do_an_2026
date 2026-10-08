@@ -20,6 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -86,7 +87,8 @@ public class EarningService {
      */
     public FinalStateResponse finalState(UUID sessionId, FinalStateRequest req) {
         String state = req.state().trim().toUpperCase();
-        OffsetDateTime now = OffsetDateTime.now();
+        // PostgreSQL lưu tới micro giây (làm tròn) — cắt trước để release_at đọc lại không "trễ" hơn now
+        OffsetDateTime now = OffsetDateTime.now().truncatedTo(ChronoUnit.MICROS);
         boolean releaseNow = Boolean.TRUE.equals(req.releaseNow());
         EarningSchedule saved = tx.execute(s -> {
             Transaction t = transactions.lockBySessionIdAndStatusIn(sessionId, Transaction.EARNING_STATUSES).stream().findFirst()
@@ -98,7 +100,7 @@ public class EarningService {
         });
         log.info("Session {} final state {} (ended {}) → release at {}", sessionId, state, req.endedAt(), saved.getReleaseAt());
         if (saved.getSettledAt() == null && !saved.getReleaseAt().isAfter(now)) {
-            release(saved.getTransactionId(), now);
+            release(saved.getTransactionId(), OffsetDateTime.now());
         }
         EarningSchedule current = schedules.findById(saved.getTransactionId()).orElse(saved);
         EarningRules.Balance b = EarningRules.balance(ledger.findByTransactionIdOrderByCreatedAtAsc(saved.getTransactionId()));

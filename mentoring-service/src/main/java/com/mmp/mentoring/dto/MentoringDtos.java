@@ -81,7 +81,12 @@ public final class MentoringDtos {
                               int rescheduleCount, RescheduleView pendingReschedule,
                               String menteeAttendance, String mentorAttendance, OffsetDateTime attendanceDeadline,
                               String attendanceResolution,
-                              boolean reviewed, Integer reviewRating, OffsetDateTime createdAt) {
+                              boolean reviewed, Integer reviewRating, OffsetDateTime createdAt,
+                              DisputeBrief dispute) {
+    }
+
+    /** US-32 — tranh chấp gần nhất của phiên (null nếu chưa có). */
+    public record DisputeBrief(UUID id, String status, String outcome, Integer refundPercent) {
     }
 
     /** US-12 — câu trả lời xác nhận tham dự. */
@@ -114,6 +119,40 @@ public final class MentoringDtos {
 
     public record ReviewView(UUID id, UUID sessionId, UUID menteeId, String menteeName, UUID mentorId, int rating,
                              String comment, OffsetDateTime createdAt) {
+    }
+
+    // ---------- US-32: tranh chấp ----------
+
+    /** "Báo cáo sự cố": mô tả 20–2000 ký tự; tối đa 5 link bằng chứng https. */
+    public record OpenDisputeInput(@NotNull com.mmp.mentoring.entity.Dispute.Type type,
+                                   @NotBlank @Size(max = 4000) String description,
+                                   @Size(max = 20) List<@Size(max = 2000) String> evidenceLinks) {
+    }
+
+    /** refundPercent chỉ dùng (và bắt buộc 1–99) với PARTIAL_REFUND; note bắt buộc. */
+    public record ResolveDisputeInput(@NotNull com.mmp.mentoring.entity.Dispute.Outcome outcome, Integer refundPercent,
+                                      @NotBlank @Size(max = 2000) String note) {
+    }
+
+    public record DisputeSessionSummary(UUID id, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
+                                        OffsetDateTime scheduledAt, OffsetDateTime endsAt, BigDecimal price, String status,
+                                        String menteeAttendance, String mentorAttendance, Integer refundPercent) {
+    }
+
+    /** firstResponseDueAt = createdAt + 48h; overdue = chưa phản hồi mà quá hạn (hoặc phản hồi trễ). */
+    public record DisputeView(UUID id, UUID sessionId, UUID openedBy, String openedByRole, String openedByName, String type,
+                              String description, List<String> evidenceLinks, String status, String outcome,
+                              Integer refundPercent, String resolutionNote, UUID resolvedBy, OffsetDateTime createdAt,
+                              OffsetDateTime firstResponseAt, OffsetDateTime firstResponseDueAt, boolean overdue,
+                              OffsetDateTime resolvedAt, DisputeSessionSummary session) {
+    }
+
+    // ---------- US-27: khoá mentor ----------
+
+    public record SuspendMentorInput(@Size(max = 500) String reason, UUID actorId) {
+    }
+
+    public record SuspendMentorResult(UUID mentorId, int cancelledSessions) {
     }
 
     // ---------- Notifications ----------

@@ -38,7 +38,7 @@ class AttendanceServiceTest {
     void setUp() {
         f = new TestFixtures();
         disputeHook = mock(DisputeHook.class);
-        service = new AttendanceService(f.sessionRepo, f.outbox, f.strikes, f.notifications, disputeHook, f.tx,
+        service = new AttendanceService(f.sessionRepo, f.outbox, f.strikes, f.notifications, disputeHook, f.disputeRepo, f.tx,
                 Duration.ofHours(48), "Asia/Ho_Chi_Minh");
         session = new MentoringSession();
         ReflectionTestUtils.setField(session, "id", id);
@@ -259,5 +259,17 @@ class AttendanceServiceTest {
         service.answer(mentee, id, Attendance.HELD);
         service.answer(mentor, id, Attendance.HELD);
         verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void sessionWithDisputeLeavesMoneyToDisputeResolution() {
+        when(f.disputeRepo.existsBySessionId(id)).thenReturn(true);
+        session.setStatus(Status.AWAITING_ATTENDANCE);
+        service.answer(mentee, id, Attendance.MENTOR_NO_SHOW);
+        endedMinutesAgo(48 * 60 + 1);
+        when(f.sessionRepo.findIdsEndedBefore(eq("AWAITING_ATTENDANCE"), any())).thenReturn(List.of(id.toString()));
+        service.resolveExpired(OffsetDateTime.now());
+        assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTOR);
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
     }
 }

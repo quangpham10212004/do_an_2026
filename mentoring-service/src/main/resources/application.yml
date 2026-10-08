@@ -40,6 +40,7 @@ app:
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
     matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}   # US-15 — gợi ý mentor tương tự (best-effort)
     matching-timeout: PT3S
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}     # US-30 — POST /internal/audit (bắn-rồi-quên)
   timezone: Asia/Ho_Chi_Minh
   booking:
     min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
@@ -68,6 +69,9 @@ app:
   attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
     window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
     interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn
+  disputes:                        # US-32 — tranh chấp
+    open-window: P7D                # mở trong 7 ngày sau giờ kết thúc phiên (409 DISPUTE_WINDOW_CLOSED)
+    first-response-sla: PT48H       # admin phản hồi đầu tiên trong 48 giờ (cờ overdue ở danh sách admin)
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:

@@ -24,7 +24,9 @@ export type AttendanceResolution =
   | "MENTEE_NO_SHOW_REPORTED"
   | "MENTOR_NO_SHOW_REPORTED"
   | "CONFLICT"
-  | "CANCELLED_ON_CALL";
+  | "CANCELLED_ON_CALL"
+  /** US-32 — phiên DISPUTED / chờ xác nhận thành COMPLETED do tranh chấp kết luận không hoàn tiền. */
+  | "DISPUTE_RESOLVED";
 /** US-03 — thời lượng phiên được phép (phút). */
 export type SessionDuration = 30 | 45 | 60 | 90 | 120;
 
@@ -106,6 +108,72 @@ export interface MentoringSession {
   reviewed: boolean;
   reviewRating: number | null;
   createdAt: IsoDateTime;
+  /** US-32 — tranh chấp gần nhất của phiên. */
+  dispute: DisputeBrief | null;
+}
+
+// ---- US-32: tranh chấp ----
+export type DisputeType = "NO_SHOW" | "QUALITY" | "BEHAVIOR" | "PAYMENT" | "OTHER";
+export type DisputeStatus = "OPEN" | "IN_REVIEW" | "RESOLVED";
+export type DisputeOutcome = "FULL_REFUND" | "PARTIAL_REFUND" | "NO_REFUND" | "WARNING" | "SUSPEND";
+
+export interface DisputeBrief {
+  id: Uuid;
+  status: DisputeStatus;
+  outcome: DisputeOutcome | null;
+  refundPercent: number | null;
+}
+
+export interface DisputeSessionSummary {
+  id: Uuid;
+  menteeId: Uuid;
+  menteeName: string | null;
+  mentorId: Uuid;
+  mentorName: string | null;
+  scheduledAt: IsoDateTime;
+  endsAt: IsoDateTime;
+  price: number;
+  status: SessionStatus;
+  menteeAttendance: AttendanceAnswer | null;
+  mentorAttendance: AttendanceAnswer | null;
+  refundPercent: number | null;
+}
+
+export interface Dispute {
+  id: Uuid;
+  sessionId: Uuid;
+  openedBy: Uuid | null;
+  openedByRole: "MENTEE" | "MENTOR" | "SYSTEM";
+  openedByName: string | null;
+  type: DisputeType;
+  description: string;
+  evidenceLinks: string[];
+  status: DisputeStatus;
+  outcome: DisputeOutcome | null;
+  refundPercent: number | null;
+  resolutionNote: string | null;
+  resolvedBy: Uuid | null;
+  createdAt: IsoDateTime;
+  firstResponseAt: IsoDateTime | null;
+  /** SLA — createdAt + 48 giờ. */
+  firstResponseDueAt: IsoDateTime;
+  overdue: boolean;
+  resolvedAt: IsoDateTime | null;
+  session: DisputeSessionSummary | null;
+}
+
+/** POST /api/mentoring/sessions/{id}/disputes */
+export interface OpenDisputeInput {
+  type: DisputeType;
+  description: string;
+  evidenceLinks: string[];
+}
+
+/** POST /api/mentoring/admin/disputes/{id}/resolve — refundPercent chỉ với PARTIAL_REFUND (1–99). */
+export interface ResolveDisputeInput {
+  outcome: DisputeOutcome;
+  refundPercent?: number;
+  note: string;
 }
 
 export interface BookSessionInput {
