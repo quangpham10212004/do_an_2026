@@ -64,6 +64,10 @@ app:
   intro:                           # buổi làm quen trước khi nhận hẳn mentee (request INTRO)
     duration-minutes: ${INTRO_DURATION_MINUTES:15}       # thời lượng cố định, miễn phí
     max-open-per-mentor: ${INTRO_MAX_OPEN_PER_MENTOR:5}  # số yêu cầu INTRO đồng thời tối đa của một mentor (409 INTRO_LIMIT)
+  packages:                        # gói buổi (combo): mua N buổi giá ưu đãi, mỗi lần đặt phiên trừ 1 buổi
+    tiers: ${PACKAGE_TIERS:4:10,8:15}              # "số buổi:phần trăm giảm", cách nhau bằng dấu phẩy
+    validity: ${PACKAGE_VALIDITY:P90D}             # hạn dùng kể từ khi thanh toán; hết hạn → hoàn tiền buổi chưa dùng
+    refund-fee-percent: ${PACKAGE_REFUND_FEE_PERCENT:0}   # phí giữ lại khi hoàn tiền buổi chưa dùng (%)
   attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
     window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
     interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn

@@ -45,6 +45,11 @@ public class PaymentController {
         return paymentService.bySession(CurrentUser.get(), sessionId);
     }
 
+    @GetMapping("/packages/{packageId}/transactions")
+    public List<TransactionResponse> packageTransactions(@PathVariable UUID packageId) {
+        return paymentService.byPackage(CurrentUser.get(), packageId);
+    }
+
     @GetMapping("/referrals/me")
     public MyReferralOverview myReferral() {
         return referralService.overview(CurrentUser.get().userId());

@@ -37,7 +37,7 @@ class MentoringRequestServiceTest {
     private final com.mmp.mentoring.repository.SessionRepository sessionRepo = mock(com.mmp.mentoring.repository.SessionRepository.class);
     private final SessionService sessionService = mock(SessionService.class);
     private final MentoringRequestService service = new MentoringRequestService(repo, profileClient, notifications, tx, 3,
-            sessionRepo, sessionService, 2);
+            sessionRepo, sessionService, 2, mock(PackageService.class));
 
     private final UUID menteeId = UUID.randomUUID();
     private final UUID mentorId = UUID.randomUUID();

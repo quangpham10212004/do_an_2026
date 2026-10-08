@@ -6,6 +6,7 @@ import com.mmp.mentoring.service.AttendanceService;
 import com.mmp.mentoring.service.IntroService;
 import com.mmp.mentoring.service.MentoringRequestService;
 import com.mmp.mentoring.service.NotificationService;
+import com.mmp.mentoring.service.PackageService;
 import com.mmp.mentoring.service.RescheduleService;
 import com.mmp.mentoring.service.SessionService;
 import jakarta.validation.Valid;
@@ -26,11 +27,14 @@ public class MentoringController {
     private final RescheduleService rescheduleService;
     private final AttendanceService attendanceService;
     private final IntroService introService;
+    private final PackageService packageService;
 
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
                                NotificationService notificationService, RescheduleService rescheduleService,
-                               AttendanceService attendanceService, IntroService introService) {
+                               AttendanceService attendanceService, IntroService introService,
+                               PackageService packageService) {
         this.introService = introService;
+        this.packageService = packageService;
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
@@ -182,6 +186,31 @@ public class MentoringController {
                                              @RequestParam(defaultValue = "14") int days,
                                              @RequestParam(required = false) UUID excludeSessionId) {
         return sessionService.availableSlots(CurrentUser.get(), mentorId, durationMinutes, days, excludeSessionId);
+    }
+
+    // ---- Gói buổi ----
+
+    @GetMapping("/mentors/{mentorId}/package-options")
+    public PackageOptionsView packageOptions(@PathVariable UUID mentorId, @RequestParam(required = false) Integer durationMinutes) {
+        return packageService.options(mentorId, durationMinutes);
+    }
+
+    @PostMapping("/packages")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('MENTEE')")
+    public PackageView purchasePackage(@Valid @RequestBody PurchasePackageInput in) {
+        return packageService.purchase(CurrentUser.get(), in);
+    }
+
+    @GetMapping("/packages")
+    public List<PackageView> myPackages() {
+        return packageService.mine(CurrentUser.get());
+    }
+
+    @PostMapping("/packages/{id}/cancel")
+    @PreAuthorize("hasAnyRole('MENTEE','ADMIN')")
+    public PackageView cancelPackage(@PathVariable UUID id) {
+        return packageService.cancel(CurrentUser.get(), id);
     }
 
     // ---- Notifications (FR-5.5) ----

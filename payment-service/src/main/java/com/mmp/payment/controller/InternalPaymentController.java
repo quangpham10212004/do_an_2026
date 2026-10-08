@@ -32,6 +32,12 @@ public class InternalPaymentController {
         return paymentService.refund(req.sessionId(), req.reason(), req.percent(), req.amount(), req.actorId());
     }
 
+    /** Gói buổi hết hạn / bị huỷ: hoàn tiền buổi chưa dùng theo tổng luỹ kế (idempotent). */
+    @PostMapping("/payments/refund-package")
+    public TransactionResponse refundPackage(@Valid @RequestBody PackageRefundRequest req) {
+        return paymentService.refundPackage(req.packageId(), req.refundedTotal(), req.reason());
+    }
+
     /** US-12 — phiên tranh chấp: tạm giữ giao dịch (SUCCESS → ON_HOLD). Idempotent. */
     @PostMapping("/payments/hold")
     public TransactionResponse hold(@Valid @RequestBody HoldRequest req) {

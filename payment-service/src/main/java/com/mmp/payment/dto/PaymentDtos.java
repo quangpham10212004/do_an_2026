@@ -30,7 +30,12 @@ public final class PaymentDtos {
      * Số tiền KHÔNG lấy từ client mà lấy từ mentoring-service (giá của phiên) để
      * tránh client sửa số tiền. Trường amount chỉ dùng để đối chiếu nếu client gửi.
      */
-    public record ChargeRequest(@NotNull UUID sessionId, BigDecimal amount, @NotNull @Valid CardInput card) {
+    public record ChargeRequest(UUID sessionId, UUID packageId, BigDecimal amount, @NotNull @Valid CardInput card) {
+
+        /** Thanh toán một phiên lẻ (chữ ký trước khi có gói buổi). */
+        public ChargeRequest(UUID sessionId, BigDecimal amount, CardInput card) {
+            this(sessionId, null, amount, card);
+        }
     }
 
     /**
@@ -38,14 +43,14 @@ public final class PaymentDtos {
      * (bảng refunds, không ghi đè giao dịch).
      */
     public record TransactionResponse(
-            UUID id, UUID sessionId, UUID payerId, UUID mentorId, BigDecimal amount, BigDecimal fee, BigDecimal mentorEarning,
+            UUID id, UUID sessionId, UUID packageId, UUID payerId, UUID mentorId, BigDecimal amount, BigDecimal fee, BigDecimal mentorEarning,
             BigDecimal feeRate, BigDecimal refundedAmount, String currency,
             String status, String provider, String providerReference, String failureReason, String holdReason,
             List<RefundView> refunds, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 
         public static TransactionResponse from(Transaction t, List<Refund> refunds) {
             BigDecimal refunded = refunds.stream().map(Refund::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-            return new TransactionResponse(t.getId(), t.getSessionId(), t.getPayerId(), t.getMentorId(), t.getAmount(),
+            return new TransactionResponse(t.getId(), t.getSessionId(), t.getPackageId(), t.getPayerId(), t.getMentorId(), t.getAmount(),
                     t.getFee(), t.getMentorEarning(), t.getFeeRate(), refunded,
                     t.getCurrency(), t.getStatus().name(), t.getProvider(), t.getProviderReference(),
                     t.getFailureReason(), t.getHoldReason(), refunds.stream().map(RefundView::from).toList(),
@@ -68,6 +73,14 @@ public final class PaymentDtos {
                                 @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) Integer percent,
                                 @jakarta.validation.constraints.Positive BigDecimal amount,
                                 UUID actorId) {
+    }
+
+    /**
+     * Hoàn tiền gói buổi theo TỔNG LUỸ KẾ đã phải hoàn ({@code refundedTotal}, VND): payment-service tính phần còn thiếu so
+     * với tổng đã hoàn nên gọi lại cùng giá trị (sau lỗi mạng) không hoàn trùng.
+     */
+    public record PackageRefundRequest(@NotNull UUID packageId, @NotNull @jakarta.validation.constraints.Positive BigDecimal refundedTotal,
+                                       @Size(max = 300) String reason) {
     }
 
     /** US-12 — tạm giữ / giải phóng giao dịch của phiên đang tranh chấp. */

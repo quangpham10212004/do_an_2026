@@ -38,7 +38,7 @@ class AttendanceServiceTest {
     void setUp() {
         f = new TestFixtures();
         disputeHook = mock(DisputeHook.class);
-        service = new AttendanceService(f.sessionRepo, f.outbox, f.strikes, f.notifications, disputeHook, f.tx,
+        service = new AttendanceService(f.sessionRepo, f.outbox, f.strikes, f.packages, f.notifications, disputeHook, f.tx,
                 Duration.ofHours(48), "Asia/Ho_Chi_Minh");
         session = new MentoringSession();
         ReflectionTestUtils.setField(session, "id", id);

@@ -24,6 +24,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     List<Transaction> findBySessionIdOrderByCreatedAtDesc(UUID sessionId);
 
+    List<Transaction> findByPackageIdOrderByCreatedAtDesc(UUID packageId);
+
+    boolean existsByPackageIdAndStatusIn(UUID packageId, Collection<Transaction.Status> statuses);
+
     Optional<Transaction> findFirstBySessionIdAndStatus(UUID sessionId, Transaction.Status status);
 
     boolean existsBySessionIdAndStatus(UUID sessionId, Transaction.Status status);
@@ -34,6 +38,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT t FROM Transaction t WHERE t.sessionId = :sessionId AND t.status IN :statuses ORDER BY t.createdAt DESC")
     List<Transaction> lockBySessionIdAndStatusIn(@Param("sessionId") UUID sessionId,
+                                                 @Param("statuses") Collection<Transaction.Status> statuses);
+
+    /** Như {@link #lockBySessionIdAndStatusIn} nhưng cho giao dịch thanh toán gói buổi. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Transaction t WHERE t.packageId = :packageId AND t.status IN :statuses ORDER BY t.createdAt DESC")
+    List<Transaction> lockByPackageIdAndStatusIn(@Param("packageId") UUID packageId,
                                                  @Param("statuses") Collection<Transaction.Status> statuses);
 
     @Query("SELECT COALESCE(SUM(t.fee), 0) FROM Transaction t WHERE t.status IN :statuses")

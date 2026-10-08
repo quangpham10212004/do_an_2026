@@ -30,6 +30,32 @@ public class MentoringClient {
                               int durationMinutes, BigDecimal price, String status) {
     }
 
+    public record PackageInfo(UUID id, UUID menteeId, UUID mentorId, BigDecimal totalPrice, String status) {
+    }
+
+    public PackageInfo getPackage(UUID packageId) {
+        return restClient.get()
+                .uri("/internal/packages/{id}", packageId)
+                .retrieve()
+                .onStatus(s -> s.value() == 404, (req, res) -> {
+                    throw ApiException.notFound("PACKAGE_NOT_FOUND", "Không tìm thấy gói buổi");
+                })
+                .onStatus(HttpStatusCode::isError, (req, res) -> {
+                    throw new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY, "MENTORING_UNAVAILABLE",
+                            "Không thể kết nối tới dịch vụ mentoring");
+                })
+                .body(PackageInfo.class);
+    }
+
+    /** Báo mentoring-service kích hoạt gói sau khi thanh toán thành công. */
+    public void notifyPackagePaid(UUID packageId, UUID transactionId) {
+        restClient.post()
+                .uri("/internal/packages/{id}/payment-succeeded", packageId)
+                .body(Map.of("transactionId", transactionId.toString()))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public SessionInfo getSession(UUID sessionId) {
         return restClient.get()
                 .uri("/internal/sessions/{id}", sessionId)

@@ -36,12 +36,13 @@ public class MentoringRequestService {
     private final SessionRepository sessionRepo;
     private final SessionService sessionService;
     private final int maxOpenIntro;
+    private final PackageService packages;
 
     public MentoringRequestService(MentoringRequestRepository requestRepo, ProfileClient profileClient,
                                    NotificationService notifications, TransactionTemplate tx,
                                    @Value("${app.requests.max-pending:3}") int maxPending,
                                    SessionRepository sessionRepo, SessionService sessionService,
-                                   @Value("${app.intro.max-open-per-mentor:5}") int maxOpenIntro) {
+                                   @Value("${app.intro.max-open-per-mentor:5}") int maxOpenIntro, PackageService packages) {
         this.requestRepo = requestRepo;
         this.profileClient = profileClient;
         this.notifications = notifications;
@@ -50,6 +51,7 @@ public class MentoringRequestService {
         this.sessionRepo = sessionRepo;
         this.sessionService = sessionService;
         this.maxOpenIntro = maxOpenIntro;
+        this.packages = packages;
     }
 
     /**
@@ -187,6 +189,7 @@ public class MentoringRequestService {
             return req;
         });
         syncActiveMentees(r.getMentorId());
+        packages.endForRelationship(r.getMenteeId(), r.getMentorId()); // gói còn hiệu lực: đóng và hoàn buổi chưa dùng
         UUID other = user.userId().equals(r.getMentorId()) ? r.getMenteeId() : r.getMentorId();
         notifications.notifyUser(other, "MENTORING_ENDED", "Kết thúc mentoring",
                 "Quan hệ mentoring đã được đánh dấu hoàn thành.", "/mentoring/requests");

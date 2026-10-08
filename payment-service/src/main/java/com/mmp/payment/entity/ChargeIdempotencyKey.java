@@ -24,8 +24,11 @@ public class ChargeIdempotencyKey {
     @Column(name = "idem_key", nullable = false)
     private String idemKey;
 
-    @Column(name = "session_id", nullable = false)
+    @Column(name = "session_id")
     private UUID sessionId;
+
+    @Column(name = "package_id")
+    private UUID packageId;
 
     @Column(name = "transaction_id")
     private UUID transactionId;
@@ -37,15 +40,22 @@ public class ChargeIdempotencyKey {
     }
 
     public ChargeIdempotencyKey(UUID userId, String idemKey, UUID sessionId) {
+        this(userId, idemKey, sessionId, null);
+    }
+
+    /** Đúng một trong {@code sessionId} / {@code packageId} khác null. */
+    public ChargeIdempotencyKey(UUID userId, String idemKey, UUID sessionId, UUID packageId) {
         this.userId = userId;
         this.idemKey = idemKey;
         this.sessionId = sessionId;
+        this.packageId = packageId;
     }
 
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public String getIdemKey() { return idemKey; }
     public UUID getSessionId() { return sessionId; }
+    public UUID getPackageId() { return packageId; }
     public UUID getTransactionId() { return transactionId; }
     public void setTransactionId(UUID transactionId) { this.transactionId = transactionId; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

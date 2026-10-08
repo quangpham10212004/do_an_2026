@@ -36,6 +36,7 @@ public class AttendanceService {
     private final SessionRepository sessionRepo;
     private final PaymentOutboxService outbox;
     private final StrikeService strikes;
+    private final PackageService packages;
     private final NotificationService notifications;
     private final DisputeHook disputeHook;
     private final TransactionTemplate tx;
@@ -43,12 +44,13 @@ public class AttendanceService {
     private final ZoneId zone;
 
     public AttendanceService(SessionRepository sessionRepo, PaymentOutboxService outbox, StrikeService strikes,
-                             NotificationService notifications, DisputeHook disputeHook, TransactionTemplate tx,
+                             PackageService packages, NotificationService notifications, DisputeHook disputeHook, TransactionTemplate tx,
                              @Value("${app.attendance.window:PT48H}") Duration window,
                              @Value("${app.timezone}") String timezone) {
         this.sessionRepo = sessionRepo;
         this.outbox = outbox;
         this.strikes = strikes;
+        this.packages = packages;
         this.notifications = notifications;
         this.disputeHook = disputeHook;
         this.tx = tx;
@@ -187,12 +189,18 @@ public class AttendanceService {
         if (refund > 0) {
             outbox.enqueueRefund(s.getId(), refund, r.outcome() == Status.NO_SHOW_MENTOR ? "MENTOR_NO_SHOW" : "CANCELLED_ON_CALL");
         }
+        if (s.getPackageId() != null && AttendanceRules.refundPercent(r.outcome()) > 0) {
+            // Phiên dùng gói: lỗi do mentor / huỷ trong buổi gọi → trả lại 1 buổi vào gói thay cho hoàn tiền
+            s.setRefundPercent(100);
+            packages.restoreCredit(s.getPackageId());
+        }
         log.info("Session {} resolved {} ({}), refund {}%", s.getId(), r.outcome(), r.code(), refund);
     }
 
     /** Sau commit: gửi outbox ngay, strike, thông báo, hook tranh chấp. */
     void afterResolution(MentoringSession s, AttendanceRules.Resolution r) {
         if (s.getPrice() != null && s.getPrice().signum() > 0) outbox.flushSession(s.getId());
+        if (s.getPackageId() != null && AttendanceRules.refundPercent(r.outcome()) > 0) packages.settleRefundNow(s.getPackageId());
         String when = when(s);
         switch (r.outcome()) {
             case COMPLETED -> {
@@ -218,7 +226,7 @@ public class AttendanceService {
                 strikes.record(s.getMentorId(), s.getId(), MentorStrike.Reason.MENTOR_NO_SHOW);
                 notifications.notifyUser(s.getMenteeId(), "SESSION_NO_SHOW", "Ghi nhận mentor vắng mặt",
                         "Phiên lúc " + when + " được ghi nhận mentor vắng mặt."
-                                + (refunded(s) ? " Bạn được hoàn 100% học phí." : ""), LINK);
+                                + (refunded(s) ? refundText(s, "Bạn") : ""), LINK);
                 notifications.notifyUser(s.getMentorId(), "SESSION_NO_SHOW", "Bạn được ghi nhận vắng mặt",
                         "Mentee báo bạn vắng mặt ở phiên lúc " + when + " và bạn không phản hồi trong " + window.toHours()
                                 + " giờ. Mentee được hoàn tiền và bạn bị ghi 1 lần vi phạm.", LINK);
@@ -232,7 +240,7 @@ public class AttendanceService {
             }
             case CANCELLED -> {
                 String msg = "Phiên lúc " + when + " được ghi nhận huỷ trong buổi gọi."
-                        + (refunded(s) ? " Mentee được hoàn 100% học phí." : "");
+                        + (refunded(s) ? refundText(s, "Mentee") : "");
                 notifications.notifyUser(s.getMenteeId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ", msg, LINK);
                 notifications.notifyUser(s.getMentorId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ", msg, LINK);
             }
@@ -247,6 +255,11 @@ public class AttendanceService {
         notifications.notifyUser(other, "ATTENDANCE_REQUIRED", "Xác nhận tham dự phiên mentoring",
                 (byMentee ? "Mentee" : "Mentor") + " đã xác nhận tham dự phiên lúc " + when(s) + ". Hãy xác nhận trước "
                         + AttendanceRules.deadline(s, window).atZoneSameInstant(zone).format(DISPLAY) + ".", LINK);
+    }
+
+    /** Phiên dùng gói được trả lại buổi thay vì hoàn tiền. */
+    private static String refundText(MentoringSession s, String who) {
+        return s.getPackageId() != null ? " Buổi này được trả lại vào gói của mentee." : " " + who + " được hoàn 100% học phí.";
     }
 
     private static boolean refunded(MentoringSession s) {

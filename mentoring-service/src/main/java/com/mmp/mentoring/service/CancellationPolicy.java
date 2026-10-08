@@ -124,6 +124,11 @@ public class CancellationPolicy {
         return until.filter(u -> u.isAfter(now));
     }
 
+    /** Số giờ báo trước tối thiểu để mentee huỷ mà được hoàn (72). */
+    public long fullRefundHours() {
+        return fullRefundBefore.toHours();
+    }
+
     /** Khoảng thời gian cần đọc lại lịch sử huỷ muộn để tính chặn. */
     public Duration lookback() {
         return freeBlockWindow.plus(freeBlockDuration);

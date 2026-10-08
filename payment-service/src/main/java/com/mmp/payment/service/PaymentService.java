@@ -80,12 +80,15 @@ public class PaymentService {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw ApiException.badRequest("IDEMPOTENCY_KEY_REQUIRED", "Thiếu header Idempotency-Key");
         }
+        if ((req.sessionId() == null) == (req.packageId() == null)) {
+            throw ApiException.badRequest("CHARGE_TARGET_REQUIRED", "Chỉ gửi một trong sessionId hoặc packageId");
+        }
         String key = idempotencyKey.trim();
         if (!PaymentRules.validIdempotencyKey(key)) {
             throw ApiException.badRequest("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key không hợp lệ (tối đa "
                     + PaymentRules.IDEMPOTENCY_KEY_MAX + " ký tự in được)");
         }
-        Optional<TransactionResponse> replay = claimKey(payer.userId(), key, req.sessionId());
+        Optional<TransactionResponse> replay = claimKey(payer.userId(), key, req.sessionId(), req.packageId());
         if (replay.isPresent()) return replay.get();
         try {
             return doCharge(payer, key, req);
@@ -100,28 +103,32 @@ public class PaymentService {
 
     /** Giữ key cho lần gọi này; trả về kết quả cũ nếu key đã được dùng. */
     Optional<TransactionResponse> claimKey(UUID userId, String key, UUID sessionId) {
+        return claimKey(userId, key, sessionId, null);
+    }
+
+    Optional<TransactionResponse> claimKey(UUID userId, String key, UUID sessionId, UUID packageId) {
         OffsetDateTime now = OffsetDateTime.now();
         Optional<ChargeIdempotencyKey> existing = idemRepository.findByUserIdAndIdemKey(userId, key);
         if (existing.isPresent()) {
             if (PaymentRules.idempotencyKeyLive(existing.get().getCreatedAt(), idempotencyTtl, now)) {
-                return Optional.of(replay(existing.get(), sessionId));
+                return Optional.of(replay(existing.get(), sessionId, packageId));
             }
             tx.executeWithoutResult(s -> idemRepository.deleteById(existing.get().getId())); // hết hạn → dùng lại được
         }
         try {
-            tx.executeWithoutResult(s -> idemRepository.saveAndFlush(new ChargeIdempotencyKey(userId, key, sessionId)));
+            tx.executeWithoutResult(s -> idemRepository.saveAndFlush(new ChargeIdempotencyKey(userId, key, sessionId, packageId)));
             return Optional.empty();
         } catch (DataIntegrityViolationException e) {
             // Request song song cùng key vừa giữ trước
             return Optional.of(idemRepository.findByUserIdAndIdemKey(userId, key)
-                    .map(k -> replay(k, sessionId))
+                    .map(k -> replay(k, sessionId, packageId))
                     .orElseThrow(() -> ApiException.conflict("IDEMPOTENCY_IN_PROGRESS", "Yêu cầu thanh toán đang được xử lý, vui lòng đợi")));
         }
     }
 
-    private TransactionResponse replay(ChargeIdempotencyKey k, UUID sessionId) {
-        if (!k.getSessionId().equals(sessionId)) {
-            throw ApiException.conflict("IDEMPOTENCY_KEY_REUSED", "Idempotency-Key đã được dùng cho một phiên khác");
+    private TransactionResponse replay(ChargeIdempotencyKey k, UUID sessionId, UUID packageId) {
+        if (!java.util.Objects.equals(k.getSessionId(), sessionId) || !java.util.Objects.equals(k.getPackageId(), packageId)) {
+            throw ApiException.conflict("IDEMPOTENCY_KEY_REUSED", "Idempotency-Key đã được dùng cho một khoản thanh toán khác");
         }
         if (k.getTransactionId() == null) {
             throw ApiException.conflict("IDEMPOTENCY_IN_PROGRESS", "Yêu cầu thanh toán đang được xử lý, vui lòng đợi");
@@ -130,7 +137,30 @@ public class PaymentService {
         return view(transactionRepository.findById(k.getTransactionId()).orElseThrow());
     }
 
-    private TransactionResponse doCharge(AuthUser payer, String key, ChargeRequest req) {
+    /** Đối tượng được thanh toán: một phiên lẻ hoặc một gói buổi (đúng một trong hai id khác null). */
+    private record ChargeTarget(UUID sessionId, UUID packageId, UUID menteeId, UUID mentorId, BigDecimal price) {
+    }
+
+    private ChargeTarget resolveTarget(AuthUser payer, ChargeRequest req) {
+        if (req.packageId() != null) {
+            MentoringClient.PackageInfo pkg = mentoringClient.getPackage(req.packageId());
+            if (!payer.isAdmin() && !pkg.menteeId().equals(payer.userId())) {
+                throw ApiException.forbidden("Bạn chỉ có thể thanh toán gói của chính mình");
+            }
+            if (!"PENDING_PAYMENT".equals(pkg.status())) {
+                throw ApiException.conflict("PACKAGE_NOT_PAYABLE", "Gói không ở trạng thái chờ thanh toán");
+            }
+            if (pkg.totalPrice() == null || pkg.totalPrice().signum() <= 0) {
+                throw ApiException.badRequest("FREE_PACKAGE", "Gói miễn phí, không cần thanh toán");
+            }
+            if (req.amount() != null && req.amount().compareTo(pkg.totalPrice()) != 0) {
+                throw ApiException.badRequest("AMOUNT_MISMATCH", "Số tiền không khớp với giá của gói");
+            }
+            if (transactionRepository.existsByPackageIdAndStatusIn(pkg.id(), Transaction.PAID_STATUSES)) {
+                throw ApiException.conflict("ALREADY_PAID", "Gói này đã được thanh toán");
+            }
+            return new ChargeTarget(null, pkg.id(), pkg.menteeId(), pkg.mentorId(), pkg.totalPrice());
+        }
         SessionInfo session = mentoringClient.getSession(req.sessionId());
         if (!payer.isAdmin() && !session.menteeId().equals(payer.userId())) {
             throw ApiException.forbidden("Bạn chỉ có thể thanh toán cho phiên của chính mình");
@@ -147,11 +177,17 @@ public class PaymentService {
         if (transactionRepository.existsBySessionIdAndStatusIn(session.id(), Transaction.PAID_STATUSES)) {
             throw ApiException.conflict("ALREADY_PAID", "Phiên này đã được thanh toán");
         }
+        return new ChargeTarget(session.id(), null, session.menteeId(), session.mentorId(), session.price());
+    }
+
+    private TransactionResponse doCharge(AuthUser payer, String key, ChargeRequest req) {
+        ChargeTarget session = resolveTarget(payer, req);
         PaymentRules.FeeSplit split = PaymentRules.split(session.price(), feeRate);
 
         Transaction pending = tx.execute(s -> {
             Transaction t = new Transaction();
-            t.setSessionId(session.id());
+            t.setSessionId(session.sessionId());
+            t.setPackageId(session.packageId());
             t.setPayerId(session.menteeId());
             t.setMentorId(session.mentorId());
             t.setAmount(session.price());
@@ -181,13 +217,13 @@ public class PaymentService {
                 return t;
             });
         } catch (DataIntegrityViolationException e) {
-            // Unique index chỉ cho 1 giao dịch "đã thu tiền"/phiên — request song song đã thanh toán trước
+            // Unique index chỉ cho 1 giao dịch "đã thu tiền"/phiên (hoặc gói) — request song song đã thanh toán trước
             tx.executeWithoutResult(s -> transactionRepository.findById(pending.getId()).ifPresent(t -> {
                 t.setStatus(Transaction.Status.FAILED);
                 t.setFailureReason("DUPLICATE_PAYMENT");
                 t.setSessionSynced(true);
             }));
-            throw ApiException.conflict("ALREADY_PAID", "Phiên này đã được thanh toán");
+            throw ApiException.conflict("ALREADY_PAID", session.packageId() != null ? "Gói này đã được thanh toán" : "Phiên này đã được thanh toán");
         }
 
         if (updated.getStatus() == Transaction.Status.SUCCESS) {
@@ -212,28 +248,58 @@ public class PaymentService {
             Transaction t = transactionRepository.lockBySessionIdAndStatusIn(sessionId, Transaction.PAID_STATUSES).stream()
                     .findFirst()
                     .orElseThrow(() -> ApiException.notFound("NO_SUCCESS_TRANSACTION", "Phiên chưa có giao dịch thành công"));
-            if (t.getStatus() == Transaction.Status.ON_HOLD) {
-                throw ApiException.conflict("TRANSACTION_ON_HOLD", "Giao dịch đang bị tạm giữ do tranh chấp, cần giải phóng trước khi hoàn tiền");
-            }
-            BigDecimal refunded = refundRepository.sumByTransactionId(t.getId());
-            PaymentRules.RefundCalc calc = PaymentRules.refundAmount(t.getAmount(), refunded, percent, amount);
-            if (!calc.ok()) {
-                throw "REFUND_EXCEEDS_AMOUNT".equals(calc.errorCode())
-                        ? ApiException.conflict("REFUND_EXCEEDS_AMOUNT", "Tổng số tiền hoàn vượt quá số tiền đã thanh toán (đã hoàn "
-                        + refunded.toPlainString() + "/" + t.getAmount().toPlainString() + ")")
-                        : ApiException.badRequest("INVALID_REFUND_AMOUNT", "Số tiền / phần trăm hoàn không hợp lệ (chỉ gửi amount > 0 hoặc percent 1–100)");
-            }
-            PaymentGateway.ChargeResult result = gateway.refund(t.getProviderReference(), calc.amount());
-            if (!result.success()) {
-                throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Cổng thanh toán từ chối hoàn tiền");
-            }
-            refundRepository.save(new Refund(t.getId(), calc.amount(), reason == null ? "SESSION_CANCELLED" : reason, actorId,
-                    result.providerReference()));
-            t.setStatus(PaymentRules.statusAfterRefund(t.getAmount(), refunded.add(calc.amount())));
-            log.info("Refunded {} of transaction {} (session {}) → {}", calc.amount(), t.getId(), sessionId, t.getStatus());
-            return t;
+            return refundLocked(t, reason, percent, amount, actorId);
         });
         return view(updated);
+    }
+
+    /**
+     * Hoàn tiền gói buổi theo tổng luỹ kế {@code refundedTotal}: chỉ hoàn phần còn thiếu so với những gì đã hoàn nên gọi
+     * lại cùng giá trị sau lỗi mạng không hoàn trùng. Không có giao dịch thu tiền cho gói → 404 NO_SUCCESS_TRANSACTION.
+     */
+    public TransactionResponse refundPackage(UUID packageId, BigDecimal refundedTotal, String reason) {
+        Transaction updated = tx.execute(s -> {
+            Transaction t = transactionRepository.lockByPackageIdAndStatusIn(packageId, Transaction.PAID_STATUSES).stream()
+                    .findFirst()
+                    .orElseThrow(() -> ApiException.notFound("NO_SUCCESS_TRANSACTION", "Gói chưa có giao dịch thành công"));
+            BigDecimal target = refundedTotal.setScale(0, java.math.RoundingMode.HALF_UP);
+            BigDecimal already = refundRepository.sumByTransactionId(t.getId());
+            if (target.compareTo(t.getAmount()) > 0) {
+                throw ApiException.conflict("REFUND_EXCEEDS_AMOUNT", "Tổng số tiền hoàn vượt quá số tiền đã thanh toán (đã hoàn "
+                        + already.toPlainString() + "/" + t.getAmount().toPlainString() + ")");
+            }
+            BigDecimal delta = target.subtract(already);
+            if (delta.signum() <= 0) {
+                return t; // đã hoàn đủ phần này
+            }
+            return refundLocked(t, reason == null ? "PACKAGE_UNUSED_SESSIONS" : reason, null, delta, null);
+        });
+        return view(updated);
+    }
+
+    /** Hoàn tiền trên giao dịch đã khoá (gọi trong transaction): kiểm tra tạm giữ / tổng hoàn, gọi gateway, ghi refunds. */
+    private Transaction refundLocked(Transaction t, String reason, Integer percent, BigDecimal amount, UUID actorId) {
+        if (t.getStatus() == Transaction.Status.ON_HOLD) {
+            throw ApiException.conflict("TRANSACTION_ON_HOLD", "Giao dịch đang bị tạm giữ do tranh chấp, cần giải phóng trước khi hoàn tiền");
+        }
+        BigDecimal refunded = refundRepository.sumByTransactionId(t.getId());
+        PaymentRules.RefundCalc calc = PaymentRules.refundAmount(t.getAmount(), refunded, percent, amount);
+        if (!calc.ok()) {
+            throw "REFUND_EXCEEDS_AMOUNT".equals(calc.errorCode())
+                    ? ApiException.conflict("REFUND_EXCEEDS_AMOUNT", "Tổng số tiền hoàn vượt quá số tiền đã thanh toán (đã hoàn "
+                    + refunded.toPlainString() + "/" + t.getAmount().toPlainString() + ")")
+                    : ApiException.badRequest("INVALID_REFUND_AMOUNT", "Số tiền / phần trăm hoàn không hợp lệ (chỉ gửi amount > 0 hoặc percent 1–100)");
+        }
+        PaymentGateway.ChargeResult result = gateway.refund(t.getProviderReference(), calc.amount());
+        if (!result.success()) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Cổng thanh toán từ chối hoàn tiền");
+        }
+        refundRepository.save(new Refund(t.getId(), calc.amount(), reason == null ? "SESSION_CANCELLED" : reason, actorId,
+                result.providerReference()));
+        t.setStatus(PaymentRules.statusAfterRefund(t.getAmount(), refunded.add(calc.amount())));
+        log.info("Refunded {} of transaction {} (session {} / package {}) → {}", calc.amount(), t.getId(), t.getSessionId(),
+                t.getPackageId(), t.getStatus());
+        return t;
     }
 
     /** US-12 — phiên tranh chấp: SUCCESS → ON_HOLD (đã ON_HOLD → trả về như cũ). */
@@ -272,10 +338,15 @@ public class PaymentService {
     public void syncSession(UUID transactionId) {
         Transaction t = transactionRepository.findById(transactionId).orElseThrow();
         try {
-            mentoringClient.notifyPaymentSucceeded(t.getSessionId(), t.getId());
+            if (t.getPackageId() != null) {
+                mentoringClient.notifyPackagePaid(t.getPackageId(), t.getId());
+            } else {
+                mentoringClient.notifyPaymentSucceeded(t.getSessionId(), t.getId());
+            }
             tx.executeWithoutResult(s -> transactionRepository.findById(transactionId).ifPresent(x -> x.setSessionSynced(true)));
         } catch (Exception e) {
-            log.warn("Could not confirm session {} after payment {}: {}", t.getSessionId(), t.getId(), e.getMessage());
+            log.warn("Could not confirm {} after payment {}: {}", t.getPackageId() != null ? "package " + t.getPackageId() : "session " + t.getSessionId(),
+                    t.getId(), e.getMessage());
         }
     }
 
@@ -307,6 +378,12 @@ public class PaymentService {
 
     public List<TransactionResponse> bySession(AuthUser user, UUID sessionId) {
         return views(transactionRepository.findBySessionIdOrderByCreatedAtDesc(sessionId).stream()
+                .filter(t -> user.isAdmin() || user.userId().equals(t.getPayerId()) || user.userId().equals(t.getMentorId()))
+                .toList());
+    }
+
+    public List<TransactionResponse> byPackage(AuthUser user, UUID packageId) {
+        return views(transactionRepository.findByPackageIdOrderByCreatedAtDesc(packageId).stream()
                 .filter(t -> user.isAdmin() || user.userId().equals(t.getPayerId()) || user.userId().equals(t.getMentorId()))
                 .toList());
     }

@@ -27,8 +27,13 @@ public class Transaction {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false)
+    /** Phiên được thanh toán; null nếu giao dịch này thanh toán một gói buổi (package_id). */
+    @Column(name = "session_id")
     private UUID sessionId;
+
+    /** Gói buổi được thanh toán; null nếu là phiên lẻ. Đúng một trong hai (session_id, package_id) có giá trị. */
+    @Column(name = "package_id")
+    private UUID packageId;
 
     @Column(name = "payer_id", nullable = false)
     private UUID payerId;
@@ -96,6 +101,8 @@ public class Transaction {
     public UUID getId() { return id; }
     public UUID getSessionId() { return sessionId; }
     public void setSessionId(UUID sessionId) { this.sessionId = sessionId; }
+    public UUID getPackageId() { return packageId; }
+    public void setPackageId(UUID packageId) { this.packageId = packageId; }
     public UUID getPayerId() { return payerId; }
     public void setPayerId(UUID payerId) { this.payerId = payerId; }
     public UUID getMentorId() { return mentorId; }

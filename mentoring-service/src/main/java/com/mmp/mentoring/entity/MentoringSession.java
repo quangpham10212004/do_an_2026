@@ -80,6 +80,10 @@ public class MentoringSession {
     @Column(nullable = false)
     private Kind kind = Kind.REGULAR;
 
+    /** Gói buổi đã trả cho phiên này (price = 0); null = phiên lẻ. */
+    @Column(name = "package_id")
+    private UUID packageId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
@@ -129,6 +133,8 @@ public class MentoringSession {
     }
 
     public UUID getId() { return id; }
+    public UUID getPackageId() { return packageId; }
+    public void setPackageId(UUID packageId) { this.packageId = packageId; }
     public Kind getKind() { return kind; }
     public void setKind(Kind kind) { this.kind = kind; }
     public UUID getRequestId() { return requestId; }

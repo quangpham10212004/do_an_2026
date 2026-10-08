@@ -67,6 +67,22 @@ public class PaymentClient {
         }
     }
 
+    /**
+     * Hoàn tiền gói buổi theo TỔNG LUỸ KẾ {@code refundedTotal} (không phải phần chênh): payment-service tự tính phần còn
+     * thiếu so với những gì đã hoàn nên gọi lại sau lỗi mạng không hoàn trùng. Ném RestClientException khi lỗi để
+     * PackageService giữ cờ refund_pending và thử lại; 404 (gói chưa có giao dịch thu tiền) → false.
+     */
+    public boolean refundPackage(UUID packageId, java.math.BigDecimal refundedTotal, String reason) {
+        try {
+            restClient.post().uri("/internal/payments/refund-package")
+                    .body(Map.of("packageId", packageId.toString(), "refundedTotal", refundedTotal, "reason", reason))
+                    .retrieve().toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
+        }
+    }
+
     /** US-12 — tạm giữ giao dịch của phiên DISPUTED (SUCCESS → ON_HOLD). 404 = phiên không có giao dịch đã thu tiền. */
     public boolean hold(UUID sessionId, String reason) {
         try {

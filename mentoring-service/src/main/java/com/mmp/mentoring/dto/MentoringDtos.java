@@ -73,7 +73,14 @@ public final class MentoringDtos {
             @NotNull SessionType sessionType,
             @NotBlank @Size(max = 500) String agenda,
             @Size(max = 500) String preReadLink,
-            @Size(max = 300) String topic) {
+            @Size(max = 300) String topic,
+            UUID packageId) {
+
+        /** Đặt phiên lẻ (không dùng gói) — giữ chữ ký cũ cho các nơi gọi trước khi có gói buổi. */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null);
+        }
     }
 
     public record SlotView(OffsetDateTime startAt, OffsetDateTime endAt) {
@@ -92,7 +99,7 @@ public final class MentoringDtos {
     public record SessionView(UUID id, UUID requestId, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
                               OffsetDateTime scheduledAt, OffsetDateTime endsAt, int durationMinutes, BigDecimal price,
                               String topic, String sessionType, String agenda, String preReadLink,
-                              String meetingLink, String kind, String status, String cancelledBy, String cancelReason, Integer refundPercent,
+                              String meetingLink, String kind, UUID packageId, String status, String cancelledBy, String cancelReason, Integer refundPercent,
                               int rescheduleCount, RescheduleView pendingReschedule,
                               String menteeAttendance, String mentorAttendance, OffsetDateTime attendanceDeadline,
                               String attendanceResolution,
@@ -129,6 +136,30 @@ public final class MentoringDtos {
 
     public record ReviewView(UUID id, UUID sessionId, UUID menteeId, String menteeName, UUID mentorId, int rating,
                              String comment, OffsetDateTime createdAt) {
+    }
+
+    // ---------- Gói buổi ----------
+
+    /** Một mức gói mentee có thể mua. {@code savings}: tiết kiệm so với mua lẻ cùng số buổi. */
+    public record PackageOption(int sessions, int discountPercent, BigDecimal unitPrice, BigDecimal totalPrice,
+                                BigDecimal savings, long validityDays) {
+    }
+
+    public record PackageOptionsView(UUID mentorId, int durationMinutes, BigDecimal singlePrice, List<PackageOption> options) {
+    }
+
+    public record PurchasePackageInput(@NotNull UUID mentorId, @NotNull @Min(2) @Max(50) Integer sessions,
+                                       Integer durationMinutes) {
+    }
+
+    public record PackageView(UUID id, UUID menteeId, String menteeName, UUID mentorId, String mentorName,
+                              int sessionsTotal, int sessionsRemaining, int durationMinutes, int discountPercent,
+                              BigDecimal unitPrice, BigDecimal totalPrice, String status, OffsetDateTime expiresAt,
+                              boolean refundPending, BigDecimal refundDue, BigDecimal refundedAmount, OffsetDateTime createdAt) {
+    }
+
+    /** Dạng rút gọn cho payment-service gọi nội bộ. */
+    public record PackageInternalView(UUID id, UUID menteeId, UUID mentorId, BigDecimal totalPrice, String status) {
     }
 
     // ---------- Notifications ----------
