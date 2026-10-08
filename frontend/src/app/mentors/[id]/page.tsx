@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, Stars, StatusBadge } from "@/components/ui";
-import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi } from "@/features/profile/api";
+import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi, publicMentorStatusText } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { DAY_NAMES, formatDate, formatRate } from "@/lib/format";
 import type { MentorProfile, MentoringRequest, Review, SessionUser } from "@/types";
@@ -24,12 +24,17 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
 
   if (mentor === undefined) return <Loading />;
   if (!mentor) return <Alert>Không tìm thấy mentor. <Link href="/mentors">Xem danh sách mentor</Link></Alert>;
+  // US-27 — mentor bị admin đình chỉ: người xem khác chỉ thấy "Tạm ngưng", không có nút gửi yêu cầu / đặt lịch.
+  const suspended = mentor.status === "SUSPENDED";
+  const statusText = user.role === "ADMIN" || user.userId === mentor.userId
+    ? mentorStatusText(mentor.status, mentor.onLeaveUntil)
+    : publicMentorStatusText(mentor.status, mentor.onLeaveUntil);
 
   return (
     <>
       <PageHead title={mentor.displayName} subtitle={`${mentor.domain} · ${mentor.yearsExperience} năm kinh nghiệm · ${formatRate(mentor.hourlyRate)}`}>
         <StatusBadge status={mentor.verificationStatus} />
-        <span className={`badge ${mentor.status === "ACCEPTING" ? "good" : mentor.status === "SUSPENDED" ? "bad" : ""}`}>{mentorStatusText(mentor.status, mentor.onLeaveUntil)}</span>
+        <span className={`badge ${mentor.status === "ACCEPTING" ? "good" : suspended ? "bad" : ""}`}>{statusText}</span>
       </PageHead>
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <div className="stack">
@@ -85,7 +90,10 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
 
         {user.role === "MENTEE" && (
           <div className="card">
-            {!request && (
+            {suspended && (
+              <Alert type="warn">Mentor này đang tạm ngưng hoạt động — chưa thể gửi yêu cầu hoặc đặt lịch mới.</Alert>
+            )}
+            {!suspended && !request && (
               <div>
                 <h2>Gửi yêu cầu mentoring</h2>
                 <p className="muted small">Mentor cần chấp nhận yêu cầu trước khi bạn đặt lịch. Còn {Math.max(0, mentor.capacity - mentor.activeMenteeCount)} chỗ.</p>
@@ -93,11 +101,14 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
               </div>
             )}
             {request?.status === "PENDING" && <Alert type="info">Yêu cầu của bạn đang chờ mentor phản hồi.</Alert>}
-            {request?.status === "ACCEPTED" && (
+            {!suspended && request?.status === "ACCEPTED" && (
               <div>
                 <h2>Đặt lịch phiên mentoring</h2>
                 <p className="muted small">Chọn thời lượng, loại phiên, khung giờ và nội dung muốn trao đổi.</p>
-                <Link className="btn" href={`/mentoring/book/${id}`}>Đặt lịch</Link>
+                <div className="row">
+                  <Link className="btn" href={`/mentoring/book/${id}`}>Đặt lịch</Link>
+                  <Link className="btn secondary" href={`/mentoring/relationships/${request.id}`}>Không gian mentoring</Link>
+                </div>
               </div>
             )}
             <p className="small row" style={{ marginTop: "1rem" }}>

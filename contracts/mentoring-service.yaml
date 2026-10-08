@@ -836,3 +836,149 @@ paths:
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }
+
+  # =====================================================================================================
+  # Relationship workspace (US-28, PRD-REQ-5) — Team B. Quan hệ = yêu cầu mentoring đã được chấp nhận
+  # (relationshipId = id yêu cầu). Bảng relationship_goals (migration V13). Xem: hai bên tham gia + ADMIN;
+  # sửa: chỉ hai bên tham gia khi yêu cầu còn ACCEPTED (mọi trạng thái khác — ENDED, COMPLETED... — chỉ đọc).
+  # Yêu cầu chưa từng được chấp nhận (PENDING/REJECTED/CANCELLED/EXPIRED) → 404 RELATIONSHIP_NOT_FOUND.
+  # Schema khai báo inline để không đụng components của Team A.
+  # =====================================================================================================
+  /api/mentoring/relationships/{relationshipId}:
+    get:
+      summary: >
+        US-28 — không gian mentoring: tóm tắt quan hệ, mục tiêu (1–5) và các phiên của cặp mentor–mentee (mới nhất
+        trước; phiên gắn yêu cầu này hoặc phiên cũ không gắn yêu cầu). Lần mở đầu tiên tự tạo mục tiêu đầu từ goal
+        của yêu cầu (cắt ≤ 300 ký tự, createdBy = null).
+      parameters:
+        - { name: relationshipId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      mentorId: { type: string, format: uuid }
+                      mentorName: { type: string }
+                      menteeId: { type: string, format: uuid }
+                      menteeName: { type: string }
+                      goal: { type: string, description: Goal gốc của yêu cầu }
+                      sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] }
+                      frequency: { type: string, enum: [WEEKLY, BIWEEKLY, MONTHLY, ONE_OFF] }
+                      expectedDurationMonths: { type: integer }
+                      status: { type: string, description: "Trạng thái yêu cầu: ACCEPTED, COMPLETED, ENDED (US-31)..." }
+                      createdAt: { type: string, format: date-time }
+                      respondedAt: { type: string, format: date-time, nullable: true }
+                  goals:
+                    type: array
+                    description: "Theo position tăng dần; mỗi phần tử giống response 201 của POST .../goals"
+                    items: { type: object }
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        scheduledAt: { type: string, format: date-time }
+                        endsAt: { type: string, format: date-time }
+                        durationMinutes: { type: integer }
+                        status: { type: string }
+                        sessionType: { type: string, nullable: true }
+                        topic: { type: string, nullable: true }
+                  readOnly: { type: boolean, description: "true khi yêu cầu không còn ACCEPTED" }
+                  canEdit: { type: boolean, description: "Người xem là một bên tham gia và readOnly = false (ADMIN luôn false)" }
+                  maxGoals: { type: integer, example: 5 }
+        "403": { description: FORBIDDEN — không phải hai bên tham gia / ADMIN }
+        "404": { description: RELATIONSHIP_NOT_FOUND }
+
+  /api/mentoring/relationships/{relationshipId}/goals:
+    post:
+      summary: US-28 — thêm mục tiêu (cuối danh sách, TODO). Tối đa 5.
+      parameters:
+        - { name: relationshipId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 5, maxLength: 300, description: "Đếm sau khi trim/gộp khoảng trắng" }
+      responses:
+        "201":
+          description: Mục tiêu đã tạo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  text: { type: string }
+                  status: { type: string, enum: [TODO, IN_PROGRESS, DONE] }
+                  position: { type: integer, description: "0-based, liền mạch" }
+                  createdBy: { type: string, format: uuid, nullable: true, description: "null = tạo tự động từ yêu cầu" }
+                  createdAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
+        "400": { description: INVALID_GOAL · VALIDATION_ERROR }
+        "403": { description: FORBIDDEN — không phải hai bên tham gia (ADMIN chỉ đọc) }
+        "404": { description: RELATIONSHIP_NOT_FOUND }
+        "409": { description: GOAL_LIMIT_REACHED (đã có 5) · RELATIONSHIP_READ_ONLY }
+
+  /api/mentoring/relationships/{relationshipId}/goals/order:
+    put:
+      summary: US-28 — sắp xếp lại; goalIds phải là hoán vị của đúng các mục tiêu hiện có. Trả về danh sách mới.
+      parameters:
+        - { name: relationshipId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [goalIds]
+              properties:
+                goalIds: { type: array, items: { type: string, format: uuid } }
+      responses:
+        "200": { description: Danh sách mục tiêu theo thứ tự mới }
+        "400": { description: INVALID_GOAL_ORDER }
+        "403": { description: FORBIDDEN }
+        "409": { description: RELATIONSHIP_READ_ONLY }
+
+  /api/mentoring/relationships/{relationshipId}/goals/{goalId}:
+    put:
+      summary: US-28 — sửa nội dung và/hoặc trạng thái (cần ít nhất một trường).
+      parameters:
+        - { name: relationshipId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: goalId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, minLength: 5, maxLength: 300 }
+                status: { type: string, enum: [TODO, IN_PROGRESS, DONE] }
+      responses:
+        "200": { description: Mục tiêu sau khi sửa }
+        "400": { description: INVALID_GOAL · VALIDATION_ERROR }
+        "403": { description: FORBIDDEN }
+        "404": { description: RELATIONSHIP_NOT_FOUND · GOAL_NOT_FOUND }
+        "409": { description: RELATIONSHIP_READ_ONLY }
+    delete:
+      summary: US-28 — xoá mục tiêu; không bao giờ xuống dưới 1 mục tiêu. Vị trí còn lại được dồn về 0..n-1.
+      parameters:
+        - { name: relationshipId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: goalId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Đã xoá }
+        "403": { description: FORBIDDEN }
+        "404": { description: RELATIONSHIP_NOT_FOUND · GOAL_NOT_FOUND }
+        "409": { description: LAST_GOAL · RELATIONSHIP_READ_ONLY }

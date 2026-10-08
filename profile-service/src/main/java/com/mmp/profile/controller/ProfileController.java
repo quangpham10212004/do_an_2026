@@ -38,7 +38,8 @@ public class ProfileController {
     public MentorProfileResponse getMentor(@PathVariable UUID userId) {
         MentorProfileResponse res = profileService.getMentor(userId);
         // US-04: link họp chỉ chủ hồ sơ/admin thấy; mentee nhận link qua phiên đã xác nhận (mentoring-service).
-        return CurrentUser.get().canAccess(userId) ? res : res.withoutMeetingLink();
+        // US-27: lý do đình chỉ cũng chỉ chủ hồ sơ/admin thấy.
+        return CurrentUser.get().canAccess(userId) ? res : res.forPublicViewer();
     }
 
     /** US-04 — cài đặt đặt lịch (link họp, buffer, báo trước, ngôn ngữ, loại phiên, múi giờ). */

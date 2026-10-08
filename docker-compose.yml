@@ -136,6 +136,9 @@ services:
       # Chỉ để báo matching-service lập lại chỉ mục sau khi hồ sơ đổi. Lời gọi là
       # best-effort nên profile-service không phụ thuộc matching-service lúc khởi động.
       MATCHING_SERVICE_URL: http://matching-service:8090
+      # US-27 — sau khi admin đình chỉ mentor: huỷ phiên tương lai + ghi audit log (đều best-effort).
+      MENTORING_SERVICE_URL: http://mentoring-service:8083
+      AUTH_SERVICE_URL: http://auth-service:8081
     depends_on:
       profile-db: { condition: service_healthy }
     healthcheck:
