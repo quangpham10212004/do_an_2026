@@ -416,7 +416,35 @@ def us31(ctx):
           r4["status"] == "ENDED" and r4["endReason"] == "INACTIVE" and r4["endedBy"] == "SYSTEM", r4)
 
 
-STORIES = {"US-25": us25, "US-32": us32, "US-31": us31}
+# ------------------------------------------------------------------ US-27 (phía mentoring)
+def us27(ctx):
+    print("US-27 — POST /internal/mentors/{id}/suspend (phía mentoring)")
+    admin = ctx["admin"]
+    mentor = approved_mentor(admin["accessToken"], "suspend")
+    a = accepted_mentee(mentor, "suspend-a")
+    b = accepted_mentee(mentor, "suspend-b")
+    s1 = paid(a, mentor, at(2, 15))      # < 72h — hệ thống huỷ vẫn hoàn 100%
+    s2 = paid(b, mentor, at(6, 9))
+    s3 = book(a, mentor, at(8, 9))       # chưa thanh toán
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/internal/mentors/{mentor['userId']}/suspend", {"reason": "x"}))
+    check("US-27", "Không có X-Internal-Token → 401/403", status in (401, 403), (status, code))
+    res = call("POST", f"{MENTORING}/internal/mentors/{mentor['userId']}/suspend",
+               {"reason": "ADMIN_SUSPEND", "actorId": admin["userId"]}, internal=True)
+    check("US-27", "Suspend → cancelledSessions = 3", res["cancelledSessions"] == 3, res)
+    v1, v2, v3 = get_session(a, s1["id"]), get_session(b, s2["id"]), get_session(a, s3["id"])
+    check("US-27", "Mọi phiên sắp tới CANCELLED, cancelledBy SYSTEM",
+          all(v["status"] == "CANCELLED" and v["cancelledBy"] == "SYSTEM" for v in (v1, v2, v3)), [(v["status"], v["cancelledBy"]) for v in (v1, v2, v3)])
+    t1, t2 = txs(a, s1["id"])[0], txs(b, s2["id"])[0]
+    check("US-27", "Phiên đã thanh toán hoàn 100% (kể cả < 72h)",
+          t1["status"] == "REFUNDED" and t2["status"] == "REFUNDED" and v1["refundPercent"] == 100, (t1["status"], t2["status"]))
+    check("US-27", "Mentee được báo SESSION_CANCELLED", notes(a, "SESSION_CANCELLED") and notes(b, "SESSION_CANCELLED"))
+    row = earning_row(mentor, s1["id"])
+    check("US-27", "Thu nhập của phiên bị thu hồi toàn bộ (REVERSAL)", row and float(row["reversed"]) == 255000 and float(row["pending"]) == 0, row)
+    again = call("POST", f"{MENTORING}/internal/mentors/{mentor['userId']}/suspend", {"reason": "ADMIN_SUSPEND"}, internal=True)
+    check("US-27", "Gọi lại idempotent → cancelledSessions = 0", again["cancelledSessions"] == 0, again)
+
+
+STORIES = {"US-25": us25, "US-32": us32, "US-31": us31, "US-27": us27}
 
 
 def main(selected):

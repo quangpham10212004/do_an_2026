@@ -757,6 +757,28 @@ paths:
         "400": { description: BAD_REQUEST (thiếu hoặc sai định dạng mentorId/menteeId) }
 
   # ---------------- Dev only (không tồn tại ở profile prod) ----------------
+  /internal/mentors/{mentorId}/suspend:
+    post:
+      summary: >
+        Nội bộ — US-27 (profile-service / Team B gọi sau khi admin chuyển mentor sang SUSPENDED; tranh chấp SUSPEND của
+        US-32 gọi logic này trực tiếp): huỷ mọi phiên sắp tới PENDING/CONFIRMED của mentor với cancelledBy = SYSTEM,
+        hoàn 100% (chính sách huỷ SYSTEM), báo mentee (và mentor). Idempotent — lần sau trả cancelledSessions 0.
+        Lỗi hoàn tiền của một phiên → các phiên khác vẫn được huỷ, trả 502 SUSPEND_INCOMPLETE để gọi lại.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: mentorId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+                actorId: { type: string, format: uuid, nullable: true, description: "Admin thực hiện (audit)" }
+      responses:
+        "200": { description: "{ mentorId, cancelledSessions }" }
+        "502": { description: SUSPEND_INCOMPLETE }
   /internal/dev/sessions/{id}/shift:
     post:
       summary: >
