@@ -2,8 +2,12 @@ import type { IsoDateTime, Uuid } from "./common";
 import type { SessionType } from "./profile";
 
 // contracts/mentoring-service.yaml
-/** US-15 — EXPIRED: mentor không phản hồi trong 72 giờ. */
-export type RequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "EXPIRED";
+/** US-15 — EXPIRED: mentor không phản hồi trong 72 giờ. INTRO: mentor mời làm quen trước (chưa chiếm sức chứa). */
+export type RequestStatus = "PENDING" | "INTRO" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "EXPIRED";
+/** Quyết định của mỗi bên sau buổi làm quen. */
+export type IntroDecision = "CONTINUE" | "DECLINE";
+/** REGULAR = phiên có phí; INTRO = buổi làm quen miễn phí. */
+export type SessionKind = "REGULAR" | "INTRO";
 /** US-12 — PENDING = chờ thanh toán; EXPIRED = quá hạn thanh toán; AWAITING_ATTENDANCE = chờ hai bên xác nhận tham dự. */
 export type SessionStatus =
   | "PENDING"
@@ -44,6 +48,16 @@ export interface MenteeSummary {
   skills: string[];
 }
 
+/** Buổi làm quen gần nhất của một yêu cầu. */
+export interface IntroInfo {
+  sessionId: Uuid;
+  scheduledAt: IsoDateTime;
+  durationMinutes: number;
+  status: SessionStatus;
+  /** Chỉ có giá trị khi buổi đã CONFIRMED. */
+  meetingLink: string | null;
+}
+
 export interface MentoringRequest {
   id: Uuid;
   menteeId: Uuid;
@@ -63,6 +77,9 @@ export interface MentoringRequest {
   /** US-15 — thời điểm hết hạn (status EXPIRED). */
   expiredAt: IsoDateTime | null;
   menteeProfile: MenteeSummary | null;
+  menteeDecision: IntroDecision | null;
+  mentorDecision: IntroDecision | null;
+  intro: IntroInfo | null;
 }
 
 /** US-14 — POST /api/mentoring/requests */
@@ -92,6 +109,7 @@ export interface MentoringSession {
   preReadLink: string | null;
   /** US-04 — chỉ có giá trị khi phiên đã CONFIRMED (hoặc sau đó). */
   meetingLink: string | null;
+  kind: SessionKind;
   status: SessionStatus;
   cancelledBy: CancelActor | null;
   cancelReason: string | null;

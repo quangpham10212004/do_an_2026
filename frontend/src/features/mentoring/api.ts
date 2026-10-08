@@ -5,6 +5,7 @@ import type {
   BookSessionInput,
   CancelPreview,
   CreateRequestInput,
+  IntroDecision,
   RejectReason,
   RescheduleProposal,
   LegacyBookSessionInput,
@@ -30,8 +31,14 @@ export const mentoringApi = {
   createRequest: (mentorId: Uuid, message: string) =>
     api<MentoringRequest>("/api/mentoring/requests", { method: "POST", body: { mentorId, message } }),
   /** US-14 — REJECT bắt buộc rejectReason. */
-  respond: (id: Uuid, decision: "ACCEPT" | "REJECT", note: string, rejectReason?: RejectReason) =>
+  respond: (id: Uuid, decision: "ACCEPT" | "REJECT" | "INTRO", note: string, rejectReason?: RejectReason) =>
     api<MentoringRequest>(`/api/mentoring/requests/${id}/respond`, { method: "POST", body: { decision, note, rejectReason } }),
+  /** Buổi làm quen (request INTRO): khung giờ trống, đặt buổi, quyết định tiếp tục / dừng. */
+  introSlots: (requestId: Uuid, days = 14) => api<AvailableSlots>(`/api/mentoring/requests/${requestId}/intro-slots?days=${days}`),
+  bookIntro: (requestId: Uuid, scheduledAt: string, agenda?: string) =>
+    api<MentoringSession>(`/api/mentoring/requests/${requestId}/intro-session`, { method: "POST", body: { scheduledAt, agenda } }),
+  introDecision: (requestId: Uuid, decision: IntroDecision, note = "") =>
+    api<MentoringRequest>(`/api/mentoring/requests/${requestId}/decision`, { method: "POST", body: { decision, note } }),
   cancelRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/cancel`, { method: "POST" }),
   completeRequest: (id: Uuid) => api<MentoringRequest>(`/api/mentoring/requests/${id}/complete`, { method: "POST" }),
   // Phiên mentoring

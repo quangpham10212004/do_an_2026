@@ -232,6 +232,7 @@ function Sessions({ user }: { user: SessionUser }) {
                     <div className="row">
                       <strong>{isMentor ? s.menteeName : <Link href={`/mentors/${s.mentorId}`}>{s.mentorName}</Link>}</strong>
                       <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
+                      {s.kind === "INTRO" && <span className="badge neutral">Buổi làm quen</span>}
                       {s.reviewed && <Stars value={s.reviewRating} />}
                     </div>
                     <div className="muted small">
@@ -277,7 +278,7 @@ function Sessions({ user }: { user: SessionUser }) {
                       && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
                       <button className="btn secondary sm" onClick={() => setRescheduling(rescheduling === s.id ? null : s.id)}>Dời lịch</button>
                     )}
-                    {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
+                    {!isMentor && s.status === "COMPLETED" && !s.reviewed && s.kind !== "INTRO" && (
                       <button className="btn sm" onClick={() => setReviewing(reviewing === s.id ? null : s.id)}>Đánh giá</button>
                     )}
                   </div>

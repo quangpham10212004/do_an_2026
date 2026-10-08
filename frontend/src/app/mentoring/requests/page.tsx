@@ -13,10 +13,12 @@ import {
   REJECT_REASON_LABELS,
   SESSION_TYPE_LABELS,
 } from "@/features/mentoring/labels";
+import IntroBooker from "@/features/mentoring/IntroBooker";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import { formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { MentoringRequest, RejectReason, SessionUser } from "@/types";
+import type { AskFn, } from "@/components/ui";
+import type { IntroDecision, MentoringRequest, RejectReason, SessionUser } from "@/types";
 
 /** US-14 (PRD-REQ-2) — mentor chọn lý do từ chối (bắt buộc) + ghi chú tuỳ chọn. */
 function RejectForm({ request, onSubmit, onCancel }: {
@@ -79,6 +81,81 @@ function RequestDetails({ r, isMentor }: { r: MentoringRequest; isMentor: boolea
   );
 }
 
+const LIVE_INTRO = ["PENDING", "CONFIRMED", "AWAITING_ATTENDANCE", "COMPLETED", "DISPUTED"];
+
+/** Bước làm quen của một yêu cầu INTRO: đặt giờ → buổi diễn ra → xác nhận tham dự → mỗi bên chọn tiếp tục / dừng. */
+function IntroPanel({ r, isMentor, act, ask }: {
+  r: MentoringRequest;
+  isMentor: boolean;
+  act: (fn: () => Promise<unknown>, ok: string) => Promise<void>;
+  ask: AskFn;
+}) {
+  const [booking, setBooking] = useState(false);
+  const intro = r.intro;
+  const live = !!intro && LIVE_INTRO.includes(intro.status);
+  const mine: IntroDecision | null = isMentor ? r.mentorDecision : r.menteeDecision;
+  const theirs: IntroDecision | null = isMentor ? r.menteeDecision : r.mentorDecision;
+  const other = isMentor ? "mentee" : "mentor";
+  const box = { background: "var(--surface-2)", boxShadow: "none", marginTop: 8, width: "100%" } as const;
+
+  async function decide(decision: IntroDecision) {
+    if (decision === "DECLINE") {
+      const ok = await ask({ title: "Không tiếp tục sau buổi làm quen?", message: "Yêu cầu sẽ kết thúc. Bạn có thể tìm mentor khác.", confirmText: "Không tiếp tục", danger: true });
+      if (!ok) return;
+    }
+    act(() => mentoringApi.introDecision(r.id, decision), decision === "CONTINUE" ? "Đã ghi nhận lựa chọn tiếp tục" : "Đã kết thúc yêu cầu sau buổi làm quen");
+  }
+
+  if (!live) {
+    return (
+      <div className="card stack" style={box}>
+        <strong className="small">Làm quen trước khi bắt đầu</strong>
+        {isMentor ? (
+          <span className="muted small">{intro ? "Buổi làm quen trước đã huỷ — đang chờ mentee chọn giờ mới." : "Đang chờ mentee chọn giờ cho buổi làm quen (15 phút, miễn phí). Yêu cầu này chưa chiếm chỗ của bạn."}</span>
+        ) : (
+          <>
+            <span className="muted small">{intro ? "Buổi làm quen trước đã bị huỷ. Hãy chọn giờ khác." : "Mentor muốn trò chuyện ngắn trước khi nhận bạn. Hãy chọn giờ cho buổi làm quen (15 phút, miễn phí)."}</span>
+            {!booking && <div className="row"><button className="btn sm" onClick={() => setBooking(true)}>Chọn giờ làm quen</button></div>}
+          </>
+        )}
+        {!isMentor && booking && <IntroBooker request={r} onBooked={() => { setBooking(false); act(async () => undefined, "Đã đặt buổi làm quen"); }} />}
+      </div>
+    );
+  }
+  return (
+    <div className="card stack" style={box}>
+      <strong className="small">Buổi làm quen · {intro!.durationMinutes} phút · {formatDateTime(intro!.scheduledAt)}</strong>
+      {intro!.status === "CONFIRMED" && (
+        <span className="muted small">
+          Đã xác nhận.{" "}
+          {intro!.meetingLink && <a href={intro!.meetingLink} target="_blank" rel="noreferrer">Link phòng họp</a>}
+          {" "}Sau buổi, cả hai xác nhận tham dự ở <Link href="/mentoring/sessions">Phiên học</Link>, rồi quay lại đây để chọn tiếp tục hay không.
+        </span>
+      )}
+      {(intro!.status === "AWAITING_ATTENDANCE" || intro!.status === "DISPUTED") && (
+        <span className="muted small">Buổi đã kết thúc. Hãy xác nhận tham dự ở <Link href="/mentoring/sessions">Phiên học</Link> để mở bước quyết định.</span>
+      )}
+      {intro!.status === "COMPLETED" && (
+        mine ? (
+          <span className="small">
+            Bạn đã chọn <strong>{mine === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}</strong>.{" "}
+            {theirs ? `Phía ${other} đã chọn ${theirs === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}.` : `Đang chờ ${other} quyết định.`}
+          </span>
+        ) : (
+          <>
+            <span className="small">Buổi làm quen đã diễn ra. Bạn muốn làm việc cùng {isMentor ? "mentee này" : "mentor này"} chứ?
+              {theirs && ` (${other[0].toUpperCase() + other.slice(1)} đã chọn ${theirs === "CONTINUE" ? "tiếp tục" : "không tiếp tục"}.)`}</span>
+            <div className="row">
+              <button className="btn good sm" onClick={() => decide("CONTINUE")}>Tiếp tục</button>
+              <button className="btn danger sm" onClick={() => decide("DECLINE")}>Không tiếp tục</button>
+            </div>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
 function Requests({ user }: { user: SessionUser }) {
   const params = useSearchParams();
   const [items, setItems] = useState<MentoringRequest[] | undefined>(undefined);
@@ -136,11 +213,15 @@ function Requests({ user }: { user: SessionUser }) {
               <div className="row">
                 {isMentor && r.status === "PENDING" && (
                   <>
-                    <button className="btn good sm" onClick={() => act(() => mentoringApi.respond(r.id, "ACCEPT", ""), "Đã chấp nhận yêu cầu")}>Chấp nhận</button>
+                    <button className="btn good sm" onClick={() => act(() => mentoringApi.respond(r.id, "ACCEPT", ""), "Đã chấp nhận yêu cầu")}>Nhận thẳng</button>
+                    <button className="btn secondary sm" onClick={async () => {
+                      const note = await ask({ title: "Mời mentee làm quen trước?", message: "Mentee đặt một buổi trò chuyện ngắn 15 phút (miễn phí). Yêu cầu chưa chiếm chỗ của bạn cho tới khi cả hai cùng đồng ý tiếp tục.", input: { label: "Lời nhắn (tuỳ chọn)", maxLength: 500 }, confirmText: "Mời làm quen" });
+                      if (note !== null) act(() => mentoringApi.respond(r.id, "INTRO", typeof note === "string" ? note : ""), "Đã mời mentee làm quen trước");
+                    }}>Làm quen trước</button>
                     <button className="btn danger sm" onClick={() => setRejecting(rejecting === r.id ? null : r.id)}>Từ chối</button>
                   </>
                 )}
-                {!isMentor && r.status === "PENDING" && (
+                {!isMentor && (r.status === "PENDING" || r.status === "INTRO") && (
                   <button className="btn secondary sm" onClick={() => act(() => mentoringApi.cancelRequest(r.id), "Đã huỷ yêu cầu")}>Huỷ</button>
                 )}
                 {!isMentor && (r.status === "REJECTED" || r.status === "EXPIRED") && (
@@ -154,6 +235,7 @@ function Requests({ user }: { user: SessionUser }) {
                 )}
               </div>
             </div>
+            {r.status === "INTRO" && <IntroPanel r={r} isMentor={isMentor} act={act} ask={ask} />}
             {rejecting === r.id && (
               <RejectForm request={r} onCancel={() => setRejecting(null)}
                 onSubmit={(reason, note) => act(() => mentoringApi.respond(r.id, "REJECT", note, reason), "Đã từ chối yêu cầu")} />
