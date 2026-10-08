@@ -31,7 +31,7 @@ components:
         expectedDurationMonths: { type: integer, enum: [1, 3, 6] }
         status:
           type: string
-          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED]
+          enum: [PENDING, INTRO, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED]
           description: >
             US-15: PENDING không được mentor phản hồi sau 72 giờ (app.requests.expire-after) → EXPIRED (job mỗi 5 phút).
             active_mentee_count của mentor không đổi. Mentee nhận thông báo REQUEST_EXPIRED (link /matching) kèm tối đa 3
@@ -41,6 +41,18 @@ components:
         responseNote: { type: string, nullable: true, description: "Ghi chú tuỳ chọn của mentor khi phản hồi" }
         createdAt: { type: string, format: date-time }
         respondedAt: { type: string, format: date-time, nullable: true }
+        menteeDecision: { type: string, nullable: true, enum: [CONTINUE, DECLINE], description: "Quyết định của mentee sau buổi làm quen" }
+        mentorDecision: { type: string, nullable: true, enum: [CONTINUE, DECLINE], description: "Quyết định của mentor sau buổi làm quen" }
+        intro:
+          type: object
+          nullable: true
+          description: "Buổi làm quen gần nhất của yêu cầu (ưu tiên buổi còn sống); null nếu chưa có"
+          properties:
+            sessionId: { type: string, format: uuid }
+            scheduledAt: { type: string, format: date-time }
+            durationMinutes: { type: integer }
+            status: { $ref: "#/components/schemas/SessionStatus" }
+            meetingLink: { type: string, nullable: true, description: "Chỉ khi buổi đã CONFIRMED" }
         menteeProfile:
           type: object
           nullable: true
@@ -83,6 +95,8 @@ components:
             US-04 — link phòng họp (sao chép từ meetingLink của hồ sơ mentor lúc đặt lịch, mentor có thể đổi).
             Chỉ trả khi status là CONFIRMED hoặc trạng thái sau đó (AWAITING_ATTENDANCE, COMPLETED, NO_SHOW_*, DISPUTED);
             PENDING/EXPIRED/CANCELLED luôn null.
+        kind: { type: string, enum: [REGULAR, INTRO], description: "INTRO = buổi làm quen miễn phí (price 0), không có đánh giá" }
+        packageId: { type: string, format: uuid, nullable: true, description: "Gói buổi đã trả cho phiên (price 0); null = phiên lẻ" }
         status: { $ref: "#/components/schemas/SessionStatus" }
         cancelledBy: { type: string, nullable: true, enum: [MENTEE, MENTOR, SYSTEM] }
         cancelReason: { type: string, nullable: true, description: "Lý do người huỷ nhập; EXPIRED do quá hạn thanh toán = PAYMENT_TIMEOUT; huỷ trong buổi gọi (US-12) = CANCELLED_ON_CALL" }
@@ -144,6 +158,28 @@ components:
               endAt: { type: string, format: date-time }
 security:
   - bearerAuth: []
+    SessionPackage:
+      type: object
+      description: "Gói buổi (combo). PENDING_PAYMENT → ACTIVE → EXHAUSTED | EXPIRED | CANCELLED"
+      properties:
+        id: { type: string, format: uuid }
+        menteeId: { type: string, format: uuid }
+        menteeName: { type: string }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string }
+        sessionsTotal: { type: integer }
+        sessionsRemaining: { type: integer }
+        durationMinutes: { type: integer }
+        discountPercent: { type: integer }
+        unitPrice: { type: number }
+        totalPrice: { type: number }
+        status: { type: string, enum: [PENDING_PAYMENT, ACTIVE, EXHAUSTED, EXPIRED, CANCELLED] }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        refundPending: { type: boolean, description: "Còn khoản hoàn buổi chưa dùng chờ gửi sang payment-service (PackageScheduler thử lại)" }
+        refundDue: { type: number, description: "Tổng VND phải hoàn cho các buổi chưa dùng (luỹ kế)" }
+        refundedAmount: { type: number, description: "Tổng VND đã hoàn thực tế; ≤ refundDue" }
+        createdAt: { type: string, format: date-time }
+
 paths:
   /health:
     get:
@@ -201,19 +237,65 @@ paths:
               type: object
               required: [decision]
               properties:
-                decision: { type: string, enum: [ACCEPT, REJECT] }
+                decision: { type: string, enum: [ACCEPT, REJECT, INTRO], description: "INTRO = mời mentee làm quen trước (yêu cầu → INTRO, chưa chiếm sức chứa)" }
                 rejectReason: { $ref: "#/components/schemas/RejectReason" }
                 note: { type: string, maxLength: 500, description: Ghi chú tuỳ chọn (mentee thấy) }
       responses:
         "200": { description: Request }
         "400": { description: REJECT_REASON_REQUIRED / VALIDATION_ERROR }
-        "409": { description: REQUEST_NOT_PENDING / CAPACITY_FULL }
+        "409": { description: REQUEST_NOT_PENDING / CAPACITY_FULL / INTRO_LIMIT (mentor đang làm quen với quá nhiều mentee, app.intro.max-open-per-mentor) }
   /api/mentoring/requests/{id}/cancel:
     post:
       summary: (MENTEE) Huỷ yêu cầu đang chờ
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Request }
+  /api/mentoring/requests/{id}/intro-slots:
+    get:
+      summary: (MENTEE) Khung giờ trống cho buổi làm quen của yêu cầu INTRO (thời lượng cố định app.intro.duration-minutes, mặc định 15, giá 0)
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: days, in: query, schema: { type: integer, default: 14, minimum: 1, maximum: 28 } }
+      responses:
+        "200": { description: AvailableSlots }
+  /api/mentoring/requests/{id}/intro-session:
+    post:
+      summary: >
+        (MENTEE) Đặt buổi làm quen cho yêu cầu INTRO: miễn phí, CONFIRMED ngay, cùng quy tắc lịch rảnh / buffer / báo trước / không trùng
+        với phiên thường; kết luận tham dự theo US-12. Mỗi yêu cầu chỉ có 1 buổi còn sống (huỷ / vắng mặt thì đặt lại được).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scheduledAt]
+              properties:
+                scheduledAt: { type: string, format: date-time }
+                agenda: { type: string, maxLength: 500, description: "Mặc định lấy từ goal của yêu cầu" }
+      responses:
+        "201": { description: "Session (kind = INTRO, price = 0, status = CONFIRMED)" }
+        "409": { description: REQUEST_NOT_INTRO / INTRO_ALREADY_BOOKED / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
+  /api/mentoring/requests/{id}/decision:
+    post:
+      summary: >
+        (MENTEE | MENTOR) Sau buổi làm quen đã COMPLETED, mỗi bên chọn CONTINUE / DECLINE (một lần). DECLINE của bất kỳ bên nào →
+        REJECTED (rejectReason OTHER); cả hai CONTINUE → ACCEPTED. Mentor CONTINUE phải còn sức chứa.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [CONTINUE, DECLINE] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: "Request (menteeDecision / mentorDecision / status)" }
+        "409": { description: REQUEST_NOT_INTRO / INTRO_NOT_HELD / DECISION_ALREADY_MADE / CAPACITY_FULL }
   /api/mentoring/requests/{id}/complete:
     post:
       summary: Kết thúc quan hệ mentoring (giải phóng 1 slot sức chứa)
@@ -258,6 +340,7 @@ paths:
                 durationMinutes: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 }
                 sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] }
                 agenda: { type: string, minLength: 20, maxLength: 500, description: "Bắt buộc, 20–500 ký tự sau khi trim" }
+                packageId: { type: string, format: uuid, nullable: true, description: "Dùng một buổi trong gói ACTIVE của mentee với mentor này (thời lượng phải bằng thời lượng của gói): phiên price 0, CONFIRMED ngay, không cần thanh toán. 409 PACKAGE_NOT_USABLE / 400 PACKAGE_DURATION_MISMATCH" }
                 preReadLink: { type: string, maxLength: 500, nullable: true, description: "Tuỳ chọn, URL http(s)" }
                 topic: { type: string, maxLength: 300 }
       responses:
@@ -475,6 +558,67 @@ paths:
         "404": { description: MENTOR_NOT_FOUND }
 
   # ---------------- Notifications ----------------
+  /api/mentoring/mentors/{id}/package-options:
+    get:
+      summary: Các mức gói buổi của mentor theo thời lượng (cấu hình app.packages.tiers, mặc định 4 buổi −10%, 8 buổi −15%); rỗng nếu mentor dạy miễn phí
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: durationMinutes, in: query, schema: { type: integer, enum: [30, 45, 60, 90, 120], default: 60 } }
+      responses:
+        "200":
+          description: PackageOptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentorId: { type: string, format: uuid }
+                  durationMinutes: { type: integer }
+                  singlePrice: { type: number }
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sessions: { type: integer }
+                        discountPercent: { type: integer }
+                        unitPrice: { type: number, description: "Giá một buổi trong gói, làm tròn 1.000đ" }
+                        totalPrice: { type: number }
+                        savings: { type: number, description: "Tiết kiệm so với mua lẻ cùng số buổi" }
+                        validityDays: { type: integer }
+  /api/mentoring/packages:
+    get:
+      summary: "Gói buổi của người dùng (mentee: gói đã mua; mentor: gói được mua; admin: tất cả)"
+      responses:
+        "200":
+          description: Danh sách SessionPackage
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SessionPackage" } }
+    post:
+      summary: (MENTEE) Tạo gói ở trạng thái PENDING_PAYMENT; thanh toán qua POST /api/payment/charge {packageId} để kích hoạt (tự huỷ sau app.booking.payment-hold)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mentorId, sessions]
+              properties:
+                mentorId: { type: string, format: uuid }
+                sessions: { type: integer, minimum: 2, maximum: 50, description: "Phải là một trong các mức của mentor" }
+                durationMinutes: { type: integer, default: 60 }
+      responses:
+        "201": { description: SessionPackage }
+        "400": { description: INVALID_PACKAGE_TIER / NOT_ACCEPTED / FREE_MENTOR / INVALID_DURATION }
+        "409": { description: PACKAGE_PAYMENT_PENDING }
+  /api/mentoring/packages/{id}/cancel:
+    post:
+      summary: "(MENTEE chủ gói | ADMIN) Huỷ gói. Chưa thanh toán: huỷ luôn. ACTIVE: đóng gói và hoàn tiền các buổi chưa dùng (phiên đã đặt vẫn giữ)"
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: SessionPackage }
+        "409": { description: PACKAGE_NOT_CANCELLABLE }
   /api/mentoring/notifications:
     get:
       summary: FR-5.5 Thông báo của tôi (kèm số chưa đọc)
@@ -525,6 +669,40 @@ paths:
                 transactionId: { type: string, format: uuid }
       responses:
         "200": { description: Phiên sau cập nhật }
+  /internal/packages/{id}:
+    get:
+      summary: Nội bộ — payment-service lấy thông tin gói để thu tiền
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Thông tin rút gọn của gói
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  menteeId: { type: string, format: uuid }
+                  mentorId: { type: string, format: uuid }
+                  totalPrice: { type: number }
+                  status: { type: string }
+        "404": { description: PACKAGE_NOT_FOUND }
+  /internal/packages/{id}/payment-succeeded:
+    post:
+      summary: >
+        Nội bộ — payment-service báo đã thu tiền gói: PENDING_PAYMENT → ACTIVE (đặt hạn dùng app.packages.validity). Gói đã bị huỷ
+        trước khi tiền về thì hoàn toàn bộ (refund_pending). Idempotent.
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [transactionId], properties: { transactionId: { type: string, format: uuid } } }
+      responses:
+        "200": { description: Thông tin rút gọn của gói }
+
   /internal/notifications:
     post:
       summary: Nội bộ — tạo thông báo trong ứng dụng (ai-service dùng để báo kết quả AI Interview / enrichment)
@@ -603,6 +781,17 @@ paths:
       responses:
         "200": { description: "{ id, createdAt, status }" }
         "404": { description: REQUEST_NOT_FOUND }
+  /internal/dev/packages/{id}/shift:
+    post:
+      summary: Dev/e2e — đưa hạn dùng của gói về `expiredDaysAgo` ngày trước (không tồn tại ở profile prod)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { expiredDaysAgo: { type: integer, default: 1 } } }
+      responses:
+        "200": { description: "{ id, expiresAt, status }" }
   /internal/dev/jobs/{job}:
     post:
       summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15). Không có ở profile prod."

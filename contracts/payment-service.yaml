@@ -17,7 +17,8 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        sessionId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid, nullable: true, description: "Phiên được thanh toán; null nếu giao dịch thanh toán một gói buổi (đúng một trong sessionId / packageId)" }
+        packageId: { type: string, format: uuid, nullable: true, description: "Gói buổi được thanh toán; null nếu là phiên lẻ" }
         payerId: { type: string, format: uuid }
         mentorId: { type: string, format: uuid }
         amount: { type: number, description: "Giá phiên (VND) mentee trả" }
@@ -91,9 +92,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [sessionId, card]
+              required: [card]
+              description: "Gửi đúng một trong sessionId (phiên lẻ) hoặc packageId (gói buổi); gửi cả hai hoặc không gửi → 400 CHARGE_TARGET_REQUIRED"
               properties:
                 sessionId: { type: string, format: uuid }
+                packageId: { type: string, format: uuid, description: "Gói PENDING_PAYMENT của mentee; số tiền = totalPrice của gói" }
                 amount: { type: number, description: Tuỳ chọn, dùng để đối chiếu }
                 card:
                   type: object
@@ -109,9 +112,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
-        "400": { description: IDEMPOTENCY_KEY_REQUIRED / INVALID_IDEMPOTENCY_KEY / AMOUNT_MISMATCH / FREE_SESSION }
+        "400": { description: IDEMPOTENCY_KEY_REQUIRED / INVALID_IDEMPOTENCY_KEY / AMOUNT_MISMATCH / FREE_SESSION / FREE_PACKAGE / CHARGE_TARGET_REQUIRED }
         "403": { description: Không phải mentee của phiên }
-        "409": { description: "ALREADY_PAID / SESSION_NOT_PAYABLE / IDEMPOTENCY_KEY_REUSED (key đã dùng cho phiên khác) / IDEMPOTENCY_IN_PROGRESS (lần gọi đầu chưa xong)" }
+        "409": { description: "ALREADY_PAID / SESSION_NOT_PAYABLE / PACKAGE_NOT_PAYABLE / IDEMPOTENCY_KEY_REUSED (key đã dùng cho phiên/gói khác) / IDEMPOTENCY_IN_PROGRESS (lần gọi đầu chưa xong)" }
 
   /api/payment/transactions:
     get:
@@ -141,6 +144,17 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Transaction" } }
+
+  /api/payment/packages/{packageId}/transactions:
+    get:
+      summary: Giao dịch của một gói buổi (người mua, mentor hoặc admin; người khác nhận danh sách rỗng)
+      parameters: [{ name: packageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: Danh sách giao dịch (mới nhất trước)
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Transaction" } }
@@ -250,6 +264,34 @@ paths:
         "400": { description: INVALID_REFUND_AMOUNT / VALIDATION_ERROR }
         "404": { description: NO_SUCCESS_TRANSACTION (chưa thanh toán / đã hoàn đủ) }
         "409": { description: REFUND_EXCEEDS_AMOUNT / TRANSACTION_ON_HOLD }
+  /internal/payments/refund-package:
+    post:
+      summary: >
+        Nội bộ — mentoring-service hoàn tiền các buổi chưa dùng của gói (hết hạn / huỷ gói / kết thúc mentoring / trả buổi vào
+        gói đã đóng). Gửi TỔNG LUỸ KẾ đã phải hoàn (refundedTotal), không phải phần chênh: payment-service chỉ hoàn phần còn thiếu
+        so với tổng đã hoàn nên gọi lại cùng giá trị sau lỗi mạng không hoàn trùng. Ghi 1 dòng refunds cho phần chênh.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [packageId, refundedTotal]
+              properties:
+                packageId: { type: string, format: uuid }
+                refundedTotal: { type: number, minimum: 1, description: "Tổng VND phải hoàn cho gói tính tới thời điểm này (≤ số tiền đã thanh toán)" }
+                reason: { type: string, maxLength: 300, example: PACKAGE_EXPIRED }
+      responses:
+        "200":
+          description: Giao dịch của gói (PARTIALLY_REFUNDED / REFUNDED); không đổi nếu tổng đã hoàn ≥ refundedTotal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { description: NO_SUCCESS_TRANSACTION (gói chưa có giao dịch thu tiền) }
+        "409": { description: REFUND_EXCEEDS_AMOUNT / TRANSACTION_ON_HOLD }
+        "502": { description: REFUND_FAILED (cổng thanh toán từ chối — gọi lại sau) }
+
   /internal/payments/hold:
     post:
       summary: >
