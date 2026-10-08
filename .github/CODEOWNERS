@@ -1,0 +1,88 @@
+# CODEOWNERS — mỗi thư mục có đúng một chủ; PR sửa vào thư mục của người khác tự động xin review chủ đó.
+# Quy tắc chi tiết: CONVENTIONS.md mục 11. Quy tắc GitHub: dòng SAU thắng dòng trước, nên mục chung đặt TRƯỚC,
+# mục riêng của từng người đặt SAU.
+#
+# TRƯỚC KHI DÙNG: thay 3 handle bên dưới bằng tên GitHub thật của từng người
+#   @QUANG_GH = Phạm Ngọc Quang   @THAO_GH = Phạm Ninh Phương Thảo   @THANG_GH = Đinh Quyết Thắng
+
+# ---- Mặc định & dùng chung: cả 3 người, cần 1 người KHÁC tác giả duyệt ----
+*                                   @QUANG_GH @THAO_GH @THANG_GH
+/CONVENTIONS.md                     @QUANG_GH @THAO_GH @THANG_GH
+/docker-compose.yml                 @QUANG_GH @THAO_GH @THANG_GH
+/.env.example                       @QUANG_GH @THAO_GH @THANG_GH
+/.github/                           @QUANG_GH @THAO_GH @THANG_GH
+/scripts/common.py                  @QUANG_GH @THAO_GH @THANG_GH
+/scripts/seed_demo.py               @QUANG_GH @THAO_GH @THANG_GH
+/docs/                              @QUANG_GH @THAO_GH @THANG_GH
+/frontend/src/components/           @QUANG_GH @THAO_GH @THANG_GH
+/frontend/src/lib/                  @QUANG_GH @THAO_GH @THANG_GH
+/frontend/src/types/                @QUANG_GH @THAO_GH @THANG_GH
+/frontend/src/app/layout.tsx        @QUANG_GH @THAO_GH @THANG_GH
+/frontend/src/app/globals.css       @QUANG_GH @THAO_GH @THANG_GH
+/frontend/package.json              @QUANG_GH @THAO_GH @THANG_GH
+/frontend/package-lock.json         @QUANG_GH @THAO_GH @THANG_GH
+
+# ---- Quang: auth-service, learning-service, CV Parsing + Chatbot enrichment ----
+/auth-service/                      @QUANG_GH
+/learning-service/                  @QUANG_GH
+/ai-service/app/cv/                 @QUANG_GH
+/ai-service/app/enrichment/         @QUANG_GH
+/contracts/auth-service.yaml        @QUANG_GH
+/contracts/learning-service.yaml    @QUANG_GH
+/db/init/auth-service.sql           @QUANG_GH
+/db/init/learning-service.sql       @QUANG_GH
+/frontend/src/features/auth/        @QUANG_GH
+/frontend/src/features/learning/    @QUANG_GH
+/frontend/src/app/login/            @QUANG_GH
+/frontend/src/app/register/         @QUANG_GH
+/frontend/src/app/forgot-password/  @QUANG_GH
+/frontend/src/app/reset-password/   @QUANG_GH
+/frontend/src/app/verify-email/     @QUANG_GH
+/frontend/src/app/account/          @QUANG_GH
+/frontend/src/app/learning/         @QUANG_GH
+/frontend/src/app/cv-enrichment/    @QUANG_GH
+/frontend/src/app/referral/         @QUANG_GH
+/scripts/e2e_p0_auth_ai.py          @QUANG_GH
+/scripts/e2e_s2_cv.py               @QUANG_GH
+
+# ---- Thảo: profile-service, matching-service ----
+/profile-service/                   @THAO_GH
+/matching-service/                  @THAO_GH
+/contracts/profile-service.yaml     @THAO_GH
+/contracts/matching-service.yaml    @THAO_GH
+/db/init/profile-service.sql        @THAO_GH
+/db/init/matching-service.sql       @THAO_GH
+/frontend/src/features/profile/     @THAO_GH
+/frontend/src/features/matching/    @THAO_GH
+/frontend/src/app/profile/          @THAO_GH
+/frontend/src/app/matching/         @THAO_GH
+/frontend/src/app/mentors/          @THAO_GH
+/scripts/benchmark_matching.py      @THAO_GH
+/scripts/e2e_p0_profile_matching.py @THAO_GH
+/scripts/e2e_s2_profile_matching.py @THAO_GH
+
+# ---- Thắng: mentoring-service, payment-service, AI Interview ----
+/mentoring-service/                 @THANG_GH
+/payment-service/                   @THANG_GH
+/ai-service/app/interview/          @THANG_GH
+/contracts/mentoring-service.yaml   @THANG_GH
+/contracts/payment-service.yaml     @THANG_GH
+/db/init/mentoring-service.sql      @THANG_GH
+/db/init/payment-service.sql        @THANG_GH
+/frontend/src/features/mentoring/   @THANG_GH
+/frontend/src/features/payment/     @THANG_GH
+/frontend/src/features/ai/          @THANG_GH
+/frontend/src/app/mentoring/        @THANG_GH
+/frontend/src/app/payment/          @THANG_GH
+/frontend/src/app/interview/        @THANG_GH
+/frontend/src/app/notifications/    @THANG_GH
+/scripts/e2e_p0_mentoring.py        @THANG_GH
+/scripts/e2e_s2_mentoring.py        @THANG_GH
+
+# ---- ai-service dùng chung theo module (CONVENTIONS mục 1): phần ngoài app/cv, app/enrichment, app/interview ----
+/ai-service/                        @QUANG_GH @THANG_GH
+/ai-service/app/cv/                 @QUANG_GH
+/ai-service/app/enrichment/         @QUANG_GH
+/ai-service/app/interview/          @THANG_GH
+/contracts/ai-service.yaml          @QUANG_GH @THANG_GH
+/db/init/ai-service.sql             @QUANG_GH @THANG_GH

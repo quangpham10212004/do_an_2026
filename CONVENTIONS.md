@@ -178,3 +178,31 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 - CV Parsing + Chatbot enrichment do **Quang** phụ trách: toàn bộ ở `ai-service/app/cv`, `app/enrichment`;
   cập nhật hồ sơ qua `POST /api/profile/mentee/{userId}/enrichment-chat`.
 - Nhà cung cấp LLM: **DeepSeek API** (JSON Output mode), cấu hình bằng `DEEPSEEK_*` chỉ ở ai-service.
+
+## 11. Quy tắc làm việc để không conflict khi merge
+
+Nguyên tắc: **mỗi người chỉ commit vào thư mục của mình (mục 1); chạm vào thư mục của người khác phải đi qua chủ thư mục đó.**
+Bảng ownership cụ thể (service, feature frontend, contract, schema, script e2e) nằm ở [.github/CODEOWNERS](.github/CODEOWNERS);
+GitHub tự xin review đúng người khi một PR sửa vào thư mục của họ.
+
+1. **Chỉ sửa trong phần mình sở hữu.** Cần thay đổi ở service/feature của người khác thì: (a) gọi qua API/contract của họ,
+   hoặc (b) mở issue / nhắn chủ nhờ làm, hoặc (c) làm trên nhánh riêng tạo từ `main` mới nhất và mở PR để chủ review kỹ —
+   không merge khi chủ chưa duyệt.
+2. **Contract trước, code sau.** Sửa `contracts/<service>.yaml` bằng một PR nhỏ riêng; chủ service và bên dùng đồng ý rồi mới code
+   (mục 3). Contract của service nào do chủ service đó duyệt.
+3. **Migration & schema do chủ service cấp số.** `V<n>__*.sql` (Java) / `NNN_*.sql` (Python) chỉ được thêm bởi chủ service, để
+   hai người không cùng tạo `V12`. Cần đổi bảng của service khác thì nhờ chủ, không tự thêm migration.
+4. **File dùng chung chỉ THÊM khối riêng, không sửa dòng của người khác**: `docker-compose.yml`, `.env.example`,
+   `.github/workflows/ci.yml`, `scripts/seed_demo.py`, `scripts/common.py`. Mỗi service/feature thêm một khối có tiêu đề đặt tên
+   theo service; muốn đổi dòng đã có thì nhờ người sở hữu khối đó. PR sửa các file này cần một người *khác* tác giả duyệt.
+5. **Frontend theo feature folder.** `src/features/<tên>` và các trang (`src/app/<tên>`) gọi API chính của feature thuộc chủ
+   feature. `src/components/`, `src/lib/`, `src/types/`, `layout.tsx`, `globals.css`, `package*.json` là vùng dùng chung: sửa nhỏ,
+   một PR một việc, cần người khác duyệt; thêm type của feature mình vào file `types/<feature>.ts` của feature đó.
+6. **Nhánh ngắn hạn, đồng bộ hằng ngày.** Mỗi nhánh sống tối đa vài ngày, mỗi sáng `git fetch && git rebase origin/main`
+   trước khi làm tiếp; PR nhỏ (một việc, tốt nhất < 400 dòng thay đổi). Không dồn nhiều tuần rồi merge một lần.
+7. **Không push thẳng `main`.** Bật branch protection: bắt buộc PR, CI xanh, và duyệt của chủ thư mục (Code Owners). Merge bằng
+   squash (mục 2).
+8. **Không commit file sinh ra / cục bộ**: `node_modules`, `.next`, `target`, `.env`, báo cáo/diagram cá nhân. Thư mục `docs/` chỉ
+   chứa tài liệu của dự án; bản nháp để ngoài repo.
+9. **Xung đột nhưng không chắc ý định của người kia → hỏi, đừng chọn bừa.** Hai người cùng đụng một chỗ nghĩa là ownership đang
+   mơ hồ — báo trong kênh chung để chốt người chịu trách nhiệm, rồi cập nhật CODEOWNERS.
