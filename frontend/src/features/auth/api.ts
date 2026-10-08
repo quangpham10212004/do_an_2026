@@ -1,10 +1,21 @@
 import { api } from "@/lib/api";
-import type { AccountStatus, PageResponse, Role, User, UserStats, Uuid } from "@/types";
+import type { AccountStatus, AuditEntry, PageResponse, Role, User, UserStats, Uuid } from "@/types";
 
 export interface UserFilters {
   role?: Role | "";
   q?: string;
   page?: number;
+}
+
+/** US-30: bộ lọc nhật ký kiểm toán; chuỗi rỗng = không lọc. from/to dạng yyyy-MM-dd (giờ Việt Nam). */
+export interface AuditFilters {
+  actorId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  from: string;
+  to: string;
+  page: number;
 }
 
 // auth-service (Quang)
@@ -22,6 +33,11 @@ export const authApi = {
   adminListUsers: ({ role = "", q = "", page = 0 }: UserFilters = {}) =>
     api<PageResponse<User>>(`/api/auth/admin/users?role=${role}&q=${encodeURIComponent(q)}&page=${page}&size=20`),
   adminStats: () => api<UserStats>("/api/auth/admin/users/stats"),
+  adminAudit: ({ page, ...filters }: AuditFilters) => {
+    const query = new URLSearchParams({ page: String(page), size: "20" });
+    Object.entries(filters).forEach(([k, v]) => v.trim() && query.set(k, v.trim()));
+    return api<PageResponse<AuditEntry>>(`/api/auth/admin/audit?${query.toString()}`);
+  },
   adminSetStatus: (userId: Uuid, status: AccountStatus) =>
     api<User>(`/api/auth/admin/users/${userId}/status`, { method: "PATCH", body: { status } }),
 };

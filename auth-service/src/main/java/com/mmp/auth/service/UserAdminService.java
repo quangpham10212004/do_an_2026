@@ -19,10 +19,13 @@ public class UserAdminService {
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AuditService auditService;
 
-    public UserAdminService(UserRepository userRepository, RefreshTokenRepository refreshTokenRepository) {
+    public UserAdminService(UserRepository userRepository, RefreshTokenRepository refreshTokenRepository,
+                            AuditService auditService) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -48,7 +51,15 @@ public class UserAdminService {
             }
             refreshTokenRepository.revokeAllForUser(user.getId());
         }
+        User.Status oldStatus = user.getStatus();
         user.setStatus(newStatus);
+        if (oldStatus != newStatus) {
+            // US-30: ghi cùng transaction với thay đổi trạng thái — khoá/mở khoá luôn có dòng nhật ký.
+            auditService.recordAdmin(actingAdminId, newStatus == User.Status.LOCKED ? "USER_LOCKED" : "USER_UNLOCKED",
+                    "USER", user.getId().toString(),
+                    java.util.Map.of("status", oldStatus.name(), "email", user.getEmail()),
+                    java.util.Map.of("status", newStatus.name(), "email", user.getEmail()));
+        }
         return UserResponse.from(user);
     }
 

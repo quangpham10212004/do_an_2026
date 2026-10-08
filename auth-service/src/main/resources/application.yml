@@ -55,3 +55,7 @@ app:
     password: ${ADMIN_PASSWORD:Admin@123}
   services:
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+  # US-30 (PRD-ADM-5): nhật ký kiểm toán giữ 2 năm; job xoá dòng cũ chạy 03:30 mỗi ngày (giờ Việt Nam).
+  audit:
+    retention: ${AUDIT_RETENTION:P730D}
+    retention-cron: ${AUDIT_RETENTION_CRON:0 30 3 * * *}
