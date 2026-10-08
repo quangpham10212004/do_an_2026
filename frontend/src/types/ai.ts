@@ -1,10 +1,20 @@
 import type { IsoDateTime, Uuid } from "./common";
 
 // contracts/ai-service.yaml — AI Interview
-export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "RETAKE_REQUESTED";
 export type InterviewStrategy = "OPENING" | "DEEPEN" | "PIVOT";
 export type Recommendation = "APPROVE" | "REJECT" | "NEEDS_REVIEW";
-export type ReviewDecision = "APPROVE" | "REJECT";
+export type ReviewDecision = "APPROVE" | "REJECT" | "REQUEST_RETAKE";
+
+/** US-23: điểm 4 tiêu chí rubric (0–10). */
+export interface RubricScores {
+  technical: number;
+  depth: number;
+  communication: number;
+  mentoring: number;
+}
+
+export type InterviewFlag = "PROMPT_INJECTION" | "COPIED_ANSWER";
 
 export interface InterviewTurn {
   turnNo: number;
@@ -15,6 +25,15 @@ export interface InterviewTurn {
   /** 0-10; null với mentor khi buổi phỏng vấn chưa kết thúc */
   score: number | null;
   feedback: string | null;
+  /** null với lượt trước Sprint 3 hoặc khi điểm đang ẩn với mentor */
+  rubric: RubricScores | null;
+  /** chỉ admin */
+  flags: InterviewFlag[];
+  engine: string | null;
+  model: string | null;
+  promptVersion: string | null;
+  fallbackUsed: boolean | null;
+  durationSeconds: number | null;
   askedAt: IsoDateTime;
   answeredAt: IsoDateTime | null;
 }
@@ -37,9 +56,25 @@ export interface Interview {
   weaknesses: string[];
   recommendation: Recommendation | null;
   reviewNote: string | null;
+  /** US-23: có lượt bị gắn cờ (chỉ admin) */
+  flagged: boolean;
+  /** US-22: mentor đã xác nhận tự trả lời (false với buổi phỏng vấn trước Sprint 3). */
+  selfAnswerAcknowledged: boolean;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
   reviewedAt: IsoDateTime | null;
+}
+
+/** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
+export interface InterviewEligibility {
+  attemptsUsed: number;
+  attemptsLeft: number;
+  maxAttempts: number;
+  cooldownUntil: IsoDateTime | null;
+  locked: boolean;
+  canStart: boolean;
+  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | null;
+  questionCount: number;
 }
 
 export interface InterviewStats {
@@ -47,6 +82,16 @@ export interface InterviewStats {
   interviewsPendingReview: number;
   mentorsApproved: number;
   mentorsRejected: number;
+  retakesRequested: number;
+  /** US-24 — chỉ số online: quyết định admin so với khuyến nghị AI */
+  decisionsTotal: number;
+  /** số quyết định mà AI đã khuyến nghị APPROVE / REJECT */
+  decisionsComparable: number;
+  decisionsAgreeing: number;
+  /** AI khuyến nghị NEEDS_REVIEW — không tính vào tỉ lệ */
+  decisionsOnNeedsReview: number;
+  /** 0..1; null khi chưa có quyết định so sánh được */
+  agreementRate: number | null;
 }
 
 // CV parsing + chatbot enrichment

@@ -227,6 +227,7 @@ services:
       AI_DB_URL: postgresql://postgres:postgres@ai-db:5432/ai_db
       PROFILE_SERVICE_URL: http://profile-service:8082
       MENTORING_SERVICE_URL: http://mentoring-service:8083
+      AUTH_SERVICE_URL: http://auth-service:8081
       CV_STORAGE_DIR: /data/cv
       INTERVIEW_MAX_TURNS: ${INTERVIEW_MAX_TURNS:-5}
       ENRICHMENT_MAX_TURNS: ${ENRICHMENT_MAX_TURNS:-4}

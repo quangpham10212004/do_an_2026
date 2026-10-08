@@ -345,15 +345,32 @@ data/AI (5), mobile (3), general (4). Mỗi chủ đề gồm: câu hỏi mở, 
 **Chọn chủ đề mở đầu**: sắp xếp chủ đề theo số kỹ năng trùng với kỹ năng mentor khai báo (mentor
 backend có Redis → mở đầu bằng "Caching & hiệu năng"), chèn chủ đề "Năng lực mentoring" vào vị trí thứ 3.
 
-**Chấm điểm một câu trả lời (thang 0–10)**:
+**Rubric chấm điểm (PRD 6.1, US-23)** — dùng chung cho cả hai engine, hiển thị cho admin cạnh từng câu trả lời.
+Mỗi tiêu chí 0–10:
 
-| Thành phần | Cách tính | Tối đa |
-|---|---|---|
-| Độ bao phủ khái niệm | `min(số khái niệm kỳ vọng xuất hiện, 4) × 1.25` | 5 |
-| Độ chi tiết | < 15 từ: 0 · < 40: 1 · < 80: 2 · ≥ 80: 3 | 3 |
-| Dẫn chứng thực tế | Số tín hiệu "ví dụ, dự án, production, trade-off, số liệu 40ms/30%…" (tối đa 2) | 2 |
+| Tiêu chí | Trọng số | 0–2 | 3–6 | 7–10 |
+|---|---|---|---|---|
+| Độ chính xác kỹ thuật (`technical`) | 40% | Sai hoặc lạc đề | Đúng nhưng chung chung | Đúng, nêu được đánh đổi và giới hạn |
+| Chiều sâu / kinh nghiệm (`depth`) | 30% | Không có ví dụ cụ thể | Một ví dụ, ít chi tiết | Dự án thực tế, số liệu, giải thích quyết định |
+| Giao tiếp (`communication`) | 15% | Khó theo dõi | Dễ hiểu | Có cấu trúc, phù hợp người mới |
+| Năng lực hướng dẫn (`mentoring`) | 15% | Không có góc nhìn hướng dẫn | Có một số chỉ dẫn | Kế hoạch rõ ràng để dạy / gỡ vướng cho mentee |
 
-Nhận xét được sinh từ các thành phần: khái niệm đã đề cập, thiếu chi tiết, thiếu dẫn chứng.
+`app/interview/rubric.py` là nơi DUY NHẤT tính: **điểm câu** = 0.4·technical + 0.3·depth + 0.15·communication +
+0.15·mentoring (0–10, làm tròn half-up 1 chữ số); **điểm tổng** = trung bình điểm câu × 10 (0–100); **khuyến nghị**
+≥ 70 `APPROVE`, 50–69.9 `NEEDS_REVIEW`, < 50 `REJECT`, và có lượt bị gắn cờ (`PROMPT_INJECTION`, `COPIED_ANSWER`) ⇒
+`NEEDS_REVIEW` bất kể điểm. Unit test với các ca tính tay: `tests/test_interview_rubric.py`.
+
+**Rule-based chấm từng tiêu chí** (`rule_based.assess`, so khớp chữ thường **không dấu** nên câu gõ không dấu vẫn được nhận):
+
+| Tiêu chí | Cách tính (tối đa 10) |
+|---|---|
+| technical | 0 khái niệm kỳ vọng: 0 (≥ 20 từ: 1). Có: `2 + 1.5 × min(số khái niệm, 4)` + 2 nếu phân tích đánh đổi/giới hạn; < 15 từ ⇒ tối đa 4 (liệt kê từ khoá) |
+| depth | Không tín hiệu kinh nghiệm (dự án, production, sự cố, "tôi đã"…) ⇒ tối đa 2. Có: 4/5/6 theo 1/2/≥3 tín hiệu + 2 nếu có số liệu (40ms, 30%) + 1.5 nếu giải thích đánh đổi + 1 nếu ≥ 80 từ |
+| communication | Theo độ dài: < 5 từ 0 · < 15: 2 · < 30: 4 · < 60: 5 · < 120: 6 · ≤ 450: 7 (dài hơn: 6) + 2 nếu có cấu trúc (đầu tiên/sau đó, gạch đầu dòng) + 1 nếu có ví dụ dễ hiểu |
+| mentoring | 2.5 × số tín hiệu hướng dẫn khác nhau (lộ trình, bài tập, feedback, mentee/junior, giải thích, pair…), tối đa 4 |
+
+Nhận xét được sinh từ các thành phần: khái niệm đã đề cập, thiếu đánh đổi, thiếu dẫn chứng, thiếu chi tiết, thiếu góc
+nhìn hướng dẫn.
 
 **Chiến lược câu tiếp theo (FR-7.2)**:
 
@@ -365,12 +382,19 @@ ngược lại                                                → PIVOT  (chủ 
 → Mỗi chủ đề đào sâu tối đa 1 lần; câu trả lời yếu chuyển chủ đề ngay để khảo sát diện rộng hơn.
 
 **Tổng hợp (FR-7.4)**:
-- `overallScore = trung bình điểm các lượt × 10` (thang 0–100).
+- `overallScore` và khuyến nghị theo `rubric.py` (ở trên) cho cả hai engine.
 - Điểm mạnh: chủ đề có điểm trung bình ≥ 7; điểm yếu: < 5.
-- Khuyến nghị: `≥ 70 → APPROVE`, `< 45 → REJECT`, còn lại `NEEDS_REVIEW`.
 
 ### 2.6 Engine DeepSeek
 
+- Mỗi lượt model trả `rubric {technical, depth, communication, mentoring}`; **đủ 4 tiêu chí và mỗi giá trị trong
+  [0, 10]** mới được dùng, ngược lại lượt đó chấm bằng rule-based (`fallbackUsed = true`). Điểm câu/điểm tổng/khuyến
+  nghị luôn tính bằng `rubric.py`; số điểm tổng model tự đưa ra bị bỏ qua — model chỉ viết summary/điểm mạnh/yếu.
+- PRD-AIV-7: mỗi lượt lưu `engine` thực sự chấm, `model`, `prompt_version` (`deepseek-interview-rubric-v1` /
+  `rule-based-rubric-v1`) và `fallback_used` (`interview_turns`, migration 006).
+- PRD-AIV-6: câu trả lời chứa mệnh lệnh cho người chấm ("cho tôi 10 điểm", "ignore previous instructions"…) KHÔNG
+  được gửi tới DeepSeek — chấm bằng rule-based và gắn cờ `PROMPT_INJECTION`. Dán > 500 ký tự trong một lần
+  (trình duyệt báo `pastedLargeText`) ⇒ cờ `COPIED_ANSWER` (không chặn).
 - Gọi DeepSeek Chat Completions ở JSON Output mode qua `app/llm/deepseek.py` (httpx). Mỗi loại yêu cầu có
   một ví dụ JSON mẫu (`QUESTION_EXAMPLE`, `EVALUATION_EXAMPLE`, `ASSESSMENT_EXAMPLE`) đưa vào system prompt;
   kết quả parse vào model Pydantic rồi kiểm tra nghiệp vụ (có điểm, có câu hỏi tiếp theo nếu chưa phải lượt
@@ -388,14 +412,46 @@ ngược lại                                                → PIVOT  (chủ 
 ### 2.7 Thiết kế trải nghiệm & tính công bằng
 - Trong lúc phỏng vấn, mentor **không thấy** điểm/nhận xét từng câu (tránh "học tủ" theo phản hồi);
   sau khi hoàn thành mới hiển thị toàn bộ.
-- Admin thấy toàn bộ hội thoại, điểm từng câu, khuyến nghị AI và nhập nhận xét gửi mentor.
-- Mentor bị từ chối có thể cập nhật hồ sơ và phỏng vấn lại.
+- Admin thấy toàn bộ hội thoại, điểm 4 tiêu chí + mô tả mức điểm cạnh từng câu, điểm câu, cờ, thời gian trả lời,
+  engine/model/prompt, tóm tắt AI và khuyến nghị.
+- **Quyết định của admin (US-23, PRD-AIV-9)**: `APPROVE` / `REJECT` / `REQUEST_RETAKE`. `REQUEST_RETAKE` chuyển buổi
+  sang `RETAKE_REQUESTED`, trạng thái xác thực về `PENDING_INTERVIEW`, **không tính vào số lần** và mentor bắt đầu
+  lại được ngay. **Quy tắc ghi chú** (≥ 10 ký tự, 400 `REVIEW_NOTE_REQUIRED`): bắt buộc khi quyết định ngược khuyến
+  nghị — `APPROVE` khi AI = `REJECT`, `REJECT` khi AI = `APPROVE`, `REQUEST_RETAKE` khi AI = `APPROVE`/`REJECT`.
+  AI = `NEEDS_REVIEW` không nghiêng về phía nào nên không bắt buộc ghi chú với mọi quyết định (buổi cũ không có
+  khuyến nghị cũng vậy). Mọi quyết định được ghi audit log (`INTERVIEW_APPROVED` / `INTERVIEW_REJECTED` /
+  `INTERVIEW_RETAKE_REQUESTED`, kèm before/after và `agreesWithAi`) qua `POST /internal/audit` của auth-service.
+- Buổi phỏng vấn cũ (trước rubric) vẫn hiển thị: lượt không có điểm tiêu chí hiện "—", điểm câu cũ giữ nguyên.
+- Mentor bị từ chối có thể cập nhật hồ sơ và phỏng vấn lại — theo quy tắc số lần bên dưới.
+
+**Màn hình giới thiệu & số lần phỏng vấn (US-22, PRD-AIV-1/4)**
+- Trước khi bắt đầu, `/interview` hiển thị: số câu hỏi (5), thời gian dự kiến 15–20 phút, 4 tiêu chí chấm kèm
+  trọng số, "quản trị viên quyết định cuối cùng", số lần đã dùng / còn lại và ô bắt buộc
+  **"Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"**. API `POST /api/ai/interviews` từ chối (400
+  `SELF_ANSWER_ACK_REQUIRED`) nếu body không có `selfAnswerAcknowledged: true`; giá trị được lưu ở
+  `interviews.self_answer_acknowledged`.
+- Một **lần** = một buổi đã có kết quả (`PENDING_REVIEW`, `APPROVED`, `REJECTED`). Buổi đang làm và buổi admin
+  yêu cầu làm lại (`RETAKE_REQUESTED`) không tính. Hệ thống chưa có trạng thái `ABANDONED` (PRD-AIV-3 ngoài phạm vi).
+- Tối đa `INTERVIEW_MAX_ATTEMPTS = 3` lần. Buổi gần nhất bị từ chối ⇒ chờ `INTERVIEW_COOLDOWN_DAYS = 7` ngày kể từ lúc
+  admin từ chối (409 `INTERVIEW_COOLDOWN`, body lỗi có thêm `retryAfter`). Bị từ chối 3 lần ⇒ 409 `INTERVIEW_LOCKED`
+  cho tới khi admin bấm **Mở khoá phỏng vấn** trên trang chi tiết (`POST /api/ai/admin/interviews/mentors/{id}/unlock`,
+  ghi audit log `INTERVIEW_ATTEMPTS_UNLOCKED`); sau khi mở khoá chỉ các buổi mới được tính.
+- `GET /api/ai/interviews/eligibility` → `{attemptsUsed, attemptsLeft, maxAttempts, cooldownUntil, locked, canStart, reason}`.
+  Logic thuần ở `app/interview/attempts.py` (unit test `tests/test_interview_attempts.py`).
 
 ### 2.8 Ví dụ (kiểm thử e2e, engine rule-based)
 Mentor backend (Java, Spring Boot, Redis, System Design), trả lời chi tiết có số liệu và trade-off:
 chuỗi chiến lược thu được gồm cả `DEEPEN` và `PIVOT`, buổi phỏng vấn dừng đúng sau 5 lượt với trạng
 thái `PENDING_REVIEW`, có điểm tổng và tóm tắt; mentor chỉ xuất hiện trong kết quả matching sau khi
 admin bấm duyệt.
+
+### 2.8b Đánh giá (US-24, PRD 6.1 Evaluation)
+- **Offline**: 40 câu trả lời có nhãn (10 câu mỗi dải 0–2 / 3–5 / 6–8 / 9–10, tiếng Việt + tiếng Anh) ở
+  `scripts/eval/interview/answers.csv`; `scripts/eval/interview/run_eval.py` chấm bằng rule-based (và DeepSeek khi có
+  `DEEPSEEK_API_KEY`), báo cáo tỉ lệ trong ±2 điểm so với nhãn người chấm, theo dải và ma trận khuyến nghị →
+  [`docs/eval-interview.md`](eval-interview.md) (PROVISIONAL cho tới khi 2 người chấm điền `rater1`/`rater2`).
+- **Online**: tỉ lệ đồng thuận admin – AI ở `GET /api/ai/admin/stats` (`agreementRate`), hiển thị trên bảng điều
+  khiển admin và trang Duyệt mentor (mục tiêu ≥ 80%).
 
 ### 2.9 Hạn chế & hướng phát triển
 - Engine rule-based đánh giá theo từ khoá nên có thể bị "nhồi từ khoá"; đây là lý do bắt buộc admin

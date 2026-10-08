@@ -1,0 +1,150 @@
+"""US-22 (PRD-AIV-1, PRD-AIV-4) — xác nhận tự trả lời, số lần phỏng vấn, thời gian chờ, khoá / mở khoá."""
+import asyncio
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import asyncpg
+import pytest
+
+from app import config
+from app.interview import attempts
+from app.interview.attempts import InterviewOutcome
+from tests.conftest import auth
+from tests.test_interview_flow import answer_all, start
+
+NOW = datetime(2026, 11, 10, 3, 0, tzinfo=timezone.utc)
+WEEK = timedelta(days=7)
+
+
+def outcome(status, days_ago, reviewed_days_ago=None):
+    reviewed = None if reviewed_days_ago is None else NOW - timedelta(days=reviewed_days_ago)
+    return InterviewOutcome(status, NOW - timedelta(days=days_ago), reviewed)
+
+
+# ---------- quy tắc thuần ----------
+
+def test_no_interview_yet_has_all_attempts():
+    e = attempts.evaluate([], NOW, 3, WEEK)
+    assert (e.attempts_used, e.attempts_left, e.locked, e.cooldown_until) == (0, 3, False, None)
+
+
+def test_in_progress_and_retake_do_not_count_as_attempts():
+    e = attempts.evaluate([outcome("RETAKE_REQUESTED", 3, 2), outcome("IN_PROGRESS", 1)], NOW, 3, WEEK)
+    assert e.attempts_used == 0 and e.attempts_left == 3 and e.cooldown_until is None
+
+
+def test_cooldown_seven_days_after_rejection():
+    e = attempts.evaluate([outcome("REJECTED", 3, 2)], NOW, 3, WEEK)
+    assert e.attempts_used == 1 and e.attempts_left == 2
+    assert e.cooldown_until == NOW - timedelta(days=2) + WEEK
+
+
+def test_cooldown_expires():
+    assert attempts.evaluate([outcome("REJECTED", 9, 8)], NOW, 3, WEEK).cooldown_until is None
+
+
+def test_cooldown_only_follows_the_latest_interview():
+    # bị từ chối rồi admin yêu cầu làm lại => buổi mới nhất là RETAKE_REQUESTED, không phải chờ
+    e = attempts.evaluate([outcome("REJECTED", 3, 2), outcome("RETAKE_REQUESTED", 1, 0)], NOW, 3, WEEK)
+    assert e.cooldown_until is None and e.attempts_used == 1
+
+
+def test_three_rejections_lock_without_cooldown():
+    e = attempts.evaluate([outcome("REJECTED", 30, 29), outcome("REJECTED", 20, 19), outcome("REJECTED", 2, 1)],
+                          NOW, 3, WEEK)
+    assert e.locked and e.attempts_left == 0 and e.cooldown_until is None
+
+
+def test_pending_review_counts_as_attempt():
+    e = attempts.evaluate([outcome("REJECTED", 30, 29), outcome("PENDING_REVIEW", 1)], NOW, 3, WEEK)
+    assert e.attempts_used == 2 and not e.locked
+
+
+# ---------- API ----------
+
+async def _shift_review(mentor_id, days):
+    conn = await asyncpg.connect(config.AI_DB_URL)
+    try:
+        await conn.execute("""UPDATE interviews SET reviewed_at = reviewed_at - make_interval(days => $2),
+                                                  created_at = created_at - make_interval(days => $2)
+                              WHERE mentor_id = $1""", mentor_id, days)
+    finally:
+        await conn.close()
+
+
+def shift_review(mentor_id, days):
+    asyncio.run(_shift_review(mentor_id, days))
+
+
+def reject(client, interview_id, admin):
+    res = client.post(f"/api/ai/admin/interviews/{interview_id}/review",
+                      json={"decision": "REJECT", "note": "Cần trả lời chi tiết hơn"}, headers=admin)
+    assert res.status_code == 200, res.text
+
+
+def finish(client, mentor_id):
+    res = start(client, mentor_id)
+    assert res.status_code == 200, res.text
+    interview, _ = answer_all(client, res.json(), mentor_id, text="Khong biet")
+    return interview
+
+
+@pytest.fixture
+def mentor_id():
+    return uuid.uuid4()
+
+
+def eligibility(client, mentor_id):
+    res = client.get("/api/ai/interviews/eligibility", headers=auth(mentor_id, "MENTOR"))
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def test_start_requires_self_answer_acknowledgement(client, db, fake_profile, mentor_id):
+    for res in (client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR")),
+                start(client, mentor_id, ack=False)):
+        assert res.status_code == 400
+        assert res.json()["error"]["code"] == "SELF_ANSWER_ACK_REQUIRED"
+    started = start(client, mentor_id)
+    assert started.status_code == 200 and started.json()["selfAnswerAcknowledged"] is True
+
+
+def test_eligibility_cooldown_lock_and_unlock(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
+    admin = auth(uuid.uuid4(), "ADMIN")
+    assert eligibility(client, mentor_id) == {"attemptsUsed": 0, "attemptsLeft": 3, "maxAttempts": 3,
+                                              "cooldownUntil": None, "locked": False, "canStart": True,
+                                              "reason": None, "questionCount": 5}
+    for n in range(1, 4):
+        interview = finish(client, mentor_id)
+        assert eligibility(client, mentor_id)["reason"] == "PENDING_REVIEW"
+        reject(client, interview["id"], admin)
+        e = eligibility(client, mentor_id)
+        assert e["attemptsUsed"] == n and e["attemptsLeft"] == 3 - n
+        if n < 3:
+            assert e["reason"] == "COOLDOWN" and e["cooldownUntil"] is not None and not e["canStart"]
+            blocked = start(client, mentor_id)
+            assert blocked.status_code == 409
+            assert blocked.json()["error"]["code"] == "INTERVIEW_COOLDOWN"
+            assert blocked.json()["error"]["retryAfter"] == e["cooldownUntil"]
+            shift_review(mentor_id, 8)  # 8 ngày sau: hết thời gian chờ
+            assert eligibility(client, mentor_id)["canStart"]
+
+    locked = eligibility(client, mentor_id)
+    assert locked["locked"] and locked["reason"] == "LOCKED" and locked["cooldownUntil"] is None
+    res = start(client, mentor_id)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_LOCKED"
+
+    # chỉ admin được mở khoá
+    path = f"/api/ai/admin/interviews/mentors/{mentor_id}/unlock"
+    assert client.post(path, json={}, headers=auth(mentor_id, "MENTOR")).status_code == 403
+    assert client.get(f"/api/ai/admin/interviews/mentors/{mentor_id}/eligibility", headers=admin).json()["locked"]
+    unlocked = client.post(path, json={"note": "Đã trao đổi trực tiếp"}, headers=admin)
+    assert unlocked.status_code == 200, unlocked.text
+    assert unlocked.json()["attemptsUsed"] == 0 and unlocked.json()["canStart"]
+    assert fake_audit.records[-1]["action"] == "INTERVIEW_ATTEMPTS_UNLOCKED"
+    assert fake_audit.records[-1]["targetId"] == str(mentor_id)
+    assert fake_audit.records[-1]["before"]["locked"] is True and fake_audit.records[-1]["after"]["locked"] is False
+
+    again = client.post(path, json={}, headers=admin)
+    assert again.status_code == 409 and again.json()["error"]["code"] == "INTERVIEW_NOT_LOCKED"
+    assert start(client, mentor_id).status_code == 200

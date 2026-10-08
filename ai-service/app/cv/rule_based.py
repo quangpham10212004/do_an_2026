@@ -20,6 +20,10 @@ DATE_RANGE = re.compile(
 ROLE = re.compile(r".{0,60}(developer|engineer|lập trình viên|kỹ sư|sinh viên|student|intern|thực tập sinh|architect|"
                   r"tester|devops|data scientist|analyst).{0,40}", re.IGNORECASE)
 BULLET = re.compile(r"^[•\-*+–▪●◦]")
+# Dòng học vấn (trường/đại học) — khoảng thời gian trên dòng này không phải kinh nghiệm làm việc. Cần khi CV hai cột
+# bị trộn dòng khiến dòng học vấn lọt vào mục kinh nghiệm, hoặc khi không nhận ra tiêu đề mục kinh nghiệm.
+EDUCATION_LINE = re.compile(r"(đại học|học viện|cao đẳng|trường|university|college|institute|school|academy|"
+                            r"bachelor|master|msc|bsc|cử nhân|thạc sĩ|kỹ sư \w+ \(\d{4})", re.IGNORECASE)
 BULLET_PREFIX = re.compile(r"^[•\-*+–▪●◦]\s*")
 
 HEADINGS = [
@@ -72,13 +76,20 @@ def extract_years(full_text: str, experience_lines: list[str], today: date | Non
 
     today = today or date.today()
     total_months = 0
-    for r in DATE_RANGE.finditer("\n".join(experience_lines)):
+    work_lines = [l for l in experience_lines if not EDUCATION_LINE.search(l)]
+    for r in DATE_RANGE.finditer("\n".join(work_lines)):
         start_month = _clamp_month(int(r.group(1))) if r.group(1) else 1
         start_year = int(r.group(2))
         end_raw = r.group(4)
         ongoing = not end_raw.isdigit()
         end_year = today.year if ongoing else int(end_raw)
-        end_month = today.month if ongoing else (_clamp_month(int(r.group(3))) if r.group(3) else 12)
+        if ongoing:
+            end_month = today.month
+        elif r.group(3):
+            end_month = _clamp_month(int(r.group(3)))
+        else:
+            # "2023 - 2026" (chỉ có năm) = 3 năm; có tháng bắt đầu mà không có tháng kết thúc thì lấy cùng tháng
+            end_month = start_month
         months = (end_year - start_year) * 12 + (end_month - start_month)
         if 0 < months < 45 * 12:
             total_months += months
@@ -116,7 +127,8 @@ def parse(text: str) -> ParsedCv:
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     sections = split_sections(lines)
     skills = find_skills(text)
-    years = extract_years(text, sections.get("EXPERIENCE", []))
+    # Không nhận ra mục kinh nghiệm (vd. CV hai cột bị trộn dòng tiêu đề) => xét mọi dòng trừ dòng học vấn.
+    years = extract_years(text, sections.get("EXPERIENCE") or lines)
     projects = extract_projects(sections.get("PROJECTS", []))
     education = sections.get("EDUCATION", [])[:4]
     role = next((l for l in lines[:15] if ROLE.fullmatch(l)), None)

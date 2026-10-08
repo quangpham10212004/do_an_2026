@@ -86,3 +86,19 @@ def test_rejects_pdf_without_text():
     with pytest.raises(AiError) as e:
         extract_text(make_pdf(["Hi"]))
     assert e.value.code == "CV_NO_TEXT"
+
+
+def test_year_only_range_counts_difference_of_years():
+    # US-29: trước đây "2023 - 2026" bị tính 01/2023 → 12/2026 = 4 năm
+    assert rule_based.extract_years("x", ["Grab - Backend (2023 - 2026)"], today=date(2026, 11, 1)) == 3
+
+
+def test_education_line_inside_experience_is_ignored():
+    # CV hai cột bị trộn dòng: dòng học vấn lọt vào mục kinh nghiệm
+    lines = ["Ngân hàng Đông Á (03/2022 - 02/2026)", "PyTorch Đại học Kinh tế Quốc dân (2017 - 2021)"]
+    assert rule_based.extract_years("x", lines, today=date(2026, 11, 1)) == 4
+
+
+def test_years_found_without_experience_heading():
+    text = "SKILLS EXPERIENCE\nC# Bosch Global Software (2019 - 2026)\nTypeScript Da Nang University (2015 - 2019)"
+    assert rule_based.parse(text).years_experience == 7

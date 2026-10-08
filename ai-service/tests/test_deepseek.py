@@ -1,6 +1,7 @@
 import json
 
 import httpx
+import pytest
 from pydantic import BaseModel
 
 from app.cv import deepseek_parser
@@ -95,14 +96,40 @@ def test_invalid_truncated_or_fenced_json():
     assert client.json("s", "u", Answer, "{}") == Answer(topic="Fence", score=2)
 
 
-def test_interview_engine_uses_model_output_and_clamps_score():
+def test_interview_engine_uses_model_rubric_and_shared_formula():
     fake = FakeDeepSeek()
-    fake.reply('{"score": 42, "feedback": "Tốt", "next": {"topic": "Bảo mật", "strategy": "pivot", "question": "JWT là gì?"}}')
+    fake.reply('{"rubric": {"technical": 8, "depth": 6, "communication": 7, "mentoring": 5}, "score": 42, '
+               '"feedback": "Tốt", "next": {"topic": "Bảo mật", "strategy": "pivot", "question": "JWT là gì?"}}')
     current = TurnRecord(turn_no=1, topic="API", strategy="OPENING", question="q", answer="a")
     ev, fallback = deepseek_engine.evaluate(fake.client(), CTX, [], current, False)
     assert not fallback
-    assert ev.score == 10
+    assert ev.rubric.technical == 8 and ev.rubric.mentoring == 5
+    assert ev.score == 6.8  # 0.4*8 + 0.3*6 + 0.15*7 + 0.15*5 — "score" của model bị bỏ qua
     assert ev.next.strategy == "PIVOT" and ev.next.question == "JWT là gì?"
+
+
+@pytest.mark.parametrize("rubric_json", [
+    '{"technical": 12, "depth": 6, "communication": 7, "mentoring": 5}',   # ngoài miền 0-10
+    '{"technical": -1, "depth": 6, "communication": 7, "mentoring": 5}',
+    '{"technical": 8, "depth": 6, "communication": 7}',                    # thiếu tiêu chí
+    '"tốt"',                                                               # sai kiểu
+])
+def test_invalid_rubric_falls_back_to_rule_based_for_that_turn(rubric_json):
+    fake = FakeDeepSeek()
+    fake.reply('{"rubric": ' + rubric_json + ', "feedback": "x", "next": {"topic": "A", "strategy": "PIVOT", "question": "Q?"}}')
+    current = TurnRecord(turn_no=1, topic="Caching & hiệu năng", strategy="OPENING", question="q", answer="Không biết")
+    ev, fallback = deepseek_engine.evaluate(fake.client(), CTX, [], current, False)
+    assert fallback
+    assert ev == rule_based.evaluate(CTX, [], current, False)
+
+
+def test_summary_uses_formula_not_model_score():
+    fake = FakeDeepSeek()
+    fake.reply('{"overall_score": 99, "recommendation": "APPROVE", "summary": "Ổn", "strengths": [], "weaknesses": []}')
+    turns = [TurnRecord(turn_no=i, topic="A", strategy="PIVOT", question="q", answer="a", score=4.0) for i in (1, 2)]
+    final, fallback = deepseek_engine.summarize(fake.client(), CTX, turns)
+    assert not fallback
+    assert final.overall_score == 40.0 and final.recommendation == "REJECT" and final.summary == "Ổn"
 
 
 def test_interview_engine_falls_back_when_next_question_missing():

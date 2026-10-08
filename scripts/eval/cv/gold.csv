@@ -1,0 +1,21 @@
+cv_id,file,lang,layout,rater1_skills,rater1_years,rater2_skills,rater2_years,draft_skills,draft_years
+CV01,pdf/CV01.pdf,vi,classic,,,,,Java;Spring Boot;PostgreSQL;Redis;Kafka;Docker;Git;JUnit;REST API;Microservices,4
+CV02,pdf/CV02.pdf,en,classic,,,,,React;Next.js;TypeScript;JavaScript;HTML;CSS;Tailwind CSS;Jest;Cypress;Figma,3
+CV03,pdf/CV03.pdf,vi,two-column,,,,,Python;Pandas;NumPy;scikit-learn;PyTorch;SQL;Airflow;Power BI;Machine Learning,4
+CV04,pdf/CV04.pdf,en,table,,,,,AWS;Google Cloud;Docker;Kubernetes;Helm;Terraform;Ansible;Jenkins;GitHub Actions;GitLab CI;Prometheus;Grafana;Linux;Nginx;CI/CD,6
+CV05,pdf/CV05.pdf,vi,compact,,,,,Flutter;Dart;Android;Kotlin;Firebase;REST API;BLoC,2
+CV06,pdf/CV06.pdf,en,timeline,,,,,JavaScript;TypeScript;Node.js;Express;MongoDB;Vue.js;PHP;MySQL;Docker;Git;WordPress,6
+CV07,pdf/CV07.pdf,vi,table,,,,,Java;Python;Selenium;Playwright;JUnit;Jenkins;Agile/Scrum,5
+CV08,pdf/CV08.pdf,en,two-column,,,,,C#;.NET;SQL Server;Azure;Angular;TypeScript;Git,7
+CV09,pdf/CV09.pdf,vi,classic,,,,,React;Redux;JavaScript;HTML;CSS;Tailwind CSS;Git;REST API,0
+CV10,pdf/CV10.pdf,en,compact,,,,,Machine Learning;NLP;Computer Vision;PyTorch;TensorFlow;AWS;Docker;Spark;Airflow,5
+CV11,pdf/CV11.pdf,vi,timeline,,,,,Go;gRPC;PostgreSQL;RabbitMQ;Docker;Kubernetes;Linux,4
+CV12,pdf/CV12.pdf,en,classic,,,,,Swift;iOS;Objective-C;SwiftUI;Git;CI/CD;Combine,7
+CV13,pdf/CV13.pdf,vi,two-column,,,,,PHP;Laravel;MySQL;Vue.js;Redis;Docker,6
+CV14,pdf/CV14.pdf,en,table,,,,,Python;SQL;Scala;Spark;Kafka;Airflow;PostgreSQL;Elasticsearch;Google Cloud,4
+CV15,pdf/CV15.pdf,vi,compact,,,,,AWS;Terraform;Kubernetes;Helm;GitLab CI;Prometheus;Grafana,3
+CV16,pdf/CV16.pdf,en,timeline,,,,,Python;Django;FastAPI;Flask;PostgreSQL;Redis;Docker;AWS;Celery;REST API,3
+CV17,pdf/CV17.pdf,vi,classic,,,,,Node.js;NestJS;GraphQL;MongoDB;React;Next.js;TypeScript;AWS,6
+CV18,pdf/CV18.pdf,en,two-column,,,,,Kotlin;Android;Java;React Native;Firebase;Git,7
+CV19,pdf/CV19.pdf,vi,timeline,,,,,C++;Linux;Python;Git;Data Structures & Algorithms,6
+CV20,pdf/CV20.pdf,en,compact,,,,,Playwright;Cypress;TypeScript;GitHub Actions;Agile/Scrum,1

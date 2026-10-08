@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, PageHead, useDialog } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
+import { formatAgreement } from "@/features/ai/InterviewViews";
 import { authApi } from "@/features/auth/api";
 import { matchingApi } from "@/features/matching/api";
 import { mentoringApi } from "@/features/mentoring/api";
@@ -56,6 +57,9 @@ function AdminHome() {
         <Stat label="Phiên đã xác nhận" value={mentoring?.confirmedSessions} />
         <Stat label="Phiên hoàn thành" value={mentoring?.completedSessions} />
         <Stat label="Mentor đã duyệt / từ chối" value={interviews ? `${interviews.mentorsApproved} / ${interviews.mentorsRejected}` : null} />
+      </div>
+      <div className="grid grid-4" style={{ marginBottom: "1.25rem" }}>
+        <Stat label="Đồng thuận admin – AI Interview (mục tiêu ≥ 80%)" value={formatAgreement(interviews)} href="/admin/interviews" />
       </div>
       <h2>Thanh toán</h2>
       <div className="grid grid-4" style={{ marginBottom: "1.25rem" }}>

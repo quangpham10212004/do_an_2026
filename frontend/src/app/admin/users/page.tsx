@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, StatusBadge } from "@/components/ui";
@@ -56,7 +57,7 @@ function Users() {
                   <td><StatusBadge status={u.status} /></td>
                   <td>{u.emailVerified ? "✔" : "—"}</td>
                   <td>{formatDate(u.createdAt)}</td>
-                  <td>{u.role !== "ADMIN" && <button className={`btn sm ${u.status === "ACTIVE" ? "danger" : "good"}`} onClick={() => toggle(u)}>{u.status === "ACTIVE" ? "Khoá" : "Mở khoá"}</button>}</td>
+                  <td className="row" style={{ gap: 6 }}><Link className="btn sm secondary" href={`/admin/audit?targetType=USER&targetId=${u.id}`}>Nhật ký</Link>{u.role !== "ADMIN" && <button className={`btn sm ${u.status === "ACTIVE" ? "danger" : "good"}`} onClick={() => toggle(u)}>{u.status === "ACTIVE" ? "Khoá" : "Mở khoá"}</button>}</td>
                 </tr>
               ))}
             </tbody>
