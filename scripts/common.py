@@ -28,6 +28,20 @@ _AI_REVIEW = re.compile(r"/api/ai/admin/interviews/[^/]+/review/?$")
 MIN_OVERRULE_NOTE = 10
 
 
+_SESSION_REVIEW = re.compile(r"/api/mentoring/sessions/[^/]+/review/?$")
+
+
+def _review_compat(method, url, body):
+    """
+    Tương thích US-41 (Sprint 5): đánh giá mới bắt buộc 3 điểm thành phần (kiến thức, truyền đạt, chuẩn bị). Script
+    cũ chỉ gửi {rating, comment} được bổ sung điểm thành phần = rating. Script kiểm tra US-41 luôn gửi đủ.
+    """
+    if method == "POST" and isinstance(body, dict) and _SESSION_REVIEW.search(url) and "knowledge" not in body:
+        r = body.get("rating")
+        return {**body, "knowledge": r, "clarity": r, "preparation": r}
+    return body
+
+
 def _ai_interview_compat(method, url, body):
     """
     Tương thích cho các script seed/e2e dựng mentor đã duyệt (Sprint 3, Team C):
@@ -68,7 +82,7 @@ def _auto_verify(url, res):
 
 
 def call(method, url, body=None, token=None, internal=False, raw_body=None, content_type=None, headers=None):
-    body = _ai_interview_compat(method, url, body) if raw_body is None else body
+    body = _review_compat(method, url, _ai_interview_compat(method, url, body)) if raw_body is None else body
     headers = dict(headers or {})
     keep_unverified = headers.pop(KEEP_UNVERIFIED, None) is not None
     headers = {"Accept": "application/json", **headers}

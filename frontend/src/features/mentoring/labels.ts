@@ -173,3 +173,21 @@ export const MESSAGE_REPORT_OUTCOME_LABELS: Record<MessageReportOutcome, string>
   DISMISSED: "Không vi phạm",
   WARNED: "Đã cảnh cáo người gửi",
 };
+
+// US-41 — thẻ đánh giá (mã khớp ReviewRules.TAGS ở mentoring-service)
+export const REVIEW_TAG_LABELS: Record<string, string> = {
+  PRACTICAL_EXAMPLES: "Ví dụ thực tế",
+  GOOD_LISTENER: "Biết lắng nghe",
+  WELL_PREPARED: "Chuẩn bị kỹ",
+  CLEAR_EXPLANATION: "Giải thích dễ hiểu",
+  ACTIONABLE_ADVICE: "Lời khuyên áp dụng được",
+  RAN_OVER_TIME: "Quá giờ",
+  STARTED_LATE: "Bắt đầu muộn",
+  TOO_THEORETICAL: "Nặng lý thuyết",
+};
+
+export const REVIEW_SUBSCORES: [key: "knowledge" | "clarity" | "preparation", label: string][] = [
+  ["knowledge", "Kiến thức"],
+  ["clarity", "Truyền đạt"],
+  ["preparation", "Chuẩn bị"],
+];

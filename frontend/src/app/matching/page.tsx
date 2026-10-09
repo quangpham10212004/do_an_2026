@@ -98,7 +98,8 @@ function MentorMatchCard({ m, requested, onNotRelevant }: MentorMatchCardProps) 
             {m.domain} · {m.yearsExperience} năm KN · <span style={{ whiteSpace: "nowrap" }}>{formatRate(m.hourlyRate)}</span>
           </div>
           <div className="small" style={{ marginTop: 2 }}>
-            {m.ratingCount > 0 && <><Stars value={m.rating} /> <span className="muted">({m.ratingCount})</span> </>}
+            {/* US-41 (PRD-REV-5) — sao chỉ hiện khi ≥ 3 đánh giá */}
+            {m.ratingCount >= 3 && <><Stars value={m.rating} /> <span className="muted">({m.ratingCount})</span> </>}
             {m.newMentor && <span className="badge new">Mentor mới</span>}
             <span className="muted"> · Khớp lịch {pct(m.scheduleFit)}%</span>
             {m.medianResponseHours !== null && (

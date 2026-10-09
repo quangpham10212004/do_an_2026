@@ -28,7 +28,7 @@ import java.util.UUID;
 public class InternalDevController {
 
     /** startsInMinutes (US-34) — đặt giờ bắt đầu = bây giờ + N phút (ưu tiên hơn endedMinutesAgo). */
-    public record ShiftSessionInput(Integer endedMinutesAgo, Integer startsInMinutes) {
+    public record ShiftSessionInput(Integer endedMinutesAgo, Integer startsInMinutes, Integer resolvedDaysAgo) {
     }
 
     public record ShiftRequestInput(Integer createdHoursAgo) {
@@ -79,6 +79,13 @@ public class InternalDevController {
         MentoringSession s = tx.execute(st -> {
             MentoringSession ss = sessionRepo.findById(id)
                     .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
+            if (in.resolvedDaysAgo() != null) {
+                // US-41 — lùi mốc COMPLETED (cửa sổ đánh giá 14 ngày) cùng giờ phiên.
+                OffsetDateTime resolved = OffsetDateTime.now().minusDays(in.resolvedDaysAgo());
+                ss.setScheduledAt(resolved.minusMinutes(ss.getDurationMinutes() + 5L));
+                ss.markResolvedAt(resolved);
+                return ss;
+            }
             ss.setScheduledAt(in.startsInMinutes() != null
                     ? OffsetDateTime.now().plusMinutes(in.startsInMinutes())
                     : OffsetDateTime.now().minusMinutes(ago + (long) ss.getDurationMinutes()));

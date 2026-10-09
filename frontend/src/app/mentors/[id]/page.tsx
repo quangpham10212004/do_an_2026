@@ -7,16 +7,15 @@ import { Alert, Loading, PageHead, Stars, StatusBadge } from "@/components/ui";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi, publicMentorStatusText } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { DAY_NAMES, formatDate, formatRate } from "@/lib/format";
-import type { MentorProfile, MentoringRequest, Review, SessionUser } from "@/types";
+import MentorReviews from "@/features/mentoring/MentorReviews";
+import type { MentorProfile, MentoringRequest, SessionUser } from "@/types";
 
 function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
   const [mentor, setMentor] = useState<MentorProfile | null | undefined>(undefined);
-  const [reviews, setReviews] = useState<Review[]>([]);
   const [request, setRequest] = useState<MentoringRequest | null>(null);
 
   useEffect(() => {
     profileApi.getMentor(id).then(setMentor).catch(() => setMentor(null));
-    mentoringApi.mentorReviews(id).then(setReviews).catch(() => {});
     if (user.role === "MENTEE") {
       mentoringApi.requests().then((rs) => setRequest(rs.find((r) => r.mentorId === id && ["PENDING", "ACCEPTED"].includes(r.status)) || null)).catch(() => {});
     }
@@ -79,19 +78,7 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
               </>
             )}
           </div>
-          <div className="card">
-            <h2>Đánh giá ({mentor.ratingCount})</h2>
-            {mentor.ratingCount > 0 && <p><Stars value={mentor.rating} /> {mentor.rating.toFixed(1)}/5</p>}
-            {reviews.length === 0 && <p className="muted">Chưa có đánh giá.</p>}
-            {reviews.map((r) => (
-              <div key={r.id} className="list-item">
-                <div>
-                  <div className="row"><Stars value={r.rating} /><strong className="small">{r.menteeName}</strong><span className="muted small">{formatDate(r.createdAt)}</span></div>
-                  {r.comment && <div className="small">{r.comment}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
+          <MentorReviews mentorId={mentor.userId} />
         </div>
 
         {user.role === "MENTEE" && (

@@ -182,6 +182,9 @@ public class MentoringSession {
     public String getAttendanceResolution() { return attendanceResolution; }
     public OffsetDateTime getResolvedAt() { return resolvedAt; }
 
+    /** Chỉ dùng cho endpoint dev (e2e US-41). */
+    public void markResolvedAt(OffsetDateTime at) { this.resolvedAt = at; }
+
     public void resolve(Status outcome, String resolution, OffsetDateTime at) {
         this.status = outcome;
         this.attendanceResolution = resolution;

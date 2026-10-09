@@ -14,6 +14,9 @@ import type {
   MessageReportStatus,
   BookSessionInput,
   CancelPreview,
+  MenteeReliability,
+  MentorReviewSummary,
+  StructuredReviewInput,
   CreateRequestInput,
   EndReason,
   Dispute,
@@ -71,9 +74,19 @@ export const mentoringApi = {
   /** US-12 — xác nhận tham dự sau phiên. */
   answerAttendance: (id: Uuid, answer: AttendanceAnswer) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/attendance`, { method: "POST", body: { answer } }),
-  review: (id: Uuid, rating: number, comment: string) =>
-    api<Review>(`/api/mentoring/sessions/${id}/review`, { method: "POST", body: { rating, comment } }),
+  // US-41 — đánh giá có cấu trúc (sửa trong 48 giờ), phản hồi của mentor, nhận xét riêng về mentee
+  review: (id: Uuid, body: StructuredReviewInput) => api<Review>(`/api/mentoring/sessions/${id}/review`, { method: "POST", body }),
+  updateReview: (id: Uuid, body: StructuredReviewInput) =>
+    api<Review>(`/api/mentoring/sessions/${id}/review`, { method: "PUT", body }),
+  replyReview: (reviewId: Uuid, reply: string) =>
+    api<Review>(`/api/mentoring/reviews/${reviewId}/reply`, { method: "POST", body: { reply } }),
   mentorReviews: (mentorId: Uuid) => api<Review[]>(`/api/mentoring/mentors/${mentorId}/reviews`),
+  reviewSummary: (mentorId: Uuid) => api<MentorReviewSummary>(`/api/mentoring/mentors/${mentorId}/review-summary`),
+  menteeFeedback: (sessionId: Uuid, preparation: number, engagement: number, comment?: string) =>
+    api<MenteeReliability>(`/api/mentoring/sessions/${sessionId}/mentee-feedback`, {
+      method: "POST", body: { preparation, engagement, comment },
+    }),
+  menteeReliability: (menteeId: Uuid) => api<MenteeReliability>(`/api/mentoring/mentees/${menteeId}/reliability`),
   availableSlots: (mentorId: Uuid, durationMinutes = 60, days = 14, excludeSessionId?: Uuid) =>
     api<AvailableSlots>(`/api/mentoring/mentors/${mentorId}/available-slots?durationMinutes=${durationMinutes}&days=${days}`
       + (excludeSessionId ? `&excludeSessionId=${excludeSessionId}` : "")),
