@@ -17,6 +17,7 @@ const LINKS: Record<Role, [href: string, label: string][]> = {
     ["/mentoring/requests", "Yêu cầu"],
     ["/mentoring/relationships", "Mentoring"],
     ["/mentoring/sessions", "Phiên học"],
+    ["/messages", "Tin nhắn"],
     ["/learning", "Learning Hub"],
     ["/referral", "Giới thiệu"],
   ],
@@ -27,6 +28,7 @@ const LINKS: Record<Role, [href: string, label: string][]> = {
     ["/mentoring/requests", "Yêu cầu"],
     ["/mentoring/relationships", "Mentoring"],
     ["/mentoring/sessions", "Phiên học"],
+    ["/messages", "Tin nhắn"],
     ["/earnings", "Thu nhập"],
     ["/payment/transactions", "Giao dịch"],
     ["/learning", "Learning Hub"],
@@ -40,6 +42,7 @@ const LINKS: Record<Role, [href: string, label: string][]> = {
     ["/admin/learning", "Nội dung"],
     ["/admin/transactions", "Giao dịch"],
     ["/admin/disputes", "Tranh chấp"],
+    ["/admin/message-reports", "Báo cáo tin nhắn"],
     ["/admin/audit", "Nhật ký"],
   ],
 };
@@ -49,6 +52,8 @@ export default function Nav() {
   const pathname = usePathname();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
+  // US-33 (PRD-MSG-2) — số tin nhắn chưa đọc trên mục "Tin nhắn".
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -57,8 +62,17 @@ export default function Nav() {
       api<NotificationList>("/api/mentoring/notifications?limit=1")
         .then((res) => active && setUnread(res.unreadCount))
         .catch(() => {});
+    const loadMessages = () =>
+      user.role !== "ADMIN" &&
+      api<{ unread: number }>("/api/mentoring/conversations/unread-count")
+        .then((res) => active && setUnreadMessages(res.unread))
+        .catch(() => {});
     load();
-    const timer = setInterval(load, 30000);
+    loadMessages();
+    const timer = setInterval(() => {
+      load();
+      loadMessages();
+    }, 30000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -76,6 +90,7 @@ export default function Nav() {
             (LINKS[user.role] || []).map(([href, label]) => (
               <Link key={href} href={href} className={pathname === href || (href !== "/admin" && href !== "/dashboard" && pathname.startsWith(href)) ? "active" : ""}>
                 {label}
+                {href === "/messages" && unreadMessages > 0 && <span className="badge bad" style={{ marginLeft: 4 }}>{unreadMessages}</span>}
               </Link>
             ))}
         </div>

@@ -1,3 +1,4 @@
+import type { ActionItem } from "./mentoring";
 import type { IsoDateTime, Uuid } from "./common";
 import type { SessionType } from "./profile";
 import type { RequestFrequency } from "./mentoring";
@@ -52,6 +53,8 @@ export interface RelationshipWorkspace {
   /** Người xem là một bên tham gia và readOnly = false (admin luôn false). */
   canEdit: boolean;
   maxGoals: number;
+  /** US-40 — việc còn mở của cặp (mọi phiên); admin nhận mảng rỗng. */
+  openActionItems: ActionItem[];
 }
 
 export interface GoalUpdateInput {

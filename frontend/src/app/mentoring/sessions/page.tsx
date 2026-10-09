@@ -262,6 +262,15 @@ function Sessions({ user }: { user: SessionUser }) {
                   </div>
                   <div className="row">
                     {!isMentor && s.status === "PENDING" && <Link className="btn sm" href={`/payment/${s.id}`}>Thanh toán</Link>}
+                    {!["PENDING", "EXPIRED"].includes(s.status) && (
+                      <Link className="btn secondary sm" href={`/mentoring/sessions/${s.id}/notes`}>Ghi chú</Link>
+                    )}
+                    {s.status === "CONFIRMED" && future && (
+                      <button className="btn secondary sm" title="Tải file .ics; tải lại sau khi dời lịch để cập nhật"
+                        onClick={() => mentoringApi.downloadCalendar(s.id).catch((e) => setMsg({ error: errorMessage(e) }))}>
+                        Thêm vào lịch
+                      </button>
+                    )}
                     {s.status === "CONFIRMED" && s.meetingLink && canJoin(s) && (
                       <a className="btn good sm" href={s.meetingLink} target="_blank" rel="noreferrer">Tham gia</a>
                     )}

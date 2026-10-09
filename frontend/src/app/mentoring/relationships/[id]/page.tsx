@@ -8,7 +8,7 @@ import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import { SESSION_STATUS_LABELS } from "@/features/mentoring/labels";
 import { SESSION_TYPE_LABELS } from "@/features/profile/api";
 import { ApiError, errorMessage } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import type { EndMentoringReason, GoalStatus, RelationshipGoal, RelationshipWorkspace, SessionUser } from "@/types";
 import {
   END_REASONS,
@@ -229,6 +229,21 @@ function Workspace({ user, id }: { user: SessionUser; id: string }) {
               <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
             </div>
           ))}
+          {ws.openActionItems?.length > 0 && (
+            <>
+              <h3 style={{ marginTop: "1rem" }}>Việc cần làm còn mở</h3>
+              {ws.openActionItems.map((a) => (
+                <div key={a.id} className="list-item row between">
+                  <span>
+                    {a.text}
+                    <span className="small muted"> · {a.owner === "MENTOR" ? "Mentor" : "Mentee"}{a.dueDate ? ` · hạn ${formatDate(a.dueDate)}` : ""}</span>
+                    {a.overdue && <span className="badge bad" style={{ marginLeft: 6 }}>Quá hạn</span>}
+                  </span>
+                  <Link className="small" href={`/mentoring/sessions/${a.sessionId}/notes`}>Phiên →</Link>
+                </div>
+              ))}
+            </>
+          )}
           <h3 style={{ marginTop: "1rem" }}>Mục tiêu ban đầu trong yêu cầu</h3>
           <p className="small" style={{ whiteSpace: "pre-wrap" }}>{r.goal}</p>
         </div>

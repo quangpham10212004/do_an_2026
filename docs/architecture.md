@@ -293,7 +293,7 @@ flowchart TB
 - frontend (Next.js 14 + TypeScript) build `output: standalone` → image Node 20 alpine.
 - Mọi service có healthcheck; service phụ thuộc chỉ khởi động khi CSDL `healthy`.
 - Cấu hình qua biến môi trường (`.env`, xem `.env.example`): `JWT_SECRET`, `INTERNAL_API_KEY`,
-  `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `REMINDER_BEFORE`,
+  `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
   `INTERVIEW_MAX_TURNS`, `ENRICHMENT_MAX_TURNS`, `INDEX_SYNC_INTERVAL`.
 - **Nâng cấp từ bản trước khi tách quyền sở hữu embedding**: `db/init/*.sql` chỉ chạy khi volume CSDL
   được tạo lần đầu, nên máy đã chạy hệ thống cũ sẽ còn `profile_db` với cột `embedding` và chưa có

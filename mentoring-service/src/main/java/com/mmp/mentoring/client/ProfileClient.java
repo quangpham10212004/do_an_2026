@@ -90,8 +90,11 @@ public class ProfileClient {
         }
     }
 
-    public record ProfileSummary(UUID userId, String displayName, String role, String domain) {
+    /** timezone (US-37, PRD-PROF-6) — IANA, vd. Asia/Ho_Chi_Minh; null khi profile-service chưa trả trường này. */
+    public record ProfileSummary(UUID userId, String displayName, String role, String domain, String timezone) {
     }
+
+    public static final String DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh";
 
     /** Hồ sơ mentee (profile-service GET /internal/mentee/{id}, gọi bằng X-Internal-Token). */
     public record MenteeProfile(UUID userId, String displayName, String goal, String domain, String currentLevel,
@@ -134,6 +137,16 @@ public class ProfileClient {
         Map<UUID, String> result = new ConcurrentHashMap<>();
         ids.stream().distinct().forEach(id -> result.put(id, summary(id).map(ProfileSummary::displayName).orElse("Người dùng")));
         return result;
+    }
+
+    /** US-34 — múi giờ của người dùng (PRD-PROF-6); thiếu / không hợp lệ / lỗi → Asia/Ho_Chi_Minh. */
+    public java.time.ZoneId timezone(UUID userId) {
+        String tz = summary(userId).map(ProfileSummary::timezone).orElse(null);
+        try {
+            return java.time.ZoneId.of(tz == null || tz.isBlank() ? DEFAULT_TIMEZONE : tz);
+        } catch (java.time.DateTimeException e) {
+            return java.time.ZoneId.of(DEFAULT_TIMEZONE);
+        }
     }
 
     public void updateRating(UUID mentorId, double rating, long count) {

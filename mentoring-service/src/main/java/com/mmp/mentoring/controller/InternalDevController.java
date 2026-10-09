@@ -27,7 +27,8 @@ import java.util.UUID;
 @Profile("!prod")
 public class InternalDevController {
 
-    public record ShiftSessionInput(Integer endedMinutesAgo) {
+    /** startsInMinutes (US-34) — đặt giờ bắt đầu = bây giờ + N phút (ưu tiên hơn endedMinutesAgo). */
+    public record ShiftSessionInput(Integer endedMinutesAgo, Integer startsInMinutes) {
     }
 
     public record ShiftRequestInput(Integer createdHoursAgo) {
@@ -60,14 +61,19 @@ public class InternalDevController {
         this.tx = tx;
     }
 
-    /** Dời giờ phiên để phiên đã kết thúc {@code endedMinutesAgo} phút trước (0 = vừa kết thúc). */
+    /**
+     * Dời giờ phiên để phiên đã kết thúc {@code endedMinutesAgo} phút trước (0 = vừa kết thúc), hoặc bắt đầu sau
+     * {@code startsInMinutes} phút (kiểm thử nhắc lịch US-34).
+     */
     @PostMapping("/sessions/{id}/shift")
     public Map<String, Object> shiftSession(@PathVariable UUID id, @RequestBody ShiftSessionInput in) {
         int ago = in.endedMinutesAgo() == null ? 0 : in.endedMinutesAgo();
         MentoringSession s = tx.execute(st -> {
             MentoringSession ss = sessionRepo.findById(id)
                     .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
-            ss.setScheduledAt(OffsetDateTime.now().minusMinutes(ago + (long) ss.getDurationMinutes()));
+            ss.setScheduledAt(in.startsInMinutes() != null
+                    ? OffsetDateTime.now().plusMinutes(in.startsInMinutes())
+                    : OffsetDateTime.now().minusMinutes(ago + (long) ss.getDurationMinutes()));
             return ss;
         });
         return Map.of("id", s.getId(), "scheduledAt", s.getScheduledAt(), "endsAt", s.endsAt(), "status", s.getStatus().name());
@@ -97,13 +103,14 @@ public class InternalDevController {
         return out;
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry | inactivity. */
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | request-expiry | inactivity. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
             case "attendance" -> attendance.runJob();
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
+            case "reminders" -> scheduler.sendReminders();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
             case "inactivity" -> endService.runInactivity(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);

@@ -35,6 +35,8 @@ app:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
     public-paths: ""
+  # US-34 — link tuyệt đối trong file .ics / nhắc lịch.
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
   services:
     profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
@@ -77,5 +79,3 @@ app:
     first-response-sla: PT48H       # admin phản hồi đầu tiên trong 48 giờ (cờ overdue ở danh sách admin)
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
-  reminder:
-    before: ${REMINDER_BEFORE:PT24H}   # FR-5.5 — nhắc lịch trước giờ bắt đầu

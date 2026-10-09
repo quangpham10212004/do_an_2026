@@ -164,6 +164,7 @@ function Requests({ user }: { user: SessionUser }) {
                   <Link className="btn secondary sm" href="/matching">Tìm mentor khác</Link>
                 )}
                 {!isMentor && r.status === "ACCEPTED" && <Link className="btn sm" href={`/mentoring/book/${r.mentorId}`}>Đặt lịch</Link>}
+                {r.status !== "CANCELLED" && <Link className="btn secondary sm" href={`/messages/${r.id}`}>Nhắn tin</Link>}
                 {r.status === "ACCEPTED" && (
                   <button className="btn secondary sm" onClick={() => setEnding(r)}>Kết thúc mentoring</button>
                 )}
