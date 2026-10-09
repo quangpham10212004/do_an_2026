@@ -78,7 +78,7 @@ public class SessionScheduler {
             UUID other = recipient.equals(s.getMenteeId()) ? s.getMentorId() : s.getMenteeId();
             String msg = ReminderRules.message(kind, s.getScheduledAt(), s.getDurationMinutes(), profileClient.timezone(recipient),
                     names.get(other), s.getMeetingLink(), s.getAgenda());
-            notifications.notifyUser(recipient, kind.type, kind.title, msg, link);
+            notifications.notifyUser(recipient, kind.type, kind.title, msg, link, s.getScheduledAt());
         }
     }
 

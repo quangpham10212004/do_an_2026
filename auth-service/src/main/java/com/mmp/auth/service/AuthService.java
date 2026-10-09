@@ -68,8 +68,7 @@ public class AuthService {
         user.setEmailVerificationToken(verificationToken);
         user = userRepository.save(user);
 
-        emailSender.send(email, "Xác thực tài khoản Mentor-Mentee Platform",
-                "Bấm vào liên kết để xác thực email: " + frontendUrl + "/verify-email?token=" + verificationToken);
+        emailSender.send(email, EmailTemplates.VERIFY_SUBJECT, EmailTemplates.verifyBody(frontendUrl, verificationToken));
 
         Boolean referralApplied = null;
         if (req.referralCode() != null && !req.referralCode().isBlank()) {

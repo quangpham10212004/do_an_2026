@@ -18,8 +18,26 @@ export interface AuditFilters {
   page: number;
 }
 
+/** US-38 (PRD-NOTI-1, NOTI-4) — tuỳ chọn email theo nhóm + giờ yên tĩnh 22:00–07:00. */
+export interface NotificationPreferences {
+  requests: boolean;
+  sessions: boolean;
+  messages: boolean;
+  reviews: boolean;
+  marketing: boolean;
+  quietHours: boolean;
+  quietStart?: string;
+  quietEnd?: string;
+}
+
 // auth-service (Quang)
 export const authApi = {
+  /** US-39 — gửi lại email xác thực (tối đa 3 lần / giờ → 429 RESEND_LIMIT). emailVerificationToken chỉ có ở môi trường demo. */
+  resendVerification: () =>
+    api<{ sent: boolean; emailVerificationToken: string | null }>("/api/auth/me/resend-verification", { method: "POST" }),
+  notificationPreferences: () => api<NotificationPreferences>("/api/auth/me/notification-preferences"),
+  saveNotificationPreferences: (body: NotificationPreferences) =>
+    api<NotificationPreferences>("/api/auth/me/notification-preferences", { method: "PUT", body }),
   verifyEmail: (token: string) => api<User>(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, { auth: false }),
   // US-09 — luôn 202 (null), không tiết lộ email có tồn tại hay không
   forgotPassword: (email: string) => api<null>("/api/auth/forgot-password", { method: "POST", body: { email }, auth: false }),

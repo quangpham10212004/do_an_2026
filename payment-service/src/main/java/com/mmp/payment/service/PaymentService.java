@@ -84,6 +84,7 @@ public class PaymentService {
      * IDEMPOTENCY_IN_PROGRESS. Lỗi kiểm tra trước khi tạo giao dịch (phiên không hợp lệ...) không "tiêu" key.
      */
     public TransactionResponse charge(AuthUser payer, String idempotencyKey, ChargeRequest req) {
+        payer.requireVerifiedEmail(); // US-39
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw ApiException.badRequest("IDEMPOTENCY_KEY_REQUIRED", "Thiếu header Idempotency-Key");
         }

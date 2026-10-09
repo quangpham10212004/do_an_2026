@@ -46,6 +46,11 @@ export class ApiError extends Error {
 
 let refreshing: Promise<boolean> | null = null;
 
+/** US-39 — đổi token ngay (vd. sau khi xác thực email để access token mang claim ev=true). */
+export function refreshSession(): Promise<boolean> {
+  return refreshTokens();
+}
+
 async function refreshTokens(): Promise<boolean> {
   const session = loadSession();
   if (!session?.refreshToken) return false;

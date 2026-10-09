@@ -29,7 +29,12 @@ components:
         fullName: { type: string, nullable: true }
         role: { type: string, enum: [MENTOR, MENTEE, ADMIN] }
         emailVerified: { type: boolean }
-        accessToken: { type: string }
+        accessToken:
+          type: string
+          description: >
+            JWT HS256, claims sub, email, role, typ=access và (US-39) ev = email đã xác thực. Các service chặn gửi yêu cầu,
+            đặt lịch, thanh toán khi ev = false (403 EMAIL_NOT_VERIFIED); token thiếu ev (cấp trước US-39) coi như true.
+            Sau khi xác thực email frontend gọi /api/auth/refresh để nhận token có ev = true.
         refreshToken: { type: string }
         expiresIn: { type: integer, description: Số giây access token còn hiệu lực }
         referralApplied: { type: boolean, nullable: true, description: Chỉ có khi đăng ký kèm referralCode }
@@ -407,3 +412,105 @@ paths:
                   totalPages: { type: integer }
         "400": { description: INVALID_DATE }
         "403": { description: Không phải ADMIN }
+  /api/auth/me/resend-verification:
+    post:
+      summary: >
+        US-39 (PRD-AUTH-3) — gửi lại email xác thực (banner "Email chưa xác thực"), tối đa 3 lần / giờ / tài khoản. Mỗi lần
+        tạo token mới (link cũ hết hiệu lực). emailVerificationToken chỉ trả ở môi trường demo (EXPOSE_VERIFICATION_TOKEN).
+      responses:
+        "200":
+          description: Đã gửi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: boolean }
+                  emailVerificationToken: { type: string, nullable: true }
+        "409": { description: EMAIL_ALREADY_VERIFIED }
+        "429": { description: RESEND_LIMIT }
+  /api/auth/me/notification-preferences:
+    get:
+      summary: >
+        US-38 (PRD-NOTI-1, NOTI-4) — tuỳ chọn email theo nhóm (marketing tắt mặc định) và giờ yên tĩnh 22:00–07:00 (theo
+        múi giờ trong hồ sơ). Email bảo mật và kết quả xét duyệt mentor không tắt được.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPreferences" }
+    put:
+      summary: US-38 — lưu tuỳ chọn (thay toàn bộ).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requests, sessions, messages, reviews, marketing, quietHours]
+              properties:
+                requests: { type: boolean }
+                sessions: { type: boolean }
+                messages: { type: boolean }
+                reviews: { type: boolean }
+                marketing: { type: boolean }
+                quietHours: { type: boolean }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPreferences" }
+  /internal/notifications/email:
+    post:
+      summary: >
+        US-38 (PRD-AUTH-2, NOTI-2) — nội bộ (X-Internal-Token): mentoring-service gửi các sự kiện có ✉ (yêu cầu mới / được
+        chấp nhận / hết hạn; phiên xác nhận / huỷ / đề xuất dời lịch / nhắc 24 h và 1 h / xác nhận tham dự; tin nhắn chưa đọc
+        gộp sau 30 phút; kết quả xét duyệt mentor). auth-service áp tuỳ chọn nhóm (tắt → SKIPPED) và giờ yên tĩnh (hoãn
+        tới 07:00, trừ nhắc lịch của phiên bắt đầu trong khung giờ đó), ghi email_outbox; job 30 giây gửi qua EmailSender
+        (log, hoặc SMTP/Mailpit khi EMAIL_MODE=smtp), lỗi thử lại tối đa 5 lần.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, category, type, title]
+              properties:
+                userId: { type: string, format: uuid }
+                category: { type: string, enum: [REQUESTS, SESSIONS, MESSAGES, REVIEWS, MARKETING, ACCOUNT, SECURITY] }
+                type: { type: string, example: SESSION_REMINDER_24H }
+                title: { type: string }
+                message: { type: string }
+                link: { type: string, description: Đường dẫn tương đối của frontend }
+                sessionStartAt: { type: string, format: date-time, nullable: true, description: Chỉ nhắc lịch }
+                dedupeKey: { type: string, nullable: true, description: Cùng khoá → không xếp email lần nữa }
+      responses:
+        "202":
+          description: Đã nhận
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid, nullable: true }
+                  status: { type: string, enum: [PENDING, SKIPPED, DUPLICATE] }
+                  sendAfter: { type: string, format: date-time, nullable: true }
+                  skipReason: { type: string, nullable: true, enum: [PREFERENCE_OFF, ACCOUNT_LOCKED] }
+        "404": { description: USER_NOT_FOUND }
+  /internal/dev/email-outbox:
+    get:
+      summary: (Chỉ dev/e2e, không có ở profile prod) US-38 — 50 email thông báo gần nhất của một người trong hàng đợi.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: userId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "[{ id, category, type, subject, status, skipReason, sendAfter, sentAt, createdAt }]" }
+  /internal/dev/jobs/email-outbox:
+    post:
+      summary: (Chỉ dev/e2e) US-38 — gửi ngay các email tới hạn.
+      security: [{ internalToken: [] }]
+      responses:
+        "200": { description: "{ sent }" }

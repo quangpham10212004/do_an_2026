@@ -17,9 +17,24 @@ import java.util.List;
 public class InternalDevEmailController {
 
     private final LoggingEmailSender emailSender;
+    private final com.mmp.auth.service.NotificationEmailService notificationEmails;
 
-    public InternalDevEmailController(LoggingEmailSender emailSender) {
+    public InternalDevEmailController(LoggingEmailSender emailSender,
+                                      com.mmp.auth.service.NotificationEmailService notificationEmails) {
         this.emailSender = emailSender;
+        this.notificationEmails = notificationEmails;
+    }
+
+    /** US-38 — hàng đợi email thông báo của một người (PENDING / SENT / SKIPPED…), mới nhất trước. */
+    @GetMapping("/internal/dev/email-outbox")
+    public List<com.mmp.auth.dto.NotificationDtos.OutboxRow> outbox(@RequestParam java.util.UUID userId) {
+        return notificationEmails.recent(userId);
+    }
+
+    /** US-38 — gửi ngay các email tới hạn (không chờ job 30 giây). */
+    @org.springframework.web.bind.annotation.PostMapping("/internal/dev/jobs/email-outbox")
+    public java.util.Map<String, Integer> flush() {
+        return java.util.Map.of("sent", notificationEmails.flush());
     }
 
     @GetMapping("/internal/dev/emails")

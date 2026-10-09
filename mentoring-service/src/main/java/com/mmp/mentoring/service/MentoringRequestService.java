@@ -47,6 +47,7 @@ public class MentoringRequestService {
      * tối đa {@code app.requests.max-pending} (3) yêu cầu PENDING; 1 yêu cầu đang mở với mỗi mentor.
      */
     public RequestView create(AuthUser mentee, CreateRequestInput in) {
+        mentee.requireVerifiedEmail(); // US-39
         String goal = trimToNull(in.goal());
         RequestRules.validateForm(goal, in.expectedDurationMonths()).ifPresent(code -> {
             throw ApiException.badRequest(code, "INVALID_GOAL".equals(code)

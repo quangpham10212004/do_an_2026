@@ -98,6 +98,7 @@ public class SessionService {
      * nên hai yêu cầu đồng thời không thể cùng giữ một khung giờ.
      */
     public SessionView book(AuthUser mentee, BookSessionInput in) {
+        mentee.requireVerifiedEmail(); // US-39
         if (!mentee.isAdmin() && !mentee.userId().equals(in.menteeId())) {
             throw ApiException.forbidden("Bạn chỉ có thể đặt lịch cho chính mình");
         }

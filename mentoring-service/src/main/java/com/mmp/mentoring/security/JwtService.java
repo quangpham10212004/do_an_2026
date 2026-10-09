@@ -39,7 +39,8 @@ public class JwtService {
             return Optional.of(new AuthUser(
                     UUID.fromString(claims.getSubject()),
                     claims.get("email", String.class),
-                    claims.get("role", String.class)));
+                    claims.get("role", String.class),
+                    !Boolean.FALSE.equals(claims.get("ev", Boolean.class))));
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
         }

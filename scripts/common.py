@@ -46,9 +46,32 @@ def _ai_interview_compat(method, url, body):
     return body
 
 
+_REGISTER = re.compile(r"/api/auth/register/?$")
+# Header chỉ dùng phía script (không gửi lên server): giữ tài khoản vừa đăng ký ở trạng thái CHƯA xác thực email.
+KEEP_UNVERIFIED = "X-E2E-Keep-Unverified"
+
+
+def _auto_verify(url, res):
+    """
+    Tương thích US-39 (Sprint 4): tài khoản chưa xác thực email không gửi yêu cầu / đặt lịch / thanh toán được. Các
+    script seed/e2e đăng ký rồi dùng ngay, nên sau POST /api/auth/register (môi trường dev trả emailVerificationToken)
+    tự xác thực email rồi refresh để access token mang claim ev=true. Script kiểm tra chính quy tắc này
+    (e2e_s4_ai_auth.py) gửi header KEEP_UNVERIFIED để bỏ qua bước này.
+    """
+    token = res.get("emailVerificationToken") if isinstance(res, dict) else None
+    if not token:
+        return res
+    base = url[: url.index("/api/auth/register")]
+    call("GET", f"{base}/api/auth/verify-email?token={token}")
+    fresh = call("POST", f"{base}/api/auth/refresh", {"refreshToken": res["refreshToken"]})
+    return {**res, **fresh, "emailVerified": True}
+
+
 def call(method, url, body=None, token=None, internal=False, raw_body=None, content_type=None, headers=None):
     body = _ai_interview_compat(method, url, body) if raw_body is None else body
-    headers = {"Accept": "application/json", **(headers or {})}
+    headers = dict(headers or {})
+    keep_unverified = headers.pop(KEEP_UNVERIFIED, None) is not None
+    headers = {"Accept": "application/json", **headers}
     data = None
     if raw_body is not None:
         data = raw_body
@@ -64,7 +87,7 @@ def call(method, url, body=None, token=None, internal=False, raw_body=None, cont
     try:
         with urllib.request.urlopen(req, timeout=120) as res:
             text = res.read().decode()
-            return json.loads(text) if text else None
+            result = json.loads(text) if text else None
     except urllib.error.HTTPError as e:
         text = e.read().decode()
         try:
@@ -72,6 +95,9 @@ def call(method, url, body=None, token=None, internal=False, raw_body=None, cont
         except ValueError:
             parsed = text
         raise ApiError(e.code, parsed) from None
+    if method == "POST" and _REGISTER.search(url) and not keep_unverified:
+        result = _auto_verify(url, result)
+    return result
 
 
 def charge(session_id, card, token, amount=None, idempotency_key=None):

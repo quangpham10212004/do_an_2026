@@ -73,9 +73,9 @@ class SessionSchedulerTest {
         verify(repo, never()).claimReminder1h(any(), any());
         verify(notifications).notifyUser(eq(s.getMenteeId()), eq("SESSION_REMINDER_24H"), anyString(),
                 argThat(msg -> msg.contains("Asia/Ho_Chi_Minh") && msg.contains("Review CV") && msg.contains("meet.google.com")),
-                anyString());
+                anyString(), eq(s.getScheduledAt()));
         verify(notifications).notifyUser(eq(s.getMentorId()), eq("SESSION_REMINDER_24H"), anyString(),
-                argThat(msg -> msg.contains("Europe/Paris")), anyString());
+                argThat(msg -> msg.contains("Europe/Paris")), anyString(), eq(s.getScheduledAt()));
     }
 
     @Test
@@ -87,7 +87,7 @@ class SessionSchedulerTest {
 
         scheduler.sendReminders();
 
-        verify(notifications, times(2)).notifyUser(any(), eq("SESSION_REMINDER_1H"), anyString(), anyString(), anyString());
+        verify(notifications, times(2)).notifyUser(any(), eq("SESSION_REMINDER_1H"), anyString(), anyString(), anyString(), any());
     }
 
     @Test
