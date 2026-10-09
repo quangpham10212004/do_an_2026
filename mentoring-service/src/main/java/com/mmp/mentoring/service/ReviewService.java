@@ -54,8 +54,6 @@ public class ReviewService {
     // ------------------------------------------------------------------ mentee đánh giá
 
     public ReviewDetail create(AuthUser mentee, UUID sessionId, StructuredReviewInput in) {
-        String comment = ReviewRules.validateComment(in.rating(), in.comment());
-        String[] tags = ReviewRules.normalizeTags(in.tags());
         OffsetDateTime now = OffsetDateTime.now();
         Review saved = tx.execute(s -> {
             MentoringSession session = findSession(sessionId);
@@ -69,6 +67,9 @@ public class ReviewService {
             if (reviewRepo.existsBySessionId(sessionId)) {
                 throw ApiException.conflict("ALREADY_REVIEWED", "Bạn đã đánh giá phiên này");
             }
+            // Kiểm tra nội dung SAU trạng thái phiên: phiên chưa / không thể đánh giá luôn trả 409.
+            String comment = ReviewRules.validateComment(in.rating(), in.comment());
+            String[] tags = ReviewRules.normalizeTags(in.tags());
             Review r = new Review(sessionId, session.getMenteeId(), session.getMentorId(), in.rating(), comment);
             r.write(in.rating(), in.knowledge(), in.clarity(), in.preparation(), comment, tags, now, false);
             return reviewRepo.save(r);
