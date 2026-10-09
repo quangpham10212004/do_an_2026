@@ -162,3 +162,36 @@ export interface MentorSearchParams {
   size?: number;
   includeUnverified?: boolean;
 }
+
+/** US-27 — một dòng của trang /admin/mentors (GET /api/profile/admin/mentors). */
+export interface AdminMentorRow {
+  userId: Uuid;
+  displayName: string;
+  domain: string;
+  verificationStatus: VerificationStatus;
+  status: MentorStatus;
+  onLeaveUntil: string | null;
+  suspendedReason: string | null;
+  suspendedAt: string | null;
+  /** Admin thực hiện; null = hệ thống (tranh chấp). */
+  suspendedBy: Uuid | null;
+  rating: number;
+  ratingCount: number;
+  activeMenteeCount: number;
+  capacity: number;
+}
+
+export interface AdminMentorFilters {
+  q?: string;
+  status?: MentorStatus | "";
+  verification?: VerificationStatus | "";
+  page?: number;
+}
+
+/** US-27 — kết quả đình chỉ / gỡ đình chỉ. mentoringNotified=false: chưa báo được mentoring-service huỷ phiên. */
+export interface SuspensionResult {
+  mentor: AdminMentorRow;
+  mentoringNotified: boolean;
+  cancelledSessions: number | null;
+  warning: string | null;
+}

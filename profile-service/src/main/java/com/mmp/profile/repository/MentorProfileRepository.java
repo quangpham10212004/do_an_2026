@@ -25,6 +25,20 @@ public interface MentorProfileRepository extends JpaRepository<MentorProfile, UU
                                @Param("q") String q,
                                Pageable pageable);
 
+    /** US-27 — danh sách mentor cho admin: tìm theo tên/lĩnh vực, lọc trạng thái (đã lưu) và xác thực. */
+    @Query("""
+            SELECT m FROM MentorProfile m
+            WHERE (:status IS NULL OR m.status = :status)
+              AND (:verification IS NULL OR m.verificationStatus = :verification)
+              AND (:q IS NULL OR LOWER(m.displayName) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
+                   OR LOWER(m.domain) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))
+            ORDER BY m.displayName ASC
+            """)
+    Page<MentorProfile> adminSearch(@Param("q") String q,
+                                    @Param("status") MentorProfile.Status status,
+                                    @Param("verification") MentorProfile.VerificationStatus verification,
+                                    Pageable pageable);
+
     /**
      * US-08 — ON_LEAVE tự về ACCEPTING khi đã qua hết ngày on_leave_until theo múi giờ của mentor
      * (cùng quy tắc với MentorRules.effectiveStatus).

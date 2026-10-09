@@ -198,6 +198,34 @@ components:
         verificationStatus: { type: string }
         status: { $ref: "#/components/schemas/MentorStatus" }
         onLeaveUntil: { type: string, format: date, nullable: true }
+    AdminMentorRow:
+      type: object
+      description: US-27 — một dòng của trang /admin/mentors (status = trạng thái hiệu lực)
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        domain: { type: string }
+        verificationStatus: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
+        status: { $ref: "#/components/schemas/MentorStatus" }
+        onLeaveUntil: { type: string, format: date, nullable: true }
+        suspendedReason: { type: string, nullable: true }
+        suspendedAt: { type: string, format: date-time, nullable: true }
+        suspendedBy: { type: string, format: uuid, nullable: true, description: "Admin thực hiện; null = hệ thống (tranh chấp)" }
+        rating: { type: number }
+        ratingCount: { type: integer }
+        activeMenteeCount: { type: integer }
+        capacity: { type: integer }
+    SuspensionResult:
+      type: object
+      properties:
+        mentor: { $ref: "#/components/schemas/AdminMentorRow" }
+        mentoringNotified:
+          type: boolean
+          description: >
+            true khi mentoring-service đã nhận POST /internal/mentors/{id}/suspend (huỷ phiên tương lai). false khi
+            endpoint chưa có (404) / lỗi — đình chỉ vẫn có hiệu lực ở profile-service; luôn false với unsuspend.
+        cancelledSessions: { type: integer, nullable: true, description: "Số phiên mentoring-service đã huỷ (null nếu không rõ)" }
+        warning: { type: string, nullable: true }
     ProfileSummary:
       type: object
       properties:
@@ -244,7 +272,9 @@ paths:
       parameters: [{ $ref: "#/components/parameters/UserId" }]
       responses:
         "200":
-          description: OK
+          description: >
+            OK. Người xem không phải chủ hồ sơ/ADMIN: không có meetingLink, và khi status = SUSPENDED thì
+            statusReason = null (lý do đình chỉ US-27 không công khai).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MentorProfile" }
@@ -310,6 +340,77 @@ paths:
               schema: { $ref: "#/components/schemas/MentorProfile" }
         "400": { description: "VALIDATION_ERROR (status = SUSPENDED/khác) · INVALID_STATUS (thiếu/sai onLeaveUntil)" }
         "409": { description: MENTOR_SUSPENDED — mentor đang bị đình chỉ }
+
+  # ---------------- US-27 (PRD-ADM-3): admin đình chỉ mentor ----------------
+  /api/profile/admin/mentors:
+    get:
+      summary: US-27 ADMIN — danh sách mentor (mọi trạng thái xác thực) kèm trạng thái đình chỉ
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "Tìm theo tên hiển thị hoặc lĩnh vực" }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/MentorStatus" } }
+        - { name: verification, in: query, schema: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] } }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        "200":
+          description: Trang kết quả
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminMentorRow" } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalItems: { type: integer }
+                  totalPages: { type: integer }
+        "400": { description: BAD_REQUEST (status/verification không hợp lệ) }
+        "403": { description: Không phải ADMIN }
+
+  /api/profile/admin/mentors/{userId}/suspend:
+    post:
+      summary: >
+        US-27 ADMIN — đình chỉ mentor: status = SUSPENDED (+ suspendedReason/At/By). Tách khỏi khoá tài khoản —
+        mentor vẫn đăng nhập được. Matching loại mentor khỏi gợi ý và similar-mentors; mentoring-service từ chối
+        yêu cầu/đặt lịch mới. Sau khi lưu, gọi mentoring-service POST /internal/mentors/{id}/suspend (huỷ phiên
+        PENDING/CONFIRMED tương lai, hoàn 100%) — lỗi/404 chỉ báo qua mentoringNotified=false + warning.
+        Ghi audit MENTOR_SUSPENDED (auth-service POST /internal/audit, bắn rồi quên).
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500, description: "Đếm sau khi trim" }
+      responses:
+        "200":
+          description: Đã đình chỉ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuspensionResult" }
+        "400": { description: INVALID_SUSPEND_REASON · VALIDATION_ERROR }
+        "403": { description: Không phải ADMIN }
+        "404": { description: PROFILE_NOT_FOUND }
+        "409": { description: MENTOR_ALREADY_SUSPENDED }
+
+  /api/profile/admin/mentors/{userId}/unsuspend:
+    post:
+      summary: >
+        US-27 ADMIN — gỡ đình chỉ: status = ACCEPTING, xoá suspendedReason/At/By. Không gọi mentoring-service
+        (phiên đã huỷ không khôi phục). Ghi audit MENTOR_UNSUSPENDED.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: Đã gỡ đình chỉ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuspensionResult" }
+        "403": { description: Không phải ADMIN }
+        "404": { description: PROFILE_NOT_FOUND }
+        "409": { description: MENTOR_NOT_SUSPENDED }
 
   /api/profile/mentor/{userId}/availability:
     get:
@@ -484,6 +585,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProfileSummary" }
+        "404": { description: PROFILE_NOT_FOUND }
+
+  /internal/mentee/{userId}:
+    get:
+      summary: Nội bộ — hồ sơ mentee cho mentoring-service (mentor xét yêu cầu, US-14)
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenteeProfile" }
         "404": { description: PROFILE_NOT_FOUND }
 
   /internal/mentor/{userId}:

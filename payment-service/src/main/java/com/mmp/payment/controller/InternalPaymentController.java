@@ -1,11 +1,14 @@
 package com.mmp.payment.controller;
 
 import com.mmp.payment.dto.PaymentDtos.*;
+import com.mmp.payment.service.EarningService;
 import com.mmp.payment.service.PaymentService;
 import com.mmp.payment.service.ReferralService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/internal")
@@ -13,10 +16,21 @@ public class InternalPaymentController {
 
     private final PaymentService paymentService;
     private final ReferralService referralService;
+    private final EarningService earningService;
 
-    public InternalPaymentController(PaymentService paymentService, ReferralService referralService) {
+    public InternalPaymentController(PaymentService paymentService, ReferralService referralService, EarningService earningService) {
         this.paymentService = paymentService;
         this.referralService = referralService;
+        this.earningService = earningService;
+    }
+
+    /**
+     * US-25 — mentoring-service báo trạng thái cuối của phiên (COMPLETED / NO_SHOW_MENTEE / CANCELLED khi mentee huỷ muộn,
+     * hoặc sau khi giải quyết tranh chấp với releaseNow=true). payment-service giữ đồng hồ 48 giờ. Idempotent (ghi đè lịch).
+     */
+    @PostMapping("/payments/sessions/{sessionId}/final-state")
+    public FinalStateResponse finalState(@PathVariable UUID sessionId, @Valid @RequestBody FinalStateRequest req) {
+        return earningService.finalState(sessionId, req);
     }
 
     /** Gọi bởi auth-service khi người dùng đăng ký kèm mã giới thiệu. */

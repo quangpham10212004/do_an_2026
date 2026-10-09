@@ -8,6 +8,11 @@ export function formatMoney(value: number | string | null | undefined): string {
   return n.toLocaleString("vi-VN") + " đ";
 }
 
+/** Số tiền VND luôn hiển thị số (0 → "0 đ"), dùng cho số dư / thu nhập. */
+export function formatVnd(value: number | string | null | undefined): string {
+  return Number(value || 0).toLocaleString("vi-VN") + " đ";
+}
+
 /** Đơn giá theo giờ: "Miễn phí" hoặc "300.000 đ/giờ" (tránh "Miễn phí/giờ"). */
 export function formatRate(value: number | string | null | undefined): string {
   return Number(value || 0) === 0 ? "Miễn phí" : `${formatMoney(value)}/giờ`;
@@ -52,6 +57,26 @@ export const STATUS_LABELS: Record<string, string> = {
   APPROVE: "Nên duyệt",
   REJECT: "Không nên duyệt",
   NEEDS_REVIEW: "Cần xem xét",
+  AWAITING_ATTENDANCE: "Chờ xác nhận tham dự",
+  EXPIRED: "Hết hạn",
+  NO_SHOW_MENTEE: "Mentee vắng mặt",
+  NO_SHOW_MENTOR: "Mentor vắng mặt",
+  DISPUTED: "Đang tranh chấp",
+  PARTIALLY_REFUNDED: "Hoàn một phần",
+  ON_HOLD: "Tạm giữ",
+  OPEN: "Đang mở",
+  IN_REVIEW: "Đang xem xét",
+  RESOLVED: "Đã giải quyết",
+  ENDED: "Đã kết thúc",
+  // US-27 — mentor bị admin tạm ngưng
+  SUSPENDED: "Tạm ngưng",
+  // US-28 — trạng thái mục tiêu trong không gian mentoring
+  TODO: "Chưa bắt đầu",
+  DONE: "Đã xong",
+  RETAKE_REQUESTED: "Yêu cầu phỏng vấn lại",
+  REQUEST_RETAKE: "Yêu cầu làm lại",
+  PROMPT_INJECTION: "Nghi chèn lệnh cho AI",
+  COPIED_ANSWER: "Dán nội dung dài",
 };
 
 export const ROLE_LABELS: Record<Role, string> = { MENTEE: "Mentee", MENTOR: "Mentor", ADMIN: "Quản trị viên" };
@@ -59,8 +84,8 @@ export const ROLE_LABELS: Record<Role, string> = { MENTEE: "Mentee", MENTOR: "Me
 export type StatusTone = "good" | "bad" | "warn" | "neutral";
 
 export function statusTone(status: string): StatusTone {
-  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE"].includes(status)) return "good";
-  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT"].includes(status)) return "bad";
-  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW"].includes(status)) return "warn";
+  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE"].includes(status)) return "good";
+  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "SUSPENDED"].includes(status)) return "bad";
+  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER"].includes(status)) return "warn";
   return "neutral";
 }

@@ -20,6 +20,9 @@ public class Transaction {
     /** "Đã thu tiền" — tối đa 1 giao dịch như vậy cho mỗi phiên (unique index uq_transactions_session_paid). */
     public static final List<Status> PAID_STATUSES = List.of(Status.SUCCESS, Status.ON_HOLD, Status.PARTIALLY_REFUNDED);
 
+    /** US-25 — giao dịch đã từng thu tiền (có dòng EARNING_PENDING trong sổ thu nhập mentor). */
+    public static final List<Status> EARNING_STATUSES = List.of(Status.SUCCESS, Status.ON_HOLD, Status.PARTIALLY_REFUNDED, Status.REFUNDED);
+
     /** Còn hoàn tiền được (ON_HOLD phải release trước). */
     public static final List<Status> REFUNDABLE_STATUSES = List.of(Status.SUCCESS, Status.PARTIALLY_REFUNDED);
 

@@ -1,6 +1,9 @@
 import type {
   AttendanceAnswer,
   AttendanceResolution,
+  DisputeOutcome,
+  EndReason,
+  DisputeType,
   ExpectedDurationMonths,
   RejectReason,
   RequestFrequency,
@@ -45,6 +48,10 @@ export const MENTORING_STATUS_LABELS: Record<string, string> = {
   REFUNDED: "Đã hoàn tiền",
   PARTIALLY_REFUNDED: "Hoàn một phần",
   ON_HOLD: "Tạm giữ",
+  OPEN: "Đang mở",
+  IN_REVIEW: "Đang xem xét",
+  RESOLVED: "Đã giải quyết",
+  ENDED: "Đã kết thúc",
 };
 
 /** Nhãn riêng cho trạng thái PENDING của phiên (chờ thanh toán). */
@@ -54,7 +61,7 @@ export const SESSION_STATUS_LABELS: Record<string, string> = { ...MENTORING_STAT
 export function mentoringTone(status: string): "good" | "bad" | "warn" | "neutral" {
   if (["CONFIRMED", "COMPLETED", "ACCEPTED", "SUCCESS"].includes(status)) return "good";
   if (["CANCELLED", "REJECTED", "FAILED", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED"].includes(status)) return "bad";
-  if (["PENDING", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED"].includes(status)) return "warn";
+  if (["PENDING", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW"].includes(status)) return "warn";
   return "neutral";
 }
 
@@ -80,7 +87,46 @@ export const ATTENDANCE_RESOLUTION_LABELS: Record<AttendanceResolution, string> 
   MENTOR_NO_SHOW_REPORTED: "mentee báo mentor vắng mặt, mentor không phản hồi",
   CONFLICT: "hai bên xác nhận khác nhau",
   CANCELLED_ON_CALL: "huỷ trong buổi gọi",
+  DISPUTE_RESOLVED: "quản trị viên kết luận tranh chấp",
 };
+
+// ---- US-31 — kết thúc mentoring ----
+
+export const END_REASON_LABELS: Record<EndReason, string> = {
+  GOAL_REACHED: "Đã đạt mục tiêu",
+  NO_LONGER_NEEDED: "Không còn nhu cầu",
+  NOT_A_FIT: "Không phù hợp",
+  OTHER: "Lý do khác",
+  INACTIVE: "Không hoạt động (hệ thống)",
+};
+export const END_REASONS: Exclude<EndReason, "INACTIVE">[] = ["GOAL_REACHED", "NO_LONGER_NEEDED", "NOT_A_FIT", "OTHER"];
+
+// ---- US-32 — tranh chấp ----
+
+export const DISPUTE_TYPE_LABELS: Record<DisputeType, string> = {
+  NO_SHOW: "Vắng mặt",
+  QUALITY: "Chất lượng phiên",
+  BEHAVIOR: "Thái độ / hành vi",
+  PAYMENT: "Thanh toán",
+  OTHER: "Khác",
+};
+export const DISPUTE_TYPES = Object.keys(DISPUTE_TYPE_LABELS) as DisputeType[];
+
+export const DISPUTE_OUTCOME_LABELS: Record<DisputeOutcome, string> = {
+  FULL_REFUND: "Hoàn 100% cho mentee",
+  PARTIAL_REFUND: "Hoàn một phần",
+  NO_REFUND: "Không hoàn tiền (trả mentor)",
+  WARNING: "Cảnh cáo mentor (không hoàn)",
+  SUSPEND: "Hoàn 100% + khoá mentor",
+};
+export const DISPUTE_OUTCOMES = Object.keys(DISPUTE_OUTCOME_LABELS) as DisputeOutcome[];
+
+export const DISPUTE_DESCRIPTION_MIN = 20;
+export const DISPUTE_DESCRIPTION_MAX = 2000;
+export const DISPUTE_MAX_LINKS = 5;
+/** Phiên mở được báo cáo sự cố (trong 7 ngày sau giờ kết thúc). */
+export const DISPUTE_OPENABLE = ["COMPLETED", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "AWAITING_ATTENDANCE"];
+export const DISPUTE_WINDOW_MS = 7 * 24 * 3600 * 1000;
 
 // ---- US-14 — form yêu cầu mentoring ----
 

@@ -55,3 +55,21 @@ export interface UserStats {
   mentors: number;
   mentees: number;
 }
+
+/** Giá trị JSON tuỳ ý (before/after của nhật ký kiểm toán). */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
+
+/** US-30 (PRD-ADM-5): một dòng nhật ký kiểm toán — GET /api/auth/admin/audit. */
+export interface AuditEntry {
+  id: Uuid;
+  actorId: Uuid | null;
+  actorEmail: string | null;
+  actorRole: "ADMIN" | "MENTOR" | "MENTEE" | "SYSTEM";
+  action: string;
+  targetType: string;
+  targetId: string;
+  before: JsonObject | null;
+  after: JsonObject | null;
+  createdAt: IsoDateTime;
+}

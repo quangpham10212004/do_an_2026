@@ -71,6 +71,18 @@ public final class ProfileDtos {
         }
 
         /**
+         * Người xem không phải chủ hồ sơ/admin: bỏ link họp và (US-27) lý do đình chỉ — mentee chỉ thấy
+         * trạng thái "Tạm ngưng", lý do nội bộ của admin không công khai.
+         */
+        public MentorProfileResponse forPublicViewer() {
+            String reason = "SUSPENDED".equals(status) ? null : statusReason;
+            return new MentorProfileResponse(userId, displayName, skills, domain, bio, yearsExperience, cvFileUrl,
+                    portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
+                    verificationStatus, status, onLeaveUntil, reason, null, bufferMinutes, minNoticeHours,
+                    languages, sessionTypes, timezone, availability, exceptions);
+        }
+
+        /**
          * status = trạng thái HIỆU LỰC (nghỉ phép đã hết hạn tính là ACCEPTING); isAvailable = status == ACCEPTING.
          * exceptions = ngoại lệ lịch rảnh từ hôm nay tới {@link MentorRules#EXCEPTION_HORIZON_DAYS} ngày tới.
          */
@@ -221,6 +233,44 @@ public final class ProfileDtos {
     public record InternalStatusUpdate(
             @NotNull @Pattern(regexp = "ACCEPTING|PAUSED|SUSPENDED", message = "chỉ nhận ACCEPTING, PAUSED, SUSPENDED") String status,
             @Size(max = 500) String reason) {
+    }
+
+    // ---------------- US-27: admin đình chỉ mentor ----------------
+
+    /** Lý do bắt buộc 10–500 ký tự (kiểm tra sau trim ở MentorRules.validateSuspendReason). */
+    public record SuspendInput(@NotNull @Size(max = 600) String reason) {
+    }
+
+    /** Một dòng của trang /admin/mentors. status = trạng thái hiệu lực. */
+    public record AdminMentorRow(
+            UUID userId,
+            String displayName,
+            String domain,
+            String verificationStatus,
+            String status,
+            LocalDate onLeaveUntil,
+            String suspendedReason,
+            java.time.OffsetDateTime suspendedAt,
+            UUID suspendedBy,
+            float rating,
+            int ratingCount,
+            int activeMenteeCount,
+            int capacity) {
+
+        public static AdminMentorRow from(MentorProfile p, MentorProfile.Status effective) {
+            return new AdminMentorRow(p.getUserId(), p.getDisplayName(), p.getDomain(), p.getVerificationStatus().name(),
+                    effective.name(), effective == MentorProfile.Status.ON_LEAVE ? p.getOnLeaveUntil() : null,
+                    p.getSuspendedReason(), p.getSuspendedAt(), p.getSuspendedBy(), p.getRating(), p.getRatingCount(),
+                    p.getActiveMenteeCount(), p.getCapacity());
+        }
+    }
+
+    /**
+     * Kết quả đình chỉ / gỡ đình chỉ. mentoringNotified=false khi mentoring-service chưa có endpoint hoặc lỗi
+     * (cancelledSessions khi đó là null, warning giải thích cho admin). Gỡ đình chỉ không gọi mentoring-service.
+     */
+    public record SuspensionResult(AdminMentorRow mentor, boolean mentoringNotified, Integer cancelledSessions,
+                                   String warning) {
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {

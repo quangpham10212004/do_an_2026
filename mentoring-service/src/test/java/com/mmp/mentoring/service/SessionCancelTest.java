@@ -61,6 +61,8 @@ class SessionCancelTest {
         assertThat(view.refundPercent()).isZero();
         verify(f.paymentClient, never()).refund(any(), any(), anyInt());
         verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());
+        // US-25 — hoàn 0% → mentor được trả: báo trạng thái cuối CANCELLED để giải phóng thu nhập sau 48 giờ
+        verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
     }
 
     @Test
@@ -69,6 +71,7 @@ class SessionCancelTest {
         f.service().cancel(mentee, id, new com.mmp.mentoring.dto.MentoringDtos.CancelSessionInput("Ban viec"));
         verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTEE"), eq(100));
         assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
         assertThat(session.getCancelReason()).isEqualTo("Ban viec");
     }
 

@@ -5,6 +5,7 @@ import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.entity.MentoringSession.Attendance;
 import com.mmp.mentoring.entity.MentoringSession.Status;
 import com.mmp.mentoring.exception.ApiException;
+import com.mmp.mentoring.repository.DisputeRepository;
 import com.mmp.mentoring.repository.SessionRepository;
 import com.mmp.mentoring.security.AuthUser;
 import org.slf4j.Logger;
@@ -38,12 +39,14 @@ public class AttendanceService {
     private final StrikeService strikes;
     private final NotificationService notifications;
     private final DisputeHook disputeHook;
+    private final DisputeRepository disputeRepo;
     private final TransactionTemplate tx;
     private final Duration window;
     private final ZoneId zone;
 
     public AttendanceService(SessionRepository sessionRepo, PaymentOutboxService outbox, StrikeService strikes,
-                             NotificationService notifications, DisputeHook disputeHook, TransactionTemplate tx,
+                             NotificationService notifications, DisputeHook disputeHook, DisputeRepository disputeRepo,
+                             TransactionTemplate tx,
                              @Value("${app.attendance.window:PT48H}") Duration window,
                              @Value("${app.timezone}") String timezone) {
         this.sessionRepo = sessionRepo;
@@ -51,6 +54,7 @@ public class AttendanceService {
         this.strikes = strikes;
         this.notifications = notifications;
         this.disputeHook = disputeHook;
+        this.disputeRepo = disputeRepo;
         this.tx = tx;
         this.window = window;
         this.zone = ZoneId.of(timezone);
@@ -169,7 +173,9 @@ public class AttendanceService {
     void apply(MentoringSession s, AttendanceRules.Resolution r, OffsetDateTime now) {
         s.resolve(r.outcome(), r.code(), now);
         boolean paid = s.getPrice() != null && s.getPrice().signum() > 0;
-        int refund = paid ? AttendanceRules.refundPercent(r.outcome()) : 0;
+        // US-32 — phiên đã có báo cáo sự cố (mở trong lúc chờ xác nhận tham dự): tiền do kết luận tranh chấp quyết định
+        boolean disputed = paid && disputeRepo.existsBySessionId(s.getId());
+        int refund = paid && !disputed ? AttendanceRules.refundPercent(r.outcome()) : 0;
         switch (r.outcome()) {
             case NO_SHOW_MENTOR -> s.setRefundPercent(refund);
             case NO_SHOW_MENTEE -> s.setRefundPercent(0);
@@ -186,6 +192,10 @@ public class AttendanceService {
         }
         if (refund > 0) {
             outbox.enqueueRefund(s.getId(), refund, r.outcome() == Status.NO_SHOW_MENTOR ? "MENTOR_NO_SHOW" : "CANCELLED_ON_CALL");
+        }
+        // US-25 — trạng thái cuối mentor được trả → payment-service giải phóng thu nhập 48 giờ sau giờ kết thúc
+        if (paid && (r.outcome() == Status.COMPLETED || r.outcome() == Status.NO_SHOW_MENTEE)) {
+            outbox.enqueueFinalState(s.getId(), r.outcome().name(), s.endsAt(), false);
         }
         log.info("Session {} resolved {} ({}), refund {}%", s.getId(), r.outcome(), r.code(), refund);
     }

@@ -1,5 +1,8 @@
 import { api } from "@/lib/api";
 import type {
+  AdminMentorFilters,
+  AdminMentorRow,
+  SuspensionResult,
   BookingSettingsInput,
   LanguageCode,
   SessionType,
@@ -47,6 +50,15 @@ export const profileApi = {
   // US-16 — sở thích tìm mentor
   saveMenteePreferences: (id: Uuid, body: MenteePreferences) =>
     api<MenteeProfile>(`/api/profile/mentee/${id}/preferences`, { method: "PUT", body }),
+  // US-27 — admin đình chỉ mentor
+  adminListMentors: ({ q = "", status = "", verification = "", page = 0 }: AdminMentorFilters = {}) =>
+    api<PageResponse<AdminMentorRow>>(
+      `/api/profile/admin/mentors?q=${encodeURIComponent(q)}&status=${status}&verification=${verification}&page=${page}&size=20`,
+    ),
+  adminSuspendMentor: (id: Uuid, reason: string) =>
+    api<SuspensionResult>(`/api/profile/admin/mentors/${id}/suspend`, { method: "POST", body: { reason } }),
+  adminUnsuspendMentor: (id: Uuid) =>
+    api<SuspensionResult>(`/api/profile/admin/mentors/${id}/unsuspend`, { method: "POST" }),
   searchMentors: ({ domain = "", q = "", page = 0, size = 12, includeUnverified = false }: MentorSearchParams = {}) =>
     api<PageResponse<MentorCard>>(
       `/api/profile/mentors?domain=${encodeURIComponent(domain)}&q=${encodeURIComponent(q)}&page=${page}&size=${size}&includeUnverified=${includeUnverified}`,
@@ -87,6 +99,11 @@ export const MENTOR_STATUS_LABELS: Record<MentorStatus, string> = {
 export function mentorStatusText(status: MentorStatus, onLeaveUntil: string | null): string {
   if (status === "ON_LEAVE" && onLeaveUntil) return `Nghỉ phép đến hết ${formatLocalDate(onLeaveUntil)}`;
   return MENTOR_STATUS_LABELS[status];
+}
+
+/** US-27 — nhãn cho người xem không phải chủ hồ sơ/admin: mentor bị đình chỉ chỉ hiện "Tạm ngưng". */
+export function publicMentorStatusText(status: MentorStatus, onLeaveUntil: string | null): string {
+  return status === "SUSPENDED" ? "Tạm ngưng" : mentorStatusText(status, onLeaveUntil);
 }
 
 export const SESSION_TYPE_LABELS: Record<SessionType, string> = {

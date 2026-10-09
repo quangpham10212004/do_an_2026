@@ -3,6 +3,7 @@ package com.mmp.mentoring.service;
 import com.mmp.mentoring.client.PaymentClient;
 import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.dto.MentoringDtos.*;
+import com.mmp.mentoring.entity.Dispute;
 import com.mmp.mentoring.entity.LateCancellation;
 import com.mmp.mentoring.entity.MentorStrike;
 import com.mmp.mentoring.entity.MentoringRequest;
@@ -10,6 +11,7 @@ import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.entity.RescheduleProposal;
 import com.mmp.mentoring.entity.Review;
 import com.mmp.mentoring.exception.ApiException;
+import com.mmp.mentoring.repository.DisputeRepository;
 import com.mmp.mentoring.repository.LateCancellationRepository;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
 import com.mmp.mentoring.repository.RescheduleProposalRepository;
@@ -47,6 +49,7 @@ public class SessionService {
     private final PaymentOutboxService outbox;
     private final StrikeService strikes;
     private final RescheduleProposalRepository proposalRepo;
+    private final DisputeRepository disputeRepo;
     private final ProfileClient profileClient;
     private final PaymentClient paymentClient;
     private final NotificationService notifications;
@@ -58,7 +61,7 @@ public class SessionService {
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
                           LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
-                          StrikeService strikes, RescheduleProposalRepository proposalRepo,
+                          StrikeService strikes, RescheduleProposalRepository proposalRepo, DisputeRepository disputeRepo,
                           ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
@@ -73,6 +76,7 @@ public class SessionService {
         this.outbox = outbox;
         this.strikes = strikes;
         this.proposalRepo = proposalRepo;
+        this.disputeRepo = disputeRepo;
         this.profileClient = profileClient;
         this.paymentClient = paymentClient;
         this.notifications = notifications;
@@ -152,6 +156,7 @@ public class SessionService {
             session.setPrice(BookingRules.price(mentor.hourlyRate(), duration));
             // Phiên miễn phí được xác nhận ngay; phiên có phí chờ thanh toán (FR-6.2)
             session.setStatus(session.getPrice().signum() == 0 ? MentoringSession.Status.CONFIRMED : MentoringSession.Status.PENDING);
+            requestRepo.clearInactivityWarning(request.getId()); // US-31 — đặt phiên mới = còn hoạt động
             return sessionRepo.save(session);
         });
 
@@ -337,6 +342,7 @@ public class SessionService {
         requireCancellable(before);
         String reason = MentoringRequestService.trimToNull(rawReason);
         CancellationPolicy.Decision d = decide(before, actor, OffsetDateTime.now());
+        boolean reportFinalState = paidLateCancel(before, d);
         if (d.refundPercent() > 0 && d.refundAmount().signum() > 0) {
             paymentClient.refund(before.getId(), "SESSION_CANCELLED_BY_" + actor.name(), d.refundPercent());
         }
@@ -356,8 +362,13 @@ public class SessionService {
             if (d.rewardPoints() > 0) {
                 outbox.enqueueReward(ss.getMenteeId(), d.rewardPoints(), PaymentOutboxService.MENTOR_CANCEL_APOLOGY, ss.getId());
             }
+            if (reportFinalState) {
+                // US-25 — mentee huỷ muộn (hoàn 0%): mentor được trả → giải phóng thu nhập 48 giờ sau giờ kết thúc dự kiến
+                outbox.enqueueFinalState(ss.getId(), MentoringSession.Status.CANCELLED.name(), ss.endsAt(), false);
+            }
             return ss;
         });
+        if (reportFinalState) outbox.flushSession(session.getId());
         afterCancel(session, d);
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
         String suffix = (reason != null ? " Lý do: " + reason + "." : "")
@@ -376,6 +387,11 @@ public class SessionService {
             }
         }
         return session;
+    }
+
+    /** Phiên đã thanh toán bị huỷ mà mentee không được hoàn đủ (mentee huỷ < 72 giờ). */
+    private static boolean paidLateCancel(MentoringSession before, CancellationPolicy.Decision d) {
+        return before.getStatus() == MentoringSession.Status.CONFIRMED && before.getPrice().signum() > 0 && d.refundPercent() < 100;
     }
 
     /** US-02 — mentor huỷ phiên bị ghi 1 strike (3 strike / 30 ngày → PAUSED). */
@@ -518,8 +534,13 @@ public class SessionService {
                 : proposalRepo.findBySessionIdInAndStatus(sessions.stream().map(MentoringSession::getId).toList(),
                         RescheduleProposal.Status.PENDING).stream()
                 .collect(Collectors.toMap(RescheduleProposal::getSessionId, p -> p, (a, b) -> a));
+        // US-32 — tranh chấp gần nhất của mỗi phiên
+        Map<UUID, Dispute> disputes = sessions.isEmpty() ? Map.of()
+                : disputeRepo.findBySessionIdInOrderByCreatedAtDesc(sessions.stream().map(MentoringSession::getId).toList()).stream()
+                .collect(Collectors.toMap(Dispute::getSessionId, d -> d, (a, b) -> a));
         return sessions.stream().map(s -> {
             Review r = reviews.get(s.getId());
+            Dispute dp = disputes.get(s.getId());
             return new SessionView(s.getId(), s.getRequestId(), s.getMenteeId(), names.get(s.getMenteeId()), s.getMentorId(),
                     names.get(s.getMentorId()), s.getScheduledAt(), s.endsAt(), s.getDurationMinutes(), s.getPrice(), s.getTopic(),
                     s.getSessionType() == null ? null : s.getSessionType().name(), s.getAgenda(), s.getPreReadLink(),
@@ -529,7 +550,9 @@ public class SessionService {
                     s.getMenteeAttendance() == null ? null : s.getMenteeAttendance().name(),
                     s.getMentorAttendance() == null ? null : s.getMentorAttendance().name(),
                     AttendanceRules.deadline(s, attendanceWindow), s.getAttendanceResolution(),
-                    r != null, r == null ? null : r.getRating(), s.getCreatedAt());
+                    r != null, r == null ? null : r.getRating(), s.getCreatedAt(),
+                    dp == null ? null : new DisputeBrief(dp.getId(), dp.getStatus().name(),
+                            dp.getOutcome() == null ? null : dp.getOutcome().name(), dp.getRefundPercent()));
         }).toList();
     }
 

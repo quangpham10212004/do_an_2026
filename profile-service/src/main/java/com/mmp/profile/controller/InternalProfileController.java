@@ -29,6 +29,12 @@ public class InternalProfileController {
         return profileService.getMentor(mentorId);
     }
 
+    /** mentoring-service đọc hồ sơ mentee để mentor xét yêu cầu (US-14). */
+    @GetMapping("/mentee/{menteeId}")
+    public MenteeProfileResponse mentee(@PathVariable UUID menteeId) {
+        return profileService.getMentee(menteeId);
+    }
+
     @PutMapping("/mentor/{mentorId}/verification")
     public MentorProfileResponse verification(@PathVariable UUID mentorId, @Valid @RequestBody VerificationUpdate body) {
         return profileService.updateVerification(mentorId, body.status());

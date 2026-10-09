@@ -2,6 +2,7 @@ package com.mmp.payment.controller;
 
 import com.mmp.payment.dto.PaymentDtos.*;
 import com.mmp.payment.security.CurrentUser;
+import com.mmp.payment.service.EarningService;
 import com.mmp.payment.service.PaymentService;
 import com.mmp.payment.service.ReferralService;
 import jakarta.validation.Valid;
@@ -17,10 +18,12 @@ public class PaymentController {
 
     private final PaymentService paymentService;
     private final ReferralService referralService;
+    private final EarningService earningService;
 
-    public PaymentController(PaymentService paymentService, ReferralService referralService) {
+    public PaymentController(PaymentService paymentService, ReferralService referralService, EarningService earningService) {
         this.paymentService = paymentService;
         this.referralService = referralService;
+        this.earningService = earningService;
     }
 
     @PostMapping("/charge")
@@ -48,6 +51,20 @@ public class PaymentController {
     @GetMapping("/referrals/me")
     public MyReferralOverview myReferral() {
         return referralService.overview(CurrentUser.get().userId());
+    }
+
+    // ---- US-25: thu nhập mentor ----
+
+    @GetMapping("/earnings/summary")
+    @PreAuthorize("hasRole('MENTOR')")
+    public EarningSummary earningSummary() {
+        return earningService.summary(CurrentUser.get().userId());
+    }
+
+    @GetMapping("/earnings")
+    @PreAuthorize("hasRole('MENTOR')")
+    public List<EarningRow> earnings() {
+        return earningService.rows(CurrentUser.get().userId());
     }
 
     // ---- Admin (giám sát giao dịch/referral) ----

@@ -33,10 +33,14 @@ app:
     public-paths: ""
   services:
     mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}     # US-30 — POST /internal/audit (bắn-rồi-quên)
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   payment:                         # US-13
     platform-fee-rate: ${PLATFORM_FEE_RATE:0.15}   # phí nền tảng chốt vào giao dịch lúc charge (fee, mentor_earning)
     idempotency-ttl: PT24H         # Idempotency-Key của /charge có hiệu lực 24 giờ / người gọi
+  earnings:                        # US-25 — sổ thu nhập mentor
+    release-delay: ${EARNING_RELEASE_DELAY:PT48H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE
+    release-interval: PT5M           # chu kỳ job giải phóng
   referral:
     # FR-6.6 — quy tắc cộng điểm & chống gian lận cơ bản
     reward-points: 100

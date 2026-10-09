@@ -3,6 +3,8 @@ package com.mmp.mentoring.controller;
 import com.mmp.mentoring.dto.MentoringDtos.*;
 import com.mmp.mentoring.security.CurrentUser;
 import com.mmp.mentoring.service.AttendanceService;
+import com.mmp.mentoring.service.DisputeService;
+import com.mmp.mentoring.service.MentorshipEndService;
 import com.mmp.mentoring.service.MentoringRequestService;
 import com.mmp.mentoring.service.NotificationService;
 import com.mmp.mentoring.service.RescheduleService;
@@ -24,15 +26,20 @@ public class MentoringController {
     private final NotificationService notificationService;
     private final RescheduleService rescheduleService;
     private final AttendanceService attendanceService;
+    private final DisputeService disputeService;
+    private final MentorshipEndService endService;
 
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
                                NotificationService notificationService, RescheduleService rescheduleService,
-                               AttendanceService attendanceService) {
+                               AttendanceService attendanceService, DisputeService disputeService,
+                               MentorshipEndService endService) {
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
         this.rescheduleService = rescheduleService;
         this.attendanceService = attendanceService;
+        this.disputeService = disputeService;
+        this.endService = endService;
     }
 
     // ---- Mentoring requests (FR-5.2, FR-5.3) ----
@@ -61,9 +68,17 @@ public class MentoringController {
         return requestService.cancel(CurrentUser.get(), id);
     }
 
+    /** US-31 — mentee / mentor (hoặc admin) kết thúc quan hệ ACCEPTED → ENDED, huỷ phiên sắp tới theo chính sách huỷ. */
+    @PostMapping("/requests/{id}/end")
+    public RequestView endRequest(@PathVariable UUID id, @Valid @RequestBody EndRequestInput in) {
+        return endService.end(CurrentUser.get(), id, in);
+    }
+
+    /** @deprecated US-31 — giữ cho client cũ: = /end với reason OTHER. */
+    @Deprecated
     @PostMapping("/requests/{id}/complete")
     public RequestView completeRequest(@PathVariable UUID id) {
-        return requestService.complete(CurrentUser.get(), id);
+        return endService.end(CurrentUser.get(), id, new EndRequestInput(com.mmp.mentoring.entity.MentoringRequest.EndReason.OTHER, null));
     }
 
     // ---- Sessions (FR-5.4 → FR-5.7) ----
@@ -138,6 +153,21 @@ public class MentoringController {
         return sessionService.get(CurrentUser.get(), id);
     }
 
+    // ---- US-32: tranh chấp ----
+
+    /** "Báo cáo sự cố" — mentee / mentor của phiên, trong 7 ngày sau giờ kết thúc. */
+    @PostMapping("/sessions/{id}/disputes")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")
+    public DisputeView openDispute(@PathVariable UUID id, @Valid @RequestBody OpenDisputeInput in) {
+        return disputeService.open(CurrentUser.get(), id, in);
+    }
+
+    @GetMapping("/sessions/{id}/disputes")
+    public List<DisputeView> sessionDisputes(@PathVariable UUID id) {
+        return disputeService.forSession(CurrentUser.get(), id);
+    }
+
     @PostMapping("/sessions/{id}/review")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('MENTEE')")
@@ -178,6 +208,31 @@ public class MentoringController {
     }
 
     // ---- Admin ----
+
+    /** US-32 — status: OPEN | IN_REVIEW | RESOLVED | ACTIVE (OPEN + IN_REVIEW); trống = tất cả. */
+    @GetMapping("/admin/disputes")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<DisputeView> disputes(@RequestParam(required = false) String status) {
+        return disputeService.list(status);
+    }
+
+    @GetMapping("/admin/disputes/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public DisputeView dispute(@PathVariable UUID id) {
+        return disputeService.get(id);
+    }
+
+    @PostMapping("/admin/disputes/{id}/start-review")
+    @PreAuthorize("hasRole('ADMIN')")
+    public DisputeView startReview(@PathVariable UUID id) {
+        return disputeService.startReview(CurrentUser.get(), id);
+    }
+
+    @PostMapping("/admin/disputes/{id}/resolve")
+    @PreAuthorize("hasRole('ADMIN')")
+    public DisputeView resolveDispute(@PathVariable UUID id, @Valid @RequestBody ResolveDisputeInput in) {
+        return disputeService.resolve(CurrentUser.get(), id, in);
+    }
 
     /** Thống kê phiên mentoring; số liệu AI Interview do ai-service cung cấp (GET /api/ai/admin/stats). */
     @GetMapping("/admin/stats")

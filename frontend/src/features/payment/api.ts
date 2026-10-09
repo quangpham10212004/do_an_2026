@@ -1,5 +1,16 @@
 import { api } from "@/lib/api";
-import type { CardInput, MyReferral, PageResponse, PaymentStats, Referral, Transaction, TransactionStatus, Uuid } from "@/types";
+import type {
+  CardInput,
+  EarningRow,
+  EarningSummary,
+  MyReferral,
+  PageResponse,
+  PaymentStats,
+  Referral,
+  Transaction,
+  TransactionStatus,
+  Uuid,
+} from "@/types";
 
 // payment-service (Thắng)
 export const paymentApi = {
@@ -16,6 +27,9 @@ export const paymentApi = {
   transactions: () => api<Transaction[]>("/api/payment/transactions"),
   sessionTransactions: (sessionId: Uuid) => api<Transaction[]>(`/api/payment/sessions/${sessionId}/transactions`),
   myReferral: () => api<MyReferral>("/api/payment/referrals/me"),
+  /** US-25 — thu nhập của mentor đang đăng nhập. */
+  earningSummary: () => api<EarningSummary>("/api/payment/earnings/summary"),
+  earnings: () => api<EarningRow[]>("/api/payment/earnings"),
   adminTransactions: (status: TransactionStatus | "" = "", page = 0) =>
     api<PageResponse<Transaction>>(`/api/payment/admin/transactions?status=${status}&page=${page}`),
   adminStats: () => api<PaymentStats>("/api/payment/admin/stats"),
@@ -55,6 +69,18 @@ export const PAYMENT_REASON_LABELS: Record<string, string> = {
   SESSION_ALREADY_CANCELLED: "Phiên đã huỷ trước khi thanh toán xong",
   MENTOR_NO_SHOW: "Mentor vắng mặt",
   CANCELLED_ON_CALL: "Huỷ trong buổi gọi",
+  DISPUTE_FULL_REFUND: "Tranh chấp: hoàn toàn bộ",
+  DISPUTE_PARTIAL_REFUND: "Tranh chấp: hoàn một phần",
+  DISPUTE_SUSPEND: "Tranh chấp: mentor bị khoá",
+  MENTOR_SUSPENDED: "Mentor bị khoá",
+};
+
+/** US-25 — nhãn dòng sổ thu nhập. */
+export const LEDGER_TYPE_LABELS: Record<string, string> = {
+  EARNING_PENDING: "Chờ giải phóng",
+  EARNING_AVAILABLE: "Đã giải phóng",
+  REVERSAL: "Thu hồi (hoàn tiền)",
+  PAYOUT: "Đã chi trả",
 };
 
 export const paymentReasonLabel = (reason: string | null | undefined): string =>

@@ -19,6 +19,10 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 1
+    # Sprint 3 — hai nhóm cùng thêm migration cho service này (Team A: V10–V12, Team B: V13–V14) và triển khai song
+    # song lên cùng CSDL: cho phép áp version nhỏ hơn version đã có, và không lỗi khi CSDL có migration của nhánh kia.
+    out-of-order: true
+    ignore-migration-patterns: "*:missing"
 
 management:
   endpoints:
@@ -36,6 +40,7 @@ app:
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
     matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}   # US-15 — gợi ý mentor tương tự (best-effort)
     matching-timeout: PT3S
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}     # US-30 — POST /internal/audit (bắn-rồi-quên)
   timezone: Asia/Ho_Chi_Minh
   booking:
     min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
@@ -61,9 +66,15 @@ app:
     max-pending: 3                  # mỗi mentee tối đa 3 yêu cầu PENDING (409 TOO_MANY_PENDING_REQUESTS)
     expire-after: PT72H             # US-15 — PENDING không được phản hồi sau 72 giờ → EXPIRED
     expire-interval: PT5M           # chu kỳ job hết hạn yêu cầu
+    inactivity-warn-after: P30D     # US-31 — ACCEPTED không có phiên 30 ngày → nhắc "Bạn có muốn tiếp tục?"
+    inactivity-end-after: P7D       # ... thêm 7 ngày vẫn không có phiên mới → ENDED (INACTIVE, SYSTEM)
+    inactivity-interval: PT1H       # chu kỳ job không hoạt động
   attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
     window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
     interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn
+  disputes:                        # US-32 — tranh chấp
+    open-window: P7D                # mở trong 7 ngày sau giờ kết thúc phiên (409 DISPUTE_WINDOW_CLOSED)
+    first-response-sla: PT48H       # admin phản hồi đầu tiên trong 48 giờ (cờ overdue ở danh sách admin)
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
   reminder:

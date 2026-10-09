@@ -233,3 +233,27 @@ async def test_similar_mentors_applies_preferences_then_relaxes(conn):
     assert {str(m["mentor_id"]) for m in result} == {cheap, declined, pricey}
 
     assert await matching_pipeline.similar_mentors(str(uuid.uuid4()), best, limit=3) == []
+
+
+async def test_suspended_mentor_is_never_suggested_nor_similar(conn):
+    """US-27: mentor bị admin đình chỉ (SUSPENDED + cột suspended_* của V6) không xuất hiện ở gợi ý lẫn similar-mentors."""
+    kept = await add_mentor(conn, bio="Chuyên gia Kafka")
+    suspended = await add_mentor(conn, bio="Chuyên gia Kafka", years=12)
+    other = await add_mentor(conn)
+    await conn.execute(
+        "UPDATE mentor_profiles SET status = 'SUSPENDED', suspended_reason = 'Vi phạm quy tắc ứng xử', "
+        "suspended_at = now(), suspended_by = gen_random_uuid() WHERE user_id = $1::uuid", suspended)
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee)
+    assert ids(result) == {kept, other}
+    assert result["stats"]["excluded"] == {"unavailable": 1}
+
+    similar = await matching_pipeline.similar_mentors(mentee, other, limit=5)
+    assert [str(m["mentor_id"]) for m in similar] == [kept]
+
+    # Gỡ đình chỉ => xuất hiện lại ngay (matching đọc trạng thái trực tiếp từ profile_db, không cần reindex).
+    await conn.execute(
+        "UPDATE mentor_profiles SET status = 'ACCEPTING', suspended_reason = NULL, suspended_at = NULL, "
+        "suspended_by = NULL WHERE user_id = $1::uuid", suspended)
+    assert suspended in ids(await match(mentee))

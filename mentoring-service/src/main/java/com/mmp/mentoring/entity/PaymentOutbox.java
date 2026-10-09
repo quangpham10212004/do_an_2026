@@ -10,8 +10,12 @@ import java.util.UUID;
 @Table(name = "payment_outbox")
 public class PaymentOutbox {
 
-    /** REWARD (US-01), REFUND (US-12 NO_SHOW_MENTOR / CANCELLED_ON_CALL), HOLD (US-12 DISPUTED). */
-    public enum Kind { REWARD, REFUND, HOLD }
+    /**
+     * REWARD (US-01), REFUND (US-12 NO_SHOW_MENTOR / CANCELLED_ON_CALL, US-32 kết luận tranh chấp), HOLD (US-12 DISPUTED,
+     * US-32 mở tranh chấp), FINAL_STATE (US-25 trạng thái cuối → đồng hồ giải phóng thu nhập), RELEASE (US-32 giải phóng
+     * giao dịch tạm giữ).
+     */
+    public enum Kind { REWARD, REFUND, HOLD, FINAL_STATE, RELEASE }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -46,6 +50,12 @@ public class PaymentOutbox {
         this.sessionId = sessionId;
         this.kind = kind;
         this.payload = payload;
+    }
+
+    /** createdAt tường minh — các bản ghi của cùng 1 phiên được gửi theo đúng thứ tự xếp hàng. */
+    public PaymentOutbox(UUID sessionId, Kind kind, String payload, OffsetDateTime createdAt) {
+        this(sessionId, kind, payload);
+        this.createdAt = createdAt;
     }
 
     public UUID getId() { return id; }

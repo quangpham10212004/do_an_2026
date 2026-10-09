@@ -46,7 +46,8 @@ def register(role, name):
 def upload(user, consent, path=None):
     fields = {} if consent is None else {"consentExternalAi": consent}
     body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES), fields=fields)
-    return call("POST", f"{AI}{path or f'/api/ai/mentee/{user['userId']}/cv-upload'}", token=user["accessToken"],
+    path = path or "/api/ai/mentee/%s/cv-upload" % user["userId"]
+    return call("POST", f"{AI}{path}", token=user["accessToken"],
                 raw_body=body, content_type=ctype)
 
 

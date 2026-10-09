@@ -11,6 +11,7 @@ servers:
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
   schemas:
     ErrorResponse:
       type: object
@@ -49,6 +50,26 @@ components:
       properties:
         refreshToken: { type: string }
   responses:
+    AuditRequest:
+      type: object
+      description: US-30 (PRD-ADM-5) — interface chung Sprint 3; mọi service gọi kiểu bắn-rồi-quên.
+      required: [actorRole, action, targetType, targetId]
+      properties:
+        actorId: { type: string, format: uuid, nullable: true, description: null khi actorRole = SYSTEM }
+        actorRole: { type: string, enum: [ADMIN, MENTOR, MENTEE, SYSTEM] }
+        action: { type: string, pattern: "^[A-Z][A-Z0-9_]*$", maxLength: 100, example: REFUND_CREATED }
+        targetType: { type: string, maxLength: 50, example: SESSION }
+        targetId: { type: string, maxLength: 100 }
+        before: { type: object, nullable: true, description: Trạng thái trước (object JSON tuỳ ý) }
+        after: { type: object, nullable: true, description: Trạng thái sau }
+    AuditEntry:
+      allOf:
+        - $ref: "#/components/schemas/AuditRequest"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            actorEmail: { type: string, nullable: true, description: Email của actor nếu là tài khoản trong auth_db }
+            createdAt: { type: string, format: date-time }
     Error:
       description: Lỗi
       content:
@@ -318,7 +339,7 @@ paths:
 
   /api/auth/admin/users/{userId}/status:
     patch:
-      summary: FR-1.5 (ADMIN) Khoá / mở khoá tài khoản
+      summary: FR-1.5 (ADMIN) Khoá / mở khoá tài khoản — ghi audit log USER_LOCKED / USER_UNLOCKED (targetType USER) khi trạng thái đổi
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -338,3 +359,51 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
         "400": { description: CANNOT_LOCK_SELF / CANNOT_LOCK_ADMIN }
+
+  # ---------------- US-30 (PRD-ADM-5): nhật ký kiểm toán ----------------
+  /internal/audit:
+    post:
+      summary: >
+        (nội bộ, X-Internal-Token) Ghi một dòng nhật ký kiểm toán. Append-only: không có endpoint sửa/xoá, trigger DB
+        chặn UPDATE/DELETE/TRUNCATE; job hằng ngày xoá dòng cũ hơn app.audit.retention (mặc định P730D = 2 năm).
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuditRequest" }
+      responses:
+        "202": { description: Đã ghi }
+        "400": { description: VALIDATION_ERROR (actorRole/action sai định dạng, before/after không phải object) }
+        "401": { description: Thiếu / sai X-Internal-Token }
+
+  /api/auth/admin/audit:
+    get:
+      summary: >
+        US-30 (ADMIN) Tra cứu nhật ký kiểm toán, mới nhất trước. Alias /api/admin/audit (gọi thẳng service);
+        frontend dùng /api/auth/admin/audit qua proxy.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: actorId, in: query, schema: { type: string, format: uuid } }
+        - { name: action, in: query, schema: { type: string }, description: Khớp chính xác (không phân biệt hoa thường) }
+        - { name: targetType, in: query, schema: { type: string } }
+        - { name: targetId, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string }, description: "yyyy-MM-dd (giờ VN) hoặc ISO date-time; created_at >= from" }
+        - { name: to, in: query, schema: { type: string }, description: "yyyy-MM-dd = hết ngày đó; hoặc ISO date-time (loại trừ)" }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        "200":
+          description: Trang kết quả
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalItems: { type: integer }
+                  totalPages: { type: integer }
+        "400": { description: INVALID_DATE }
+        "403": { description: Không phải ADMIN }

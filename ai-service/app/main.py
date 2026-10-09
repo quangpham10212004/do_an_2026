@@ -44,7 +44,7 @@ app = FastAPI(
 
 @app.exception_handler(AiError)
 async def ai_error_handler(_: Request, exc: AiError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status, content={"error": {"code": exc.code, "message": exc.message}})
+    return JSONResponse(status_code=exc.status, content={"error": {"code": exc.code, "message": exc.message, **exc.extra}})
 
 
 @app.exception_handler(HTTPException)
