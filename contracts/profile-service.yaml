@@ -159,6 +159,10 @@ components:
               nullable: true
               description: US-37 — chỉ chủ hồ sơ/admin/nội bộ; người xem khác nhận null
               allOf: [{ $ref: "#/components/schemas/Completeness" }]
+            medianResponseHours:
+              type: number
+              nullable: true
+              description: "US-35 (PRD-MATCH-9) — trung vị thời gian phản hồi yêu cầu (giờ) do mentoring-service đồng bộ; 9999 = đa số không phản hồi; null = chưa có dữ liệu"
     MenteeProfileInput:
       type: object
       required: [displayName, goal, domain]
@@ -667,6 +671,26 @@ paths:
             image/jpeg: { schema: { type: string, format: binary } }
             image/png: { schema: { type: string, format: binary } }
         "404": { description: AVATAR_NOT_FOUND }
+  /internal/mentor/{userId}/response-time:
+    put:
+      summary: >
+        US-35 — mentoring-service đồng bộ trung vị thời gian phản hồi yêu cầu (≤ 20 yêu cầu gần nhất trong 180 ngày; hết
+        hạn = không phản hồi). matching-service đọc cột median_response_hours để tính responsiveness.
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sampleSize]
+              properties:
+                medianResponseHours: { type: number, nullable: true, minimum: 0 }
+                sampleSize: { type: integer, minimum: 0 }
+      responses:
+        "204": { description: Đã cập nhật }
+        "404": { description: PROFILE_NOT_FOUND }
   /internal/profile-summary/{userId}:
     get:
       summary: Nội bộ — tóm tắt hồ sơ

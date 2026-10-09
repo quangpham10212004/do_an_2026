@@ -122,6 +122,8 @@ export interface MentorProfile {
   avatarUrl: string | null;
   /** null khi xem hồ sơ người khác. */
   completeness: Completeness | null;
+  /** US-35 — trung vị thời gian phản hồi yêu cầu (giờ); null = chưa có dữ liệu. */
+  medianResponseHours: number | null;
 }
 
 export interface MenteeProfileInput {

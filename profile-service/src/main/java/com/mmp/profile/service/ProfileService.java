@@ -297,6 +297,11 @@ public class ProfileService {
         });
     }
 
+    /** US-35 — mentoring-service đồng bộ thời gian phản hồi; matching-service đọc để tính responsiveness. */
+    public void updateResponseTime(UUID mentorId, BigDecimal medianHours, int sampleSize) {
+        tx.executeWithoutResult(s -> findMentor(mentorId).updateResponseTime(medianHours, sampleSize));
+    }
+
     public void updateActiveMentees(UUID mentorId, int count) {
         tx.executeWithoutResult(s -> findMentor(mentorId).setActiveMenteeCount(count));
     }

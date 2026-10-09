@@ -45,13 +45,15 @@ public class InternalDevController {
     private final MentoringRequestRepository requestRepo;
     private final RequestExpiryService requestExpiry;
     private final com.mmp.mentoring.service.MentorshipEndService endService;
+    private final com.mmp.mentoring.service.ResponseTimeSyncJob responseTime;
     private final TransactionTemplate tx;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
                                  SessionScheduler scheduler, MentoringRequestRepository requestRepo,
                                  RequestExpiryService requestExpiry, com.mmp.mentoring.service.MentorshipEndService endService,
-                                 TransactionTemplate tx) {
+                                 com.mmp.mentoring.service.ResponseTimeSyncJob responseTime, TransactionTemplate tx) {
         this.endService = endService;
+        this.responseTime = responseTime;
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.requestExpiry = requestExpiry;
@@ -103,7 +105,7 @@ public class InternalDevController {
         return out;
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | request-expiry | inactivity. */
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | response-time | request-expiry | inactivity. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
@@ -111,6 +113,7 @@ public class InternalDevController {
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
             case "reminders" -> scheduler.sendReminders();
+            case "response-time" -> responseTime.run();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
             case "inactivity" -> endService.runInactivity(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);

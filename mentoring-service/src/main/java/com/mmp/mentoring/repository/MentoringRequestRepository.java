@@ -70,4 +70,26 @@ public interface MentoringRequestRepository extends JpaRepository<MentoringReque
     /** US-14 — advisory lock theo mentee trong transaction: kiểm tra "tối đa 3 PENDING" + tạo yêu cầu không bị chen ngang. */
     @Query(value = "SELECT pg_advisory_xact_lock(hashtext('mentee-requests:' || CAST(:menteeId AS text)))", nativeQuery = true)
     Object lockMenteeRequests(@Param("menteeId") UUID menteeId);
+
+    /** US-35 — mentor có yêu cầu được trả lời / hết hạn kể từ {@code since} (cột: mentor_id text). */
+    @Query(value = """
+            SELECT DISTINCT CAST(mentor_id AS text) FROM mentoring_requests
+            WHERE (responded_at IS NOT NULL AND responded_at >= :since) OR (expired_at IS NOT NULL AND expired_at >= :since)
+            """, nativeQuery = true)
+    List<String> findMentorsWithResponsesSince(@Param("since") java.time.OffsetDateTime since);
+
+    /**
+     * US-35 — tối đa {@code limit} yêu cầu gần nhất của mentor đã rời PENDING bằng trả lời hoặc hết hạn trong cửa sổ.
+     * Cột: created_at, responded_at, status.
+     */
+    @Query(value = """
+            SELECT created_at, responded_at, status FROM mentoring_requests
+            WHERE mentor_id = :mentorId
+              AND (responded_at IS NOT NULL OR status = 'EXPIRED')
+              AND COALESCE(responded_at, expired_at, created_at) >= :from
+            ORDER BY COALESCE(responded_at, expired_at, created_at) DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> findResponseOutcomes(@Param("mentorId") UUID mentorId, @Param("from") java.time.OffsetDateTime from,
+                                        @Param("limit") int limit);
 }

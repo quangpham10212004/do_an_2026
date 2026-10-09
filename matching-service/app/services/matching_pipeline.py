@@ -7,7 +7,9 @@ Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6, US-17 PRD-MATCH-1/2):
                            loại phiên, rating, miễn phí — match_filters.py)
     2. Top-K retrieval   : CHỈ trong các mentor đó, lấy K mentor có vector gần mentee nhất
                            (cosine, pgvector <=>) trong matching_db
-    3. Re-rank           : điểm cuối = kết hợp similarity + rating + kinh nghiệm
+    3. Re-rank           : điểm cuối = 0.6·similarity + 0.15·rating/5 + 0.1·kinh nghiệm + 0.1·scheduleFit
+                           + 0.05·responsiveness (US-35, PRD-MATCH-3; trọng số cấu hình được — config.py).
+                           Mentor < 3 đánh giá dùng trung vị rating nền tảng (PRD-MATCH-4, ranking_signals.py)
     4. Explain           : sinh lý do đề xuất để kết quả không phải "hộp đen" (NFR-6)
 
 Lọc TRƯỚC khi xếp hạng (US-17): trước đây lấy top-K theo vector rồi mới lọc, nên khi bộ lọc chặt thì
@@ -21,26 +23,37 @@ vector nào phải truyền qua mạng.
 Các hàm thuần (re_rank, explain, match_filters.*) không truy cập DB để test độc lập.
 """
 import re
+from datetime import datetime, timedelta, timezone
 
+from app import config
 from app.db import get_matching_pool, get_profile_pool
+from app.services import feedback_service
 from app.services import index_service
 from app.services import match_filters
+from app.services import ranking_signals as signals
 from app.services.match_filters import MatchFilters
 
 # K mặc định: số mentor hợp lệ gần nhất về vector được đưa vào re-rank (re-rank cộng thêm rating và
 # kinh nghiệm nên lấy dư so với limit).
 DEFAULT_K = 50
 
-# Trọng số re-rank — lý do lựa chọn được trình bày trong docs/ai-features.md:
-# độ tương đồng nội dung là tín hiệu chính (0.7); rating (0.2) và kinh nghiệm
-# (0.1) là tín hiệu phụ giúp phân định các mentor có mức tương đồng gần nhau.
-WEIGHT_SIMILARITY = 0.7
-WEIGHT_RATING = 0.2
-WEIGHT_EXPERIENCE = 0.1
+# Trọng số re-rank (US-35, PRD-MATCH-3) — lý do lựa chọn ở docs/ai-features.md: độ tương đồng nội dung vẫn là
+# tín hiệu chính; rating, kinh nghiệm, độ khớp lịch rảnh và tốc độ phản hồi phân định các mentor tương đồng gần nhau.
+WEIGHT_SIMILARITY = config.MATCH_WEIGHT_SIMILARITY
+WEIGHT_RATING = config.MATCH_WEIGHT_RATING
+WEIGHT_EXPERIENCE = config.MATCH_WEIGHT_EXPERIENCE
+WEIGHT_SCHEDULE = config.MATCH_WEIGHT_SCHEDULE
+WEIGHT_RESPONSIVENESS = config.MATCH_WEIGHT_RESPONSIVENESS
+WEIGHTS = {
+    "similarity": WEIGHT_SIMILARITY,
+    "rating": WEIGHT_RATING,
+    "experience": WEIGHT_EXPERIENCE,
+    "scheduleFit": WEIGHT_SCHEDULE,
+    "responsiveness": WEIGHT_RESPONSIVENESS,
+}
 MAX_YEARS_EXPERIENCE_NORM = 10  # chuẩn hoá years_experience về [0, 1]
-# Mentor mới chưa có đánh giá nhận rating trung tính thay vì 0, tránh bị
-# "phạt" oan (bài toán cold-start).
-NEUTRAL_RATING = 3.5
+# Rating dùng khi chưa tính được trung vị nền tảng (chưa mentor nào có ≥ 3 đánh giá) — cold-start.
+NEUTRAL_RATING = signals.FALLBACK_MEDIAN_RATING
 
 # Mã lý do loại bỏ của ràng buộc hệ thống — trả về trong pipeline.excluded (thứ tự = thứ tự kiểm tra).
 REASON_NOT_VERIFIED = "notVerified"
@@ -56,7 +69,7 @@ async def get_mentee(mentee_id: str) -> dict | None:
     row = await pool.fetchrow(
         """
         SELECT user_id, domain, goal, skills,
-               preferred_days, preferred_time_of_day, budget_max_per_hour, languages
+               preferred_days, preferred_time_of_day, budget_max_per_hour, languages, timezone
         FROM mentee_profiles WHERE user_id = $1::uuid
         """,
         mentee_id,
@@ -73,6 +86,7 @@ _CANDIDATES_CTE = """
 WITH c AS (
     SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.capacity, m.active_mentee_count,
            m.rating, m.rating_count, m.years_experience, m.hourly_rate, m.verification_status,
+           m.timezone, m.median_response_hours, m.headline,
            CASE
                WHEN m.verification_status <> 'APPROVED' THEN 'notVerified'
                -- US-08: trạng thái hiệu lực — ON_LEAVE đã qua hết on_leave_until tính là ACCEPTING.
@@ -158,20 +172,77 @@ async def rank_by_similarity(mentee_id: str, mentor_ids: list, k: int) -> list[d
     return [dict(r) for r in rows]
 
 
-def re_rank(candidates: list[dict]) -> list[dict]:
+def re_rank(candidates: list[dict], platform_median: float | None = None, weights: dict | None = None) -> list[dict]:
+    """
+    Điểm cuối (US-35) = Σ trọng số × tín hiệu ∈ [0, 1]. Ứng viên thiếu schedule_fit (vd. script đánh giá offline)
+    tính 0; thiếu median_response_hours tính responsiveness trung tính 0.5. score_parts = phần đóng góp của từng tín
+    hiệu (cộng lại = final_score) để giao diện giải thích điểm.
+    """
+    w = weights or WEIGHTS
     for c in candidates:
         # Với vector đã chuẩn hoá, cosine distance ∈ [0, 2]; kẹp similarity về [0, 1]
         similarity = max(0.0, min(1.0, 1 - float(c["distance"])))
-        rating = float(c["rating"]) if c.get("rating_count", 0) > 0 else NEUTRAL_RATING
+        rating = signals.effective_rating(c.get("rating"), c.get("rating_count", 0), platform_median)
         experience_norm = min(max(c.get("years_experience") or 0, 0) / MAX_YEARS_EXPERIENCE_NORM, 1.0)
+        fit = float(c.get("schedule_fit") or 0.0)
+        responsive = signals.responsiveness(c.get("median_response_hours"))
+        parts = {
+            "similarity": w["similarity"] * similarity,
+            "rating": w["rating"] * (rating / 5),
+            "experience": w["experience"] * experience_norm,
+            "scheduleFit": w.get("scheduleFit", 0.0) * fit,
+            "responsiveness": w.get("responsiveness", 0.0) * responsive,
+        }
         c["similarity_score"] = round(similarity, 4)
-        c["final_score"] = round(
-            WEIGHT_SIMILARITY * similarity
-            + WEIGHT_RATING * (rating / 5)
-            + WEIGHT_EXPERIENCE * experience_norm,
-            4,
-        )
+        c["rating_used"] = round(rating, 2)
+        c["new_mentor"] = signals.is_new_mentor(c.get("rating_count", 0))
+        c["schedule_fit"] = round(fit, 4)
+        c["responsiveness"] = responsive
+        c["score_parts"] = {k: round(v, 4) for k, v in parts.items()}
+        c["final_score"] = round(sum(parts.values()), 4)
     return sorted(candidates, key=lambda x: x["final_score"], reverse=True)
+
+
+async def platform_median_rating() -> float | None:
+    """PRD-MATCH-4 — trung vị rating của mentor APPROVED có ≥ 3 đánh giá (None khi chưa có ai)."""
+    pool = await get_profile_pool()
+    value = await pool.fetchval(
+        """
+        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY rating)
+        FROM mentor_profiles WHERE verification_status = 'APPROVED' AND rating_count >= $1
+        """,
+        signals.MIN_REVIEWS,
+    )
+    return float(value) if value is not None else None
+
+
+async def schedule_inputs(mentor_ids: list, now: datetime) -> tuple[dict, dict]:
+    """
+    Lịch rảnh hằng tuần + ngoại lệ trong 15 ngày tới (đủ phủ 14 ngày ở mọi múi giờ) của các mentor đã truy hồi.
+    Trả về ({mentor_id: [(dow, start, end)]}, {mentor_id: [(date, start, end)]}).
+    """
+    if not mentor_ids:
+        return {}, {}
+    pool = await get_profile_pool()
+    async with pool.acquire() as conn:
+        slots = await conn.fetch(
+            "SELECT mentor_id, day_of_week, start_time, end_time FROM mentor_availability WHERE mentor_id = ANY ($1::uuid[])",
+            mentor_ids,
+        )
+        exceptions = await conn.fetch(
+            """
+            SELECT mentor_id, date, start_time, end_time FROM mentor_availability_exceptions
+            WHERE mentor_id = ANY ($1::uuid[]) AND date BETWEEN $2::date AND $3::date
+            """,
+            mentor_ids, (now - timedelta(days=1)).date(), (now + timedelta(days=signals.HORIZON_DAYS + 1)).date(),
+        )
+    availability: dict = {}
+    for r in slots:
+        availability.setdefault(r["mentor_id"], []).append((r["day_of_week"], r["start_time"], r["end_time"]))
+    blocked: dict = {}
+    for r in exceptions:
+        blocked.setdefault(r["mentor_id"], []).append((r["date"], r["start_time"], r["end_time"]))
+    return availability, blocked
 
 
 def _contains_term(text: str, term: str) -> bool:
@@ -205,6 +276,13 @@ def explain(candidate: dict, mentee: dict) -> tuple[list[str], list[str]]:
         reasons.append(f"Được đánh giá cao ({float(candidate['rating']):.1f}/5 từ {candidate['rating_count']} lượt)")
     if (candidate.get("years_experience") or 0) >= 5:
         reasons.append(f"{candidate['years_experience']} năm kinh nghiệm")
+    fit = candidate.get("schedule_fit")
+    if fit is not None and fit >= 0.5:
+        reasons.append(f"Lịch rảnh khớp {fit:.0%} khung giờ bạn muốn học trong 2 tuần tới")
+    if candidate.get("responsiveness") == 1.0 and candidate.get("median_response_hours") is not None:
+        reasons.append("Thường phản hồi yêu cầu trong 24 giờ")
+    if candidate.get("new_mentor"):
+        reasons.append("Mentor mới — chưa đủ 3 đánh giá, xếp hạng theo mức đánh giá chung của nền tảng")
     return reasons, matched_skills
 
 
@@ -233,7 +311,11 @@ async def match_mentors_for_mentee(
             return None
 
     filters = match_filters.resolve(requested or {}, mentee, use_profile_defaults)
-    return await _run(mentee, filters, limit, exclude_ids or [])
+    # US-36 — mentor mentee đã bấm "Không phù hợp" bị ẩn 30 ngày, loại TRƯỚC khi xếp hạng.
+    hidden = await feedback_service.hidden_mentor_ids(mentee_id)
+    result = await _run(mentee, filters, limit, list(exclude_ids or []) + hidden)
+    result["stats"]["hidden"] = len(hidden)
+    return result
 
 
 async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: list[str]) -> dict:
@@ -243,12 +325,16 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
     k = max(DEFAULT_K, limit * 5)
     by_id = {c["mentor_id"]: c for c in eligible}
     nearest = await rank_by_similarity(str(mentee["user_id"]), list(by_id), k)
+    now = datetime.now(timezone.utc)
+    availability, blocked = await schedule_inputs([r["mentor_id"] for r in nearest], now)
     candidates = []
     for r in nearest:
         c = dict(by_id[r["mentor_id"]])
         c["distance"] = r["distance"]
+        c["schedule_fit"] = signals.schedule_fit(now, mentee, c.get("timezone"), availability.get(r["mentor_id"], []),
+                                                 blocked.get(r["mentor_id"], []))
         candidates.append(c)
-    ranked = re_rank(candidates)[:limit]
+    ranked = re_rank(candidates, await platform_median_rating())[:limit]
     for c in ranked:
         c["reasons"], c["matched_skills"] = explain(c, mentee)
 
@@ -278,7 +364,8 @@ async def similar_mentors(mentee_id: str, exclude_mentor_id: str, limit: int = 3
         return []
     mentors = list(first["mentors"])
     if len(mentors) < limit and first["filters"].active():
-        taken = [exclude_mentor_id] + [str(m["mentor_id"]) for m in mentors]
+        taken = ([exclude_mentor_id] + [str(m["mentor_id"]) for m in mentors]
+                 + await feedback_service.hidden_mentor_ids(mentee_id))
         mentee = await get_mentee(mentee_id)
         if mentee is not None:
             relaxed = await _run(mentee, MatchFilters(), limit - len(mentors), taken)

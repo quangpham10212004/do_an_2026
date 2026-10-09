@@ -28,13 +28,41 @@ components:
         finalScore:
           type: number
           format: float
-          description: "0.7*similarity + 0.2*(rating/5) + 0.1*min(years/10,1); mentor chưa có đánh giá dùng rating trung tính 3.5"
+          description: >
+            US-35 (PRD-MATCH-3) — 0.6·similarity + 0.15·rating/5 + 0.1·min(years/10,1) + 0.1·scheduleFit + 0.05·responsiveness
+            (trọng số cấu hình bằng MATCH_WEIGHT_*). Mentor < 3 đánh giá dùng trung vị rating nền tảng (PRD-MATCH-4).
         rating: { type: number, format: float }
         ratingCount: { type: integer }
         yearsExperience: { type: integer }
         hourlyRate: { type: number }
         matchedSkills: { type: array, items: { type: string }, description: Kỹ năng trùng với kỹ năng/mục tiêu của mentee }
         reasons: { type: array, items: { type: string }, description: "FR-4.6 — lý do đề xuất, ví dụ 'Trùng kỹ năng: Java'" }
+        scheduleFit:
+          type: number
+          description: >
+            US-35 — tỉ lệ khung giờ mong muốn của mentee trong 14 ngày tới (preferredDays × preferredTimeOfDay theo múi giờ
+            mentee; không đặt = mọi ngày 06–23) có ≥ 60 phút trùng lịch rảnh hằng tuần của mentor (múi giờ mentor) sau khi
+            trừ ngoại lệ. Phiên đã đặt không bị trừ (dữ liệu ở mentoring-service).
+        responsiveness: { type: number, enum: [0, 0.5, 1], description: "1 nếu trung vị phản hồi ≤ 24 giờ, 0.5 nếu ≤ 72 giờ hoặc chưa có dữ liệu, 0 nếu chậm hơn" }
+        medianResponseHours: { type: number, nullable: true }
+        newMentor: { type: boolean, description: "< 3 đánh giá — nhãn 'Mentor mới'" }
+        ratingUsed: { type: number, description: Rating dùng để xếp hạng (thật hoặc trung vị nền tảng) }
+        scoreParts:
+          type: object
+          description: Phần đóng góp của từng tín hiệu (similarity, rating, experience, scheduleFit, responsiveness); cộng lại = finalScore
+          additionalProperties: { type: number }
+        headline: { type: string, nullable: true }
+    MatchFeedback:
+      type: object
+      description: US-36 (PRD-MATCH-6) — lượt "Không phù hợp" đang hiệu lực
+      properties:
+        id: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        reason: { type: string, enum: [WRONG_DOMAIN, TOO_EXPENSIVE, SCHEDULE, OTHER] }
+        note: { type: string, nullable: true }
+        rank: { type: integer, nullable: true, description: Hạng của mentor trong danh sách lúc bấm (từ impressionId) }
+        createdAt: { type: string, format: date-time }
+        hiddenUntil: { type: string, format: date-time, description: createdAt + 30 ngày }
     IndexStatus:
       type: object
       properties:
@@ -65,7 +93,11 @@ components:
         k: { type: integer, description: "Số mentor hợp lệ gần nhất về vector được đưa vào re-rank = max(50, 5 × limit)" }
         retrieved: { type: integer, description: Số mentor hợp lệ đã có vector và được lấy ở bước top-K (≤ k) }
         returned: { type: integer }
-        weights: { type: object, additionalProperties: { type: number } }
+        hidden: { type: integer, description: "US-36 — số mentor mentee đang ẩn (loại trước khi xếp hạng)" }
+        weights:
+          type: object
+          additionalProperties: { type: number }
+          example: { similarity: 0.6, rating: 0.15, experience: 0.1, scheduleFit: 0.1, responsiveness: 0.05 }
     TimeOfDay:
       type: string
       enum: [MORNING, AFTERNOON, EVENING]
@@ -256,6 +288,13 @@ paths:
                       không bật bộ lọc nào.
                     additionalProperties: { type: integer }
                     example: { maxRate: 12, language: 0 }
+                  impressionId:
+                    type: string
+                    format: uuid
+                    nullable: true
+                    description: >
+                      US-36 (PRD-MATCH-8) — mỗi danh sách trả về được ghi vào match_impressions (mentee, mentor, hạng, điểm,
+                      scoreParts, bộ lọc, trọng số); gửi id này kèm POST /api/matching/feedback. null khi rỗng / ghi lỗi.
         "400": { description: "BAD_REQUEST / VALIDATION_ERROR — menteeId, days, language, timeOfDay, sessionType, minRating, maxRate không hợp lệ" }
         "401": { description: UNAUTHORIZED }
         "403": { description: FORBIDDEN — truy vấn cho mentee khác }
@@ -264,3 +303,76 @@ paths:
             MENTEE_PROFILE_INCOMPLETE — chưa có hồ sơ, hoặc có hồ sơ nhưng chưa lập chỉ mục được.
             Nếu hồ sơ tồn tại mà chưa có vector, matching-service lập chỉ mục ngay trong request
             thay vì bắt mentee chờ vòng quét kế tiếp.
+  /api/matching/feedback:
+    post:
+      summary: >
+        US-36 (PRD-MATCH-6) — "Không phù hợp": ẩn mentor khỏi gợi ý của mentee trong 30 ngày (loại trước khi xếp hạng nên
+        vẫn trả đủ limit), lưu lý do và hạng lúc bấm. Bấm lại khi đang ẩn = cập nhật lý do, gia hạn 30 ngày. Chỉ chính mentee.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menteeId, mentorId, reason]
+              properties:
+                menteeId: { type: string, format: uuid }
+                mentorId: { type: string, format: uuid }
+                reason: { type: string, enum: [WRONG_DOMAIN, TOO_EXPENSIVE, SCHEDULE, OTHER] }
+                note: { type: string, maxLength: 300 }
+                impressionId: { type: string, format: uuid, description: impressionId của danh sách đang xem }
+      responses:
+        "201":
+          description: Đã ẩn
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchFeedback" }
+        "400": { description: BAD_REQUEST / VALIDATION_ERROR }
+        "403": { description: FORBIDDEN }
+    get:
+      summary: US-36 — các mentor đang bị ẩn của mentee (chính mentee hoặc ADMIN).
+      parameters:
+        - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/MatchFeedback" } }
+  /api/matching/feedback/{mentorId}:
+    delete:
+      summary: US-36 — bỏ ẩn sớm.
+      parameters:
+        - { name: mentorId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Đã bỏ ẩn }
+        "404": { description: FEEDBACK_NOT_FOUND }
+  /api/matching/admin/evaluation:
+    get:
+      summary: >
+        US-36 (PRD-MATCH-8) — ADMIN: trong `days` ngày, số lượt hiển thị và số lượt "Không phù hợp" theo hạng 1–10, phân bố
+        lý do. Tỉ lệ được gửi yêu cầu theo hạng tính offline (scripts/eval/matching) vì yêu cầu nằm ở mentoring-service.
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, default: 30, minimum: 1, maximum: 365 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days: { type: integer }
+                  resultLists: { type: integer }
+                  byRank:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        rank: { type: integer }
+                        impressions: { type: integer }
+                        notRelevant: { type: integer }
+                        notRelevantRate: { type: number }
+                  reasons: { type: object, additionalProperties: { type: integer } }
+        "403": { description: FORBIDDEN }

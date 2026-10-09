@@ -901,10 +901,10 @@ paths:
         "200": { description: "{ id, lastActivity, inactivityWarnedAt }" }
   /internal/dev/jobs/{job}:
     post:
-      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | reminders (US-34) | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | reminders (US-34) | response-time (US-35) | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
       security: [{ internalToken: [] }]
       parameters:
-        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, reminders, request-expiry, inactivity] } }
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, reminders, response-time, request-expiry, inactivity] } }
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }

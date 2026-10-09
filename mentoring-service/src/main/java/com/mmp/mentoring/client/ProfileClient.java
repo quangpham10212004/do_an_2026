@@ -157,6 +157,22 @@ public class ProfileClient {
         }
     }
 
+    /** US-35 — đồng bộ trung vị thời gian phản hồi (giờ, null = chưa có mẫu). Trả false khi lỗi để job thử lại. */
+    public boolean updateResponseTime(UUID mentorId, java.math.BigDecimal medianHours, int sampleSize) {
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("medianResponseHours", medianHours);
+            body.put("sampleSize", sampleSize);
+            restClient.put().uri("/internal/mentor/{id}/response-time", mentorId).body(body).retrieve().toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return true; // mentor chưa có hồ sơ — không có gì để cập nhật
+        } catch (RestClientException e) {
+            log.warn("Could not sync response time for mentor {}: {}", mentorId, e.getMessage());
+            return false;
+        }
+    }
+
     public void updateRating(UUID mentorId, double rating, long count) {
         try {
             restClient.put().uri("/internal/mentor/{id}/rating", mentorId)

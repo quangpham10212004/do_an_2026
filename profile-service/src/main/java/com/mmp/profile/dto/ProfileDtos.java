@@ -74,14 +74,17 @@ public final class ProfileDtos {
             List<AvailabilityExceptionDto> exceptions,
             String headline,
             String avatarUrl,
-            CompletenessRules.Completeness completeness) {
+            CompletenessRules.Completeness completeness,
+            /** US-35 (PRD-MATCH-9) — trung vị thời gian phản hồi yêu cầu (giờ); null = chưa có dữ liệu. */
+            BigDecimal medianResponseHours) {
 
         /** Link họp chỉ cho chủ hồ sơ, admin và service nội bộ (mentoring-service gửi cho mentee khi phiên CONFIRMED). */
         public MentorProfileResponse withoutMeetingLink() {
             return new MentorProfileResponse(userId, displayName, skills, domain, bio, yearsExperience, cvFileUrl,
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, statusReason, null, bufferMinutes, minNoticeHours,
-                    languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, completeness);
+                    languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, completeness,
+                    medianResponseHours);
         }
 
         /**
@@ -93,7 +96,8 @@ public final class ProfileDtos {
             return new MentorProfileResponse(userId, displayName, skills, domain, bio, yearsExperience, cvFileUrl,
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, reason, null, bufferMinutes, minNoticeHours,
-                    languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, null);
+                    languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, null,
+                    medianResponseHours);
         }
 
         /**
@@ -119,7 +123,8 @@ public final class ProfileDtos {
                     p.getVerificationStatus().name(), effective.name(), onLeave ? p.getOnLeaveUntil() : null,
                     effective == p.getStatus() ? p.getStatusReason() : null, p.getMeetingLink(), p.getBufferMinutes(),
                     p.getMinNoticeHours(), Arrays.asList(p.getLanguages()), Arrays.asList(p.getSessionTypes()),
-                    p.getTimezone(), slots, exceptions, p.getHeadline(), avatarUrl, completeness);
+                    p.getTimezone(), slots, exceptions, p.getHeadline(), avatarUrl, completeness,
+                    p.getMedianResponseHours());
         }
     }
 
@@ -327,6 +332,11 @@ public final class ProfileDtos {
     }
 
     public record VerificationUpdate(@NotNull @Pattern(regexp = "PENDING_INTERVIEW|PENDING_REVIEW|APPROVED|REJECTED") String status) {
+    }
+
+    /** US-35 — medianResponseHours null = mentor chưa có yêu cầu nào được tính. */
+    public record ResponseTimeUpdate(@DecimalMin("0") @DecimalMax("100000") BigDecimal medianResponseHours,
+                                     @NotNull @Min(0) Integer sampleSize) {
     }
 
     public record RatingUpdate(@NotNull @DecimalMin("0") @DecimalMax("5") Float rating, @NotNull @Min(0) Integer ratingCount) {
