@@ -2,6 +2,13 @@ import { api } from "@/lib/api";
 import type {
   AttendanceAnswer,
   AvailableSlots,
+  ChatMessage,
+  ConversationSummary,
+  ConversationView,
+  MessageReport,
+  MessageReportOutcome,
+  MessageReportReason,
+  MessageReportStatus,
   BookSessionInput,
   CancelPreview,
   CreateRequestInput,
@@ -81,6 +88,21 @@ export const mentoringApi = {
   startDisputeReview: (id: Uuid) => api<Dispute>(`/api/mentoring/admin/disputes/${id}/start-review`, { method: "POST" }),
   resolveDispute: (id: Uuid, body: ResolveDisputeInput) =>
     api<Dispute>(`/api/mentoring/admin/disputes/${id}/resolve`, { method: "POST", body }),
+  // Nhắn tin (US-33)
+  conversations: () => api<ConversationSummary[]>("/api/mentoring/conversations"),
+  unreadMessages: () => api<{ unread: number }>("/api/mentoring/conversations/unread-count"),
+  /** after = createdAt của tin cuối đã có (polling); mở luồng = đánh dấu đã đọc. */
+  conversation: (id: Uuid, after?: string) =>
+    api<ConversationView>(`/api/mentoring/conversations/${id}` + (after ? `?after=${encodeURIComponent(after)}` : "")),
+  sendMessage: (id: Uuid, body: string) =>
+    api<ChatMessage>(`/api/mentoring/conversations/${id}/messages`, { method: "POST", body: { body } }),
+  reportMessage: (messageId: Uuid, reason: MessageReportReason, note?: string) =>
+    api<MessageReport>(`/api/mentoring/messages/${messageId}/report`, { method: "POST", body: { reason, note } }),
+  adminMessageReports: (status: MessageReportStatus | "" = "OPEN") =>
+    api<MessageReport[]>(`/api/mentoring/admin/message-reports?status=${status}`),
+  adminMessageReport: (id: Uuid) => api<MessageReport>(`/api/mentoring/admin/message-reports/${id}`),
+  resolveMessageReport: (id: Uuid, outcome: MessageReportOutcome, note?: string) =>
+    api<MessageReport>(`/api/mentoring/admin/message-reports/${id}/resolve`, { method: "POST", body: { outcome, note } }),
   // Thông báo
   notifications: (limit = 50) => api<NotificationList>(`/api/mentoring/notifications?limit=${limit}`),
   markRead: (id: Uuid) => api<null>(`/api/mentoring/notifications/${id}/read`, { method: "POST" }),

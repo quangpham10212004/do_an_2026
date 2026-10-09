@@ -52,6 +52,17 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     List<MentoringSession> findUpcomingHoldingByPair(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId,
                                                     @Param("now") OffsetDateTime now);
 
+    /**
+     * US-33 (PRD-MSG-3) — cặp mentee–mentor đã có phiên trả phí được xác nhận (đã thanh toán: CONFIRMED hoặc đã diễn ra).
+     * Khi đó SĐT/email trong tin nhắn không còn bị che.
+     */
+    @Query("""
+            SELECT COUNT(s) > 0 FROM MentoringSession s
+            WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.price > 0
+              AND s.status IN ('CONFIRMED', 'AWAITING_ATTENDANCE', 'COMPLETED', 'NO_SHOW_MENTEE', 'NO_SHOW_MENTOR', 'DISPUTED')
+            """)
+    boolean existsPaidConfirmedForPair(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId);
+
     /** US-12 — khoá dòng phiên (SELECT … FOR UPDATE) khi trả lời / kết luận tham dự. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM MentoringSession s WHERE s.id = :id")
