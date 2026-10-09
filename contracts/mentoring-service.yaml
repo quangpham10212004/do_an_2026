@@ -320,6 +320,7 @@ paths:
               schema: { $ref: "#/components/schemas/Request" }
         "400": { description: "VALIDATION_ERROR / INVALID_GOAL / INVALID_EXPECTED_DURATION / MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
         "409": { description: REQUEST_ALREADY_EXISTS / TOO_MANY_PENDING_REQUESTS }
+        "403": { description: "EMAIL_NOT_VERIFIED (US-39) — tài khoản chưa xác thực email (claim ev = false)" }
   /api/mentoring/requests/{id}/respond:
     post:
       summary: FR-5.3 / US-14 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa; từ chối bắt buộc rejectReason
@@ -430,6 +431,7 @@ paths:
               schema: { $ref: "#/components/schemas/Session" }
         "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
         "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED / FREE_BOOKING_BLOCKED }
+        "403": { description: "EMAIL_NOT_VERIFIED (US-39) — mentee chưa xác thực email" }
   /api/mentoring/sessions/{id}:
     get:
       summary: Chi tiết phiên (người tham gia / admin)
@@ -899,12 +901,23 @@ paths:
                 warnedDaysAgo: { type: integer, nullable: true }
       responses:
         "200": { description: "{ id, lastActivity, inactivityWarnedAt }" }
+  /internal/dev/conversations/{id}/age:
+    post:
+      summary: DEV/E2E — US-38 lùi thời điểm gửi mọi tin của cuộc trò chuyện `minutes` phút (kiểm thử email gộp tin chưa đọc sau 30 phút).
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { minutes: { type: integer, default: 31 } } }
+      responses:
+        "200": { description: "{ conversationId, shifted }" }
   /internal/dev/jobs/{job}:
     post:
-      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | reminders (US-34) | response-time (US-35) | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | reminders (US-34) | response-time (US-35) | message-digest (US-38) | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
       security: [{ internalToken: [] }]
       parameters:
-        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, reminders, response-time, request-expiry, inactivity] } }
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, reminders, response-time, message-digest, request-expiry, inactivity] } }
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }

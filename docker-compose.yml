@@ -113,6 +113,11 @@ services:
       DB_NAME: auth_db
       REDIS_HOST: redis
       PAYMENT_SERVICE_URL: http://payment-service:8084
+      # US-38 — múi giờ người nhận (giờ yên tĩnh); EMAIL_MODE=smtp + `docker compose --profile mail up` để gửi qua Mailpit.
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      EMAIL_MODE: ${EMAIL_MODE:-log}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mmp.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
@@ -124,6 +129,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+
+  # US-38 (PRD-AUTH-2) — hộp thư SMTP cho demo (giao diện http://localhost:8025). Chỉ chạy với --profile mail;
+  # đặt EMAIL_MODE=smtp cho auth-service để email thật sự đi qua đây (mặc định chỉ ghi log).
+  mailpit:
+    image: axllent/mailpit:v1.20
+    profiles: ["mail"]
+    ports: ["8025:8025", "1025:1025"]
 
   profile-service:
     build: ./profile-service

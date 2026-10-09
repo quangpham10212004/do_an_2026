@@ -46,14 +46,20 @@ public class InternalDevController {
     private final RequestExpiryService requestExpiry;
     private final com.mmp.mentoring.service.MentorshipEndService endService;
     private final com.mmp.mentoring.service.ResponseTimeSyncJob responseTime;
+    private final com.mmp.mentoring.service.MessageEmailDigestJob messageDigest;
+    private final com.mmp.mentoring.repository.MessageRepository messageRepo;
     private final TransactionTemplate tx;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
                                  SessionScheduler scheduler, MentoringRequestRepository requestRepo,
                                  RequestExpiryService requestExpiry, com.mmp.mentoring.service.MentorshipEndService endService,
-                                 com.mmp.mentoring.service.ResponseTimeSyncJob responseTime, TransactionTemplate tx) {
+                                 com.mmp.mentoring.service.ResponseTimeSyncJob responseTime,
+                                 com.mmp.mentoring.service.MessageEmailDigestJob messageDigest,
+                                 com.mmp.mentoring.repository.MessageRepository messageRepo, TransactionTemplate tx) {
         this.endService = endService;
         this.responseTime = responseTime;
+        this.messageDigest = messageDigest;
+        this.messageRepo = messageRepo;
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.requestExpiry = requestExpiry;
@@ -105,7 +111,15 @@ public class InternalDevController {
         return out;
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | response-time | request-expiry | inactivity. */
+    /** US-38 — lùi thời điểm gửi mọi tin của cuộc trò chuyện {@code minutes} phút (kiểm thử email gộp sau 30 phút). */
+    @PostMapping("/conversations/{id}/age")
+    public Map<String, Object> ageMessages(@PathVariable UUID id, @RequestBody Map<String, Integer> in) {
+        int minutes = in.getOrDefault("minutes", 31);
+        Integer n = tx.execute(st -> messageRepo.shiftBack(id, minutes));
+        return Map.of("conversationId", id, "shifted", n == null ? 0 : n);
+    }
+
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | response-time | message-digest | request-expiry | inactivity. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
@@ -114,6 +128,7 @@ public class InternalDevController {
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
             case "reminders" -> scheduler.sendReminders();
             case "response-time" -> responseTime.run();
+            case "message-digest" -> messageDigest.run();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
             case "inactivity" -> endService.runInactivity(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);

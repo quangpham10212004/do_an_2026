@@ -53,6 +53,8 @@ public class TokenService {
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                // US-39 (PRD-AUTH-3) — các service khác chặn gửi yêu cầu / đặt lịch / thanh toán khi ev = false.
+                .claim("ev", user.isEmailVerified())
                 .claim("typ", "access")
                 .issuer("mmp-auth-service")
                 .issuedAt(Date.from(now))

@@ -15,7 +15,11 @@ public class AuthController {
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
 
-    public AuthController(AuthService authService, PasswordResetService passwordResetService) {
+    private final com.mmp.auth.service.EmailVerificationService emailVerification;
+
+    public AuthController(AuthService authService, PasswordResetService passwordResetService,
+                          com.mmp.auth.service.EmailVerificationService emailVerification) {
+        this.emailVerification = emailVerification;
         this.authService = authService;
         this.passwordResetService = passwordResetService;
     }
@@ -63,6 +67,12 @@ public class AuthController {
     @PostMapping("/verify-token")
     public VerifyTokenResponse verifyToken(@Valid @RequestBody VerifyTokenRequest req) {
         return authService.verifyToken(req.token());
+    }
+
+    /** US-39 (PRD-AUTH-3) — gửi lại email xác thực (tối đa 3 lần / giờ). */
+    @PostMapping("/me/resend-verification")
+    public com.mmp.auth.service.EmailVerificationService.ResendResult resendVerification() {
+        return emailVerification.resend(CurrentUser.get().userId());
     }
 
     @GetMapping("/me")

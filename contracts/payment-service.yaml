@@ -153,6 +153,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
         "400": { description: IDEMPOTENCY_KEY_REQUIRED / INVALID_IDEMPOTENCY_KEY / AMOUNT_MISMATCH / FREE_SESSION }
+        "403": { description: "EMAIL_NOT_VERIFIED (US-39) — người thanh toán chưa xác thực email (claim ev = false)" }
         "403": { description: Không phải mentee của phiên }
         "409": { description: "ALREADY_PAID / SESSION_NOT_PAYABLE / IDEMPOTENCY_KEY_REUSED (key đã dùng cho phiên khác) / IDEMPOTENCY_IN_PROGRESS (lần gọi đầu chưa xong)" }
 
