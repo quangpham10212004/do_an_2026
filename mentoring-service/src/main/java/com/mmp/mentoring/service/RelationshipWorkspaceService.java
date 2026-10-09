@@ -37,14 +37,17 @@ public class RelationshipWorkspaceService {
     private final RelationshipGoalRepository goalRepo;
     private final SessionRepository sessionRepo;
     private final ProfileClient profileClient;
+    private final SessionNotesService sessionNotes;
     private final TransactionTemplate tx;
 
     public RelationshipWorkspaceService(MentoringRequestRepository requestRepo, RelationshipGoalRepository goalRepo,
-                                        SessionRepository sessionRepo, ProfileClient profileClient, TransactionTemplate tx) {
+                                        SessionRepository sessionRepo, ProfileClient profileClient,
+                                        SessionNotesService sessionNotes, TransactionTemplate tx) {
         this.requestRepo = requestRepo;
         this.goalRepo = goalRepo;
         this.sessionRepo = sessionRepo;
         this.profileClient = profileClient;
+        this.sessionNotes = sessionNotes;
         this.tx = tx;
     }
 
@@ -62,8 +65,11 @@ public class RelationshipWorkspaceService {
         Map<UUID, String> names = profileClient.displayNames(List.of(r.getMentorId(), r.getMenteeId()));
         String status = r.getStatus().name();
         boolean readOnly = GoalRules.isReadOnly(status);
+        // US-40 — việc còn mở của cặp (mang sang từ các phiên); admin không xem ghi chú/action item.
+        var actionItems = GoalRules.isParticipant(user, r.getMentorId(), r.getMenteeId())
+                ? sessionNotes.openItemsForPair(r.getMenteeId(), r.getMentorId()) : List.<com.mmp.mentoring.dto.SessionNotesDtos.ActionItemView>of();
         return new WorkspaceView(summary(r, names), goals.stream().map(GoalView::from).toList(), sessions, readOnly,
-                !readOnly && GoalRules.isParticipant(user, r.getMentorId(), r.getMenteeId()), GoalRules.MAX_GOALS);
+                !readOnly && GoalRules.isParticipant(user, r.getMentorId(), r.getMenteeId()), GoalRules.MAX_GOALS, actionItems);
     }
 
     public GoalView addGoal(AuthUser user, UUID relationshipId, GoalInput in) {

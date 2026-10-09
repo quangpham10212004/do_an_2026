@@ -101,7 +101,57 @@ def us33(ctx):
           not view["contactsMasked"] and view["messages"][0]["body"] == "call me 0912345678", view["messages"][0]["body"])
 
 
-STORIES = {"US-33": us33}
+def notes_of(user, sid):
+    return call("GET", f"{MENTORING}/api/mentoring/sessions/{sid}/notes", token=user["accessToken"])
+
+
+def us40(ctx):
+    print("US-40 — ghi chú phiên, action item mang sang phiên sau, ghi chú riêng của mentor")
+    admin = ctx["admin"]
+    mentor = approved_mentor(admin["accessToken"], "notes")
+    mentee = accepted_mentee(mentor, "notes")
+    s1 = paid(mentee, mentor, at(3, 9))
+    s2 = paid(mentee, mentor, at(10, 9))
+
+    v = call("PUT", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/notes",
+             {"content": "# Chuẩn bị\n- Câu hỏi về REST", "baseVersion": 0}, token=mentee["accessToken"])
+    check("US-40", "Mentee lưu ghi chú chung → version 1", v["version"] == 1, v)
+    v = call("PUT", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/notes",
+             {"content": "# Chuẩn bị\n- Câu hỏi về REST\n- Cache", "baseVersion": 1}, token=mentor["accessToken"])
+    check("US-40", "Mentor sửa tiếp → version 2, hiện người sửa cuối", v["version"] == 2 and v["updatedBy"] == mentor["userId"], v)
+    status, code = error_code(lambda: call("PUT", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/notes",
+                                           {"content": "ghi đè", "baseVersion": 1}, token=mentee["accessToken"]))
+    check("US-40", "Lưu với baseVersion cũ → 409 NOTES_CONFLICT", status == 409 and code == "NOTES_CONFLICT", (status, code))
+
+    call("PUT", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/private-note", {"content": "Mentee yếu SQL"}, token=mentor["accessToken"])
+    check("US-40", "Mentor đọc được ghi chú riêng", notes_of(mentor, s1["id"])["privateNote"]["content"] == "Mentee yếu SQL")
+    check("US-40", "Mentee không thấy ghi chú riêng", notes_of(mentee, s1["id"])["privateNote"] is None)
+    status, _ = error_code(lambda: call("PUT", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/private-note",
+                                        {"content": "x"}, token=mentee["accessToken"]))
+    check("US-40", "Mentee ghi ghi chú riêng → 403", status == 403, status)
+    status, _ = error_code(lambda: notes_of(admin, s1["id"]))
+    check("US-40", "ADMIN đọc ghi chú → 403", status == 403, status)
+
+    item = call("POST", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/action-items",
+                {"text": "Đọc chương 3 Clean Code", "owner": "MENTEE", "dueDate": at(7, 9).date().isoformat()},
+                token=mentor["accessToken"])
+    done_item = call("POST", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/action-items",
+                     {"text": "Gửi slide", "owner": "MENTOR"}, token=mentor["accessToken"])
+    check("US-40", "Mentee được báo ACTION_ITEM_ASSIGNED", notes(mentee, "ACTION_ITEM_ASSIGNED"))
+    call("PATCH", f"{MENTORING}/api/mentoring/action-items/{done_item['id']}", {"done": True}, token=mentor["accessToken"])
+    later = notes_of(mentee, s2["id"])["actionItems"]
+    check("US-40", "Việc còn mở mang sang phiên sau (việc đã xong thì không)",
+          [a["id"] for a in later] == [item["id"]] and later[0]["carriedOver"], [(a["text"], a["carriedOver"]) for a in later])
+    ws = call("GET", f"{MENTORING}/api/mentoring/relationships/{mentee['requestId']}", token=mentee["accessToken"])
+    check("US-40", "Không gian mentoring hiện việc còn mở", [a["id"] for a in ws["openActionItems"]] == [item["id"]],
+          ws.get("openActionItems"))
+    status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{s1['id']}/action-items",
+                                           {"text": "Việc cũ", "owner": "MENTEE", "dueDate": "2020-01-01"},
+                                           token=mentee["accessToken"]))
+    check("US-40", "Hạn ở quá khứ → 400 INVALID_DUE_DATE", status == 400 and code == "INVALID_DUE_DATE", (status, code))
+
+
+STORIES = {"US-33": us33, "US-40": us40}
 
 
 def main(selected):

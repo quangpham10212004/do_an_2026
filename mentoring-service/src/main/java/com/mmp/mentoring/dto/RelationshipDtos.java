@@ -42,10 +42,11 @@ public final class RelationshipDtos {
 
     /**
      * readOnly = yêu cầu không còn ACCEPTED (vd. ENDED/COMPLETED); canEdit = người xem là một bên tham gia và
-     * workspace không chỉ đọc (admin luôn false).
+     * workspace không chỉ đọc (admin luôn false). openActionItems = US-40 việc còn mở của cặp (admin: rỗng).
      */
     public record WorkspaceView(RelationshipSummary request, List<GoalView> goals, List<WorkspaceSession> sessions,
-                                boolean readOnly, boolean canEdit, int maxGoals) {
+                                boolean readOnly, boolean canEdit, int maxGoals,
+                                List<SessionNotesDtos.ActionItemView> openActionItems) {
     }
 
     /** text 5–300 ký tự sau khi trim (kiểm tra ở GoalRules). */

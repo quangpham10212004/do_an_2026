@@ -1,6 +1,9 @@
 import { api } from "@/lib/api";
 import type {
   AttendanceAnswer,
+  ActionItem,
+  ActionItemInput,
+  ActionItemUpdate,
   AvailableSlots,
   ChatMessage,
   ConversationSummary,
@@ -25,7 +28,9 @@ import type {
   MentoringStats,
   NotificationList,
   Review,
+  SessionNotes,
   SessionStatus,
+  SharedNote,
   Uuid,
 } from "@/types";
 
@@ -88,6 +93,17 @@ export const mentoringApi = {
   startDisputeReview: (id: Uuid) => api<Dispute>(`/api/mentoring/admin/disputes/${id}/start-review`, { method: "POST" }),
   resolveDispute: (id: Uuid, body: ResolveDisputeInput) =>
     api<Dispute>(`/api/mentoring/admin/disputes/${id}/resolve`, { method: "POST", body }),
+  // Ghi chú phiên (US-40)
+  sessionNotes: (sessionId: Uuid) => api<SessionNotes>(`/api/mentoring/sessions/${sessionId}/notes`),
+  saveSharedNote: (sessionId: Uuid, content: string, baseVersion: number) =>
+    api<SharedNote>(`/api/mentoring/sessions/${sessionId}/notes`, { method: "PUT", body: { content, baseVersion } }),
+  savePrivateNote: (sessionId: Uuid, content: string) =>
+    api<{ content: string; updatedAt: string | null }>(`/api/mentoring/sessions/${sessionId}/private-note`, { method: "PUT", body: { content } }),
+  addActionItem: (sessionId: Uuid, body: ActionItemInput) =>
+    api<ActionItem>(`/api/mentoring/sessions/${sessionId}/action-items`, { method: "POST", body }),
+  updateActionItem: (itemId: Uuid, body: ActionItemUpdate) =>
+    api<ActionItem>(`/api/mentoring/action-items/${itemId}`, { method: "PATCH", body }),
+  deleteActionItem: (itemId: Uuid) => api<null>(`/api/mentoring/action-items/${itemId}`, { method: "DELETE" }),
   // Nhắn tin (US-33)
   conversations: () => api<ConversationSummary[]>("/api/mentoring/conversations"),
   unreadMessages: () => api<{ unread: number }>("/api/mentoring/conversations/unread-count"),

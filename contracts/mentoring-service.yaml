@@ -248,6 +248,29 @@ components:
           nullable: true
           description: Toàn bộ cuộc trò chuyện (nguyên văn) — chỉ ở GET chi tiết khi hồ sơ còn OPEN; ngược lại null.
           items: { $ref: "#/components/schemas/MessageView" }
+    ActionItem:
+      type: object
+      description: US-40 — việc cần làm của cặp mentor–mentee (tạo trong một phiên, việc còn mở mang sang phiên sau).
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid, description: Phiên tạo ra việc này }
+        text: { type: string, minLength: 2, maxLength: 300 }
+        owner: { type: string, enum: [MENTEE, MENTOR] }
+        dueDate: { type: string, format: date, nullable: true }
+        done: { type: boolean }
+        doneAt: { type: string, format: date-time, nullable: true }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        carriedOver: { type: boolean, description: Việc còn mở từ phiên trước của cặp }
+        overdue: { type: boolean }
+    SharedNote:
+      type: object
+      properties:
+        content: { type: string, maxLength: 20000, description: Markdown }
+        version: { type: integer, description: "0 = chưa ai lưu; gửi lại làm baseVersion" }
+        updatedBy: { type: string, format: uuid, nullable: true }
+        updatedByName: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
 security:
   - bearerAuth: []
 paths:
@@ -925,6 +948,10 @@ paths:
                     type: array
                     description: "Theo position tăng dần; mỗi phần tử giống response 201 của POST .../goals"
                     items: { type: object }
+                  openActionItems:
+                    type: array
+                    description: US-40 — việc còn mở của cặp (mọi phiên), sắp theo hạn; ADMIN nhận mảng rỗng
+                    items: { $ref: "#/components/schemas/ActionItem" }
                   sessions:
                     type: array
                     items:
@@ -1174,3 +1201,133 @@ paths:
               schema: { $ref: "#/components/schemas/MessageReport" }
         "404": { description: REPORT_NOT_FOUND }
         "409": { description: REPORT_ALREADY_RESOLVED }
+  /api/mentoring/sessions/{id}/notes:
+    get:
+      summary: >
+        US-40 — ghi chú phiên: ghi chú chung (markdown), action item của phiên + việc còn mở mang sang từ phiên trước của
+        cặp, và ghi chú riêng (chỉ khi người xem là mentor). Chỉ mentor/mentee của phiên (ADMIN → 403).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId: { type: string, format: uuid }
+                  shared: { $ref: "#/components/schemas/SharedNote" }
+                  actionItems: { type: array, items: { $ref: "#/components/schemas/ActionItem" } }
+                  privateNote:
+                    type: object
+                    nullable: true
+                    description: Chỉ mentor; mentee luôn null
+                    properties:
+                      content: { type: string, maxLength: 10000 }
+                      updatedAt: { type: string, format: date-time, nullable: true }
+                  editable: { type: boolean, description: false khi phiên CANCELLED / EXPIRED }
+                  viewerRole: { type: string, enum: [MENTEE, MENTOR] }
+                  maxActionItems: { type: integer, example: 20 }
+        "403": { description: FORBIDDEN }
+        "404": { description: SESSION_NOT_FOUND }
+    put:
+      summary: >
+        US-40 — lưu ghi chú chung (autosave). baseVersion = version đã đọc; lệch (người kia vừa lưu) → 409 NOTES_CONFLICT,
+        tải lại rồi sửa tiếp. Nội dung không đổi thì version giữ nguyên.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, baseVersion]
+              properties:
+                content: { type: string, maxLength: 20000 }
+                baseVersion: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedNote" }
+        "403": { description: FORBIDDEN }
+        "409": { description: NOTES_CONFLICT · SESSION_NOTES_READ_ONLY }
+  /api/mentoring/sessions/{id}/private-note:
+    put:
+      summary: US-40 — ghi chú riêng của mentor (mentee → 403).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, maxLength: 10000 }
+      responses:
+        "200": { description: "OK — { content, updatedAt }" }
+        "403": { description: FORBIDDEN }
+  /api/mentoring/sessions/{id}/action-items:
+    post:
+      summary: >
+        US-40 — thêm việc cần làm (tối đa 20 mỗi phiên). Giao cho bên kia → bên đó nhận thông báo ACTION_ITEM_ASSIGNED.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, owner]
+              properties:
+                text: { type: string, minLength: 2, maxLength: 300 }
+                owner: { type: string, enum: [MENTEE, MENTOR] }
+                dueDate: { type: string, format: date, description: Không được ở quá khứ }
+      responses:
+        "201":
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionItem" }
+        "400": { description: INVALID_ACTION_ITEM · INVALID_DUE_DATE }
+        "403": { description: FORBIDDEN }
+        "409": { description: ACTION_ITEM_LIMIT · SESSION_NOTES_READ_ONLY }
+  /api/mentoring/action-items/{itemId}:
+    patch:
+      summary: US-40 — sửa một phần (text, owner, dueDate, clearDueDate, done). Hai bên của cặp đều sửa được.
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 300 }
+                owner: { type: string, enum: [MENTEE, MENTOR] }
+                dueDate: { type: string, format: date }
+                clearDueDate: { type: boolean }
+                done: { type: boolean }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionItem" }
+        "403": { description: FORBIDDEN }
+        "404": { description: ACTION_ITEM_NOT_FOUND }
+    delete:
+      summary: US-40 — xoá việc cần làm.
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Đã xoá }
+        "403": { description: FORBIDDEN }
+        "404": { description: ACTION_ITEM_NOT_FOUND }
