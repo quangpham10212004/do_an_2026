@@ -2,6 +2,11 @@ server:
   port: 8082
 
 spring:
+  # US-37 — ảnh đại diện ≤ 2 MB (giới hạn chính kiểm tra ở AvatarRules; đây là trần của servlet).
+  servlet:
+    multipart:
+      max-file-size: 3MB
+      max-request-size: 3MB
   application:
     name: profile-service
   datasource:
@@ -30,7 +35,8 @@ app:
   security:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
-    public-paths: ""
+    # US-37 — ảnh đại diện tải bằng thẻ <img> (không gửi được token).
+    public-paths: "/api/profile/avatars/**"
   services:
     # Chỉ dùng để báo matching-service lập lại chỉ mục sau khi hồ sơ thay đổi
     # (POST /internal/embeddings/reindex, bắn rồi quên).

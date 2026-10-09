@@ -38,15 +38,36 @@ def test_re_rank_orders_by_final_score():
 
 
 def test_re_rank_formula():
-    [c] = re_rank([mentor(distance=0.2, rating=4.0, rating_count=3, years_experience=20)])
-    # 0.7*0.8 + 0.2*(4/5) + 0.1*1.0 = 0.56 + 0.16 + 0.1
+    [c] = re_rank([mentor(distance=0.2, rating=4.0, rating_count=3, years_experience=20, schedule_fit=0.5,
+                          median_response_hours=10)])
+    # US-35: 0.6*0.8 + 0.15*(4/5) + 0.1*1.0 + 0.1*0.5 + 0.05*1 = 0.48 + 0.12 + 0.1 + 0.05 + 0.05
     assert c["similarity_score"] == 0.8
-    assert abs(c["final_score"] - 0.82) < 1e-6
+    assert abs(c["final_score"] - 0.80) < 1e-6
+    assert abs(sum(c["score_parts"].values()) - c["final_score"]) < 1e-3
+    assert c["score_parts"]["scheduleFit"] == 0.05 and c["score_parts"]["responsiveness"] == 0.05
 
 
 def test_re_rank_uses_neutral_rating_for_unrated_mentor():
     [c] = re_rank([mentor(distance=0.0, rating=0.0, rating_count=0, years_experience=0)])
-    assert abs(c["final_score"] - (0.7 + 0.2 * NEUTRAL_RATING / 5)) < 1e-6
+    # chưa có trung vị nền tảng → NEUTRAL_RATING; thiếu dữ liệu phản hồi → responsiveness 0.5
+    assert abs(c["final_score"] - (0.6 + 0.15 * NEUTRAL_RATING / 5 + 0.05 * 0.5)) < 1e-6
+    assert c["new_mentor"] is True
+
+
+def test_cold_start_uses_platform_median_below_three_reviews():
+    """PRD-MATCH-4 — 2 đánh giá 5 sao chưa đủ tin: dùng trung vị nền tảng; ≥ 3 đánh giá dùng rating thật."""
+    [few] = re_rank([mentor(rating=5.0, rating_count=2)], platform_median=4.2)
+    [enough] = re_rank([mentor(rating=5.0, rating_count=3)], platform_median=4.2)
+    assert few["rating_used"] == 4.2 and few["new_mentor"]
+    assert enough["rating_used"] == 5.0 and not enough["new_mentor"]
+
+
+def test_schedule_fit_and_responsiveness_break_ties():
+    ranked = re_rank([
+        mentor(mentor_id="busy", schedule_fit=0.0, median_response_hours=100),
+        mentor(mentor_id="fits", schedule_fit=1.0, median_response_hours=5),
+    ])
+    assert [m["mentor_id"] for m in ranked] == ["fits", "busy"]
 
 
 def test_similarity_is_clamped_to_unit_interval():

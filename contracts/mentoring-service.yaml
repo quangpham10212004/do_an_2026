@@ -121,6 +121,8 @@ components:
             status: { type: string, enum: [OPEN, IN_REVIEW, RESOLVED] }
             outcome: { type: string, nullable: true, enum: [FULL_REFUND, PARTIAL_REFUND, NO_REFUND, WARNING, SUSPEND] }
             refundPercent: { type: integer, nullable: true }
+        mentorTimezone: { type: string, example: Asia/Ho_Chi_Minh, description: "US-37 (PRD-PROF-6) — múi giờ của mentor (giờ địa phương bên kia khi rê chuột)" }
+        menteeTimezone: { type: string, example: Asia/Ho_Chi_Minh }
     Dispute:
       type: object
       description: >
@@ -202,6 +204,75 @@ components:
             properties:
               startAt: { type: string, format: date-time }
               endAt: { type: string, format: date-time }
+    MessageView:
+      type: object
+      description: US-33 — một tin nhắn. body đã che SĐT/email khi cặp chưa có phiên trả phí được xác nhận.
+      properties:
+        id: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        senderRole: { type: string, enum: [MENTEE, MENTOR] }
+        body: { type: string, maxLength: 2000 }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    ConversationSummary:
+      type: object
+      description: US-33 — một cuộc trò chuyện trong hộp thư (id = id yêu cầu mentoring).
+      properties:
+        id: { type: string, format: uuid }
+        counterpartId: { type: string, format: uuid }
+        counterpartName: { type: string }
+        counterpartRole: { type: string, enum: [MENTEE, MENTOR] }
+        requestStatus: { type: string }
+        lastMessage: { type: string, nullable: true }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        lastFromMe: { type: boolean }
+        unread: { type: integer }
+        writable: { type: boolean, description: "PENDING/ACCEPTED, hoặc ≤ 30 ngày sau ENDED/REJECTED/EXPIRED" }
+    MessageReport:
+      type: object
+      description: US-33 (PRD-MSG-4) — hồ sơ kiểm duyệt tin nhắn.
+      properties:
+        id: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        reporterId: { type: string, format: uuid }
+        reporterName: { type: string, nullable: true }
+        reason: { type: string, enum: [SPAM, HARASSMENT, OFF_PLATFORM_PAYMENT, OTHER] }
+        note: { type: string, nullable: true }
+        status: { type: string, enum: [OPEN, RESOLVED] }
+        outcome: { type: string, enum: [DISMISSED, WARNED], nullable: true }
+        resolutionNote: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        reportedMessage: { $ref: "#/components/schemas/MessageView" }
+        senderName: { type: string, nullable: true }
+        thread:
+          type: array
+          nullable: true
+          description: Toàn bộ cuộc trò chuyện (nguyên văn) — chỉ ở GET chi tiết khi hồ sơ còn OPEN; ngược lại null.
+          items: { $ref: "#/components/schemas/MessageView" }
+    ActionItem:
+      type: object
+      description: US-40 — việc cần làm của cặp mentor–mentee (tạo trong một phiên, việc còn mở mang sang phiên sau).
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid, description: Phiên tạo ra việc này }
+        text: { type: string, minLength: 2, maxLength: 300 }
+        owner: { type: string, enum: [MENTEE, MENTOR] }
+        dueDate: { type: string, format: date, nullable: true }
+        done: { type: boolean }
+        doneAt: { type: string, format: date-time, nullable: true }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        carriedOver: { type: boolean, description: Việc còn mở từ phiên trước của cặp }
+        overdue: { type: boolean }
+    SharedNote:
+      type: object
+      properties:
+        content: { type: string, maxLength: 20000, description: Markdown }
+        version: { type: integer, description: "0 = chưa ai lưu; gửi lại làm baseVersion" }
+        updatedBy: { type: string, format: uuid, nullable: true }
+        updatedByName: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
 security:
   - bearerAuth: []
 paths:
@@ -249,6 +320,7 @@ paths:
               schema: { $ref: "#/components/schemas/Request" }
         "400": { description: "VALIDATION_ERROR / INVALID_GOAL / INVALID_EXPECTED_DURATION / MENTOR_NOT_VERIFIED / MENTOR_UNAVAILABLE (isAvailable=false hoặc status PAUSED/ON_LEAVE/SUSPENDED)" }
         "409": { description: REQUEST_ALREADY_EXISTS / TOO_MANY_PENDING_REQUESTS }
+        "403": { description: "EMAIL_NOT_VERIFIED (US-39) — tài khoản chưa xác thực email (claim ev = false)" }
   /api/mentoring/requests/{id}/respond:
     post:
       summary: FR-5.3 / US-14 (MENTOR) Chấp nhận / từ chối — chấp nhận chỉ khi còn sức chứa; từ chối bắt buộc rejectReason
@@ -359,6 +431,7 @@ paths:
               schema: { $ref: "#/components/schemas/Session" }
         "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
         "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED / FREE_BOOKING_BLOCKED }
+        "403": { description: "EMAIL_NOT_VERIFIED (US-39) — mentee chưa xác thực email" }
   /api/mentoring/sessions/{id}:
     get:
       summary: Chi tiết phiên (người tham gia / admin)
@@ -794,6 +867,7 @@ paths:
               type: object
               properties:
                 endedMinutesAgo: { type: integer, default: 0 }
+                startsInMinutes: { type: integer, description: "US-34 — đặt giờ bắt đầu = bây giờ + N phút (ưu tiên hơn endedMinutesAgo)" }
       responses:
         "200": { description: "{ id, scheduledAt, endsAt, status }" }
   /internal/dev/requests/{id}/shift:
@@ -827,12 +901,23 @@ paths:
                 warnedDaysAgo: { type: integer, nullable: true }
       responses:
         "200": { description: "{ id, lastActivity, inactivityWarnedAt }" }
+  /internal/dev/conversations/{id}/age:
+    post:
+      summary: DEV/E2E — US-38 lùi thời điểm gửi mọi tin của cuộc trò chuyện `minutes` phút (kiểm thử email gộp tin chưa đọc sau 30 phút).
+      security: [{ internalToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { minutes: { type: integer, default: 31 } } }
+      responses:
+        "200": { description: "{ conversationId, shifted }" }
   /internal/dev/jobs/{job}:
     post:
-      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | reminders (US-34) | response-time (US-35) | message-digest (US-38) | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
       security: [{ internalToken: [] }]
       parameters:
-        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, request-expiry, inactivity] } }
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, reminders, response-time, message-digest, request-expiry, inactivity] } }
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }
@@ -879,6 +964,10 @@ paths:
                     type: array
                     description: "Theo position tăng dần; mỗi phần tử giống response 201 của POST .../goals"
                     items: { type: object }
+                  openActionItems:
+                    type: array
+                    description: US-40 — việc còn mở của cặp (mọi phiên), sắp theo hạn; ADMIN nhận mảng rỗng
+                    items: { $ref: "#/components/schemas/ActionItem" }
                   sessions:
                     type: array
                     items:
@@ -982,3 +1071,298 @@ paths:
         "403": { description: FORBIDDEN }
         "404": { description: RELATIONSHIP_NOT_FOUND · GOAL_NOT_FOUND }
         "409": { description: LAST_GOAL · RELATIONSHIP_READ_ONLY }
+  /api/mentoring/conversations:
+    get:
+      summary: >
+        US-33 — hộp thư: các cuộc trò chuyện của người dùng (mới nhất trước). Mỗi yêu cầu mentoring có đúng 1 cuộc trò
+        chuyện, mở ngay khi yêu cầu được gửi; yêu cầu đã đóng mà không có tin nào thì không hiện.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ConversationSummary" } }
+  /api/mentoring/conversations/unread-count:
+    get:
+      summary: US-33 — tổng số tin chưa đọc (badge trên thanh điều hướng).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { unread: { type: integer } } }
+  /api/mentoring/conversations/{id}:
+    get:
+      summary: >
+        US-33 — luồng tin nhắn (cũ → mới, tối đa 200 tin mới nhất). Chỉ hai bên tham gia (ADMIN → 403, xem qua hồ sơ
+        kiểm duyệt). Frontend polling mỗi pollIntervalSeconds giây với `after` = createdAt của tin cuối. Gọi endpoint
+        này = đánh dấu đã đọc.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: id yêu cầu mentoring }
+        - { name: after, in: query, required: false, schema: { type: string, format: date-time }, description: Chỉ trả tin mới hơn mốc này }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation: { $ref: "#/components/schemas/ConversationSummary" }
+                  messages: { type: array, items: { $ref: "#/components/schemas/MessageView" } }
+                  contactsMasked: { type: boolean, description: SĐT/email đang bị che (chưa có phiên trả phí được xác nhận) }
+                  remainingBeforeAccept: { type: integer, nullable: true, description: "Số tin mentee còn gửi được trước khi được chấp nhận; null = không giới hạn" }
+                  readOnlyAt: { type: string, format: date-time, nullable: true }
+                  pollIntervalSeconds: { type: integer, example: 10 }
+        "403": { description: FORBIDDEN }
+        "404": { description: CONVERSATION_NOT_FOUND }
+  /api/mentoring/conversations/{id}/messages:
+    post:
+      summary: >
+        US-33 — gửi tin (chỉ văn bản, 1–2000 ký tự sau khi trim, cho phép link). Trước khi yêu cầu được chấp nhận mentee
+        gửi tối đa 3 tin. Bên nhận có thông báo MESSAGE_RECEIVED cho tin chưa đọc đầu tiên của mỗi đợt.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 2000 }
+      responses:
+        "201":
+          description: Đã gửi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageView" }
+        "400": { description: INVALID_MESSAGE }
+        "403": { description: FORBIDDEN }
+        "404": { description: CONVERSATION_NOT_FOUND }
+        "409": { description: "CONVERSATION_READ_ONLY — yêu cầu đã huỷ, hoặc đã quá 30 ngày sau ENDED/REJECTED/EXPIRED" }
+        "429": { description: MESSAGE_LIMIT_BEFORE_ACCEPT }
+  /api/mentoring/messages/{messageId}/report:
+    post:
+      summary: >
+        US-33 (PRD-MSG-4) — báo cáo tin nhắn của bên kia → hồ sơ kiểm duyệt OPEN, thông báo cho ADMIN.
+      parameters:
+        - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [SPAM, HARASSMENT, OFF_PLATFORM_PAYMENT, OTHER] }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        "201":
+          description: Đã tạo hồ sơ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageReport" }
+        "400": { description: CANNOT_REPORT_OWN_MESSAGE }
+        "403": { description: FORBIDDEN }
+        "404": { description: MESSAGE_NOT_FOUND }
+        "409": { description: ALREADY_REPORTED }
+  /api/mentoring/admin/message-reports:
+    get:
+      summary: US-33 — hàng đợi kiểm duyệt tin nhắn (ADMIN). status = OPEN (cũ nhất trước) | RESOLVED; trống = tất cả (mới nhất trước).
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [OPEN, RESOLVED] } }
+      responses:
+        "200":
+          description: OK (thread luôn null ở danh sách)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/MessageReport" } }
+  /api/mentoring/admin/message-reports/{id}:
+    get:
+      summary: US-33 — chi tiết hồ sơ; kèm toàn bộ cuộc trò chuyện nguyên văn CHỈ khi hồ sơ còn OPEN (ghi audit MESSAGE_THREAD_VIEWED).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageReport" }
+        "404": { description: REPORT_NOT_FOUND }
+  /api/mentoring/admin/message-reports/{id}/resolve:
+    post:
+      summary: >
+        US-33 — đóng hồ sơ: DISMISSED (không vi phạm) | WARNED (gửi cảnh cáo cho người gửi tin). Thông báo người báo cáo;
+        ghi audit MESSAGE_REPORT_RESOLVED.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome: { type: string, enum: [DISMISSED, WARNED] }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageReport" }
+        "404": { description: REPORT_NOT_FOUND }
+        "409": { description: REPORT_ALREADY_RESOLVED }
+  /api/mentoring/sessions/{id}/notes:
+    get:
+      summary: >
+        US-40 — ghi chú phiên: ghi chú chung (markdown), action item của phiên + việc còn mở mang sang từ phiên trước của
+        cặp, và ghi chú riêng (chỉ khi người xem là mentor). Chỉ mentor/mentee của phiên (ADMIN → 403).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId: { type: string, format: uuid }
+                  shared: { $ref: "#/components/schemas/SharedNote" }
+                  actionItems: { type: array, items: { $ref: "#/components/schemas/ActionItem" } }
+                  privateNote:
+                    type: object
+                    nullable: true
+                    description: Chỉ mentor; mentee luôn null
+                    properties:
+                      content: { type: string, maxLength: 10000 }
+                      updatedAt: { type: string, format: date-time, nullable: true }
+                  editable: { type: boolean, description: false khi phiên CANCELLED / EXPIRED }
+                  viewerRole: { type: string, enum: [MENTEE, MENTOR] }
+                  maxActionItems: { type: integer, example: 20 }
+        "403": { description: FORBIDDEN }
+        "404": { description: SESSION_NOT_FOUND }
+    put:
+      summary: >
+        US-40 — lưu ghi chú chung (autosave). baseVersion = version đã đọc; lệch (người kia vừa lưu) → 409 NOTES_CONFLICT,
+        tải lại rồi sửa tiếp. Nội dung không đổi thì version giữ nguyên.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, baseVersion]
+              properties:
+                content: { type: string, maxLength: 20000 }
+                baseVersion: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedNote" }
+        "403": { description: FORBIDDEN }
+        "409": { description: NOTES_CONFLICT · SESSION_NOTES_READ_ONLY }
+  /api/mentoring/sessions/{id}/private-note:
+    put:
+      summary: US-40 — ghi chú riêng của mentor (mentee → 403).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, maxLength: 10000 }
+      responses:
+        "200": { description: "OK — { content, updatedAt }" }
+        "403": { description: FORBIDDEN }
+  /api/mentoring/sessions/{id}/action-items:
+    post:
+      summary: >
+        US-40 — thêm việc cần làm (tối đa 20 mỗi phiên). Giao cho bên kia → bên đó nhận thông báo ACTION_ITEM_ASSIGNED.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, owner]
+              properties:
+                text: { type: string, minLength: 2, maxLength: 300 }
+                owner: { type: string, enum: [MENTEE, MENTOR] }
+                dueDate: { type: string, format: date, description: Không được ở quá khứ }
+      responses:
+        "201":
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionItem" }
+        "400": { description: INVALID_ACTION_ITEM · INVALID_DUE_DATE }
+        "403": { description: FORBIDDEN }
+        "409": { description: ACTION_ITEM_LIMIT · SESSION_NOTES_READ_ONLY }
+  /api/mentoring/action-items/{itemId}:
+    patch:
+      summary: US-40 — sửa một phần (text, owner, dueDate, clearDueDate, done). Hai bên của cặp đều sửa được.
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 300 }
+                owner: { type: string, enum: [MENTEE, MENTOR] }
+                dueDate: { type: string, format: date }
+                clearDueDate: { type: boolean }
+                done: { type: boolean }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionItem" }
+        "403": { description: FORBIDDEN }
+        "404": { description: ACTION_ITEM_NOT_FOUND }
+    delete:
+      summary: US-40 — xoá việc cần làm.
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Đã xoá }
+        "403": { description: FORBIDDEN }
+        "404": { description: ACTION_ITEM_NOT_FOUND }
+  /api/mentoring/sessions/{id}/calendar.ics:
+    get:
+      summary: >
+        US-34 (PRD-SES-13) — "Thêm vào lịch": file .ics (RFC 5545) cho mentor/mentee của phiên. UID cố định theo id phiên,
+        SEQUENCE = số lần dời lịch (tải lại sau khi dời lịch sẽ cập nhật đúng sự kiện cũ); phiên CANCELLED/EXPIRED →
+        METHOD:CANCEL. Mô tả gồm agenda, link tham gia (nếu đã có) và link trang ghi chú phiên. Nhắc lịch trong ứng dụng:
+        job mỗi phút gửi SESSION_REMINDER_24H (còn ≤ 24 giờ) và SESSION_REMINDER_1H (còn ≤ 1 giờ) cho cả hai bên, theo
+        múi giờ của từng người, kèm link tham gia và agenda; dời lịch thì nhắc lại từ đầu.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: text/calendar; charset=UTF-8 (Content-Disposition attachment)
+          content:
+            text/calendar:
+              schema: { type: string }
+        "403": { description: FORBIDDEN }
+        "404": { description: SESSION_NOT_FOUND }
+        "409": { description: SESSION_NOT_CONFIRMED (phiên PENDING chờ thanh toán) }

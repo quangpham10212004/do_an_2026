@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app import config
 from app.main import app
-from app.services import index_service, match_filters, matching_pipeline
+from app.services import feedback_service, index_service, match_filters, matching_pipeline
 
 MENTEE_ID = "7d4f5a3e-8a8f-4a57-9a0e-2a1d9d1f0c11"
 OTHER_ID = "1b2c3d4e-0000-4000-8000-000000000001"
@@ -48,6 +48,11 @@ def fake_pipeline(monkeypatch):
         }
 
     monkeypatch.setattr(matching_pipeline, "match_mentors_for_mentee", fake_match)
+
+    async def fake_log(mentee_id, mentors, filters, weights):
+        return "0f0f0f0f-0000-4000-8000-000000000abc"
+
+    monkeypatch.setattr(feedback_service, "log_impressions", fake_log)
     return calls
 
 
@@ -83,7 +88,12 @@ def test_matching_returns_camel_case_contract(client, fake_pipeline):
     m = body["mentors"][0]
     assert {"mentorId", "displayName", "similarityScore", "finalScore", "yearsExperience", "reasons", "matchedSkills"} <= m.keys()
     assert body["pipeline"]["excluded"] == {"notVerified": 4}
-    assert body["pipeline"]["weights"]["similarity"] == 0.7
+    # US-35 — trọng số mới theo PRD-MATCH-3
+    assert body["pipeline"]["weights"] == {"similarity": 0.6, "rating": 0.15, "experience": 0.1,
+                                           "scheduleFit": 0.1, "responsiveness": 0.05}
+    # US-36 — danh sách được ghi nhật ký, impressionId trả về cho phản hồi "Không phù hợp"
+    assert body["impressionId"] == "0f0f0f0f-0000-4000-8000-000000000abc"
+    assert {"scheduleFit", "responsiveness", "newMentor", "scoreParts"} <= m.keys()
 
 
 def test_matching_echoes_effective_filters_and_excluded_by(client, fake_pipeline):
@@ -274,3 +284,60 @@ def test_similar_mentors_validates_params(client, fake_similar):
                           headers=headers).status_code == 400
     client.get(f"{base}?menteeId={MENTEE_ID}&excludeMentorId={OTHER_ID}&limit=5", headers=headers)
     assert fake_similar[-1] == (MENTEE_ID, OTHER_ID, 5)
+
+
+# ---------------------------------------------------------------- US-36 — "Không phù hợp"
+
+MENTOR_ID = "5e6f7a8b-0000-4000-8000-000000000009"
+
+
+@pytest.fixture
+def fake_feedback(monkeypatch):
+    calls = []
+
+    async def fake_hide(mentee_id, mentor_id, reason, note, impression_id, now=None):
+        calls.append((mentee_id, mentor_id, reason, note, impression_id))
+        return {"id": "11111111-0000-4000-8000-000000000001", "mentor_id": mentor_id, "reason": reason, "note": note,
+                "rank": 2, "created_at": INDEXED_AT, "hidden_until": INDEXED_AT}
+
+    async def fake_unhide(mentee_id, mentor_id, now=None):
+        return 1 if mentor_id == MENTOR_ID else 0
+
+    monkeypatch.setattr(feedback_service, "hide", fake_hide)
+    monkeypatch.setattr(feedback_service, "unhide", fake_unhide)
+    return calls
+
+
+def test_not_relevant_hides_mentor_for_own_mentee_only(client, fake_feedback):
+    body = {"menteeId": MENTEE_ID, "mentorId": MENTOR_ID, "reason": "TOO_EXPENSIVE", "note": "  Ngoài ngân sách  "}
+    res = client.post("/api/matching/feedback", json=body, headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 201
+    assert res.json()["reason"] == "TOO_EXPENSIVE" and res.json()["rank"] == 2
+    assert fake_feedback == [(MENTEE_ID, MENTOR_ID, "TOO_EXPENSIVE", "Ngoài ngân sách", None)]
+    other = client.post("/api/matching/feedback", json={**body, "menteeId": OTHER_ID},
+                        headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert other.status_code == 403
+
+
+def test_not_relevant_validates_reason(client, fake_feedback):
+    res = client.post("/api/matching/feedback", json={"menteeId": MENTEE_ID, "mentorId": MENTOR_ID, "reason": "BORING"},
+                      headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code in (400, 422)
+
+
+def test_unhide_404_when_not_hidden(client, fake_feedback):
+    h = {"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"}
+    assert client.delete(f"/api/matching/feedback/{MENTOR_ID}?menteeId={MENTEE_ID}", headers=h).status_code == 204
+    assert client.delete(f"/api/matching/feedback/{OTHER_ID}?menteeId={MENTEE_ID}", headers=h).status_code == 404
+
+
+def test_evaluation_stats_admin_only(client, monkeypatch):
+    async def fake_stats(days, max_rank=10):
+        return {"days": days, "resultLists": 3, "byRank": [{"rank": 1, "impressions": 3, "notRelevant": 1,
+                                                            "notRelevantRate": 0.3333}], "reasons": {"SCHEDULE": 1}}
+    monkeypatch.setattr(feedback_service, "evaluation_stats", fake_stats)
+    res = client.get("/api/matching/admin/evaluation?days=7", headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 403
+    res = client.get("/api/matching/admin/evaluation?days=7", headers={"Authorization": f"Bearer {token(OTHER_ID, 'ADMIN')}"})
+    assert res.status_code == 200
+    assert res.json()["byRank"][0]["notRelevantRate"] == 0.3333

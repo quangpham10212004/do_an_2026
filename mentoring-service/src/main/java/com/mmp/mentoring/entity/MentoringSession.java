@@ -97,8 +97,16 @@ public class MentoringSession {
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
 
+    /** Cột cũ (trước US-34) — giữ để đọc an toàn; nhắc lịch dùng 2 mốc dưới. */
     @Column(name = "reminder_sent", nullable = false)
     private boolean reminderSent;
+
+    /** US-34 — đã gửi nhắc 24 giờ / 1 giờ trước giờ bắt đầu (null = chưa). */
+    @Column(name = "reminder_24h_sent_at")
+    private OffsetDateTime reminder24hSentAt;
+
+    @Column(name = "reminder_1h_sent_at")
+    private OffsetDateTime reminder1hSentAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -182,6 +190,15 @@ public class MentoringSession {
 
     public boolean isReminderSent() { return reminderSent; }
     public void setReminderSent(boolean reminderSent) { this.reminderSent = reminderSent; }
+    public OffsetDateTime getReminder24hSentAt() { return reminder24hSentAt; }
+    public OffsetDateTime getReminder1hSentAt() { return reminder1hSentAt; }
+
+    /** US-34 — dời lịch: giờ mới cần được nhắc lại từ đầu. */
+    public void resetReminders() {
+        this.reminderSent = false;
+        this.reminder24hSentAt = null;
+        this.reminder1hSentAt = null;
+    }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

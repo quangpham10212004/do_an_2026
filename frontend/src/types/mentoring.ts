@@ -119,6 +119,9 @@ export interface MentoringSession {
   createdAt: IsoDateTime;
   /** US-32 — tranh chấp gần nhất của phiên. */
   dispute: DisputeBrief | null;
+  /** US-37 (PRD-PROF-6) — múi giờ hai bên (giờ địa phương của bên kia khi rê chuột). */
+  mentorTimezone?: string;
+  menteeTimezone?: string;
 }
 
 // ---- US-32: tranh chấp ----
@@ -281,4 +284,56 @@ export interface MentoringStats {
   noShowMenteeSessions: number;
   noShowMentorSessions: number;
   disputedSessions: number;
+}
+
+// US-40 (PRD-SES-10..12) — ghi chú phiên
+export type ActionItemOwner = "MENTEE" | "MENTOR";
+
+export interface ActionItem {
+  id: Uuid;
+  sessionId: Uuid;
+  text: string;
+  owner: ActionItemOwner;
+  dueDate: string | null;
+  done: boolean;
+  doneAt: string | null;
+  createdBy: Uuid;
+  createdAt: string;
+  /** Việc còn mở từ phiên trước của cặp. */
+  carriedOver: boolean;
+  overdue: boolean;
+}
+
+export interface SharedNote {
+  content: string;
+  /** 0 = chưa ai lưu; gửi lại làm baseVersion. */
+  version: number;
+  updatedBy: Uuid | null;
+  updatedByName: string | null;
+  updatedAt: string | null;
+}
+
+export interface SessionNotes {
+  sessionId: Uuid;
+  shared: SharedNote;
+  actionItems: ActionItem[];
+  /** Chỉ mentor; mentee luôn null. */
+  privateNote: { content: string; updatedAt: string | null } | null;
+  editable: boolean;
+  viewerRole: ActionItemOwner;
+  maxActionItems: number;
+}
+
+export interface ActionItemInput {
+  text: string;
+  owner: ActionItemOwner;
+  dueDate?: string | null;
+}
+
+export interface ActionItemUpdate {
+  text?: string;
+  owner?: ActionItemOwner;
+  dueDate?: string;
+  clearDueDate?: boolean;
+  done?: boolean;
 }

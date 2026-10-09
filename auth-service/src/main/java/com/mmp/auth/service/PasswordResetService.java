@@ -89,10 +89,9 @@ public class PasswordResetService {
         resetTokenRepository.invalidateAllForUser(user.getId(), now);
         String token = TokenService.randomToken();
         resetTokenRepository.save(new PasswordResetToken(user.getId(), TokenService.sha256(token), now.plus(TOKEN_TTL)));
-        emailSender.send(user.getEmail(), "Đặt lại mật khẩu MentorHub",
-                "Bạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu. Liên kết có hiệu lực trong 30 phút và chỉ dùng được một lần:\n"
-                        + frontendUrl + "/reset-password?token=" + token
-                        + "\nNếu không phải bạn, hãy bỏ qua email này — mật khẩu hiện tại vẫn giữ nguyên.");
+        // Email bảo mật — luôn gửi, không phụ thuộc tuỳ chọn email / giờ yên tĩnh (PRD-NOTI-1).
+        emailSender.send(user.getEmail(), EmailTemplates.RESET_SUBJECT,
+                EmailTemplates.resetBody(frontendUrl, token, TOKEN_TTL.toMinutes()));
     }
 
     /** POST /api/auth/reset-password — token sai / hết hạn / đã dùng => 400 RESET_TOKEN_INVALID. */

@@ -5,6 +5,8 @@ import type {
   EndReason,
   DisputeType,
   ExpectedDurationMonths,
+  MessageReportOutcome,
+  MessageReportReason,
   RejectReason,
   RequestFrequency,
   SessionDuration,
@@ -154,3 +156,20 @@ export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
 export const REJECT_REASONS = Object.keys(REJECT_REASON_LABELS) as RejectReason[];
 
 export const LEVEL_LABELS: Record<string, string> = { BEGINNER: "Mới bắt đầu", INTERMEDIATE: "Trung cấp", ADVANCED: "Nâng cao" };
+
+// US-33 — nhắn tin
+export const MESSAGE_MAX = 2000;
+
+export const MESSAGE_REPORT_REASON_LABELS: Record<MessageReportReason, string> = {
+  SPAM: "Spam / quảng cáo",
+  HARASSMENT: "Quấy rối, xúc phạm",
+  OFF_PLATFORM_PAYMENT: "Đề nghị giao dịch ngoài nền tảng",
+  OTHER: "Lý do khác",
+};
+
+export const MESSAGE_REPORT_REASONS = Object.keys(MESSAGE_REPORT_REASON_LABELS) as MessageReportReason[];
+
+export const MESSAGE_REPORT_OUTCOME_LABELS: Record<MessageReportOutcome, string> = {
+  DISMISSED: "Không vi phạm",
+  WARNED: "Đã cảnh cáo người gửi",
+};

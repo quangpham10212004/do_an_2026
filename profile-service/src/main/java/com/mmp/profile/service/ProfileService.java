@@ -11,6 +11,9 @@ import com.mmp.profile.repository.MenteeProfileRepository;
 import com.mmp.profile.repository.MentorAvailabilityExceptionRepository;
 import com.mmp.profile.repository.MentorAvailabilityRepository;
 import com.mmp.profile.repository.MentorProfileRepository;
+import com.mmp.profile.repository.ProfileAvatarRepository;
+import com.mmp.profile.entity.ProfileAvatar;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -19,6 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 /**
@@ -40,6 +44,8 @@ public class ProfileService {
     private final MatchingIndexClient matchingIndexClient;
     private final TransactionTemplate tx;
     private final Clock clock;
+    /** US-37 — null trong các unit test cũ (coi như không ai có ảnh). */
+    private final ProfileAvatarRepository avatarRepo;
 
     /**
      * Không thể kiểm tra trùng với phiên CONFIRMED: dữ liệu phiên thuộc mentoring-service và hiện chưa
@@ -53,6 +59,15 @@ public class ProfileService {
                           MentorAvailabilityRepository availabilityRepo,
                           MentorAvailabilityExceptionRepository exceptionRepo,
                           MatchingIndexClient matchingIndexClient, TransactionTemplate tx, Clock clock) {
+        this(mentorRepo, menteeRepo, availabilityRepo, exceptionRepo, matchingIndexClient, tx, clock, null);
+    }
+
+    @Autowired
+    public ProfileService(MentorProfileRepository mentorRepo, MenteeProfileRepository menteeRepo,
+                          MentorAvailabilityRepository availabilityRepo,
+                          MentorAvailabilityExceptionRepository exceptionRepo,
+                          MatchingIndexClient matchingIndexClient, TransactionTemplate tx, Clock clock,
+                          ProfileAvatarRepository avatarRepo) {
         this.mentorRepo = mentorRepo;
         this.menteeRepo = menteeRepo;
         this.availabilityRepo = availabilityRepo;
@@ -60,6 +75,7 @@ public class ProfileService {
         this.matchingIndexClient = matchingIndexClient;
         this.tx = tx;
         this.clock = clock;
+        this.avatarRepo = avatarRepo;
     }
 
     // ---------------- Mentor ----------------
@@ -71,7 +87,8 @@ public class ProfileService {
     private MentorProfileResponse toResponse(MentorProfile p) {
         LocalDate today = today(p);
         return MentorProfileResponse.from(p, effectiveStatus(p), availability(p.getUserId()),
-                exceptions(p.getUserId(), today, today.plusDays(MentorRules.EXCEPTION_HORIZON_DAYS - 1)));
+                exceptions(p.getUserId(), today, today.plusDays(MentorRules.EXCEPTION_HORIZON_DAYS - 1)),
+                avatarUrl(p.getUserId()));
     }
 
     /** US-08 — trạng thái hiệu lực (nghỉ phép hết hạn = ACCEPTING), tính khi đọc. */
@@ -104,6 +121,9 @@ public class ProfileService {
             p.setPortfolioLinks(normalizeList(in.portfolioLinks()));
             p.setHourlyRate(Optional.ofNullable(in.hourlyRate()).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO)));
             p.setCapacity(Optional.ofNullable(in.capacity()).orElse(p.getCapacity()));
+            if (in.headline() != null) {
+                p.setHeadline(blankToNull(in.headline().strip().replaceAll("\\s+", " ")));
+            }
             // Cờ isAvailable cũ (US-08): chỉ đổi giữa ACCEPTING/PAUSED, không bao giờ gỡ SUSPENDED.
             MentorProfile.Status legacy = MentorRules.statusFromLegacyFlag(in.isAvailable(), effectiveStatus(p));
             if (legacy != null) {
@@ -213,7 +233,8 @@ public class ProfileService {
                 includeUnverified ? null : MentorProfile.VerificationStatus.APPROVED,
                 blankToNull(q),
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 50)));
-        return new PageResponse<>(result.map(m -> MentorCard.from(m, effectiveStatus(m))).getContent(),
+        Map<UUID, String> avatars = avatarUrls(result.getContent().stream().map(MentorProfile::getUserId).toList());
+        return new PageResponse<>(result.map(m -> MentorCard.from(m, effectiveStatus(m), avatars.get(m.getUserId()))).getContent(),
                 result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
 
@@ -276,6 +297,11 @@ public class ProfileService {
         });
     }
 
+    /** US-35 — mentoring-service đồng bộ thời gian phản hồi; matching-service đọc để tính responsiveness. */
+    public void updateResponseTime(UUID mentorId, BigDecimal medianHours, int sampleSize) {
+        tx.executeWithoutResult(s -> findMentor(mentorId).updateResponseTime(medianHours, sampleSize));
+    }
+
     public void updateActiveMentees(UUID mentorId, int count) {
         tx.executeWithoutResult(s -> findMentor(mentorId).setActiveMenteeCount(count));
     }
@@ -283,7 +309,7 @@ public class ProfileService {
     // ---------------- Mentee ----------------
 
     public MenteeProfileResponse getMentee(UUID userId) {
-        return MenteeProfileResponse.from(findMentee(userId));
+        return menteeResponse(findMentee(userId));
     }
 
     public MenteeProfileResponse upsertMentee(UUID userId, MenteeProfileInput in) {
@@ -307,7 +333,7 @@ public class ProfileService {
             return menteeRepo.save(p);
         });
         matchingIndexClient.reindexAsync(ROLE_MENTEE, saved.getUserId());
-        return MenteeProfileResponse.from(findMentee(userId));
+        return menteeResponse(findMentee(userId));
     }
 
     /**
@@ -324,7 +350,7 @@ public class ProfileService {
             p.updatePreferences(days, timeOfDay, budget, languages);
             menteeRepo.save(p);
         });
-        return MenteeProfileResponse.from(findMentee(userId));
+        return menteeResponse(findMentee(userId));
     }
 
     /**
@@ -347,16 +373,84 @@ public class ProfileService {
             return menteeRepo.save(p);
         });
         matchingIndexClient.reindexAsync(ROLE_MENTEE, saved.getUserId());
-        return MenteeProfileResponse.from(findMentee(userId));
+        return menteeResponse(findMentee(userId));
     }
 
     // ---------------- Shared ----------------
 
+    // ---- US-37: múi giờ, ảnh đại diện ----
+
+    /** PRD-PROF-6 — múi giờ của chính người dùng; cập nhật mọi hồ sơ (mentor/mentee) của userId. */
+    public ProfileSummary updateTimezone(UUID userId, TimezoneInput in) {
+        String tz = MentorRules.normalizeTimezone(in.timezone());
+        Boolean found = tx.execute(st -> {
+            boolean any = false;
+            Optional<MentorProfile> mentor = mentorRepo.findById(userId);
+            if (mentor.isPresent()) {
+                mentor.get().setTimezone(tz);
+                mentorRepo.save(mentor.get());
+                any = true;
+            }
+            Optional<MenteeProfile> mentee = menteeRepo.findById(userId);
+            if (mentee.isPresent()) {
+                mentee.get().setTimezone(tz);
+                menteeRepo.save(mentee.get());
+                any = true;
+            }
+            return any;
+        });
+        if (!Boolean.TRUE.equals(found)) {
+            throw ApiException.notFound("PROFILE_NOT_FOUND", "Hãy tạo hồ sơ trước khi đặt múi giờ");
+        }
+        return summary(userId);
+    }
+
+    public AvatarResult uploadAvatar(UUID userId, byte[] data) {
+        String type = AvatarRules.detectType(data);
+        if (mentorRepo.findById(userId).isEmpty() && menteeRepo.findById(userId).isEmpty()) {
+            throw ApiException.notFound("PROFILE_NOT_FOUND", "Hãy tạo hồ sơ trước khi tải ảnh đại diện");
+        }
+        tx.executeWithoutResult(st -> avatarRepo.save(new ProfileAvatar(userId, type, data, OffsetDateTime.now(clock))));
+        return new AvatarResult(avatarUrl(userId));
+    }
+
+    public void deleteAvatar(UUID userId) {
+        tx.executeWithoutResult(st -> avatarRepo.deleteById(userId));
+    }
+
+    public ProfileAvatar avatar(UUID userId) {
+        return avatarRepo.findById(userId)
+                .orElseThrow(() -> ApiException.notFound("AVATAR_NOT_FOUND", "Người dùng chưa có ảnh đại diện"));
+    }
+
+    /** URL công khai kèm ?v= mốc cập nhật để trình duyệt không giữ ảnh cũ trong cache. */
+    String avatarUrl(UUID userId) {
+        if (avatarRepo == null) return null;
+        return avatarRepo.findUpdatedAt(userId).map(at -> avatarPath(userId, at)).orElse(null);
+    }
+
+    private Map<UUID, String> avatarUrls(Collection<UUID> ids) {
+        Map<UUID, String> out = new HashMap<>();
+        if (avatarRepo == null || ids.isEmpty()) return out;
+        for (Object[] row : avatarRepo.findUpdatedAtIn(ids)) {
+            out.put((UUID) row[0], avatarPath((UUID) row[0], (OffsetDateTime) row[1]));
+        }
+        return out;
+    }
+
+    private static String avatarPath(UUID userId, OffsetDateTime at) {
+        return "/api/profile/avatars/" + userId + "?v=" + at.toInstant().toEpochMilli();
+    }
+
+    private MenteeProfileResponse menteeResponse(MenteeProfile p) {
+        return MenteeProfileResponse.from(p, avatarUrl(p.getUserId()));
+    }
+
     public ProfileSummary summary(UUID userId) {
         return mentorRepo.findById(userId)
-                .map(m -> new ProfileSummary(m.getUserId(), m.getDisplayName(), "MENTOR", m.getDomain()))
+                .map(m -> new ProfileSummary(m.getUserId(), m.getDisplayName(), "MENTOR", m.getDomain(), m.getTimezone()))
                 .or(() -> menteeRepo.findById(userId)
-                        .map(m -> new ProfileSummary(m.getUserId(), m.getDisplayName(), "MENTEE", m.getDomain())))
+                        .map(m -> new ProfileSummary(m.getUserId(), m.getDisplayName(), "MENTEE", m.getDomain(), m.getTimezone())))
                 .orElseThrow(() -> ApiException.notFound("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ"));
     }
 

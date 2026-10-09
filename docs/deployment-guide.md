@@ -58,7 +58,6 @@ docker compose down -v      # dừng và xoá toàn bộ volume (CSDL, file CV) 
 | `DEEPSEEK_MODEL` | `deepseek-flash` | Model DeepSeek, ví dụ `deepseek-v4-pro` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@mmp.local` / `Admin@123` | Tài khoản admin tạo sẵn |
 | `FRONTEND_URL` | `http://localhost:3000` | Dùng trong liên kết xác thực email và liên kết giới thiệu |
-| `REMINDER_BEFORE` | `PT24H` | Nhắc lịch trước giờ bắt đầu (ISO-8601 duration) |
 | `INDEX_SYNC_INTERVAL` | `60` | matching-service: chu kỳ (giây) `IndexSyncJob` đối soát chỉ mục embedding với `profile_db` — cũng là độ trễ tối đa (xấp xỉ) để hồ sơ xuất hiện trong matching khi thông báo reindex bị mất |
 
 Các tham số khác (đặt trong `environment` của service tương ứng trong `docker-compose.yml`):

@@ -54,6 +54,10 @@ public class MenteeProfile {
     @Column(columnDefinition = "text[]", nullable = false)
     private String[] languages = new String[0];
 
+    /** US-37 (PRD-PROF-6) — múi giờ IANA. */
+    @Column(nullable = false)
+    private String timezone = "Asia/Ho_Chi_Minh";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -100,4 +104,7 @@ public class MenteeProfile {
         this.budgetMaxPerHour = budget;
         this.languages = languages;
     }
+
+    public String getTimezone() { return timezone; }
+    public void setTimezone(String timezone) { this.timezone = timezone; }
 }

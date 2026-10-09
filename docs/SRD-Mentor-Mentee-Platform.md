@@ -176,7 +176,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-4.2 | Lưu trữ vector | Cột `VECTOR(384)` (pgvector) + chỉ mục HNSW cosine | ✅ |
 | FR-4.3 | Truy vấn Top-K | K = max(50, 5×limit) mentor gần nhất theo cosine distance | ✅ |
 | FR-4.4 | Lọc ràng buộc cứng | Loại mentor chưa được duyệt, tạm ngưng nhận mentee, chưa có lịch rảnh, đầy sức chứa, khác lĩnh vực | ✅ |
-| FR-4.5 | Xếp hạng kết quả | `final = 0.7·similarity + 0.2·rating/5 + 0.1·min(years/10, 1)` | ✅ |
+| FR-4.5 | Xếp hạng kết quả | `final = 0.6·similarity + 0.15·rating/5 + 0.1·min(years/10, 1) + 0.1·scheduleFit + 0.05·responsiveness` (US-35; mentor < 3 đánh giá dùng trung vị rating nền tảng) | ✅ |
 | FR-4.6 | Giải thích gợi ý | Kỹ năng trùng, chuyên môn khớp mục tiêu, cùng lĩnh vực, mức tương đồng, đánh giá, kinh nghiệm + thống kê pipeline | ✅ |
 
 ### 3.5 Module: Mentoring Workflow (mentoring-service)

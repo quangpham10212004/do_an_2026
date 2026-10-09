@@ -41,8 +41,9 @@ class RelationshipWorkspaceTest {
     private final SessionRepository sessionRepo = mock(SessionRepository.class);
     private final ProfileClient profileClient = mock(ProfileClient.class);
     private final TransactionTemplate tx = mock(TransactionTemplate.class);
+    private final SessionNotesService sessionNotes = mock(SessionNotesService.class);
     private final RelationshipWorkspaceService service =
-            new RelationshipWorkspaceService(requestRepo, goalRepo, sessionRepo, profileClient, tx);
+            new RelationshipWorkspaceService(requestRepo, goalRepo, sessionRepo, profileClient, sessionNotes, tx);
 
     private final UUID mentorId = UUID.randomUUID();
     private final UUID menteeId = UUID.randomUUID();

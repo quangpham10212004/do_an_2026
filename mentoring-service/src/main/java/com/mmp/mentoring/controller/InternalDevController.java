@@ -27,7 +27,8 @@ import java.util.UUID;
 @Profile("!prod")
 public class InternalDevController {
 
-    public record ShiftSessionInput(Integer endedMinutesAgo) {
+    /** startsInMinutes (US-34) — đặt giờ bắt đầu = bây giờ + N phút (ưu tiên hơn endedMinutesAgo). */
+    public record ShiftSessionInput(Integer endedMinutesAgo, Integer startsInMinutes) {
     }
 
     public record ShiftRequestInput(Integer createdHoursAgo) {
@@ -44,13 +45,21 @@ public class InternalDevController {
     private final MentoringRequestRepository requestRepo;
     private final RequestExpiryService requestExpiry;
     private final com.mmp.mentoring.service.MentorshipEndService endService;
+    private final com.mmp.mentoring.service.ResponseTimeSyncJob responseTime;
+    private final com.mmp.mentoring.service.MessageEmailDigestJob messageDigest;
+    private final com.mmp.mentoring.repository.MessageRepository messageRepo;
     private final TransactionTemplate tx;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
                                  SessionScheduler scheduler, MentoringRequestRepository requestRepo,
                                  RequestExpiryService requestExpiry, com.mmp.mentoring.service.MentorshipEndService endService,
-                                 TransactionTemplate tx) {
+                                 com.mmp.mentoring.service.ResponseTimeSyncJob responseTime,
+                                 com.mmp.mentoring.service.MessageEmailDigestJob messageDigest,
+                                 com.mmp.mentoring.repository.MessageRepository messageRepo, TransactionTemplate tx) {
         this.endService = endService;
+        this.responseTime = responseTime;
+        this.messageDigest = messageDigest;
+        this.messageRepo = messageRepo;
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.requestExpiry = requestExpiry;
@@ -60,14 +69,19 @@ public class InternalDevController {
         this.tx = tx;
     }
 
-    /** Dời giờ phiên để phiên đã kết thúc {@code endedMinutesAgo} phút trước (0 = vừa kết thúc). */
+    /**
+     * Dời giờ phiên để phiên đã kết thúc {@code endedMinutesAgo} phút trước (0 = vừa kết thúc), hoặc bắt đầu sau
+     * {@code startsInMinutes} phút (kiểm thử nhắc lịch US-34).
+     */
     @PostMapping("/sessions/{id}/shift")
     public Map<String, Object> shiftSession(@PathVariable UUID id, @RequestBody ShiftSessionInput in) {
         int ago = in.endedMinutesAgo() == null ? 0 : in.endedMinutesAgo();
         MentoringSession s = tx.execute(st -> {
             MentoringSession ss = sessionRepo.findById(id)
                     .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
-            ss.setScheduledAt(OffsetDateTime.now().minusMinutes(ago + (long) ss.getDurationMinutes()));
+            ss.setScheduledAt(in.startsInMinutes() != null
+                    ? OffsetDateTime.now().plusMinutes(in.startsInMinutes())
+                    : OffsetDateTime.now().minusMinutes(ago + (long) ss.getDurationMinutes()));
             return ss;
         });
         return Map.of("id", s.getId(), "scheduledAt", s.getScheduledAt(), "endsAt", s.endsAt(), "status", s.getStatus().name());
@@ -97,13 +111,24 @@ public class InternalDevController {
         return out;
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | request-expiry | inactivity. */
+    /** US-38 — lùi thời điểm gửi mọi tin của cuộc trò chuyện {@code minutes} phút (kiểm thử email gộp sau 30 phút). */
+    @PostMapping("/conversations/{id}/age")
+    public Map<String, Object> ageMessages(@PathVariable UUID id, @RequestBody Map<String, Integer> in) {
+        int minutes = in.getOrDefault("minutes", 31);
+        Integer n = tx.execute(st -> messageRepo.shiftBack(id, minutes));
+        return Map.of("conversationId", id, "shifted", n == null ? 0 : n);
+    }
+
+    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | response-time | message-digest | request-expiry | inactivity. */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
             case "attendance" -> attendance.runJob();
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
+            case "reminders" -> scheduler.sendReminders();
+            case "response-time" -> responseTime.run();
+            case "message-digest" -> messageDigest.run();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
             case "inactivity" -> endService.runInactivity(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);

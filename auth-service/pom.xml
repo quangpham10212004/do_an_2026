@@ -67,6 +67,11 @@
       <scope>runtime</scope>
     </dependency>
     <dependency>
+      <!-- US-38 (PRD-AUTH-2) — gửi email qua SMTP (Mailpit) khi app.email.mode=smtp; mặc định chỉ ghi log. -->
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-redis</artifactId>
     </dependency>

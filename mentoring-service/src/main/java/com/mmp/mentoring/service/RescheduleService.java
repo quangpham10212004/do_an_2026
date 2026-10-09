@@ -110,13 +110,14 @@ public class RescheduleService {
             // Bỏ qua khoảng bận của chính phiên này (giờ cũ và giờ đề xuất đều mang sessionId của phiên)
             sessions.requireFree(ss.getMentorId(), ss.getMenteeId(), current.getNewStart(), ss.getDurationMinutes(), buffer, ss.getId());
             ss.setScheduledAt(current.getNewStart());
-            ss.setReminderSent(false);
+            ss.resetReminders();
             ss.setRescheduleCount(ss.getRescheduleCount() + 1);
             current.close(RescheduleProposal.Status.ACCEPTED);
             return ss;
         });
         notifications.notifyUser(p.getProposedBy(), "RESCHEDULE_ACCEPTED", "Đề xuất dời lịch được chấp nhận",
-                "Phiên lúc " + fmt(oldStart) + " đã được dời sang " + fmt(moved.getScheduledAt()) + ".", "/mentoring/sessions");
+                "Phiên lúc " + fmt(oldStart) + " đã được dời sang " + fmt(moved.getScheduledAt())
+                        + ". Nếu đã thêm phiên vào lịch, hãy tải lại file .ics để cập nhật.", "/mentoring/sessions");
         return sessions.view(moved);
     }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import NotificationPreferencesCard from "@/features/auth/NotificationPreferencesCard";
 import { useEffect, useState, type FormEvent } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Loading, PageHead, StatusBadge, Flash } from "@/components/ui";
@@ -77,6 +78,7 @@ function Account() {
           <button className="btn">Đổi mật khẩu</button>
         </form>
       </div>
+      {me.role !== "ADMIN" && <div style={{ marginTop: "var(--spacing-16)", maxWidth: 640 }}><NotificationPreferencesCard /></div>}
     </>
   );
 }

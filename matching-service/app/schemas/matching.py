@@ -46,11 +46,20 @@ class RankedMentor(CamelModel):
     hourly_rate: float
     matched_skills: list[str]
     reasons: list[str]
+    # US-35 — tín hiệu xếp hạng mới + phần đóng góp từng tín hiệu (cộng lại = finalScore)
+    schedule_fit: float = 0.0
+    responsiveness: float = 0.5
+    median_response_hours: float | None = None
+    new_mentor: bool = False
+    rating_used: float = 0.0
+    score_parts: dict[str, float] = {}
+    headline: str | None = None
 
 
 class PipelineStats(CamelModel):
     considered: int = 0
     excluded: dict[str, int]
+    hidden: int = 0
     eligible: int = 0
     k: int
     retrieved: int
@@ -77,6 +86,42 @@ class MatchingResponse(CamelModel):
     pipeline: PipelineStats
     filters: EffectiveFilters = EffectiveFilters()
     excluded_by: dict[str, int] = {}
+    # US-36 — id của danh sách vừa hiển thị (gửi kèm phản hồi "Không phù hợp"); None khi rỗng / ghi nhật ký lỗi.
+    impression_id: str | None = None
+
+
+class FeedbackRequest(CamelModel):
+    """US-36 — "Không phù hợp": ẩn mentor 30 ngày khỏi gợi ý của mentee."""
+
+    mentee_id: str
+    mentor_id: str
+    reason: Literal["WRONG_DOMAIN", "TOO_EXPENSIVE", "SCHEDULE", "OTHER"]
+    note: str | None = None
+    impression_id: str | None = None
+
+
+class FeedbackItem(CamelModel):
+    id: str
+    mentor_id: str
+    reason: str
+    note: str | None = None
+    rank: int | None = None
+    created_at: datetime
+    hidden_until: datetime
+
+
+class RankStat(CamelModel):
+    rank: int
+    impressions: int
+    not_relevant: int
+    not_relevant_rate: float
+
+
+class EvaluationStats(CamelModel):
+    days: int
+    result_lists: int
+    by_rank: list[RankStat]
+    reasons: dict[str, int]
 
 
 class SimilarMentor(CamelModel):

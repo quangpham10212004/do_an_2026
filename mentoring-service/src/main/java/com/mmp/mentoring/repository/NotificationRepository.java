@@ -31,4 +31,9 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             WHERE n.read = false AND (n.recipientId = :userId OR (n.recipientId IS NULL AND n.recipientRole = :role))
             """)
     int markAllRead(@Param("userId") UUID userId, @Param("role") String role);
+
+    /** PRD-NOTI-3 — giữ 90 ngày. */
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.createdAt < :before")
+    int deleteOlderThan(@Param("before") java.time.OffsetDateTime before);
 }

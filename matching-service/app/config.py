@@ -30,6 +30,14 @@ INDEX_SYNC_ENABLED = os.getenv("INDEX_SYNC_ENABLED", "true").lower() == "true"
 INDEX_SYNC_INTERVAL = float(os.getenv("INDEX_SYNC_INTERVAL", "60"))  # giây
 INDEX_SYNC_BATCH = int(os.getenv("INDEX_SYNC_BATCH", "200"))  # số hồ sơ embed lại mỗi vòng
 
+# US-35 (PRD-MATCH-3) — trọng số xếp hạng: similarity, rating, kinh nghiệm, độ khớp lịch, tốc độ phản hồi.
+# Mặc định theo PRD (0.6 / 0.15 / 0.1 / 0.1 / 0.05); đổi bằng biến môi trường, không cần sửa code.
+MATCH_WEIGHT_SIMILARITY = float(os.getenv("MATCH_WEIGHT_SIMILARITY", "0.6"))
+MATCH_WEIGHT_RATING = float(os.getenv("MATCH_WEIGHT_RATING", "0.15"))
+MATCH_WEIGHT_EXPERIENCE = float(os.getenv("MATCH_WEIGHT_EXPERIENCE", "0.1"))
+MATCH_WEIGHT_SCHEDULE = float(os.getenv("MATCH_WEIGHT_SCHEDULE", "0.1"))
+MATCH_WEIGHT_RESPONSIVENESS = float(os.getenv("MATCH_WEIGHT_RESPONSIVENESS", "0.05"))
+
 # US-11 — áp dụng matching-service/migrations/*.sql lúc khởi động (bảng schema_migrations).
 MIGRATE_ON_STARTUP = os.getenv("MIGRATE_ON_STARTUP", "true").lower() == "true"
 

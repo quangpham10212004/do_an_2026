@@ -2,6 +2,10 @@ server:
   port: 8081
 
 spring:
+  # US-38 — chỉ dùng khi EMAIL_MODE=smtp (docker compose --profile mail: Mailpit SMTP 1025, giao diện 8025).
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
   application:
     name: auth-service
   datasource:
@@ -34,6 +38,9 @@ management:
   health:
     redis:
       enabled: false
+    # US-38 — không kiểm tra kết nối SMTP trong health (chế độ log không có máy chủ mail).
+    mail:
+      enabled: false
 
 app:
   security:
@@ -55,6 +62,12 @@ app:
     password: ${ADMIN_PASSWORD:Admin@123}
   services:
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+    # US-38 — múi giờ người nhận (giờ yên tĩnh của email).
+    profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}
+  # US-38 (PRD-AUTH-2) — log (mặc định: ghi log + hộp thư giả /internal/dev/emails) | smtp (Mailpit ở demo).
+  email:
+    mode: ${EMAIL_MODE:log}
+    from: ${EMAIL_FROM:MentorHub <no-reply@mentorhub.local>}
   # US-30 (PRD-ADM-5): nhật ký kiểm toán giữ 2 năm; job xoá dòng cũ chạy 03:30 mỗi ngày (giờ Việt Nam).
   audit:
     retention: ${AUDIT_RETENTION:P730D}

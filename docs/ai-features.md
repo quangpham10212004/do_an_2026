@@ -77,7 +77,7 @@ flowchart LR
     Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R2[1. Hard filter trên profile_db<br/>5 ràng buộc + bộ lọc người dùng]
     R2 --> R1[2. Top-K retrieval<br/>cosine, chỉ trong mentor hợp lệ]
     V --> R1
-    R1 --> R3[3. Re-rank<br/>0.7·sim + 0.2·rating + 0.1·exp]
+    R1 --> R3[3. Re-rank<br/>0.6·sim + 0.15·rating + 0.1·exp<br/>+ 0.1·scheduleFit + 0.05·responsiveness]
     R3 --> R4[4. Explain<br/>lý do + thống kê]
     R4 --> OUT[Danh sách mentor]
 ```
@@ -185,21 +185,33 @@ $$
 $$
 
 $$
-\text{finalScore} = 0.7 \cdot \text{similarity} + 0.2 \cdot \frac{\text{rating}^{*}}{5} + 0.1 \cdot \min\left(\frac{\text{years}}{10},\ 1\right)
+\text{finalScore} = 0.6 \cdot \text{similarity} + 0.15 \cdot \frac{\text{rating}^{*}}{5} + 0.1 \cdot \min\left(\frac{\text{years}}{10},\ 1\right) + 0.1 \cdot \text{scheduleFit} + 0.05 \cdot \text{responsiveness}
 $$
 
-với $\text{rating}^{*} = \text{rating}$ nếu mentor đã có đánh giá, ngược lại $\text{rating}^{*} = 3.5$
-(giá trị trung tính).
+(Sprint 4, US-35 — PRD-MATCH-3/4; trước đó là 0.7 / 0.2 / 0.1 với rating trung tính 3.5, xem `docs/eval-matching.md`.)
+
+- $\text{rating}^{*}$ = rating thật nếu mentor có **≥ 3 đánh giá**, ngược lại = **trung vị rating của nền tảng** (mentor
+  APPROVED có ≥ 3 đánh giá; chưa có ai thì 3.5) và thẻ hiện nhãn "Mentor mới" — 1–2 đánh giá đầu chưa đủ tin cậy.
+- **scheduleFit** ∈ [0, 1] = tỉ lệ khung giờ mong muốn của mentee trong 14 ngày tới (mỗi ngày thuộc `preferredDays`, rỗng =
+  mọi ngày × cửa sổ `preferredTimeOfDay`, null = 06:00–23:00; theo múi giờ của mentee) có ≥ 60 phút trùng lịch rảnh hằng
+  tuần của mentor (theo múi giờ của mentor) sau khi trừ ngoại lệ. Mọi khoảng đổi sang UTC trước khi so. Phiên đã đặt nằm ở
+  mentoring-service nên không bị trừ — xấp xỉ "lịch rảnh khai báo" (`ranking_signals.py`).
+- **responsiveness** = 1 nếu trung vị thời gian phản hồi yêu cầu ≤ 24 giờ, 0.5 nếu ≤ 72 giờ, 0 nếu chậm hơn; chưa có dữ liệu
+  = 0.5. Trung vị (≤ 20 yêu cầu gần nhất trong 180 ngày, hết hạn = không phản hồi) do mentoring-service tính và đồng bộ sang
+  `mentor_profiles.median_response_hours` (`ResponseTimeSyncJob`, giống cách đồng bộ rating).
 
 **Lý do chọn trọng số:**
-- **0.7 cho similarity** — mức phù hợp nội dung là mục tiêu chính của matching; trọng số lớn đảm bảo
-  một mentor ít liên quan nhưng rating cao không vượt lên mentor rất phù hợp (có unit test
-  `test_similarity_can_beat_rating`).
-- **0.2 cho rating** — tín hiệu chất lượng từ cộng đồng, phân định các mentor có mức tương đồng gần nhau.
-- **0.1 cho kinh nghiệm** — tín hiệu phụ, bão hoà ở 10 năm để không ưu tiên quá mức thâm niên.
-- **Cold-start**: mentor mới chưa có đánh giá nhận rating trung tính 3.5 thay vì 0, tránh bị "phạt oan".
-- Các hằng số nằm tập trung trong `matching_pipeline.py` (`WEIGHT_*`, `NEUTRAL_RATING`) và được trả về
-  trong response để minh bạch.
+- **0.6 cho similarity** — mức phù hợp nội dung vẫn là tín hiệu chính; mentor ít liên quan nhưng rating cao không vượt
+  mentor rất phù hợp (unit test `test_similarity_can_beat_rating`).
+- **0.15 rating, 0.1 kinh nghiệm** — tín hiệu chất lượng / thâm niên (bão hoà 10 năm) phân định mentor tương đồng gần nhau.
+- **0.1 scheduleFit, 0.05 responsiveness** — mentor phù hợp nội dung nhưng không bao giờ trùng lịch hoặc trả lời chậm khó
+  thành một quan hệ mentoring thật; trọng số nhỏ để chỉ phân định các ứng viên gần nhau.
+- Trọng số đổi được bằng biến môi trường `MATCH_WEIGHT_*` (matching-service `config.py`), được trả về trong
+  `pipeline.weights`, và mỗi kết quả có `scoreParts` (phần đóng góp từng tín hiệu, cộng lại = `finalScore`) để giao diện
+  giải thích điểm.
+- **Phản hồi "Không phù hợp" (US-36)**: mentor bị mentee đánh dấu bị loại khỏi gợi ý của mentee đó 30 ngày (trước bước
+  top-K nên vẫn đủ `limit`); mọi danh sách được ghi `match_impressions` (hạng, điểm, scoreParts) để tính Precision@K và
+  tỉ lệ "Không phù hợp" theo hạng (`GET /api/matching/admin/evaluation`).
 
 ### 1.7 Bước 4 — Giải thích (FR-4.6, NFR-6)
 

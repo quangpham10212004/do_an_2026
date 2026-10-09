@@ -31,8 +31,32 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
                                             @Param("fromMinusMaxDuration") OffsetDateTime fromMinusMaxDuration,
                                             @Param("to") OffsetDateTime to);
 
-    @Query("SELECT s FROM MentoringSession s WHERE s.status = 'CONFIRMED' AND s.reminderSent = false AND s.scheduledAt BETWEEN :now AND :until")
+    /** US-34 — phiên CONFIRMED bắt đầu trong (now, until] còn thiếu ít nhất một lần nhắc (24 giờ / 1 giờ). */
+    @Query("""
+            SELECT s FROM MentoringSession s
+            WHERE s.status = 'CONFIRMED' AND s.scheduledAt > :now AND s.scheduledAt <= :until
+              AND (s.reminder24hSentAt IS NULL OR s.reminder1hSentAt IS NULL)
+            ORDER BY s.scheduledAt
+            """)
     List<MentoringSession> findNeedingReminder(@Param("now") OffsetDateTime now, @Param("until") OffsetDateTime until);
+
+    /**
+     * US-34 — đánh dấu đã nhắc có điều kiện (chỉ khi chưa đánh dấu và phiên còn CONFIRMED): trả 1 cho đúng một lượt chạy
+     * nên không nhắc trùng kể cả khi job chạy song song. {@code skip24h} = đánh dấu luôn mốc 24 giờ khi gửi nhắc 1 giờ.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = """
+            UPDATE sessions SET reminder_24h_sent_at = :at
+            WHERE id = :id AND status = 'CONFIRMED' AND reminder_24h_sent_at IS NULL AND reminder_1h_sent_at IS NULL
+            """, nativeQuery = true)
+    int claimReminder24h(@Param("id") UUID id, @Param("at") OffsetDateTime at);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = """
+            UPDATE sessions SET reminder_1h_sent_at = :at, reminder_24h_sent_at = COALESCE(reminder_24h_sent_at, :at)
+            WHERE id = :id AND status = 'CONFIRMED' AND reminder_1h_sent_at IS NULL
+            """, nativeQuery = true)
+    int claimReminder1h(@Param("id") UUID id, @Param("at") OffsetDateTime at);
 
     @Query("SELECT s FROM MentoringSession s WHERE s.status = 'PENDING' AND s.createdAt < :before")
     List<MentoringSession> findExpiredPending(@Param("before") OffsetDateTime before);
@@ -51,6 +75,17 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
             """)
     List<MentoringSession> findUpcomingHoldingByPair(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId,
                                                     @Param("now") OffsetDateTime now);
+
+    /**
+     * US-33 (PRD-MSG-3) — cặp mentee–mentor đã có phiên trả phí được xác nhận (đã thanh toán: CONFIRMED hoặc đã diễn ra).
+     * Khi đó SĐT/email trong tin nhắn không còn bị che.
+     */
+    @Query("""
+            SELECT COUNT(s) > 0 FROM MentoringSession s
+            WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.price > 0
+              AND s.status IN ('CONFIRMED', 'AWAITING_ATTENDANCE', 'COMPLETED', 'NO_SHOW_MENTEE', 'NO_SHOW_MENTOR', 'DISPUTED')
+            """)
+    boolean existsPaidConfirmedForPair(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId);
 
     /** US-12 — khoá dòng phiên (SELECT … FOR UPDATE) khi trả lời / kết luận tham dự. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

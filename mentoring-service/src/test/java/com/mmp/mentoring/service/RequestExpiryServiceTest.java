@@ -47,7 +47,7 @@ class RequestExpiryServiceTest {
         ReflectionTestUtils.setField(request, "createdAt", OffsetDateTime.now().minusHours(73));
         when(repo.findPendingIdsCreatedBefore(any())).thenReturn(List.of(id));
         when(repo.findForUpdate(id)).thenReturn(Optional.of(request));
-        when(profileClient.summary(mentorId)).thenReturn(Optional.of(new ProfileClient.ProfileSummary(mentorId, "Anh Mentor", "MENTOR", "backend")));
+        when(profileClient.summary(mentorId)).thenReturn(Optional.of(new ProfileClient.ProfileSummary(mentorId, "Anh Mentor", "MENTOR", "backend", null)));
     }
 
     @Test

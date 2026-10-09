@@ -49,6 +49,21 @@ export interface MentorProfileInput {
   capacity?: number;
   /** @deprecated dùng PUT /status (US-08); true → ACCEPTING, false → PAUSED. */
   isAvailable?: boolean;
+  /** US-37 — ≤ 80 ký tự; undefined = giữ nguyên, "" = xoá. */
+  headline?: string;
+}
+
+/** US-37 (PRD-PROF-1) — điểm hoàn thiện hồ sơ. */
+export interface CompletenessItem {
+  key: string;
+  label: string;
+  weight: number;
+  done: boolean;
+}
+
+export interface Completeness {
+  score: number;
+  items: CompletenessItem[];
 }
 
 /** US-04 */
@@ -102,6 +117,13 @@ export interface MentorProfile {
   availability: AvailabilitySlot[];
   /** Ngoại lệ lịch rảnh 60 ngày tới. */
   exceptions: AvailabilityException[];
+  /** US-37 */
+  headline: string | null;
+  avatarUrl: string | null;
+  /** null khi xem hồ sơ người khác. */
+  completeness: Completeness | null;
+  /** US-35 — trung vị thời gian phản hồi yêu cầu (giờ); null = chưa có dữ liệu. */
+  medianResponseHours: number | null;
 }
 
 export interface MenteeProfileInput {
@@ -136,6 +158,12 @@ export interface MenteeProfile extends MenteePreferences {
   skills: string[];
   portfolioLinks: string[];
   cvFileUrl: string | null;
+  /** US-37 */
+  timezone: string;
+  avatarUrl: string | null;
+  completeness: Completeness;
+  /** Nút AI Matching bật khi completeness.score ≥ 50. */
+  matchingEnabled: boolean;
 }
 
 /** Thẻ mentor ở trang duyệt danh sách (GET /api/profile/mentors). */
@@ -153,6 +181,9 @@ export interface MentorCard {
   verificationStatus: VerificationStatus;
   status: MentorStatus;
   onLeaveUntil: string | null;
+  /** US-37 */
+  headline: string | null;
+  avatarUrl: string | null;
 }
 
 export interface MentorSearchParams {

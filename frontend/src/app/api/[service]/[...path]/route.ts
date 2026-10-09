@@ -41,7 +41,7 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
       cache: "no-store",
     });
     const responseHeaders = new Headers();
-    for (const name of ["content-type", "content-disposition"]) {
+    for (const name of ["content-type", "content-disposition", "cache-control"]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
     }

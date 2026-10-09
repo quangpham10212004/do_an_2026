@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, PageHead, StatusBadge } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
+import { CompletenessCard } from "@/features/profile/ProfileExtras";
 import { aiApi } from "@/features/ai/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { learningApi } from "@/features/learning/api";
@@ -81,6 +82,11 @@ function Dashboard({ user }: { user: SessionUser }) {
         <Welcome />
       </Suspense>
       <PageHead title={`Xin chào, ${profile?.displayName || user.fullName || user.email}`} subtitle={isMentor ? "Trang chủ mentor" : "Trang chủ mentee"} />
+      {profile?.completeness && profile.completeness.score < 100 && (
+        <div style={{ marginBottom: "var(--spacing-16)" }}>
+          <CompletenessCard completeness={profile.completeness} matchingMin={isMentor ? undefined : 50} />
+        </div>
+      )}
       <div className="grid grid-2">
         <div className="card">
           <h2>Các bước bắt đầu</h2>
