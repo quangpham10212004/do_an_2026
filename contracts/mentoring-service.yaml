@@ -863,6 +863,7 @@ paths:
               type: object
               properties:
                 endedMinutesAgo: { type: integer, default: 0 }
+                startsInMinutes: { type: integer, description: "US-34 — đặt giờ bắt đầu = bây giờ + N phút (ưu tiên hơn endedMinutesAgo)" }
       responses:
         "200": { description: "{ id, scheduledAt, endsAt, status }" }
   /internal/dev/requests/{id}/shift:
@@ -898,10 +899,10 @@ paths:
         "200": { description: "{ id, lastActivity, inactivityWarnedAt }" }
   /internal/dev/jobs/{job}:
     post:
-      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
+      summary: "DEV/E2E — chạy ngay job nền: attendance (US-12) | payment-outbox | unpaid-expiry | reminders (US-34) | request-expiry (US-15) | inactivity (US-31). Không có ở profile prod."
       security: [{ internalToken: [] }]
       parameters:
-        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, request-expiry, inactivity] } }
+        - { name: job, in: path, required: true, schema: { type: string, enum: [attendance, payment-outbox, unpaid-expiry, reminders, request-expiry, inactivity] } }
       responses:
         "200": { description: "{ job, status: DONE }" }
         "404": { description: JOB_NOT_FOUND }
@@ -1331,3 +1332,22 @@ paths:
         "204": { description: Đã xoá }
         "403": { description: FORBIDDEN }
         "404": { description: ACTION_ITEM_NOT_FOUND }
+  /api/mentoring/sessions/{id}/calendar.ics:
+    get:
+      summary: >
+        US-34 (PRD-SES-13) — "Thêm vào lịch": file .ics (RFC 5545) cho mentor/mentee của phiên. UID cố định theo id phiên,
+        SEQUENCE = số lần dời lịch (tải lại sau khi dời lịch sẽ cập nhật đúng sự kiện cũ); phiên CANCELLED/EXPIRED →
+        METHOD:CANCEL. Mô tả gồm agenda, link tham gia (nếu đã có) và link trang ghi chú phiên. Nhắc lịch trong ứng dụng:
+        job mỗi phút gửi SESSION_REMINDER_24H (còn ≤ 24 giờ) và SESSION_REMINDER_1H (còn ≤ 1 giờ) cho cả hai bên, theo
+        múi giờ của từng người, kèm link tham gia và agenda; dời lịch thì nhắc lại từ đầu.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: text/calendar; charset=UTF-8 (Content-Disposition attachment)
+          content:
+            text/calendar:
+              schema: { type: string }
+        "403": { description: FORBIDDEN }
+        "404": { description: SESSION_NOT_FOUND }
+        "409": { description: SESSION_NOT_CONFIRMED (phiên PENDING chờ thanh toán) }

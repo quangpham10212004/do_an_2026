@@ -1,5 +1,6 @@
 package com.mmp.mentoring.service;
 
+import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.repository.SessionRepository;
 import org.slf4j.Logger;
@@ -8,15 +9,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Tác vụ nền mỗi phút:
- * - FR-5.5: gửi nhắc lịch cho phiên CONFIRMED sắp diễn ra.
+ * - US-34: nhắc lịch 24 giờ và 1 giờ trước giờ bắt đầu cho phiên CONFIRMED.
  * - Phiên PENDING quá hạn thanh toán → EXPIRED để giải phóng khung giờ.
  * - US-12: tới giờ kết thúc CONFIRMED → AWAITING_ATTENDANCE; hết 48 giờ → kết luận tham dự (thay cho tự hoàn thành
  *   sau 2 giờ của Sprint 1).
@@ -25,38 +28,57 @@ import java.time.format.DateTimeFormatter;
 public class SessionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(SessionScheduler.class);
-    private static final DateTimeFormatter DISPLAY = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
 
     private final SessionRepository sessionRepo;
     private final NotificationService notifications;
     private final AttendanceService attendance;
-    private final Duration reminderBefore;
+    private final ProfileClient profileClient;
+    private final TransactionTemplate tx;
     private final Duration paymentHold;
-    private final ZoneId zone;
 
     public SessionScheduler(SessionRepository sessionRepo, NotificationService notifications, AttendanceService attendance,
-                            @Value("${app.reminder.before}") Duration reminderBefore,
-                            @Value("${app.booking.payment-hold}") Duration paymentHold,
-                            @Value("${app.timezone}") String timezone) {
+                            ProfileClient profileClient, TransactionTemplate tx,
+                            @Value("${app.booking.payment-hold}") Duration paymentHold) {
         this.sessionRepo = sessionRepo;
         this.notifications = notifications;
         this.attendance = attendance;
-        this.reminderBefore = reminderBefore;
+        this.profileClient = profileClient;
+        this.tx = tx;
         this.paymentHold = paymentHold;
-        this.zone = ZoneId.of(timezone);
     }
 
+    /**
+     * US-34 (PRD-SES-14) — nhắc 24 giờ và 1 giờ trước giờ bắt đầu, nội dung theo múi giờ của từng người nhận, kèm link
+     * tham gia và agenda. Đánh dấu "đã nhắc" bằng UPDATE có điều kiện trước rồi mới gửi (ngoài transaction, vì cần gọi
+     * profile-service lấy tên + múi giờ) — mỗi lần nhắc chỉ gửi đúng 1 lần kể cả khi job chạy chồng nhau.
+     */
     @Scheduled(fixedDelay = 60_000, initialDelay = 20_000)
-    @Transactional
     public void sendReminders() {
         OffsetDateTime now = OffsetDateTime.now();
-        for (MentoringSession s : sessionRepo.findNeedingReminder(now, now.plus(reminderBefore))) {
-            String when = s.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
-            String msg = "Bạn có phiên mentoring lúc " + when + (s.getTopic() == null ? "" : " — chủ đề: " + s.getTopic()) + ".";
-            notifications.notifyUser(s.getMenteeId(), "SESSION_REMINDER", "Nhắc lịch mentoring", msg, "/mentoring/sessions");
-            notifications.notifyUser(s.getMentorId(), "SESSION_REMINDER", "Nhắc lịch mentoring", msg, "/mentoring/sessions");
-            s.setReminderSent(true);
-            log.info("Reminder sent for session {}", s.getId());
+        for (MentoringSession s : sessionRepo.findNeedingReminder(now, now.plus(ReminderRules.WINDOW))) {
+            ReminderRules.Kind kind = ReminderRules.due(s.getScheduledAt(), now,
+                    s.getReminder24hSentAt() != null, s.getReminder1hSentAt() != null);
+            if (kind == null) continue;
+            Integer claimed = tx.execute(st -> kind == ReminderRules.Kind.H1
+                    ? sessionRepo.claimReminder1h(s.getId(), now) : sessionRepo.claimReminder24h(s.getId(), now));
+            if (claimed == null || claimed == 0) continue;
+            try {
+                remind(s, kind);
+                log.info("Reminder {} sent for session {}", kind, s.getId());
+            } catch (RuntimeException e) {
+                log.warn("Reminder {} for session {} failed: {}", kind, s.getId(), e.getMessage());
+            }
+        }
+    }
+
+    private void remind(MentoringSession s, ReminderRules.Kind kind) {
+        Map<UUID, String> names = profileClient.displayNames(List.of(s.getMentorId(), s.getMenteeId()));
+        String link = "/mentoring/sessions/" + s.getId() + "/notes";
+        for (UUID recipient : List.of(s.getMenteeId(), s.getMentorId())) {
+            UUID other = recipient.equals(s.getMenteeId()) ? s.getMentorId() : s.getMenteeId();
+            String msg = ReminderRules.message(kind, s.getScheduledAt(), s.getDurationMinutes(), profileClient.timezone(recipient),
+                    names.get(other), s.getMeetingLink(), s.getAgenda());
+            notifications.notifyUser(recipient, kind.type, kind.title, msg, link);
         }
     }
 

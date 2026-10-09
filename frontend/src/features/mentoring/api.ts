@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, apiBlob } from "@/lib/api";
 import type {
   AttendanceAnswer,
   ActionItem,
@@ -93,6 +93,18 @@ export const mentoringApi = {
   startDisputeReview: (id: Uuid) => api<Dispute>(`/api/mentoring/admin/disputes/${id}/start-review`, { method: "POST" }),
   resolveDispute: (id: Uuid, body: ResolveDisputeInput) =>
     api<Dispute>(`/api/mentoring/admin/disputes/${id}/resolve`, { method: "POST", body }),
+  /** US-34 — tải file .ics "Thêm vào lịch" (tải lại sau khi dời lịch sẽ cập nhật sự kiện cũ). */
+  downloadCalendar: async (sessionId: Uuid) => {
+    const blob = await apiBlob(`/api/mentoring/sessions/${sessionId}/calendar.ics`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mentoring-${sessionId.slice(0, 8)}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
   // Ghi chú phiên (US-40)
   sessionNotes: (sessionId: Uuid) => api<SessionNotes>(`/api/mentoring/sessions/${sessionId}/notes`),
   saveSharedNote: (sessionId: Uuid, content: string, baseVersion: number) =>

@@ -11,10 +11,12 @@ Dùng lại các helper tạo mentor/mentee/phiên của e2e Sprint 3 và endpoi
 """
 import sys
 import time
+import urllib.error
+import urllib.request
 
 from common import AUTH, MENTORING, ApiError, call
-from e2e_s3_mentoring import (RUN, accepted_mentee, approved_mentor, at, book, error_code, mentee_with_profile, notes,
-                              paid, send_request)
+from e2e_s3_mentoring import (AGENDA, RUN, accepted_mentee, approved_mentor, at, book, dev, error_code,
+                              mentee_with_profile, notes, paid, send_request)
 
 results = []
 
@@ -151,7 +153,57 @@ def us40(ctx):
     check("US-40", "Hạn ở quá khứ → 400 INVALID_DUE_DATE", status == 400 and code == "INVALID_DUE_DATE", (status, code))
 
 
-STORIES = {"US-33": us33, "US-40": us40}
+def ics(user, sid):
+    req = urllib.request.Request(f"{MENTORING}/api/mentoring/sessions/{sid}/calendar.ics",
+                                 headers={"Authorization": f"Bearer {user['accessToken']}"})
+    with urllib.request.urlopen(req, timeout=30) as res:
+        return res.headers.get("Content-Type", ""), res.read().decode()
+
+
+def us34(ctx):
+    print("US-34 — .ics và nhắc lịch 24 giờ / 1 giờ")
+    admin = ctx["admin"]
+    mentor = approved_mentor(admin["accessToken"], "remind")
+    mentee = accepted_mentee(mentor, "remind")
+    link = "https://meet.google.com/abc-defg-hij"
+    s = paid(mentee, mentor, at(4, 10))
+    call("PUT", f"{MENTORING}/api/mentoring/sessions/{s['id']}/meeting-link", {"meetingLink": link}, token=mentor["accessToken"])
+
+    ctype, body = ics(mentee, s["id"])
+    check("US-34", ".ics: text/calendar, UID theo phiên, SEQUENCE 0",
+          ctype.startswith("text/calendar") and f"UID:session-{s['id']}@" in body and "SEQUENCE:0" in body, ctype)
+    check("US-34", ".ics có link tham gia và agenda", link in body.replace("\r\n ", "") and "DESCRIPTION:" in body)
+    pending = book(mentee, mentor, at(6, 10))
+    try:
+        ics(mentee, pending["id"])
+        status = 200
+    except urllib.error.HTTPError as e:
+        status = e.code
+    check("US-34", "Phiên PENDING → 409 (chưa thêm vào lịch được)", status == 409, status)
+
+    dev(f"sessions/{s['id']}/shift", {"startsInMinutes": 20 * 60})
+    dev("jobs/reminders")
+    dev("jobs/reminders")
+    n24 = notes(mentee, "SESSION_REMINDER_24H")
+    check("US-34", "Nhắc 24 giờ tới mentee đúng 1 lần, có link + agenda",
+          len(n24) == 1 and link in n24[0]["message"] and AGENDA[:20] in n24[0]["message"], [n["message"] for n in n24])
+    check("US-34", "Mentor cũng nhận nhắc 24 giờ", len(notes(mentor, "SESSION_REMINDER_24H")) == 1)
+    check("US-34", "Chưa tới mốc 1 giờ → chưa nhắc 1 giờ", not notes(mentee, "SESSION_REMINDER_1H"))
+    dev(f"sessions/{s['id']}/shift", {"startsInMinutes": 50})
+    dev("jobs/reminders")
+    check("US-34", "Còn ≤ 1 giờ → nhắc 1 giờ cho cả hai",
+          len(notes(mentee, "SESSION_REMINDER_1H")) == 1 and len(notes(mentor, "SESSION_REMINDER_1H")) == 1)
+
+    # Dời lịch → SEQUENCE tăng (lịch cập nhật sự kiện cũ) và nhắc lại từ đầu.
+    s2 = paid(mentee, mentor, at(8, 10))
+    p = call("POST", f"{MENTORING}/api/mentoring/sessions/{s2['id']}/reschedule", {"newStart": at(9, 15).isoformat()},
+             token=mentee["accessToken"])
+    call("POST", f"{MENTORING}/api/mentoring/reschedules/{p['id']}/accept", token=mentor["accessToken"])
+    _, body = ics(mentor, s2["id"])
+    check("US-34", "Sau khi dời lịch .ics có SEQUENCE:1 cùng UID", "SEQUENCE:1" in body and f"UID:session-{s2['id']}@" in body)
+
+
+STORIES = {"US-33": us33, "US-34": us34, "US-40": us40}
 
 
 def main(selected):
