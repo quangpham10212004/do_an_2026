@@ -1,5 +1,15 @@
 import { api } from "@/lib/api";
-import type { ExclusionReason, IndexStatus, MatchFilterValues, MatchQuery, MatchResult, RebuildResult, Uuid } from "@/types";
+import type {
+  ExclusionReason,
+  IndexStatus,
+  MatchFeedback,
+  MatchFilterValues,
+  MatchQuery,
+  MatchResult,
+  NotRelevantReason,
+  RebuildResult,
+  Uuid,
+} from "@/types";
 
 /** Query string cho bộ lọc: chỉ gửi bộ lọc đang bật (null / [] / false bị bỏ qua). */
 export function filterParams(filters: MatchFilterValues): URLSearchParams {
@@ -27,6 +37,15 @@ export const matchingApi = {
     p.set("useProfileDefaults", String(useProfileDefaults));
     return api<MatchResult>(`/api/matching/mentors?${p.toString()}`);
   },
+  // US-36 — "Không phù hợp": ẩn mentor 30 ngày
+  notRelevant: (menteeId: Uuid, mentorId: Uuid, reason: NotRelevantReason, note?: string, impressionId?: Uuid | null) =>
+    api<MatchFeedback>("/api/matching/feedback", {
+      method: "POST",
+      body: { menteeId, mentorId, reason, note: note || undefined, impressionId: impressionId || undefined },
+    }),
+  hiddenMentors: (menteeId: Uuid) => api<MatchFeedback[]>(`/api/matching/feedback?menteeId=${menteeId}`),
+  unhide: (menteeId: Uuid, mentorId: Uuid) =>
+    api<null>(`/api/matching/feedback/${mentorId}?menteeId=${menteeId}`, { method: "DELETE" }),
   // Chỉ mục embedding thuộc matching-service (xem CONVENTIONS.md mục 1).
   indexStatus: (userId: Uuid) => api<IndexStatus>(`/api/matching/index-status?userId=${userId}`),
   rebuildEmbeddings: (force: boolean) =>
@@ -39,4 +58,11 @@ export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   noSchedule: "chưa có lịch rảnh",
   fullCapacity: "đã đủ số mentee",
   domainMismatch: "khác lĩnh vực",
+};
+
+export const NOT_RELEVANT_LABELS: Record<NotRelevantReason, string> = {
+  WRONG_DOMAIN: "Sai lĩnh vực",
+  TOO_EXPENSIVE: "Quá đắt",
+  SCHEDULE: "Lịch không hợp",
+  OTHER: "Lý do khác",
 };

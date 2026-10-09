@@ -32,7 +32,13 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
 
   return (
     <>
-      <PageHead title={mentor.displayName} subtitle={`${mentor.domain} · ${mentor.yearsExperience} năm kinh nghiệm · ${formatRate(mentor.hourlyRate)}`}>
+      <PageHead title={mentor.displayName} subtitle={<>
+        {mentor.headline && <>{mentor.headline}<br /></>}
+        {`${mentor.domain} · ${mentor.yearsExperience} năm kinh nghiệm · ${formatRate(mentor.hourlyRate)}`}
+        {mentor.medianResponseHours !== null && mentor.medianResponseHours !== undefined && (
+          <> · {mentor.medianResponseHours <= 24 ? "thường phản hồi trong 24 giờ" : mentor.medianResponseHours <= 72 ? "thường phản hồi trong 3 ngày" : "phản hồi chậm"}</>
+        )}
+      </>}>
         <StatusBadge status={mentor.verificationStatus} />
         <span className={`badge ${mentor.status === "ACCEPTING" ? "good" : suspended ? "bad" : ""}`}>{statusText}</span>
       </PageHead>

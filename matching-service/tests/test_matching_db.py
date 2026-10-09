@@ -45,7 +45,7 @@ async def conn(monkeypatch):
     matching = await asyncpg.connect(os.environ["MATCHING_DB_URL"])
     await reset_profile_db(admin)
     await migrate_matching_db(matching)
-    await matching.execute("TRUNCATE mentor_embeddings, mentee_embeddings")
+    await matching.execute("TRUNCATE mentor_embeddings, mentee_embeddings, match_feedback, match_impressions")
     try:
         yield admin
     finally:
@@ -257,3 +257,68 @@ async def test_suspended_mentor_is_never_suggested_nor_similar(conn):
         "UPDATE mentor_profiles SET status = 'ACCEPTING', suspended_reason = NULL, suspended_at = NULL, "
         "suspended_by = NULL WHERE user_id = $1::uuid", suspended)
     assert suspended in ids(await match(mentee))
+
+
+# ---------------------------------------------------------------- US-35 / US-36
+
+
+async def test_hidden_mentor_is_excluded_for_30_days_and_list_still_full(conn):
+    """AC US-36: mentor bị "Không phù hợp" không xuất hiện với mentee đó trong 30 ngày; vẫn trả đủ limit."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import feedback_service
+
+    mentors = [await add_mentor(conn) for _ in range(4)]
+    mentee = await add_mentee(conn)
+    other = await add_mentee(conn)
+    first = await match(mentee, limit=3)
+    assert len(first["mentors"]) == 3
+    hidden = str(first["mentors"][0]["mentor_id"])
+
+    impression = await feedback_service.log_impressions(mentee, first["mentors"], {}, matching_pipeline.WEIGHTS)
+    row = await feedback_service.hide(mentee, hidden, "SCHEDULE", None, impression)
+    assert row["rank"] == 1
+
+    again = await match(mentee, limit=3)
+    assert hidden not in ids(again) and len(again["mentors"]) == 3
+    assert again["stats"]["hidden"] == 1
+    assert hidden in ids(await match(other, limit=4))  # chỉ ẩn với đúng mentee đã bấm
+
+    later = datetime.now(timezone.utc) + timedelta(days=31)
+    assert await feedback_service.hidden_mentor_ids(mentee, now=later) == []
+    assert await feedback_service.unhide(mentee, hidden) == 1
+    assert hidden in ids(await match(mentee, limit=4))
+
+    stats = await feedback_service.evaluation_stats(days=1)
+    assert stats["byRank"][0] == {"rank": 1, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
+    assert stats["reasons"] == {"SCHEDULE": 1}
+    assert set(mentors) >= ids(first)
+
+
+async def test_schedule_fit_uses_exceptions_and_ranks_matching_mentor_first(conn):
+    """US-35: hai mentor như nhau về nội dung; mentor có lịch tối thứ Hai/Tư (khớp mentee) đứng trên mentor chỉ rảnh sáng."""
+    from datetime import date, timedelta
+
+    evening = await add_mentor(conn, slots=((1, "18:00", "22:00"), (3, "18:00", "22:00")))
+    morning = await add_mentor(conn, slots=((1, "07:00", "09:00"), (3, "07:00", "09:00")))
+    mentee = await add_mentee(conn, days=[1, 3], time_of_day="EVENING")
+    result = await match(mentee, limit=2, use_profile_defaults=False)
+    by_id = {str(m["mentor_id"]): m for m in result["mentors"]}
+    assert [str(m["mentor_id"]) for m in result["mentors"]] == [evening, morning]
+    assert by_id[evening]["schedule_fit"] == 1.0 and by_id[morning]["schedule_fit"] == 0.0
+
+    # Nghỉ cả 14 ngày tới → mentor buổi tối không còn khớp khung nào.
+    today = date.today()
+    for i in range(-1, 16):
+        await conn.execute(
+            "INSERT INTO mentor_availability_exceptions (mentor_id, date, reason) VALUES ($1::uuid, $2, 'Nghỉ')",
+            evening, today + timedelta(days=i))
+    result = await match(mentee, limit=2, use_profile_defaults=False)
+    assert {str(m["mentor_id"]): m["schedule_fit"] for m in result["mentors"]}[evening] == 0.0
+
+
+async def test_platform_median_rating_for_cold_start(conn):
+    for r in (3.0, 4.0, 5.0):
+        await add_mentor(conn, rating=r, rating_count=10)
+    await add_mentor(conn, rating=5.0, rating_count=1)
+    assert await matching_pipeline.platform_median_rating() == 4.0

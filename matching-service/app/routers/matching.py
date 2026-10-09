@@ -5,13 +5,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.schemas.matching import (
     EffectiveFilters,
+    EvaluationStats,
+    FeedbackItem,
+    FeedbackRequest,
     MatchingResponse,
     PipelineStats,
     RankedMentor,
     SimilarMentor,
     SimilarMentorsResponse,
 )
-from app.security import Caller, require_internal, require_user
+from app.security import Caller, require_admin, require_internal, require_user
+from app.services import feedback_service
 from app.services import match_filters
 from app.services import matching_pipeline as pipeline
 
@@ -119,29 +123,91 @@ async def get_matches(
             hourly_rate=float(m["hourly_rate"]),
             matched_skills=m["matched_skills"],
             reasons=m["reasons"],
+            schedule_fit=m.get("schedule_fit", 0.0),
+            responsiveness=m.get("responsiveness", 0.5),
+            median_response_hours=(float(m["median_response_hours"])
+                                   if m.get("median_response_hours") is not None else None),
+            new_mentor=m.get("new_mentor", False),
+            rating_used=m.get("rating_used", float(m["rating"])),
+            score_parts=m.get("score_parts", {}),
+            headline=m.get("headline"),
         )
         for m in result["mentors"]
     ]
     stats = result["stats"]
+    filters_echo = match_filters.to_echo(result["filters"])
+    impression_id = await feedback_service.log_impressions(menteeId, result["mentors"], filters_echo, pipeline.WEIGHTS)
     return MatchingResponse(
         mentee_id=menteeId,
         mentors=mentors,
         pipeline=PipelineStats(
             considered=stats["considered"],
             excluded=stats["excluded"],
+            hidden=stats.get("hidden", 0),
             eligible=stats["eligible"],
             k=stats["k"],
             retrieved=stats["retrieved"],
             returned=stats["returned"],
-            weights={
-                "similarity": pipeline.WEIGHT_SIMILARITY,
-                "rating": pipeline.WEIGHT_RATING,
-                "experience": pipeline.WEIGHT_EXPERIENCE,
-            },
+            weights=pipeline.WEIGHTS,
         ),
-        filters=EffectiveFilters(**match_filters.to_echo(result["filters"])),
+        filters=EffectiveFilters(**filters_echo),
         excluded_by=result["excluded_by"],
+        impression_id=impression_id,
     )
+
+
+def _require_self(caller: Caller, mentee_id: str) -> None:
+    if caller.role == "INTERNAL" or caller.user_id == mentee_id:
+        return
+    raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Chỉ mentee được phản hồi gợi ý của chính mình"})
+
+
+def _feedback_item(row: dict) -> FeedbackItem:
+    return FeedbackItem(id=str(row["id"]), mentor_id=str(row["mentor_id"]), reason=row["reason"], note=row["note"],
+                        rank=row["rank"], created_at=row["created_at"], hidden_until=row["hidden_until"])
+
+
+@router.post("/api/matching/feedback", response_model=FeedbackItem, status_code=201)
+async def not_relevant(body: FeedbackRequest, caller: Caller = Depends(require_user)) -> FeedbackItem:
+    """
+    US-36 (PRD-MATCH-6) — "Không phù hợp": ẩn mentor khỏi gợi ý của mentee 30 ngày, lưu lý do (WRONG_DOMAIN /
+    TOO_EXPENSIVE / SCHEDULE / OTHER) và hạng lúc bấm (qua impressionId) để đánh giá offline.
+    """
+    _parse_uuid(body.mentee_id, "menteeId")
+    _parse_uuid(body.mentor_id, "mentorId")
+    if body.impression_id:
+        _parse_uuid(body.impression_id, "impressionId")
+    _require_self(caller, body.mentee_id)
+    note = (body.note or "").strip() or None
+    if note and len(note) > 300:
+        raise _bad_request("note tối đa 300 ký tự")
+    row = await feedback_service.hide(body.mentee_id, body.mentor_id, body.reason, note, body.impression_id)
+    return _feedback_item(row)
+
+
+@router.get("/api/matching/feedback", response_model=list[FeedbackItem])
+async def hidden_mentors(menteeId: str = Query(...), caller: Caller = Depends(require_user)) -> list[FeedbackItem]:
+    """US-36 — các mentor đang bị ẩn (còn hiệu lực) của mentee."""
+    _parse_uuid(menteeId, "menteeId")
+    if not caller.is_privileged:
+        _require_self(caller, menteeId)
+    return [_feedback_item(r) for r in await feedback_service.active_feedback(menteeId)]
+
+
+@router.delete("/api/matching/feedback/{mentorId}", status_code=204)
+async def unhide(mentorId: str, menteeId: str = Query(...), caller: Caller = Depends(require_user)) -> None:
+    """US-36 — bỏ ẩn sớm (mentor xuất hiện lại trong gợi ý)."""
+    _parse_uuid(menteeId, "menteeId")
+    _parse_uuid(mentorId, "mentorId")
+    _require_self(caller, menteeId)
+    if await feedback_service.unhide(menteeId, mentorId) == 0:
+        raise HTTPException(status_code=404, detail={"code": "FEEDBACK_NOT_FOUND", "message": "Mentor này không bị ẩn"})
+
+
+@router.get("/api/matching/admin/evaluation", response_model=EvaluationStats, dependencies=[Depends(require_admin)])
+async def evaluation(days: int = Query(30, ge=1, le=365)) -> EvaluationStats:
+    """US-36 (PRD-MATCH-8) — ADMIN: lượt hiển thị và lượt "Không phù hợp" theo hạng, phân bố lý do."""
+    return EvaluationStats(**await feedback_service.evaluation_stats(days))
 
 
 @router.get("/internal/matching/similar-mentors", response_model=SimilarMentorsResponse,

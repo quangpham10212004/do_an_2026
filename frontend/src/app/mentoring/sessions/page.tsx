@@ -18,7 +18,7 @@ import {
 } from "@/features/mentoring/labels";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import SlotPicker from "@/features/mentoring/SlotPicker";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney, formatInZone, getDisplayTimeZone } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
 
@@ -248,7 +248,11 @@ function Sessions({ user }: { user: SessionUser }) {
                       {s.reviewed && <Stars value={s.reviewRating} />}
                     </div>
                     <div className="muted small">
-                      {formatDateTime(s.scheduledAt)} · {s.durationMinutes} phút · {formatMoney(s.price)}
+                      <span title={(() => {
+                        const otherTz = isMentor ? s.menteeTimezone : s.mentorTimezone;
+                        return otherTz && otherTz !== getDisplayTimeZone()
+                          ? `Giờ của ${isMentor ? s.menteeName : s.mentorName}: ${formatInZone(s.scheduledAt, otherTz)}` : undefined;
+                      })()}>{formatDateTime(s.scheduledAt)}</span> · {s.durationMinutes} phút · {formatMoney(s.price)}
                       {s.sessionType && ` · ${SESSION_TYPE_LABELS[s.sessionType]}`}
                       {s.topic && ` · ${s.topic}`}
                     </div>

@@ -18,7 +18,36 @@ export function formatRate(value: number | string | null | undefined): string {
   return Number(value || 0) === 0 ? "Miễn phí" : `${formatMoney(value)}/giờ`;
 }
 
-export function formatDateTime(value: string | null | undefined): string {
+// US-37 (PRD-PROF-6) — mọi giờ lưu UTC, hiển thị theo múi giờ trong hồ sơ của người xem (mặc định giờ Việt Nam).
+const TZ_KEY = "mmp-timezone";
+export const DEFAULT_TIME_ZONE = "Asia/Ho_Chi_Minh";
+let displayTimeZone: string | null = null;
+
+/** Múi giờ hiển thị hiện tại (đọc từ localStorage ở lần đầu; trình duyệt chưa có thì dùng giờ Việt Nam). */
+export function getDisplayTimeZone(): string {
+  if (displayTimeZone) return displayTimeZone;
+  try {
+    displayTimeZone = (typeof window !== "undefined" && window.localStorage.getItem(TZ_KEY)) || DEFAULT_TIME_ZONE;
+  } catch {
+    displayTimeZone = DEFAULT_TIME_ZONE;
+  }
+  return displayTimeZone;
+}
+
+/** Gọi sau khi tải / đổi múi giờ trong hồ sơ; các trang đang mở vẽ lại qua sự kiện "mmp-timezone-changed". */
+export function setDisplayTimeZone(tz: string | null | undefined): void {
+  const next = tz || DEFAULT_TIME_ZONE;
+  if (next === displayTimeZone) return;
+  displayTimeZone = next;
+  try {
+    window.localStorage.setItem(TZ_KEY, next);
+  } catch {
+    /* chế độ riêng tư: chỉ giữ trong bộ nhớ */
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("mmp-timezone-changed"));
+}
+
+export function formatDateTime(value: string | null | undefined, timeZone?: string): string {
   if (!value) return "—";
   return new Date(value).toLocaleString("vi-VN", {
     hour: "2-digit",
@@ -26,12 +55,24 @@ export function formatDateTime(value: string | null | undefined): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: timeZone || getDisplayTimeZone(),
   });
+}
+
+/** "19:00 20/11/2026 (Europe/Paris)" — giờ địa phương của bên kia, dùng cho tooltip. */
+export function formatInZone(value: string | null | undefined, timeZone: string | null | undefined): string {
+  if (!value || !timeZone) return "";
+  return `${formatDateTime(value, timeZone)} (${timeZone})`;
 }
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("vi-VN");
+  // Ngày thuần "YYYY-MM-DD" (vd. hạn action item) không đổi múi giờ.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  return new Date(value).toLocaleDateString("vi-VN", { timeZone: getDisplayTimeZone() });
 }
 
 export const STATUS_LABELS: Record<string, string> = {

@@ -88,7 +88,9 @@ public final class MentoringDtos {
                               String menteeAttendance, String mentorAttendance, OffsetDateTime attendanceDeadline,
                               String attendanceResolution,
                               boolean reviewed, Integer reviewRating, OffsetDateTime createdAt,
-                              DisputeBrief dispute) {
+                              DisputeBrief dispute,
+                              /* US-37 (PRD-PROF-6) — múi giờ hai bên, frontend hiện giờ địa phương của bên kia khi rê chuột. */
+                              String mentorTimezone, String menteeTimezone) {
     }
 
     /** US-32 — tranh chấp gần nhất của phiên (null nếu chưa có). */

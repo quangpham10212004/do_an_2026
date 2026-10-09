@@ -55,6 +55,13 @@ public class InternalProfileController {
         profileService.updateRating(mentorId, body.rating(), body.ratingCount());
     }
 
+    /** US-35 — mentoring-service đẩy trung vị thời gian phản hồi yêu cầu sau mỗi lần mentor trả lời / yêu cầu hết hạn. */
+    @PutMapping("/mentor/{mentorId}/response-time")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void responseTime(@PathVariable UUID mentorId, @Valid @RequestBody ResponseTimeUpdate body) {
+        profileService.updateResponseTime(mentorId, body.medianResponseHours(), body.sampleSize());
+    }
+
     @PutMapping("/mentor/{mentorId}/active-mentees")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activeMentees(@PathVariable UUID mentorId, @Valid @RequestBody ActiveMenteeUpdate body) {

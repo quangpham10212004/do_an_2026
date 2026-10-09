@@ -1,40 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead, Stars } from "@/components/ui";
-import { EXCLUSION_LABELS, matchingApi } from "@/features/matching/api";
+import { EXCLUSION_LABELS, NOT_RELEVANT_LABELS, matchingApi } from "@/features/matching/api";
 import MatchingFilters, { biggestBlocker, describeFilter, dropFilter } from "@/features/matching/MatchingFilters";
 import { mentoringApi } from "@/features/mentoring/api";
+import { profileApi } from "@/features/profile/api";
+import { CompletenessCard } from "@/features/profile/ProfileExtras";
 import { formatRate } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { ExclusionReason, MatchFilterValues, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
+import type { Completeness, ExclusionReason, MatchFilterValues, NotRelevantReason, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
 
 const LIMIT = 10;
 
 const pct = (x: number) => Math.round(x * 100);
 
-/** Tách finalScore thành 3 phần theo trọng số pipeline. Phần đánh giá = phần còn lại, nên luôn khớp
- *  với cách matching-service tính (kể cả rating trung tính cho mentor chưa có đánh giá). */
-function scoreParts(m: RankedMentor, weights: PipelineWeights) {
-  const similarity = m.similarityScore * weights.similarity;
-  const experience = Math.min(m.yearsExperience / 10, 1) * weights.experience;
-  const rating = Math.max(0, m.finalScore - similarity - experience);
-  return [
-    { key: "similarity", label: "Tương đồng hồ sơ", value: similarity, color: "var(--color-eager-green)" },
-    { key: "rating", label: m.ratingCount > 0 ? "Đánh giá" : "Đánh giá (trung tính)", value: rating, color: "var(--color-spark-blue)" },
-    { key: "experience", label: "Kinh nghiệm", value: experience, color: "var(--color-night-ink)" },
-  ];
+const PART_META: { key: keyof PipelineWeights; label: string; color: string }[] = [
+  { key: "similarity", label: "Tương đồng hồ sơ", color: "var(--color-eager-green)" },
+  { key: "rating", label: "Đánh giá", color: "var(--color-spark-blue)" },
+  { key: "experience", label: "Kinh nghiệm", color: "var(--color-night-ink)" },
+  { key: "scheduleFit", label: "Khớp lịch", color: "var(--color-sunshine, #f5b700)" },
+  { key: "responsiveness", label: "Phản hồi nhanh", color: "var(--color-coral, #ff7a59)" },
+];
+
+/** US-35 — các phần điểm do matching-service trả về (scoreParts), cộng lại đúng bằng finalScore. */
+function scoreParts(m: RankedMentor) {
+  return PART_META.map((p) => ({
+    ...p,
+    label: p.key === "rating" && m.newMentor ? "Đánh giá (trung vị nền tảng)" : p.label,
+    value: m.scoreParts?.[p.key] ?? 0,
+  }));
 }
 
-function ScoreBreakdown({ m, weights }: { m: RankedMentor; weights: PipelineWeights }) {
-  const parts = scoreParts(m, weights);
+function ScoreBreakdown({ m }: { m: RankedMentor }) {
+  const parts = scoreParts(m);
   const summary = parts.map((p) => `${p.label} ${pct(p.value)}`).join(", ");
   return (
     <div className="score-breakdown">
       <div className="score-bar" role="img" aria-label={`Điểm phù hợp ${pct(m.finalScore)}%: ${summary}`}>
-        {parts.map((p) => <span key={p.key} style={{ width: `${p.value * 100}%` }} />)}
+        {parts.map((p) => <span key={p.key} style={{ width: `${p.value * 100}%`, background: p.color }} />)}
       </div>
       <div className="score-legend small muted">
         {parts.map((p) => (
@@ -47,23 +53,57 @@ function ScoreBreakdown({ m, weights }: { m: RankedMentor; weights: PipelineWeig
 
 interface MentorMatchCardProps {
   m: RankedMentor;
-  weights: PipelineWeights;
   requested: boolean;
+  onNotRelevant: (reason: NotRelevantReason, note: string) => Promise<void>;
 }
 
-function MentorMatchCard({ m, weights, requested }: MentorMatchCardProps) {
+/** US-36 — "Không phù hợp": chọn lý do, mentor bị ẩn 30 ngày. */
+function NotRelevantForm({ onSubmit, onCancel }: { onSubmit: (r: NotRelevantReason, note: string) => Promise<void>; onCancel: () => void }) {
+  const [reason, setReason] = useState<NotRelevantReason | "">("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="stack" style={{ marginTop: 8 }}>
+      <div className="chips">
+        {(Object.keys(NOT_RELEVANT_LABELS) as NotRelevantReason[]).map((r) => (
+          <button key={r} type="button" className={`chip ${reason === r ? "match" : ""}`} onClick={() => setReason(r)}>{NOT_RELEVANT_LABELS[r]}</button>
+        ))}
+      </div>
+      {reason === "OTHER" && <input value={note} maxLength={300} placeholder="Lý do (tuỳ chọn)" onChange={(e) => setNote(e.target.value)} />}
+      <div className="row">
+        <button className="btn danger sm" disabled={!reason || busy} onClick={async () => {
+          if (!reason) return;
+          setBusy(true);
+          try {
+            await onSubmit(reason, note.trim());
+          } finally {
+            setBusy(false);
+          }
+        }}>Ẩn mentor này 30 ngày</button>
+        <button className="btn secondary sm" onClick={onCancel}>Thôi</button>
+      </div>
+    </div>
+  );
+}
+
+function MentorMatchCard({ m, requested, onNotRelevant }: MentorMatchCardProps) {
+  const [hiding, setHiding] = useState(false);
   return (
     <div className="card">
       <div className="row between" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
         <div style={{ minWidth: 0 }}>
           <h3 style={{ marginBottom: 2 }}><Link href={`/mentors/${m.mentorId}`}>{m.displayName}</Link></h3>
+          {m.headline && <div className="small" style={{ marginBottom: 2 }}>{m.headline}</div>}
           <div className="muted small">
             {m.domain} · {m.yearsExperience} năm KN · <span style={{ whiteSpace: "nowrap" }}>{formatRate(m.hourlyRate)}</span>
           </div>
           <div className="small" style={{ marginTop: 2 }}>
-            {m.ratingCount > 0
-              ? <><Stars value={m.rating} /> <span className="muted">({m.ratingCount})</span></>
-              : <span className="badge new">Mentor mới</span>}
+            {m.ratingCount > 0 && <><Stars value={m.rating} /> <span className="muted">({m.ratingCount})</span> </>}
+            {m.newMentor && <span className="badge new">Mentor mới</span>}
+            <span className="muted"> · Khớp lịch {pct(m.scheduleFit)}%</span>
+            {m.medianResponseHours !== null && (
+              <span className="muted"> · {m.medianResponseHours <= 24 ? "Phản hồi trong 24 giờ" : m.medianResponseHours <= 72 ? "Phản hồi trong 3 ngày" : "Phản hồi chậm"}</span>
+            )}
           </div>
         </div>
         <div className="match-score">
@@ -71,7 +111,7 @@ function MentorMatchCard({ m, weights, requested }: MentorMatchCardProps) {
           <div className="stat-label">phù hợp</div>
         </div>
       </div>
-      <ScoreBreakdown m={m} weights={weights} />
+      <ScoreBreakdown m={m} />
       <div className="chips" style={{ marginBottom: "0.6rem" }}>
         {m.skills.map((s) => <span key={s} className={`chip ${m.matchedSkills.includes(s) ? "match" : ""}`}>{s}</span>)}
       </div>
@@ -88,7 +128,9 @@ function MentorMatchCard({ m, weights, requested }: MentorMatchCardProps) {
         ) : (
           <Link className="btn sm" href={`/mentoring/request/${m.mentorId}`}>Gửi yêu cầu mentoring</Link>
         )}
+        {!hiding && <button className="btn ghost sm" onClick={() => setHiding(true)}>Không phù hợp</button>}
       </div>
+      {hiding && <NotRelevantForm onCancel={() => setHiding(false)} onSubmit={onNotRelevant} />}
     </div>
   );
 }
@@ -98,9 +140,14 @@ function Matching({ user }: { user: SessionUser }) {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  /** US-37 — hồ sơ hoàn thiện < 50% thì chưa cho dùng AI Matching. */
+  const [gate, setGate] = useState<Completeness | null>(null);
+  const [hiddenMsg, setHiddenMsg] = useState("");
+  const lastFilters = useRef<MatchFilterValues | undefined>(undefined);
 
   /** filters undefined = để server lấy sở thích hồ sơ làm bộ lọc (US-17); có giá trị = ghi đè cho lượt này. */
   const search = useCallback((filters?: MatchFilterValues) => {
+    lastFilters.current = filters;
     setBusy(true);
     setError(null);
     matchingApi.mentorsFor(user.userId, { limit: LIMIT, filters })
@@ -113,10 +160,27 @@ function Matching({ user }: { user: SessionUser }) {
   }, [user]);
 
   useEffect(() => {
-    search();
+    profileApi.getMentee(user.userId)
+      .then((p) => {
+        if (p.matchingEnabled) search();
+        else {
+          setGate(p.completeness);
+          setData(null);
+        }
+      })
+      .catch(() => search()); // chưa có hồ sơ → matching-service trả MENTEE_PROFILE_INCOMPLETE
     mentoringApi.requests().then((rs) => setRequested(new Set(rs.filter((r) => ["PENDING", "ACCEPTED"].includes(r.status)).map((r) => r.mentorId)))).catch(() => {});
   }, [user, search]);
 
+  if (gate) {
+    return (
+      <>
+        <PageHead title="Mentor phù hợp với bạn" subtitle="AI Matching cần hồ sơ hoàn thiện tối thiểu 50% để gợi ý chính xác." />
+        <Alert type="warn">Hồ sơ của bạn mới hoàn thiện {gate.score}%. <Link href="/profile">Bổ sung hồ sơ</Link> hoặc <Link href="/mentors">duyệt danh sách mentor</Link>.</Alert>
+        <div style={{ maxWidth: 520 }}><CompletenessCard completeness={gate} matchingMin={50} /></div>
+      </>
+    );
+  }
   if (data === undefined) return <Loading text="AI đang tìm mentor phù hợp..." />;
   const excluded = data?.pipeline?.excluded || {};
   const excludedEntries = Object.entries(excluded) as [ExclusionReason, number][];
@@ -138,6 +202,7 @@ function Matching({ user }: { user: SessionUser }) {
         <>
           <MatchingFilters value={data.filters} fromProfile={data.filters.fromProfileDefaults} busy={busy}
             onSearch={(f) => search(f)} onUseProfile={() => search()} />
+          {hiddenMsg && <Alert type="success">{hiddenMsg}</Alert>}
           {blocker && (
             <Alert type="warn">
               Chỉ tìm thấy {data.mentors.length} mentor: {blocker[1]} mentor bị loại bởi {describeFilter(blocker[0], data.filters)}.{" "}
@@ -148,13 +213,26 @@ function Matching({ user }: { user: SessionUser }) {
             Pipeline: xét {data.pipeline.considered} mentor → loại {excludedTotal} không đủ điều kiện
             {excludedTotal > 0 && ` (${excludedEntries.map(([k, v]) => `${v} ${EXCLUSION_LABELS[k] || k}`).join(", ")})`} → còn {data.pipeline.eligible} mentor
             thoả bộ lọc → lấy {data.pipeline.retrieved} mentor gần nhất về nội dung (top-K = {data.pipeline.k}) → xếp hạng lại với
-            trọng số tương đồng {data.pipeline.weights.similarity}, đánh giá {data.pipeline.weights.rating}, kinh nghiệm {data.pipeline.weights.experience}.
+            trọng số tương đồng {data.pipeline.weights.similarity}, đánh giá {data.pipeline.weights.rating}, kinh nghiệm {data.pipeline.weights.experience},
+            khớp lịch {data.pipeline.weights.scheduleFit}, phản hồi nhanh {data.pipeline.weights.responsiveness}.
+            {data.pipeline.hidden > 0 && <> Đang ẩn {data.pipeline.hidden} mentor bạn đánh dấu không phù hợp — <Link href="/matching/hidden">xem / bỏ ẩn</Link>.</>}
           </p>
           {data.mentors.length === 0 ? (
             <Empty>Chưa tìm thấy mentor phù hợp. Hãy thử nới bộ lọc, bổ sung kỹ năng/mục tiêu trong hồ sơ, hoặc <Link href="/mentors">duyệt toàn bộ danh sách mentor</Link>.</Empty>
           ) : (
             <div className="grid grid-2">
-              {data.mentors.map((m) => <MentorMatchCard key={m.mentorId} m={m} weights={data.pipeline.weights} requested={requested.has(m.mentorId)} />)}
+              {data.mentors.map((m) => (
+                <MentorMatchCard key={m.mentorId} m={m} requested={requested.has(m.mentorId)}
+                  onNotRelevant={async (reason, note) => {
+                    try {
+                      await matchingApi.notRelevant(user.userId, m.mentorId, reason, note, data.impressionId);
+                      setHiddenMsg(`Đã ẩn ${m.displayName} trong 30 ngày.`);
+                      search(lastFilters.current);
+                    } catch (e) {
+                      setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorMessage(e) });
+                    }
+                  }} />
+              ))}
             </div>
           )}
         </>

@@ -135,7 +135,15 @@ public class ProfileClient {
     /** Cache tên hiển thị trong phạm vi 1 lần dựng danh sách để tránh gọi lặp. */
     public Map<UUID, String> displayNames(java.util.Collection<UUID> ids) {
         Map<UUID, String> result = new ConcurrentHashMap<>();
-        ids.stream().distinct().forEach(id -> result.put(id, summary(id).map(ProfileSummary::displayName).orElse("Người dùng")));
+        summaries(ids).forEach((id, s) -> result.put(id, s.displayName() == null ? "Người dùng" : s.displayName()));
+        return result;
+    }
+
+    /** Tóm tắt hồ sơ cho nhiều người (mỗi id gọi 1 lần); lỗi → tên "Người dùng", múi giờ null. */
+    public Map<UUID, ProfileSummary> summaries(java.util.Collection<UUID> ids) {
+        Map<UUID, ProfileSummary> result = new ConcurrentHashMap<>();
+        ids.stream().distinct().forEach(id -> result.put(id,
+                summary(id).orElse(new ProfileSummary(id, "Người dùng", null, null, null))));
         return result;
     }
 
@@ -146,6 +154,22 @@ public class ProfileClient {
             return java.time.ZoneId.of(tz == null || tz.isBlank() ? DEFAULT_TIMEZONE : tz);
         } catch (java.time.DateTimeException e) {
             return java.time.ZoneId.of(DEFAULT_TIMEZONE);
+        }
+    }
+
+    /** US-35 — đồng bộ trung vị thời gian phản hồi (giờ, null = chưa có mẫu). Trả false khi lỗi để job thử lại. */
+    public boolean updateResponseTime(UUID mentorId, java.math.BigDecimal medianHours, int sampleSize) {
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("medianResponseHours", medianHours);
+            body.put("sampleSize", sampleSize);
+            restClient.put().uri("/internal/mentor/{id}/response-time", mentorId).body(body).retrieve().toBodilessEntity();
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return true; // mentor chưa có hồ sơ — không có gì để cập nhật
+        } catch (RestClientException e) {
+            log.warn("Could not sync response time for mentor {}: {}", mentorId, e.getMessage());
+            return false;
         }
     }
 

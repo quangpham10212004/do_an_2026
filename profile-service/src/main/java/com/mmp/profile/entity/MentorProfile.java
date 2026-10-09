@@ -97,6 +97,16 @@ public class MentorProfile {
     @Column(nullable = false)
     private String timezone = "Asia/Ho_Chi_Minh";
 
+    /** US-37 (PRD-PROF-3) — câu giới thiệu ngắn ≤ 80 ký tự. */
+    private String headline;
+
+    /** US-35 — trung vị thời gian phản hồi yêu cầu (giờ), mentoring-service đồng bộ; null = chưa có dữ liệu. */
+    @Column(name = "median_response_hours")
+    private java.math.BigDecimal medianResponseHours;
+
+    @Column(name = "response_sample_size", nullable = false)
+    private int responseSampleSize;
+
     @Column(nullable = false)
     private float rating;
 
@@ -158,6 +168,16 @@ public class MentorProfile {
     public String[] getLanguages() { return languages; }
     public String[] getSessionTypes() { return sessionTypes; }
     public String getTimezone() { return timezone; }
+    public void setTimezone(String timezone) { this.timezone = timezone; }
+    public String getHeadline() { return headline; }
+    public java.math.BigDecimal getMedianResponseHours() { return medianResponseHours; }
+    public int getResponseSampleSize() { return responseSampleSize; }
+
+    public void updateResponseTime(java.math.BigDecimal medianHours, int sampleSize) {
+        this.medianResponseHours = medianHours;
+        this.responseSampleSize = sampleSize;
+    }
+    public void setHeadline(String headline) { this.headline = headline; }
 
     public void updateBookingSettings(String meetingLink, int bufferMinutes, int minNoticeHours,
                                       String[] languages, String[] sessionTypes, String timezone) {
