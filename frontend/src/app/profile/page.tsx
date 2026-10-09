@@ -12,7 +12,8 @@ import AvailabilityExceptions from "@/features/profile/AvailabilityExceptions";
 import MentorStatusControl from "@/features/profile/MentorStatusControl";
 import BookingSettings from "@/features/profile/BookingSettings";
 import MenteePreferences from "@/features/profile/MenteePreferences";
-import { DAY_NAMES, STATUS_LABELS, formatDateTime } from "@/lib/format";
+import { AvatarAndTimezone, CompletenessCard } from "@/features/profile/ProfileExtras";
+import { DAY_NAMES, STATUS_LABELS, formatDateTime, setDisplayTimeZone } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteeProfileInput, MentorProfile, SessionUser } from "@/types";
 
@@ -71,6 +72,7 @@ function EmbeddingInfo({ profile }: { profile: { userId: string } | null }) {
 /** Giá trị form: ô số giữ nguyên chuỗi người dùng nhập, chỉ đổi sang number khi lưu. */
 interface MentorForm {
   displayName: string;
+  headline: string;
   skills: string;
   domain: string;
   bio: string;
@@ -87,7 +89,7 @@ const trimSlot = (s: AvailabilitySlot): SlotForm => ({ ...s, startTime: s.startT
 
 function MentorProfileForm({ user }: { user: SessionUser }) {
   const [profile, setProfile] = useState<MentorProfile | null | undefined>(undefined);
-  const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, portfolioLinks: "" });
+  const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", headline: "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, portfolioLinks: "" });
   const [slots, setSlots] = useState<SlotForm[]>([]);
   const [msg, setMsg] = useState<Flash>({});
   const [parsing, setParsing] = useState(false);
@@ -112,7 +114,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
   useEffect(() => {
     profileApi.getMentor(user.userId).then((p) => {
       setProfile(p);
-      setForm({ displayName: p.displayName, skills: p.skills.join(", "), domain: p.domain, bio: p.bio || "", yearsExperience: p.yearsExperience, hourlyRate: p.hourlyRate, capacity: p.capacity, portfolioLinks: p.portfolioLinks.join("\n"), cvFileUrl: p.cvFileUrl });
+      setForm({ displayName: p.displayName, headline: p.headline || "", skills: p.skills.join(", "), domain: p.domain, bio: p.bio || "", yearsExperience: p.yearsExperience, hourlyRate: p.hourlyRate, capacity: p.capacity, portfolioLinks: p.portfolioLinks.join("\n"), cvFileUrl: p.cvFileUrl });
       setSlots(p.availability.map(trimSlot));
     }).catch(() => setProfile(null));
   }, [user]);
@@ -145,6 +147,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
       const saved = await profileApi.saveAvailability(user.userId, slots.map((s) => ({ dayOfWeek: Number(s.dayOfWeek), startTime: s.startTime, endTime: s.endTime })));
       setSlots(saved.map(trimSlot));
       setMsg({ ok: "Đã lưu lịch rảnh." });
+      profileApi.getMentor(user.userId).then(setProfile).catch(() => {});
     } catch (err) {
       setMsg({ error: errorMessage(err) });
     }
@@ -198,6 +201,11 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
             )}
           </div>
           <div className="field"><label>Tên hiển thị</label><input required value={form.displayName} onChange={set("displayName")} /></div>
+          <div className="field">
+            <label>Tiêu đề ngắn</label>
+            <input value={form.headline} maxLength={80} onChange={set("headline")} placeholder="Ví dụ: Senior Backend Engineer · 8 năm Java/Spring" />
+            <div className="hint">Hiện trên thẻ mentor, tối đa 80 ký tự ({form.headline.length}/80).</div>
+          </div>
           <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="field"><label>Lĩnh vực</label><DomainSelect value={form.domain} onChange={(v) => setForm({ ...form, domain: v })} /></div>
             <div className="field"><label>Số năm kinh nghiệm</label><input type="number" min={0} max={60} value={form.yearsExperience} onChange={set("yearsExperience")} /></div>
@@ -213,6 +221,11 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
         </form>
 
         <div className="stack">
+        {profile?.completeness && <CompletenessCard completeness={profile.completeness} />}
+        {profile && (
+          <AvatarAndTimezone userId={user.userId} avatarUrl={profile.avatarUrl} timezone={profile.timezone} showTimezone={false}
+            onChange={() => profileApi.getMentor(user.userId).then(setProfile).catch(() => {})} />
+        )}
         {profile && (
           <div className="card" id="status">
             <MentorStatusControl profile={profile} onChange={setProfile} />
@@ -220,7 +233,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
         )}
         {profile && (
           <div className="card" id="booking-settings">
-            <BookingSettings key={profile.userId} profile={profile} onChange={setProfile} />
+            <BookingSettings key={profile.userId} profile={profile} onChange={(p) => { setProfile(p); setDisplayTimeZone(p.timezone); }} />
           </div>
         )}
         <div className="card" id="availability">
@@ -305,6 +318,13 @@ function MenteeProfileForm({ user }: { user: SessionUser }) {
       <PageHead title="Hồ sơ nghề nghiệp" subtitle="Thông tin này được AI dùng để gợi ý mentor phù hợp với bạn." />
       <Alert type="success">{msg.ok}</Alert>
       <Alert>{msg.error}</Alert>
+      {profile && (
+        <div className="grid grid-2" style={{ maxWidth: 760, alignItems: "start", marginBottom: "var(--spacing-16)" }}>
+          <CompletenessCard completeness={profile.completeness} matchingMin={50} />
+          <AvatarAndTimezone userId={user.userId} avatarUrl={profile.avatarUrl} timezone={profile.timezone}
+            onChange={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
+        </div>
+      )}
       <form className="card" onSubmit={save} style={{ maxWidth: 760 }}>
         <EmbeddingInfo profile={profile} />
         <div className="field"><label>Tên hiển thị</label><input required value={form.displayName} onChange={set("displayName")} /></div>

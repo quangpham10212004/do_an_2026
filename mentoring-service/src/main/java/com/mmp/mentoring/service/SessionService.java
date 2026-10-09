@@ -525,8 +525,10 @@ public class SessionService {
     }
 
     private List<SessionView> toViews(List<MentoringSession> sessions) {
-        Map<UUID, String> names = profileClient.displayNames(
+        Map<UUID, ProfileClient.ProfileSummary> people = profileClient.summaries(
                 sessions.stream().flatMap(s -> Stream.of(s.getMenteeId(), s.getMentorId())).toList());
+        Map<UUID, String> names = new java.util.HashMap<>();
+        people.forEach((id, p) -> names.put(id, p.displayName() == null ? "Người dùng" : p.displayName()));
         Map<UUID, Review> reviews = sessions.isEmpty() ? Map.of()
                 : reviewRepo.findBySessionIdIn(sessions.stream().map(MentoringSession::getId).toList()).stream()
                 .collect(Collectors.toMap(Review::getSessionId, r -> r));
@@ -552,8 +554,13 @@ public class SessionService {
                     AttendanceRules.deadline(s, attendanceWindow), s.getAttendanceResolution(),
                     r != null, r == null ? null : r.getRating(), s.getCreatedAt(),
                     dp == null ? null : new DisputeBrief(dp.getId(), dp.getStatus().name(),
-                            dp.getOutcome() == null ? null : dp.getOutcome().name(), dp.getRefundPercent()));
+                            dp.getOutcome() == null ? null : dp.getOutcome().name(), dp.getRefundPercent()),
+                    timezoneOf(people.get(s.getMentorId())), timezoneOf(people.get(s.getMenteeId())));
         }).toList();
+    }
+
+    private static String timezoneOf(ProfileClient.ProfileSummary p) {
+        return p == null || p.timezone() == null ? ProfileClient.DEFAULT_TIMEZONE : p.timezone();
     }
 
     /** Số liệu phiên mentoring cho bảng điều khiển quản trị. */

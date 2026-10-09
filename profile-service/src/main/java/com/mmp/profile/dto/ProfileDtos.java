@@ -3,6 +3,7 @@ package com.mmp.profile.dto;
 import com.mmp.profile.entity.MenteeProfile;
 import com.mmp.profile.entity.MentorAvailability;
 import com.mmp.profile.entity.MentorAvailabilityException;
+import com.mmp.profile.service.CompletenessRules;
 import com.mmp.profile.service.MentorRules;
 import com.mmp.profile.entity.MentorProfile;
 import jakarta.validation.Valid;
@@ -31,7 +32,17 @@ public final class ProfileDtos {
             @DecimalMin("0") @DecimalMax("100000000") BigDecimal hourlyRate,
             @Min(1) @Max(50) Integer capacity,
             /** Đã thay bằng status (US-08) — vẫn nhận để tương thích: true → ACCEPTING, false → PAUSED. */
-            @Deprecated Boolean isAvailable) {
+            @Deprecated Boolean isAvailable,
+            /** US-37 — câu giới thiệu ngắn ≤ 80 ký tự; null = giữ nguyên, chuỗi rỗng = xoá. */
+            @Size(max = 80) String headline) {
+
+        /** Tương thích lời gọi cũ (không có headline). */
+        public MentorProfileInput(String displayName, List<String> skills, String domain, String bio, Integer yearsExperience,
+                                  String cvFileUrl, List<String> portfolioLinks, BigDecimal hourlyRate, Integer capacity,
+                                  Boolean isAvailable) {
+            this(displayName, skills, domain, bio, yearsExperience, cvFileUrl, portfolioLinks, hourlyRate, capacity,
+                    isAvailable, null);
+        }
     }
 
     public record MentorProfileResponse(
@@ -60,14 +71,17 @@ public final class ProfileDtos {
             List<String> sessionTypes,
             String timezone,
             List<AvailabilitySlot> availability,
-            List<AvailabilityExceptionDto> exceptions) {
+            List<AvailabilityExceptionDto> exceptions,
+            String headline,
+            String avatarUrl,
+            CompletenessRules.Completeness completeness) {
 
         /** Link họp chỉ cho chủ hồ sơ, admin và service nội bộ (mentoring-service gửi cho mentee khi phiên CONFIRMED). */
         public MentorProfileResponse withoutMeetingLink() {
             return new MentorProfileResponse(userId, displayName, skills, domain, bio, yearsExperience, cvFileUrl,
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, statusReason, null, bufferMinutes, minNoticeHours,
-                    languages, sessionTypes, timezone, availability, exceptions);
+                    languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, completeness);
         }
 
         /**
@@ -79,7 +93,7 @@ public final class ProfileDtos {
             return new MentorProfileResponse(userId, displayName, skills, domain, bio, yearsExperience, cvFileUrl,
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, reason, null, bufferMinutes, minNoticeHours,
-                    languages, sessionTypes, timezone, availability, exceptions);
+                    languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, null);
         }
 
         /**
@@ -88,6 +102,15 @@ public final class ProfileDtos {
          */
         public static MentorProfileResponse from(MentorProfile p, MentorProfile.Status effective,
                                                  List<AvailabilitySlot> slots, List<AvailabilityExceptionDto> exceptions) {
+            return from(p, effective, slots, exceptions, null);
+        }
+
+        /** US-37 — avatarUrl null = chưa có ảnh; completeness tính từ hồ sơ + lịch rảnh + ảnh. */
+        public static MentorProfileResponse from(MentorProfile p, MentorProfile.Status effective,
+                                                 List<AvailabilitySlot> slots, List<AvailabilityExceptionDto> exceptions,
+                                                 String avatarUrl) {
+            CompletenessRules.Completeness completeness = CompletenessRules.mentor(p.getBio(), p.getSkills().length,
+                    p.getYearsExperience(), slots.size(), p.getHourlyRate(), p.getPortfolioLinks().length, avatarUrl != null);
             boolean onLeave = effective == MentorProfile.Status.ON_LEAVE;
             return new MentorProfileResponse(p.getUserId(), p.getDisplayName(), Arrays.asList(p.getSkills()),
                     p.getDomain(), p.getBio(), p.getYearsExperience(), p.getCvFileUrl(),
@@ -96,7 +119,7 @@ public final class ProfileDtos {
                     p.getVerificationStatus().name(), effective.name(), onLeave ? p.getOnLeaveUntil() : null,
                     effective == p.getStatus() ? p.getStatusReason() : null, p.getMeetingLink(), p.getBufferMinutes(),
                     p.getMinNoticeHours(), Arrays.asList(p.getLanguages()), Arrays.asList(p.getSessionTypes()),
-                    p.getTimezone(), slots, exceptions);
+                    p.getTimezone(), slots, exceptions, p.getHeadline(), avatarUrl, completeness);
         }
     }
 
@@ -122,14 +145,27 @@ public final class ProfileDtos {
             List<Integer> preferredDays,
             String preferredTimeOfDay,
             BigDecimal budgetMaxPerHour,
-            List<String> languages) {
+            List<String> languages,
+            String timezone,
+            String avatarUrl,
+            CompletenessRules.Completeness completeness,
+            /** US-37 — nút AI Matching bật khi completeness.score ≥ 50. */
+            boolean matchingEnabled) {
 
         public static MenteeProfileResponse from(MenteeProfile p) {
+            return from(p, null);
+        }
+
+        public static MenteeProfileResponse from(MenteeProfile p, String avatarUrl) {
+            String timeOfDay = p.getPreferredTimeOfDay() == null ? null : p.getPreferredTimeOfDay().name();
+            CompletenessRules.Completeness completeness = CompletenessRules.mentee(p.getDomain(),
+                    p.getCurrentLevel() == null ? null : p.getCurrentLevel().name(), p.getSkills().length, p.getGoal(),
+                    p.getCvFileUrl(), p.getPortfolioLinks().length, p.getPreferredDays().length, timeOfDay);
             return new MenteeProfileResponse(p.getUserId(), p.getDisplayName(), p.getGoal(), p.getDomain(),
                     p.getCurrentLevel().name(), Arrays.asList(p.getSkills()), Arrays.asList(p.getPortfolioLinks()),
-                    p.getCvFileUrl(), Arrays.asList(p.getPreferredDays()),
-                    p.getPreferredTimeOfDay() == null ? null : p.getPreferredTimeOfDay().name(),
-                    p.getBudgetMaxPerHour(), Arrays.asList(p.getLanguages()));
+                    p.getCvFileUrl(), Arrays.asList(p.getPreferredDays()), timeOfDay,
+                    p.getBudgetMaxPerHour(), Arrays.asList(p.getLanguages()), p.getTimezone(), avatarUrl, completeness,
+                    completeness.score() >= CompletenessRules.MENTEE_MATCHING_MIN);
         }
     }
 
@@ -185,7 +221,15 @@ public final class ProfileDtos {
             @Size(max = 500) String cvFileUrl) {
     }
 
-    public record ProfileSummary(UUID userId, String displayName, String role, String domain) {
+    /** timezone (US-37) — múi giờ IANA của người dùng; mentoring-service dùng cho nhắc lịch (US-34). */
+    public record ProfileSummary(UUID userId, String displayName, String role, String domain, String timezone) {
+    }
+
+    /** US-37 (PRD-PROF-6) — đổi múi giờ của chính mình (IANA, vd. Asia/Ho_Chi_Minh). */
+    public record TimezoneInput(@NotBlank @Size(max = 64) String timezone) {
+    }
+
+    public record AvatarResult(String avatarUrl) {
     }
 
     public record MentorCard(
@@ -201,14 +245,20 @@ public final class ProfileDtos {
             boolean hasCapacity,
             String verificationStatus,
             String status,
-            LocalDate onLeaveUntil) {
+            LocalDate onLeaveUntil,
+            String headline,
+            String avatarUrl) {
 
         public static MentorCard from(MentorProfile p, MentorProfile.Status effective) {
+            return from(p, effective, null);
+        }
+
+        public static MentorCard from(MentorProfile p, MentorProfile.Status effective, String avatarUrl) {
             return new MentorCard(p.getUserId(), p.getDisplayName(), p.getDomain(), Arrays.asList(p.getSkills()),
                     p.getYearsExperience(), p.getRating(), p.getRatingCount(), p.getHourlyRate(),
                     effective == MentorProfile.Status.ACCEPTING, p.getActiveMenteeCount() < p.getCapacity(),
                     p.getVerificationStatus().name(), effective.name(),
-                    effective == MentorProfile.Status.ON_LEAVE ? p.getOnLeaveUntil() : null);
+                    effective == MentorProfile.Status.ON_LEAVE ? p.getOnLeaveUntil() : null, p.getHeadline(), avatarUrl);
         }
     }
 

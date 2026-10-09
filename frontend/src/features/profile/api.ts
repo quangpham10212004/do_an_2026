@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { setDisplayTimeZone } from "@/lib/format";
 import type {
   AdminMentorFilters,
   AdminMentorRow,
@@ -59,6 +60,18 @@ export const profileApi = {
     api<SuspensionResult>(`/api/profile/admin/mentors/${id}/suspend`, { method: "POST", body: { reason } }),
   adminUnsuspendMentor: (id: Uuid) =>
     api<SuspensionResult>(`/api/profile/admin/mentors/${id}/unsuspend`, { method: "POST" }),
+  // US-37 — múi giờ (mọi giờ hiển thị theo múi giờ này) và ảnh đại diện
+  saveTimezone: async (id: Uuid, timezone: string) => {
+    const res = await api<{ timezone: string }>(`/api/profile/${id}/timezone`, { method: "PUT", body: { timezone } });
+    setDisplayTimeZone(res.timezone);
+    return res;
+  },
+  uploadAvatar: (id: Uuid, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api<{ avatarUrl: string }>(`/api/profile/${id}/avatar`, { method: "PUT", form });
+  },
+  deleteAvatar: (id: Uuid) => api<null>(`/api/profile/${id}/avatar`, { method: "DELETE" }),
   searchMentors: ({ domain = "", q = "", page = 0, size = 12, includeUnverified = false }: MentorSearchParams = {}) =>
     api<PageResponse<MentorCard>>(
       `/api/profile/mentors?domain=${encodeURIComponent(domain)}&q=${encodeURIComponent(q)}&page=${page}&size=${size}&includeUnverified=${includeUnverified}`,
@@ -120,3 +133,18 @@ export const TIME_OF_DAY_LABELS: Record<TimeOfDay, string> = {
 };
 
 export const LANGUAGE_LABELS: Record<LanguageCode, string> = { vi: "Tiếng Việt", en: "Tiếng Anh" };
+
+/** US-37 (PRD-PROF-6) — các múi giờ hay dùng; hồ sơ nhận mọi tên IANA hợp lệ. */
+export const COMMON_TIMEZONES: ReadonlyArray<readonly [value: string, label: string]> = [
+  ["Asia/Ho_Chi_Minh", "Việt Nam (GMT+7)"],
+  ["Asia/Bangkok", "Bangkok (GMT+7)"],
+  ["Asia/Singapore", "Singapore (GMT+8)"],
+  ["Asia/Tokyo", "Tokyo (GMT+9)"],
+  ["Asia/Seoul", "Seoul (GMT+9)"],
+  ["Australia/Sydney", "Sydney"],
+  ["Europe/London", "London"],
+  ["Europe/Paris", "Paris / Berlin"],
+  ["America/New_York", "New York"],
+  ["America/Los_Angeles", "Los Angeles"],
+  ["UTC", "UTC"],
+];

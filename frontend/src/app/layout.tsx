@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 import { AuthProvider } from "@/lib/auth";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import TimeZoneScope from "@/components/TimeZoneScope";
 
 export const metadata: Metadata = {
   title: "MentorHub — Nền tảng kết nối Mentor-Mentee lập trình",
@@ -29,7 +30,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <AuthProvider>
           <Nav />
-          <main className="container">{children}</main>
+          <main className="container"><TimeZoneScope>{children}</TimeZoneScope></main>
           <Footer />
         </AuthProvider>
       </body>

@@ -97,6 +97,9 @@ public class MentorProfile {
     @Column(nullable = false)
     private String timezone = "Asia/Ho_Chi_Minh";
 
+    /** US-37 (PRD-PROF-3) — câu giới thiệu ngắn ≤ 80 ký tự. */
+    private String headline;
+
     @Column(nullable = false)
     private float rating;
 
@@ -158,6 +161,9 @@ public class MentorProfile {
     public String[] getLanguages() { return languages; }
     public String[] getSessionTypes() { return sessionTypes; }
     public String getTimezone() { return timezone; }
+    public void setTimezone(String timezone) { this.timezone = timezone; }
+    public String getHeadline() { return headline; }
+    public void setHeadline(String headline) { this.headline = headline; }
 
     public void updateBookingSettings(String meetingLink, int bufferMinutes, int minNoticeHours,
                                       String[] languages, String[] sessionTypes, String timezone) {

@@ -1,5 +1,12 @@
 package com.mmp.profile.controller;
 
+import com.mmp.profile.entity.ProfileAvatar;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
+import java.time.Duration;
 import com.mmp.profile.dto.ProfileDtos.*;
 import com.mmp.profile.exception.ApiException;
 import com.mmp.profile.security.AuthUser;
@@ -100,6 +107,40 @@ public class ProfileController {
     public void deleteException(@PathVariable UUID userId, @PathVariable UUID exceptionId) {
         requireOwnerWithRole(userId, "MENTOR");
         profileService.deleteException(userId, exceptionId);
+    }
+
+    // ---- US-37: múi giờ, ảnh đại diện (mentor và mentee) ----
+
+    /** PRD-PROF-6 — múi giờ của chính mình (IANA); mọi giờ hiển thị theo múi giờ người xem. */
+    @PutMapping("/{userId}/timezone")
+    public ProfileSummary updateTimezone(@PathVariable UUID userId, @Valid @RequestBody TimezoneInput input) {
+        CurrentUser.requireAccess(userId);
+        return profileService.updateTimezone(userId, input);
+    }
+
+    /** PRD-PROF-3 — ảnh đại diện JPG/PNG ≤ 2 MB (multipart, trường "file"). */
+    @PutMapping(value = "/{userId}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public AvatarResult uploadAvatar(@PathVariable UUID userId, @RequestParam("file") MultipartFile file) throws IOException {
+        CurrentUser.requireAccess(userId);
+        return profileService.uploadAvatar(userId, file.getBytes());
+    }
+
+    @DeleteMapping("/{userId}/avatar")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAvatar(@PathVariable UUID userId) {
+        CurrentUser.requireAccess(userId);
+        profileService.deleteAvatar(userId);
+    }
+
+    /** Công khai (app.security.public-paths) để thẻ &lt;img&gt; tải được không cần token; URL có ?v= nên cache lâu được. */
+    @GetMapping("/avatars/{userId}")
+    public ResponseEntity<byte[]> avatar(@PathVariable UUID userId) {
+        ProfileAvatar a = profileService.avatar(userId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(a.getContentType()))
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(a.getData());
     }
 
     // ---- Mentee ----

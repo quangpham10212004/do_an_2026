@@ -104,6 +104,24 @@ components:
           description: >
             US-08: thay bằng PUT /api/profile/mentor/{userId}/status. Vẫn nhận để tương thích:
             true → ACCEPTING, false → PAUSED; bỏ qua nếu trùng trạng thái hiện tại hoặc mentor đang SUSPENDED.
+        headline: { type: string, maxLength: 80, nullable: true, description: "US-37 — câu giới thiệu ngắn; bỏ qua/null = giữ nguyên, chuỗi rỗng = xoá" }
+    Completeness:
+      type: object
+      description: >
+        US-37 (PRD-PROF-1) — điểm hoàn thiện hồ sơ 0–100. Mentee: domain 15, level 10, ≥ 3 kỹ năng 20, goal ≥ 80 ký tự 30,
+        CV hoặc portfolio 15, lịch mong muốn (preferredDays hoặc preferredTimeOfDay) 10. Mentor: bio ≥ 150 ký tự 20,
+        ≥ 3 kỹ năng 15, số năm KN > 0 10, có lịch rảnh 25, hourlyRate > 0 10, portfolio 10, ảnh đại diện 10.
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100 }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string, example: goal }
+              label: { type: string }
+              weight: { type: integer }
+              done: { type: boolean }
     MentorProfile:
       allOf:
         - $ref: "#/components/schemas/MentorProfileInput"
@@ -136,6 +154,11 @@ components:
               type: array
               description: US-07 — ngoại lệ lịch rảnh từ hôm nay (giờ mentor) tới 60 ngày tới (gồm hôm nay)
               items: { $ref: "#/components/schemas/AvailabilityException" }
+            avatarUrl: { type: string, nullable: true, description: "US-37 — /api/profile/avatars/{userId}?v=<mốc cập nhật>; null = chưa có ảnh" }
+            completeness:
+              nullable: true
+              description: US-37 — chỉ chủ hồ sơ/admin/nội bộ; người xem khác nhận null
+              allOf: [{ $ref: "#/components/schemas/Completeness" }]
     MenteeProfileInput:
       type: object
       required: [displayName, goal, domain]
@@ -182,6 +205,10 @@ components:
         - type: object
           properties:
             userId: { type: string, format: uuid }
+            timezone: { type: string, example: Asia/Ho_Chi_Minh, description: "US-37 (PRD-PROF-6) — múi giờ IANA" }
+            avatarUrl: { type: string, nullable: true }
+            completeness: { $ref: "#/components/schemas/Completeness" }
+            matchingEnabled: { type: boolean, description: "US-37 — completeness.score ≥ 50 (nút AI Matching)" }
     MentorCard:
       type: object
       properties:
@@ -198,6 +225,8 @@ components:
         verificationStatus: { type: string }
         status: { $ref: "#/components/schemas/MentorStatus" }
         onLeaveUntil: { type: string, format: date, nullable: true }
+        headline: { type: string, nullable: true, description: US-37 }
+        avatarUrl: { type: string, nullable: true, description: US-37 }
     AdminMentorRow:
       type: object
       description: US-27 — một dòng của trang /admin/mentors (status = trạng thái hiệu lực)
@@ -233,6 +262,7 @@ components:
         displayName: { type: string }
         role: { type: string, enum: [MENTOR, MENTEE] }
         domain: { type: string }
+        timezone: { type: string, example: Asia/Ho_Chi_Minh, description: "US-37 — mentoring-service dùng cho nhắc lịch (US-34) và giờ địa phương của bên kia" }
 security:
   - bearerAuth: []
 paths:
@@ -574,6 +604,69 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MenteeProfile" }
 
+  /api/profile/{userId}/timezone:
+    put:
+      summary: >
+        US-37 (PRD-PROF-6) — đổi múi giờ của chính mình (mentor và/hoặc mentee của userId). Mọi giờ lưu UTC, hiển thị theo
+        múi giờ người xem. Với mentor, lịch rảnh/ngoại lệ/nghỉ phép cũng tính theo múi giờ này (giống booking-settings).
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timezone]
+              properties:
+                timezone: { type: string, example: Europe/Paris }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileSummary" }
+        "400": { description: INVALID_TIMEZONE }
+        "403": { description: FORBIDDEN }
+        "404": { description: PROFILE_NOT_FOUND }
+  /api/profile/{userId}/avatar:
+    put:
+      summary: US-37 (PRD-PROF-3) — tải ảnh đại diện JPG/PNG ≤ 2 MB (kiểm tra theo chữ ký file), thay ảnh cũ.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { avatarUrl: { type: string } } }
+        "400": { description: INVALID_AVATAR · AVATAR_TOO_LARGE }
+        "403": { description: FORBIDDEN }
+        "404": { description: PROFILE_NOT_FOUND }
+    delete:
+      summary: US-37 — xoá ảnh đại diện.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "204": { description: Đã xoá }
+  /api/profile/avatars/{userId}:
+    get:
+      summary: US-37 — ảnh đại diện (CÔNG KHAI, không cần token — dùng cho thẻ img). Cache-Control public 30 ngày (URL có ?v=).
+      security: []
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: image/jpeg | image/png
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+        "404": { description: AVATAR_NOT_FOUND }
   /internal/profile-summary/{userId}:
     get:
       summary: Nội bộ — tóm tắt hồ sơ

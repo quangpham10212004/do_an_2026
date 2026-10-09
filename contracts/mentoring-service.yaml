@@ -121,6 +121,8 @@ components:
             status: { type: string, enum: [OPEN, IN_REVIEW, RESOLVED] }
             outcome: { type: string, nullable: true, enum: [FULL_REFUND, PARTIAL_REFUND, NO_REFUND, WARNING, SUSPEND] }
             refundPercent: { type: integer, nullable: true }
+        mentorTimezone: { type: string, example: Asia/Ho_Chi_Minh, description: "US-37 (PRD-PROF-6) — múi giờ của mentor (giờ địa phương bên kia khi rê chuột)" }
+        menteeTimezone: { type: string, example: Asia/Ho_Chi_Minh }
     Dispute:
       type: object
       description: >

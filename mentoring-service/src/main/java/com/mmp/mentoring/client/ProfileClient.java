@@ -135,7 +135,15 @@ public class ProfileClient {
     /** Cache tên hiển thị trong phạm vi 1 lần dựng danh sách để tránh gọi lặp. */
     public Map<UUID, String> displayNames(java.util.Collection<UUID> ids) {
         Map<UUID, String> result = new ConcurrentHashMap<>();
-        ids.stream().distinct().forEach(id -> result.put(id, summary(id).map(ProfileSummary::displayName).orElse("Người dùng")));
+        summaries(ids).forEach((id, s) -> result.put(id, s.displayName() == null ? "Người dùng" : s.displayName()));
+        return result;
+    }
+
+    /** Tóm tắt hồ sơ cho nhiều người (mỗi id gọi 1 lần); lỗi → tên "Người dùng", múi giờ null. */
+    public Map<UUID, ProfileSummary> summaries(java.util.Collection<UUID> ids) {
+        Map<UUID, ProfileSummary> result = new ConcurrentHashMap<>();
+        ids.stream().distinct().forEach(id -> result.put(id,
+                summary(id).orElse(new ProfileSummary(id, "Người dùng", null, null, null))));
         return result;
     }
 

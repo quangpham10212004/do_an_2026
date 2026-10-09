@@ -119,6 +119,9 @@ export interface MentoringSession {
   createdAt: IsoDateTime;
   /** US-32 — tranh chấp gần nhất của phiên. */
   dispute: DisputeBrief | null;
+  /** US-37 (PRD-PROF-6) — múi giờ hai bên (giờ địa phương của bên kia khi rê chuột). */
+  mentorTimezone?: string;
+  menteeTimezone?: string;
 }
 
 // ---- US-32: tranh chấp ----

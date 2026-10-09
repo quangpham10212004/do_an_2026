@@ -7,9 +7,11 @@ import { Alert, Empty, Loading, PageHead, Stars } from "@/components/ui";
 import { EXCLUSION_LABELS, matchingApi } from "@/features/matching/api";
 import MatchingFilters, { biggestBlocker, describeFilter, dropFilter } from "@/features/matching/MatchingFilters";
 import { mentoringApi } from "@/features/mentoring/api";
+import { profileApi } from "@/features/profile/api";
+import { CompletenessCard } from "@/features/profile/ProfileExtras";
 import { formatRate } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { ExclusionReason, MatchFilterValues, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
+import type { Completeness, ExclusionReason, MatchFilterValues, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
 
 const LIMIT = 10;
 
@@ -98,6 +100,8 @@ function Matching({ user }: { user: SessionUser }) {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  /** US-37 — hồ sơ hoàn thiện < 50% thì chưa cho dùng AI Matching. */
+  const [gate, setGate] = useState<Completeness | null>(null);
 
   /** filters undefined = để server lấy sở thích hồ sơ làm bộ lọc (US-17); có giá trị = ghi đè cho lượt này. */
   const search = useCallback((filters?: MatchFilterValues) => {
@@ -113,10 +117,27 @@ function Matching({ user }: { user: SessionUser }) {
   }, [user]);
 
   useEffect(() => {
-    search();
+    profileApi.getMentee(user.userId)
+      .then((p) => {
+        if (p.matchingEnabled) search();
+        else {
+          setGate(p.completeness);
+          setData(null);
+        }
+      })
+      .catch(() => search()); // chưa có hồ sơ → matching-service trả MENTEE_PROFILE_INCOMPLETE
     mentoringApi.requests().then((rs) => setRequested(new Set(rs.filter((r) => ["PENDING", "ACCEPTED"].includes(r.status)).map((r) => r.mentorId)))).catch(() => {});
   }, [user, search]);
 
+  if (gate) {
+    return (
+      <>
+        <PageHead title="Mentor phù hợp với bạn" subtitle="AI Matching cần hồ sơ hoàn thiện tối thiểu 50% để gợi ý chính xác." />
+        <Alert type="warn">Hồ sơ của bạn mới hoàn thiện {gate.score}%. <Link href="/profile">Bổ sung hồ sơ</Link> hoặc <Link href="/mentors">duyệt danh sách mentor</Link>.</Alert>
+        <div style={{ maxWidth: 520 }}><CompletenessCard completeness={gate} matchingMin={50} /></div>
+      </>
+    );
+  }
   if (data === undefined) return <Loading text="AI đang tìm mentor phù hợp..." />;
   const excluded = data?.pipeline?.excluded || {};
   const excludedEntries = Object.entries(excluded) as [ExclusionReason, number][];
