@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, StatusBadge, Flash } from "@/components/ui";
+import { Check, RotateCcw, X } from "lucide-react";
+import { Alert, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, StatusBadge, Textarea, type Flash } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 import { errorMessage } from "@/lib/api";
@@ -43,22 +43,25 @@ function AttemptsCard({ mentorId }: { mentorId: string }) {
 
   if (!eligibility) return null;
   return (
-    <div className="card">
-      <h2>Số lần phỏng vấn của mentor</h2>
-      <p className="small">
-        Đã dùng {eligibility.attemptsUsed}/{eligibility.maxAttempts} · còn lại {eligibility.attemptsLeft}
-        {eligibility.cooldownUntil && <> · chờ tới {formatDateTime(eligibility.cooldownUntil)}</>}
-      </p>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      {eligibility.locked && (
-        <>
-          <Alert type="info">Mentor đã bị từ chối {eligibility.maxAttempts} lần và đang bị khoá phỏng vấn.</Alert>
-          <div className="field"><label>Ghi chú mở khoá (lưu vào nhật ký)</label><input value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} /></div>
-          <button className="btn secondary" onClick={unlock}>Mở khoá phỏng vấn</button>
-        </>
+    <Card>
+      <CardHeader title="Số lần phỏng vấn"
+        description={<>Đã dùng {eligibility.attemptsUsed}/{eligibility.maxAttempts} · còn lại {eligibility.attemptsLeft}
+          {eligibility.cooldownUntil && <> · chờ tới {formatDateTime(eligibility.cooldownUntil)}</>}</>} />
+      {(msg.ok || msg.error || eligibility.locked) && (
+        <CardBody className="flex flex-col gap-3">
+          <FlashAlerts flash={msg} />
+          {eligibility.locked && (
+            <>
+              <Alert tone="warning">Mentor đã bị từ chối {eligibility.maxAttempts} lần và đang bị khoá phỏng vấn.</Alert>
+              <Field label="Ghi chú mở khoá" id="unlock-note" hint="Lưu vào nhật ký quản trị.">
+                <Input id="unlock-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
+              </Field>
+              <div><Button onClick={unlock}>Mở khoá phỏng vấn</Button></div>
+            </>
+          )}
+        </CardBody>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -87,39 +90,42 @@ function InterviewReview({ id }: { id: string }) {
 
   if (interview === undefined) return <Loading />;
   if (!interview) return <Alert>{msg.error}</Alert>;
+  const star = (d: ReviewDecision) => (noteRequired(d, interview.recommendation) ? " *" : "");
   return (
     <>
-      <PageHead title={`AI Interview — ${interview.mentorName || "Mentor"}`} subtitle={`${interview.domain} · ${interview.skills.join(", ")}`}>
-        <StatusBadge status={interview.status} />
-      </PageHead>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="grid grid-2" style={{ alignItems: "start" }}>
-        <div className="card">
-          <h2>Toàn bộ hội thoại</h2>
-          <InterviewTranscript interview={interview} admin />
-        </div>
-        <div className="stack">
-          <AssessmentCard interview={interview} />
+      <PageHeader
+        back={{ href: "/admin/interviews", label: "Duyệt mentor" }}
+        title={`AI Interview · ${interview.mentorName || "Mentor"}`}
+        description={`${interview.domain} · ${interview.skills.join(", ")}`}
+        actions={<StatusBadge status={interview.status} />}
+      />
+      <FlashAlerts flash={msg} className="mb-6" />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <Card>
+          <CardHeader title="Toàn bộ hội thoại" />
+          <CardBody><InterviewTranscript interview={interview} admin /></CardBody>
+        </Card>
+        <div className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-20">
           {interview.status === "PENDING_REVIEW" && (
-            <div className="card">
-              <h2>Quyết định của quản trị viên</h2>
-              <p className="muted small">Hãy đọc kỹ câu trả lời — AI có thể chấm sai. Mentor chỉ xuất hiện trong kết quả AI Matching sau khi được duyệt.</p>
-              <p className="muted small">
-                Bắt buộc ghi chú (≥ {MIN_NOTE} ký tự) khi quyết định ngược khuyến nghị AI: duyệt khi AI khuyến nghị từ chối, từ chối khi AI khuyến nghị duyệt,
-                hoặc yêu cầu làm lại khi AI đã khuyến nghị duyệt/từ chối. AI khuyến nghị &quot;Cần xem xét&quot; thì không bắt buộc.
-              </p>
-              <div className="field"><label>Nhận xét gửi mentor</label><textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} /></div>
-              <div className="row">
-                <button className="btn good" onClick={() => decide("APPROVE")}>Duyệt & kích hoạt{noteRequired("APPROVE", interview.recommendation) ? " *" : ""}</button>
-                <button className="btn danger" onClick={() => decide("REJECT")}>Từ chối{noteRequired("REJECT", interview.recommendation) ? " *" : ""}</button>
-                <button className="btn secondary" onClick={() => decide("REQUEST_RETAKE")}>Yêu cầu làm lại{noteRequired("REQUEST_RETAKE", interview.recommendation) ? " *" : ""}</button>
-              </div>
-              <p className="muted small">* cần ghi chú. &quot;Yêu cầu làm lại&quot; không tính vào số lần phỏng vấn, mentor có thể bắt đầu lại ngay.</p>
-            </div>
+            <Card>
+              <CardHeader title="Quyết định của quản trị viên"
+                description="Đọc kỹ câu trả lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được duyệt." />
+              <CardBody className="flex flex-col gap-3">
+                <Field label="Nhận xét gửi mentor" id="review-note"
+                  hint={`Bắt buộc (từ ${MIN_NOTE} ký tự) khi quyết định ngược khuyến nghị AI. AI khuyến nghị “Cần xem xét” thì không bắt buộc.`}>
+                  <Textarea id="review-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
+                </Field>
+                <p className="text-small text-ink-muted">* cần nhận xét. “Yêu cầu làm lại” không tính vào số lần phỏng vấn, mentor có thể bắt đầu lại ngay.</p>
+              </CardBody>
+              <CardFooter>
+                <Button icon={RotateCcw} onClick={() => decide("REQUEST_RETAKE")}>Yêu cầu làm lại{star("REQUEST_RETAKE")}</Button>
+                <Button variant="danger" icon={X} onClick={() => decide("REJECT")}>Từ chối{star("REJECT")}</Button>
+                <Button variant="primary" icon={Check} onClick={() => decide("APPROVE")}>Duyệt và kích hoạt{star("APPROVE")}</Button>
+              </CardFooter>
+            </Card>
           )}
+          <AssessmentCard interview={interview} />
           <AttemptsCard mentorId={interview.mentorId} />
-          <Link href="/admin/interviews" className="small">← Danh sách</Link>
         </div>
       </div>
     </>

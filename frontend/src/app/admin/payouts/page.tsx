@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, useDialog } from "@/components/ui";
+import { Banknote } from "lucide-react";
+import { Badge, Button, Card, EmptyState, FlashAlerts, Loading, PageHeader, Table, Tabs, useDialog, type BadgeTone } from "@/components/ui";
 import { paymentApi } from "@/features/payment/api";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime, formatVnd } from "@/lib/format";
 import type { Payout, PayoutStatus } from "@/types";
 
 const FILTERS: [PayoutStatus | "", string][] = [["REQUESTED", "Chờ chuyển"], ["PAID", "Đã chuyển"], ["REJECTED", "Từ chối"], ["", "Tất cả"]];
+const PAYOUT_TONE: Record<string, [string, BadgeTone]> = { REQUESTED: ["Chờ chuyển", "warning"], PAID: ["Đã chuyển", "success"], REJECTED: ["Từ chối", "danger"] };
 
 /** US-42 (PRD-PAY-5) — admin chuyển khoản (sandbox) rồi đánh dấu PAID kèm mã tham chiếu, hoặc từ chối. */
 function Payouts() {
@@ -36,44 +38,51 @@ function Payouts() {
   return (
     <>
       {dialog}
-      <PageHead title="Rút tiền" subtitle="Yêu cầu rút toàn bộ số dư khả dụng của mentor (tối thiểu 200.000đ)." />
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="tabs">
-        {FILTERS.map(([v, l]) => <button key={v || "ALL"} className={filter === v ? "active" : ""} onClick={() => setFilter(v)}>{l}</button>)}
-      </div>
+      <PageHeader title="Rút tiền" description="Yêu cầu rút toàn bộ số dư khả dụng của mentor (tối thiểu 200.000 đ). Chuyển khoản rồi đánh dấu đã chuyển kèm mã tham chiếu." />
+      <FlashAlerts flash={msg} className="mb-6" />
+      <Tabs className="mb-4" value={filter} onChange={setFilter} tabs={FILTERS.map(([v, l]) => ({ id: v, label: l }))} />
       {!items ? <Loading /> : (
-        <div className="card table-wrap">
-          <table>
-            <thead><tr><th>Yêu cầu lúc</th><th>Mentor</th><th>Số tiền</th><th>Tài khoản</th><th>Trạng thái</th><th></th></tr></thead>
-            <tbody>
-              {items.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: "center" }}>Không có yêu cầu nào.</td></tr>}
-              {items.map((p) => (
-                <tr key={p.id}>
-                  <td>{formatDateTime(p.requestedAt)}</td>
-                  <td>{p.mentorName}</td>
-                  <td><strong>{formatVnd(p.amount)}</strong></td>
-                  <td className="small">{p.bankName}<br />{p.accountNumber} · {p.holderName}</td>
-                  <td className="small">{p.status}{p.reference ? ` · ${p.reference}` : ""}{p.note ? ` · ${p.note}` : ""}</td>
-                  <td>
-                    {p.status === "REQUESTED" && (
-                      <div className="row">
-                        <button className="btn sm" onClick={async () => {
-                          const ref = await ask({ title: `Đã chuyển ${formatVnd(p.amount)}?`, input: { label: "Mã tham chiếu chuyển khoản", maxLength: 100 }, confirmText: "Đánh dấu đã chuyển" });
-                          if (typeof ref === "string" && ref.trim()) act(() => paymentApi.markPayoutPaid(p.id, ref.trim()), "Đã đánh dấu đã chuyển.");
-                        }}>Đã chuyển</button>
-                        <button className="btn secondary sm" onClick={async () => {
-                          const reason = await ask({ title: "Từ chối yêu cầu rút tiền?", input: { label: "Lý do", maxLength: 500 }, confirmText: "Từ chối", danger: true });
-                          if (typeof reason === "string" && reason.trim()) act(() => paymentApi.rejectPayout(p.id, reason.trim()), "Đã từ chối.");
-                        }}>Từ chối</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          {items.length === 0 ? <EmptyState icon={Banknote} title="Không có yêu cầu nào" /> : (
+            <Table>
+              <thead><tr><th>Yêu cầu lúc</th><th>Mentor</th><th className="num">Số tiền</th><th>Tài khoản</th><th>Trạng thái</th><th></th></tr></thead>
+              <tbody>
+                {items.map((p) => {
+                  const [label, tone] = PAYOUT_TONE[p.status] ?? [p.status, "neutral"];
+                  return (
+                    <tr key={p.id}>
+                      <td className="whitespace-nowrap">{formatDateTime(p.requestedAt)}</td>
+                      <td className="font-medium">{p.mentorName}</td>
+                      <td className="num font-semibold">{formatVnd(p.amount)}</td>
+                      <td className="text-small">
+                        <div>{p.bankName}</div>
+                        <div className="text-ink-muted"><span className="font-mono">{p.accountNumber}</span> · {p.holderName}</div>
+                      </td>
+                      <td className="text-small">
+                        <Badge tone={tone}>{label}</Badge>
+                        {(p.reference || p.note) && <div className="mt-1 text-ink-muted">{p.reference && <span className="font-mono">{p.reference}</span>}{p.reference && p.note ? " · " : ""}{p.note}</div>}
+                      </td>
+                      <td className="actions">
+                        {p.status === "REQUESTED" && (
+                          <div className="flex justify-end gap-1">
+                            <Button size="sm" variant="ghost" onClick={async () => {
+                              const reason = await ask({ title: "Từ chối yêu cầu rút tiền?", input: { label: "Lý do", maxLength: 500 }, confirmText: "Từ chối", danger: true });
+                              if (typeof reason === "string" && reason.trim()) act(() => paymentApi.rejectPayout(p.id, reason.trim()), "Đã từ chối yêu cầu.");
+                            }}>Từ chối</Button>
+                            <Button size="sm" variant="primary" onClick={async () => {
+                              const ref = await ask({ title: `Đã chuyển ${formatVnd(p.amount)}?`, input: { label: "Mã tham chiếu chuyển khoản", maxLength: 100 }, confirmText: "Đánh dấu đã chuyển" });
+                              if (typeof ref === "string" && ref.trim()) act(() => paymentApi.markPayoutPaid(p.id, ref.trim()), "Đã đánh dấu đã chuyển.");
+                            }}>Đã chuyển</Button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          )}
+        </Card>
       )}
     </>
   );

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, StatusBadge } from "@/components/ui";
+import { Alert, Card, EmptyState, Loading, PageHeader, Pagination, Select, Table, Tabs } from "@/components/ui";
+import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
+import { STATUS_LABELS } from "@/lib/format";
 import { paymentApi } from "@/features/payment/api";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
@@ -28,69 +30,65 @@ function Transactions() {
 
   return (
     <>
-      <PageHead title="Giám sát giao dịch & referral" />
-      <Alert>{error}</Alert>
-      <div className="tabs">
-        <button className={tab === "transactions" ? "active" : ""} onClick={() => setTab("transactions")}>Giao dịch</button>
-        <button className={tab === "referrals" ? "active" : ""} onClick={() => setTab("referrals")}>Referral</button>
-      </div>
+      <PageHeader title="Giao dịch" description="Giám sát thanh toán sandbox và các lượt giới thiệu." />
+      <Alert className="mb-6">{error}</Alert>
+      <Tabs className="mb-4" value={tab} onChange={setTab} tabs={[
+        { id: "transactions", label: "Giao dịch" },
+        { id: "referrals", label: "Giới thiệu" },
+      ]} />
       {tab === "transactions" && (
         <>
-          <div className="row" style={{ marginBottom: "1rem" }}>
-            <select value={status} onChange={(e) => { setStatus(e.target.value as TransactionStatus | ""); setPage(0); }} style={{ maxWidth: 220 }}>
+          <div className="mb-4">
+            <Select aria-label="Trạng thái" value={status} className="w-auto min-w-[200px]" onChange={(e) => { setStatus(e.target.value as TransactionStatus | ""); setPage(0); }}>
               <option value="">Mọi trạng thái</option>
-              {TRANSACTION_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+              {TRANSACTION_STATUSES.map((st) => <option key={st} value={st}>{STATUS_LABELS[st] || st}</option>)}
+            </Select>
           </div>
           {!data ? (error ? null : <Loading />) : (
-            <div className="card table-wrap">
-              <table>
-                <thead><tr><th>Thời gian</th><th>Mã giao dịch</th><th>Phiên</th><th>Số tiền</th><th>Trạng thái</th><th>Lý do</th><th>Tham chiếu</th></tr></thead>
-                <tbody>
-                  {data.items.length === 0 && <tr><td colSpan={7} className="muted" style={{ textAlign: "center" }}>Không có giao dịch nào.</td></tr>}
-                  {data.items.map((t) => (
-                    <tr key={t.id}>
-                      <td>{formatDateTime(t.createdAt)}</td>
-                      <td className="small">{t.id.slice(0, 8)}</td>
-                      <td className="small">{t.sessionId.slice(0, 8)}</td>
-                      <td>{formatMoney(t.amount)}</td>
-                      <td><StatusBadge status={t.status} /></td>
-                      <td className="small">{t.failureReason || "—"}</td>
-                      <td className="small">{t.providerReference || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="row between" style={{ marginTop: "0.75rem" }}>
-                <span className="muted small">{data.totalItems} giao dịch</span>
-                <div className="row">
-                  <button className="btn secondary sm" disabled={page === 0} onClick={() => setPage(page - 1)}>Trước</button>
-                  <button className="btn secondary sm" disabled={page + 1 >= data.totalPages} onClick={() => setPage(page + 1)}>Sau</button>
-                </div>
-              </div>
-            </div>
+            <Card>
+              {data.items.length === 0 ? <EmptyState title="Không có giao dịch nào" /> : (
+                <Table>
+                  <thead><tr><th>Thời gian</th><th>Mã giao dịch</th><th>Phiên</th><th className="num">Số tiền</th><th>Trạng thái</th><th>Lý do</th><th>Tham chiếu</th></tr></thead>
+                  <tbody>
+                    {data.items.map((t) => (
+                      <tr key={t.id}>
+                        <td className="whitespace-nowrap">{formatDateTime(t.createdAt)}</td>
+                        <td className="mono">{t.id.slice(0, 8)}</td>
+                        <td className="mono">{t.sessionId.slice(0, 8)}</td>
+                        <td className="num">{formatMoney(t.amount)}</td>
+                        <td><MentoringStatusBadge status={t.status} /></td>
+                        <td className="text-small text-ink-muted">{t.failureReason || "—"}</td>
+                        <td className="mono">{t.providerReference || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+              <Pagination page={page} totalPages={data.totalPages} summary={`${data.totalItems} giao dịch`} onChange={setPage} />
+            </Card>
           )}
         </>
       )}
       {tab === "referrals" && (!referrals ? <Loading /> : (
-        <div className="card table-wrap">
-          <table>
-            <thead><tr><th>Thời gian</th><th>Mã</th><th>Người giới thiệu</th><th>Người được giới thiệu</th><th>Trạng thái</th><th>Lý do từ chối</th></tr></thead>
-            <tbody>
-              {referrals.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: "center" }}>Chưa có lượt giới thiệu nào.</td></tr>}
-              {referrals.map((r) => (
-                <tr key={r.id}>
-                  <td>{formatDateTime(r.createdAt)}</td>
-                  <td>{r.code}</td>
-                  <td className="small">{r.referrerId.slice(0, 8)}</td>
-                  <td className="small">{r.refereeId.slice(0, 8)}</td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td className="small">{r.rejectReason || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          {referrals.length === 0 ? <EmptyState title="Chưa có lượt giới thiệu nào" /> : (
+            <Table>
+              <thead><tr><th>Thời gian</th><th>Mã</th><th>Người giới thiệu</th><th>Người được giới thiệu</th><th>Trạng thái</th><th>Lý do từ chối</th></tr></thead>
+              <tbody>
+                {referrals.map((r) => (
+                  <tr key={r.id}>
+                    <td className="whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
+                    <td className="mono">{r.code}</td>
+                    <td className="mono">{r.referrerId.slice(0, 8)}</td>
+                    <td className="mono">{r.refereeId.slice(0, 8)}</td>
+                    <td><MentoringStatusBadge status={r.status} /></td>
+                    <td className="text-small text-ink-muted">{r.rejectReason || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
       ))}
     </>
   );

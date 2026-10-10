@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Flag } from "lucide-react";
+import { Alert, Card, EmptyState, Loading, PageHeader, Table, Tabs } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import { MESSAGE_REPORT_OUTCOME_LABELS, MESSAGE_REPORT_REASON_LABELS } from "@/features/mentoring/labels";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
@@ -31,35 +32,32 @@ function Reports() {
 
   return (
     <>
-      <PageHead title="Tin nhắn bị báo cáo" subtitle="Nội dung cuộc trò chuyện chỉ xem được khi hồ sơ còn mở." />
-      <Alert>{error}</Alert>
-      <div className="tabs">
-        {FILTERS.map(([v, l]) => (
-          <button key={v || "ALL"} className={filter === v ? "active" : ""} onClick={() => setFilter(v)}>{l}</button>
-        ))}
-      </div>
+      <PageHeader title="Báo cáo tin nhắn" description="Nội dung cuộc trò chuyện chỉ xem được khi hồ sơ kiểm duyệt còn mở." />
+      <Alert className="mb-6">{error}</Alert>
+      <Tabs className="mb-4" value={filter} onChange={setFilter} tabs={FILTERS.map(([v, l]) => ({ id: v, label: l }))} />
       {!items ? <Loading /> : (
-        <div className="card table-wrap">
-          <table>
-            <thead>
-              <tr><th>Báo cáo lúc</th><th>Lý do</th><th>Người báo cáo</th><th>Người gửi</th><th>Trạng thái</th><th>Kết luận</th><th></th></tr>
-            </thead>
-            <tbody>
-              {items.length === 0 && <tr><td colSpan={7} className="muted" style={{ textAlign: "center" }}>Không có báo cáo nào.</td></tr>}
-              {items.map((r) => (
-                <tr key={r.id}>
-                  <td>{formatDateTime(r.createdAt)}</td>
-                  <td>{MESSAGE_REPORT_REASON_LABELS[r.reason]}</td>
-                  <td className="small">{r.reporterName || r.reporterId.slice(0, 8)}</td>
-                  <td className="small">{r.senderName || "—"}</td>
-                  <td><MentoringStatusBadge status={r.status} /></td>
-                  <td className="small">{r.outcome ? MESSAGE_REPORT_OUTCOME_LABELS[r.outcome] : "—"}</td>
-                  <td><Link className="btn secondary sm" href={`/admin/message-reports/${r.id}`}>Xem</Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          {items.length === 0 ? <EmptyState icon={Flag} title="Không có báo cáo nào" /> : (
+            <Table>
+              <thead>
+                <tr><th>Báo cáo lúc</th><th>Lý do</th><th>Người báo cáo</th><th>Người gửi</th><th>Trạng thái</th><th>Kết luận</th><th></th></tr>
+              </thead>
+              <tbody>
+                {items.map((r) => (
+                  <tr key={r.id}>
+                    <td className="whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
+                    <td>{MESSAGE_REPORT_REASON_LABELS[r.reason]}</td>
+                    <td>{r.reporterName || <span className="font-mono text-small">{r.reporterId.slice(0, 8)}</span>}</td>
+                    <td>{r.senderName || "—"}</td>
+                    <td><MentoringStatusBadge status={r.status} /></td>
+                    <td className="text-small">{r.outcome ? MESSAGE_REPORT_OUTCOME_LABELS[r.outcome] : "—"}</td>
+                    <td className="actions"><Link className="btn btn-sm" href={`/admin/message-reports/${r.id}`}>Xem</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
       )}
     </>
   );

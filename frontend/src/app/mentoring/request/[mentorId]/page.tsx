@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Send } from "lucide-react";
+import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardFooter, Field, Loading, PageHeader, Select, Textarea } from "@/components/ui";
+import { domainLabel } from "@/features/profile/api";
 import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import {
@@ -83,68 +84,74 @@ function SendRequest({ user, mentorId }: { user: SessionUser; mentorId: string }
   }
 
   if (mentor === undefined || open === undefined) return <Loading />;
-  if (!mentor) return <Alert>Không tìm thấy mentor. <Link href="/mentors">Xem danh sách mentor</Link></Alert>;
+  if (!mentor) return <Alert action={<ButtonLink href="/mentors" size="sm">Danh sách mentor</ButtonLink>}>Không tìm thấy mentor này.</Alert>;
   if (open) {
     return (
-      <Alert type="info">
-        Bạn đã có yêu cầu {open.status === "PENDING" ? "đang chờ" : "được chấp nhận"} với {mentor.displayName}.{" "}
-        <Link href="/mentoring/requests">Xem yêu cầu</Link>
-        {open.status === "ACCEPTED" && <> · <Link href={`/mentoring/book/${mentorId}`}>Đặt lịch</Link></>}
+      <Alert tone="info" action={<div className="flex gap-2">
+        <ButtonLink href="/mentoring/requests" size="sm">Xem yêu cầu</ButtonLink>
+        {open.status === "ACCEPTED" && <ButtonLink href={`/mentoring/book/${mentorId}`} size="sm" variant="primary">Đặt lịch</ButtonLink>}
+      </div>}>
+        Bạn đã có yêu cầu {open.status === "PENDING" ? "đang chờ" : "được chấp nhận"} với {mentor.displayName}.
       </Alert>
     );
   }
 
   return (
-    <>
-      <PageHead title={`Gửi yêu cầu tới ${mentor.displayName}`} subtitle={`${mentor.domain} · ${formatRate(mentor.hourlyRate)}`} />
-      <Alert>{error}</Alert>
-      <form className="card stack" onSubmit={submit}>
-        <div className="field">
-          <label htmlFor="goal">Mục tiêu của bạn <span className="muted small">(bắt buộc, {GOAL_MIN}–{GOAL_MAX} ký tự)</span></label>
-          <textarea id="goal" value={form.goal} maxLength={GOAL_MAX} required style={{ minHeight: 110 }}
-            placeholder="Bạn muốn đạt được gì khi học cùng mentor? Ví dụ: trở thành backend developer Java trong 6 tháng, nắm vững Spring Boot và thiết kế REST API."
-            onChange={(e) => setForm({ ...form, goal: e.target.value })} />
-          <span className="small muted" style={goalValid || !goal ? undefined : { color: "var(--danger, #c92a2a)" }}>
-            {goal.length}/{GOAL_MAX}{goal.length > 0 && goal.length < GOAL_MIN ? ` — cần thêm ${GOAL_MIN - goal.length} ký tự` : ""}
-          </span>
-        </div>
-        <div className="grid grid-2">
-          <div className="field">
-            <label htmlFor="sessionType">Loại phiên chính</label>
-            <select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
-              {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
-            </select>
+    <div className="max-w-[760px]">
+      <PageHeader title="Gửi yêu cầu mentoring" back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
+      <form onSubmit={submit}>
+        <Card>
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+            <Avatar name={mentor.displayName} src={mentor.avatarUrl} />
+            <div>
+              <div className="font-semibold">{mentor.displayName}</div>
+              <div className="text-small text-ink-muted">{domainLabel(mentor.domain)} · {formatRate(mentor.hourlyRate)}</div>
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="frequency">Tần suất mong muốn</label>
-            <select id="frequency" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value as RequestFrequency })}>
-              {FREQUENCIES.map((f) => <option key={f} value={f}>{FREQUENCY_LABELS[f]}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="field">
-          <label htmlFor="duration">Thời gian dự kiến</label>
-          <select id="duration" value={form.expectedDurationMonths}
-            onChange={(e) => setForm({ ...form, expectedDurationMonths: Number(e.target.value) as ExpectedDurationMonths })}>
-            {EXPECTED_DURATIONS.map((m) => <option key={m} value={m}>{m} tháng</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="message">Lời nhắn cho mentor <span className="muted small">(tuỳ chọn)</span></label>
-          <textarea id="message" value={form.message} maxLength={MESSAGE_MAX}
-            placeholder="Giới thiệu ngắn về bạn hoặc câu hỏi cho mentor"
-            onChange={(e) => setForm({ ...form, message: e.target.value })} />
-        </div>
-        <p className="small muted">
-          Mentor có 72 giờ để phản hồi; quá hạn yêu cầu tự hết hạn và bạn sẽ nhận gợi ý mentor khác. Bạn có thể có tối đa
-          3 yêu cầu đang chờ phản hồi cùng lúc.
-        </p>
-        <div className="row">
-          <button className="btn" disabled={busy || !goalValid}>{busy ? "Đang gửi..." : "Gửi yêu cầu"}</button>
-          <Link href={`/mentors/${mentorId}`} className="btn secondary">Xem hồ sơ mentor</Link>
-        </div>
+          <CardBody className="flex flex-col gap-5">
+            <Alert>{error}</Alert>
+            <Field label="Mục tiêu của bạn" id="goal" required
+              error={goal.length > 0 && goal.length < GOAL_MIN ? `Cần thêm ${GOAL_MIN - goal.length} ký tự (tối thiểu ${GOAL_MIN}).` : undefined}
+              hint={`${goal.length}/${GOAL_MAX} ký tự, tối thiểu ${GOAL_MIN}.`}>
+              <Textarea id="goal" value={form.goal} maxLength={GOAL_MAX} required className="min-h-[120px]"
+                placeholder="Bạn muốn đạt được gì khi học cùng mentor? Ví dụ: trở thành backend developer Java trong 6 tháng, nắm vững Spring Boot và thiết kế REST API."
+                onChange={(e) => setForm({ ...form, goal: e.target.value })} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Loại phiên chính" id="sessionType">
+                <Select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
+                  {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
+                </Select>
+              </Field>
+              <Field label="Tần suất mong muốn" id="frequency">
+                <Select id="frequency" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value as RequestFrequency })}>
+                  {FREQUENCIES.map((f) => <option key={f} value={f}>{FREQUENCY_LABELS[f]}</option>)}
+                </Select>
+              </Field>
+              <Field label="Thời gian dự kiến" id="duration">
+                <Select id="duration" value={form.expectedDurationMonths}
+                  onChange={(e) => setForm({ ...form, expectedDurationMonths: Number(e.target.value) as ExpectedDurationMonths })}>
+                  {EXPECTED_DURATIONS.map((m) => <option key={m} value={m}>{m} tháng</option>)}
+                </Select>
+              </Field>
+            </div>
+            <Field label="Lời nhắn cho mentor" id="message" hint="Không bắt buộc.">
+              <Textarea id="message" value={form.message} maxLength={MESSAGE_MAX}
+                placeholder="Giới thiệu ngắn về bạn hoặc câu hỏi cho mentor"
+                onChange={(e) => setForm({ ...form, message: e.target.value })} />
+            </Field>
+            <p className="text-small text-ink-muted">
+              Mentor có 72 giờ để phản hồi; quá hạn, yêu cầu tự hết hạn và bạn nhận gợi ý mentor khác. Bạn có tối đa
+              3 yêu cầu đang chờ phản hồi cùng lúc.
+            </p>
+          </CardBody>
+          <CardFooter>
+            <ButtonLink href={`/mentors/${mentorId}`} variant="ghost">Xem hồ sơ mentor</ButtonLink>
+            <Button type="submit" variant="primary" icon={Send} loading={busy} disabled={!goalValid}>{busy ? "Đang gửi…" : "Gửi yêu cầu"}</Button>
+          </CardFooter>
+        </Card>
       </form>
-    </>
+    </div>
   );
 }
 

@@ -1,24 +1,23 @@
-// Font tự host qua @fontsource (file woff2 nằm trong node_modules, được Next đóng gói lúc build) —
-// không tải từ Google Fonts nên `next build` chạy được cả khi không có mạng (Docker build).
-// DESIGN.md: 'feather' → thay bằng Nunito Black; 'duolingo-sans' → thay bằng Nunito Sans (hỗ trợ tiếng Việt).
-// Mỗi file CSS khai báo @font-face kèm unicode-range, trình duyệt chỉ tải subset cần dùng.
-import "@fontsource/nunito/latin-900.css";
-import "@fontsource/nunito/latin-ext-900.css";
-import "@fontsource/nunito/vietnamese-900.css";
-import "@fontsource/nunito-sans/latin-500.css";
-import "@fontsource/nunito-sans/latin-ext-500.css";
-import "@fontsource/nunito-sans/vietnamese-500.css";
-import "@fontsource/nunito-sans/latin-700.css";
-import "@fontsource/nunito-sans/latin-ext-700.css";
-import "@fontsource/nunito-sans/vietnamese-700.css";
+// Font tự host qua @fontsource (woff2 trong node_modules, Next đóng gói lúc build) — `next build` chạy được không cần mạng.
+// Be Vietnam Pro: chữ giao diện (thiết kế cho tiếng Việt); JetBrains Mono: số liệu, mã giao dịch. Xem design-system/README.md.
+import "@fontsource/be-vietnam-pro/vietnamese-400.css";
+import "@fontsource/be-vietnam-pro/latin-400.css";
+import "@fontsource/be-vietnam-pro/vietnamese-500.css";
+import "@fontsource/be-vietnam-pro/latin-500.css";
+import "@fontsource/be-vietnam-pro/vietnamese-600.css";
+import "@fontsource/be-vietnam-pro/latin-600.css";
+import "@fontsource/be-vietnam-pro/vietnamese-700.css";
+import "@fontsource/be-vietnam-pro/latin-700.css";
+import "@fontsource/jetbrains-mono/vietnamese-400.css";
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/vietnamese-500.css";
+import "@fontsource/jetbrains-mono/latin-500.css";
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AuthProvider } from "@/lib/auth";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
-import TimeZoneScope from "@/components/TimeZoneScope";
-import VerifyEmailBanner from "@/components/VerifyEmailBanner";
+import Chrome from "@/components/shell/Chrome";
+import { THEME_BOOT_SCRIPT } from "@/components/shell/theme-boot";
 
 export const metadata: Metadata = {
   title: "MentorHub — Nền tảng kết nối Mentor-Mentee lập trình",
@@ -27,15 +26,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="vi">
+    <html lang="vi" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body>
         <AuthProvider>
-          <Nav />
-          <main className="container">
-            <VerifyEmailBanner />
-            <TimeZoneScope>{children}</TimeZoneScope>
-          </main>
-          <Footer />
+          <Chrome>{children}</Chrome>
         </AuthProvider>
       </body>
     </html>

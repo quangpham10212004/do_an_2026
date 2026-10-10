@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Lock, Plus, Trash2 } from "lucide-react";
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import { SESSION_STATUS_LABELS } from "@/features/mentoring/labels";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
@@ -19,10 +19,10 @@ type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 /** Trạng thái lưu tự động hiển thị dưới ô soạn. */
 function SaveHint({ state, at, by }: { state: SaveState; at?: string | null; by?: string | null }) {
-  if (state === "saving") return <span className="small muted">Đang lưu…</span>;
-  if (state === "dirty") return <span className="small muted">Chưa lưu…</span>;
-  if (state === "error") return <span className="small" style={{ color: "var(--color-danger, #c0392b)" }}>Lưu thất bại</span>;
-  return at ? <span className="small muted">Lưu lúc {formatDateTime(at)}{by ? ` bởi ${by}` : ""}</span> : null;
+  if (state === "saving") return <span className="text-small text-ink-muted">Đang lưu…</span>;
+  if (state === "dirty") return <span className="text-small text-ink-muted">Chưa lưu…</span>;
+  if (state === "error") return <span className="text-small text-danger">Lưu thất bại. Kiểm tra kết nối rồi sửa tiếp để thử lại.</span>;
+  return at ? <span className="text-small text-ink-subtle">Lưu lúc {formatDateTime(at)}{by ? ` bởi ${by}` : ""}</span> : null;
 }
 
 function ActionItems({ notes, onChange, setError }: {
@@ -43,42 +43,45 @@ function ActionItems({ notes, onChange, setError }: {
     }
   };
   const own = notes.actionItems.filter((a) => !a.carriedOver).length;
-  const row = (a: ActionItem) => (
-    <div key={a.id} className="list-item row between">
-      <label className="row" style={{ gap: 8, alignItems: "flex-start", flex: 1 }}>
-        <input type="checkbox" checked={a.done} onChange={(e) => run(() => mentoringApi.updateActionItem(a.id, { done: e.target.checked }))} />
-        <span style={{ textDecoration: a.done ? "line-through" : undefined }}>
-          {a.text}
-          <span className="small muted"> · {OWNER_LABELS[a.owner]}{a.dueDate ? ` · hạn ${formatDate(a.dueDate)}` : ""}</span>
-          {a.carriedOver && <span className="badge" style={{ marginLeft: 6 }}>Từ phiên trước</span>}
-          {a.overdue && <span className="badge bad" style={{ marginLeft: 6 }}>Quá hạn</span>}
-        </span>
-      </label>
-      <button className="btn secondary sm" onClick={() => run(() => mentoringApi.deleteActionItem(a.id))}>Xoá</button>
-    </div>
-  );
   return (
-    <div className="card stack">
-      <h2>Việc cần làm</h2>
-      {notes.actionItems.length === 0 && <div className="small muted">Chưa có việc nào. Việc còn mở sẽ được mang sang phiên kế tiếp.</div>}
-      {notes.actionItems.map(row)}
+    <Card>
+      <CardHeader title="Việc cần làm" description="Việc còn mở được mang sang phiên kế tiếp." />
+      {notes.actionItems.length === 0 && <div className="px-5 py-4 text-ink-muted">Chưa có việc nào.</div>}
+      <div className="flex flex-col divide-y divide-border">
+        {notes.actionItems.map((a: ActionItem) => (
+          <div key={a.id} className="flex items-start gap-3 px-5 py-3">
+            <input type="checkbox" className="mt-1 size-4 flex-none accent-[var(--accent)]" aria-label={`Đánh dấu xong: ${a.text}`} checked={a.done}
+              onChange={(e) => run(() => mentoringApi.updateActionItem(a.id, { done: e.target.checked }))} />
+            <div className="min-w-0 flex-1">
+              <div className={a.done ? "text-ink-muted line-through" : ""}>{a.text}</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-small text-ink-muted">
+                <span>{OWNER_LABELS[a.owner]}</span>
+                {a.dueDate && <span className="tabular">hạn {formatDate(a.dueDate)}</span>}
+                {a.carriedOver && <Badge>Từ phiên trước</Badge>}
+                {a.overdue && <Badge tone="danger">Quá hạn</Badge>}
+              </div>
+            </div>
+            <Button size="sm" variant="ghost" iconOnly icon={Trash2} label="Xoá việc" onClick={() => run(() => mentoringApi.deleteActionItem(a.id))} />
+          </div>
+        ))}
+      </div>
       {notes.editable && own < notes.maxActionItems && (
-        <form className="row" style={{ flexWrap: "wrap", gap: 8 }} onSubmit={(e) => {
+        <form className="card-foot flex-wrap justify-start" onSubmit={(e) => {
           e.preventDefault();
           if (text.trim().length < 2) return;
           run(() => mentoringApi.addActionItem(notes.sessionId, { text: text.trim(), owner, dueDate: due || null }))
             .then(() => { setText(""); setDue(""); });
         }}>
-          <input style={{ flex: "2 1 240px" }} value={text} maxLength={300} placeholder="Việc cần làm…" onChange={(e) => setText(e.target.value)} />
-          <select value={owner} onChange={(e) => setOwner(e.target.value as ActionItemOwner)}>
+          <Input className="min-w-[200px] flex-[2_1_240px]" value={text} maxLength={300} aria-label="Việc cần làm" placeholder="Thêm việc cần làm…" onChange={(e) => setText(e.target.value)} />
+          <Select className="w-auto" aria-label="Người làm" value={owner} onChange={(e) => setOwner(e.target.value as ActionItemOwner)}>
             <option value="MENTEE">Mentee làm</option>
             <option value="MENTOR">Mentor làm</option>
-          </select>
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-          <button className="btn sm" disabled={text.trim().length < 2}>Thêm</button>
+          </Select>
+          <Input className="w-auto" type="date" aria-label="Hạn" value={due} onChange={(e) => setDue(e.target.value)} />
+          <Button type="submit" icon={Plus} disabled={text.trim().length < 2}>Thêm</Button>
         </form>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -166,50 +169,57 @@ function Notes({ id }: { id: string }) {
 
   return (
     <>
-      <PageHead
+      <PageHeader
         title="Ghi chú phiên"
-        subtitle={session ? <>{other} · {formatDateTime(session.scheduledAt)} <MentoringStatusBadge status={session.status} labels={SESSION_STATUS_LABELS} /></> : undefined}
-      >
-        <Link className="btn secondary sm" href="/mentoring/sessions">← Phiên học</Link>
-      </PageHead>
-      <Alert>{error}</Alert>
-      {!notes.editable && <Alert type="info">Phiên đã huỷ / hết hạn — ghi chú chỉ còn để xem.</Alert>}
-      {session?.agenda && (
-        <div className="card small" style={{ whiteSpace: "pre-wrap" }}><strong>Agenda:</strong> {session.agenda}</div>
-      )}
-      <div className="card stack" style={{ marginTop: 12 }}>
-        <div className="row between">
-          <h2>Ghi chú chung</h2>
-          <SaveHint state={sharedState} at={notes.shared.updatedAt} by={notes.shared.updatedByName} />
-        </div>
-        {conflictDraft !== null && (
-          <Alert type="warn">
-            {other || "Người kia"} vừa cập nhật ghi chú nên bản của bạn chưa được lưu. Ghi chú dưới đây là bản mới nhất; bản của bạn:
-            <pre className="small" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{conflictDraft}</pre>
-            <button className="btn secondary sm" onClick={() => setConflictDraft(null)}>Đã chép lại, ẩn bản này</button>
-          </Alert>
-        )}
-        <textarea rows={12} value={shared} maxLength={20000} disabled={!notes.editable}
-          style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-          placeholder="Markdown: câu hỏi chuẩn bị, nội dung đã trao đổi, link tài liệu…"
-          onChange={(e) => { setShared(e.target.value); sharedDirty.current = true; setSharedState("dirty"); }} />
-        <span className="small muted">Cả hai bên cùng xem và sửa · tự lưu sau {AUTOSAVE_MS / 1000} giây · hỗ trợ Markdown</span>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <ActionItems notes={notes} setError={setError} onChange={() => reload(false).catch(() => {})} />
-      </div>
-      {notes.privateNote && (
-        <div className="card stack" style={{ marginTop: 12 }}>
-          <div className="row between">
-            <h2>Ghi chú riêng của mentor</h2>
-            <SaveHint state={privState} at={notes.privateNote.updatedAt} />
+        back={{ href: "/mentoring/sessions", label: "Phiên học" }}
+        description={session ? <span className="inline-flex flex-wrap items-center gap-2">{other} · {formatDateTime(session.scheduledAt)} <MentoringStatusBadge status={session.status} labels={SESSION_STATUS_LABELS} /></span> : undefined}
+      />
+      <div className="flex flex-col gap-6">
+        <Alert>{error}</Alert>
+        {!notes.editable && <Alert tone="info">Phiên đã huỷ hoặc hết hạn, ghi chú chỉ còn để xem.</Alert>}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="flex min-w-0 flex-col gap-6">
+            {session?.agenda && (
+              <div className="well">
+                <div className="eyebrow mb-1">Agenda</div>
+                <p className="whitespace-pre-wrap">{session.agenda}</p>
+              </div>
+            )}
+            <Card>
+              <CardHeader title="Ghi chú chung" description="Cả hai bên cùng xem và sửa. Tự lưu, hỗ trợ Markdown."
+                actions={<SaveHint state={sharedState} at={notes.shared.updatedAt} by={notes.shared.updatedByName} />} />
+              <CardBody className="flex flex-col gap-3">
+                {conflictDraft !== null && (
+                  <Alert tone="warning" title={`${other || "Người kia"} vừa cập nhật ghi chú`}
+                    action={<Button size="sm" onClick={() => setConflictDraft(null)}>Đã chép lại</Button>}>
+                    Bản của bạn chưa được lưu. Ô bên dưới là bản mới nhất; bản của bạn:
+                    <pre className="mt-2 whitespace-pre-wrap font-mono text-small">{conflictDraft}</pre>
+                  </Alert>
+                )}
+                <Textarea rows={16} value={shared} maxLength={20000} disabled={!notes.editable} aria-label="Ghi chú chung"
+                  className="font-mono text-small leading-6"
+                  placeholder="Câu hỏi chuẩn bị, nội dung đã trao đổi, link tài liệu…"
+                  onChange={(e) => { setShared(e.target.value); sharedDirty.current = true; setSharedState("dirty"); }} />
+              </CardBody>
+            </Card>
           </div>
-          <textarea rows={6} value={priv} maxLength={10000}
-            placeholder="Chỉ bạn nhìn thấy — nhận xét, điểm cần theo dõi ở phiên sau…"
-            onChange={(e) => { setPriv(e.target.value); setPrivState("dirty"); }} />
-          <span className="small muted">Mentee không nhìn thấy ghi chú này.</span>
+          <div className="flex min-w-0 flex-col gap-6">
+            <ActionItems notes={notes} setError={setError} onChange={() => reload(false).catch(() => {})} />
+            {notes.privateNote && (
+              <Card>
+                <CardHeader title={<span className="inline-flex items-center gap-2"><Lock aria-hidden="true" className="size-4 text-ink-muted" />Ghi chú riêng</span>}
+                  description="Mentee không nhìn thấy ghi chú này."
+                  actions={<SaveHint state={privState} at={notes.privateNote.updatedAt} />} />
+                <CardBody>
+                  <Textarea rows={8} value={priv} maxLength={10000} aria-label="Ghi chú riêng"
+                    placeholder="Nhận xét, điểm cần theo dõi ở phiên sau…"
+                    onChange={(e) => { setPriv(e.target.value); setPrivState("dirty"); }} />
+                </CardBody>
+              </Card>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </>
   );
 }

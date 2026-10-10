@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { Alert, useDialog } from "@/components/ui";
+import { Check, Plus, Sparkles } from "lucide-react";
+import { Alert, Button, ButtonLink, Chip, Chips, Field, Textarea, useDialog } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { errorMessage } from "@/lib/api";
 import type { Conversation } from "@/types";
@@ -56,64 +56,63 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
 
   if (conversation.goalStatus === "CONFIRMED") {
     return (
-      <div>
-        <Alert type="success">
+      <div className="flex flex-col gap-4">
+        <Alert tone="success">
           {conversation.profileSynced
-            ? "Đã dùng mục tiêu này cho hồ sơ (kèm kỹ năng bạn đã chọn); gợi ý mentor được cập nhật ngay sau đó."
-            : "Đã ghi nhận mục tiêu, đang đồng bộ vào hồ sơ (hệ thống sẽ tự thử lại nếu dịch vụ hồ sơ tạm lỗi)..."}
+            ? "Đã dùng mục tiêu này cho hồ sơ (kèm kỹ năng bạn đã chọn). Gợi ý mentor được cập nhật ngay sau đó."
+            : "Đã ghi nhận mục tiêu, đang đồng bộ vào hồ sơ. Hệ thống tự thử lại nếu dịch vụ hồ sơ tạm lỗi."}
         </Alert>
-        <div className="card" style={{ background: "var(--surface-2)", boxShadow: "none" }}>
-          <strong>Mục tiêu đã dùng</strong>
-          <p style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{conversation.confirmedGoal}</p>
+        <div className="well flex flex-col gap-2">
+          <div className="eyebrow">Mục tiêu đã dùng</div>
+          <p className="whitespace-pre-wrap">{conversation.confirmedGoal}</p>
           {(conversation.addedSkills ?? []).length > 0 && (
-            <div className="chips" style={{ marginTop: 6 }}>{conversation.addedSkills.map((s) => <span key={s} className="chip">{s}</span>)}</div>
+            <Chips>{conversation.addedSkills.map((s) => <Chip key={s}>{s}</Chip>)}</Chips>
           )}
         </div>
-        <Link href="/matching" className="btn" style={{ marginTop: "1rem" }}>Tìm mentor phù hợp</Link>
+        <div><ButtonLink href="/matching" variant="primary" icon={Sparkles}>Tìm mentor phù hợp</ButtonLink></div>
       </div>
     );
   }
 
   if (conversation.goalStatus === "DISCARDED") {
-    return <Alert type="info">Bạn đã bỏ qua mục tiêu này — hồ sơ không thay đổi. Tải CV mới nếu muốn làm lại.</Alert>;
+    return <Alert tone="info">Bạn đã bỏ qua mục tiêu này, hồ sơ không thay đổi. Tải CV mới nếu muốn làm lại.</Alert>;
   }
 
   return (
-    <div>
+    <div className="flex flex-col gap-4">
       {dialog}
-      <Alert type="info">Đây là bản nháp mục tiêu. Hồ sơ của bạn chưa thay đổi cho tới khi bạn chọn &quot;Dùng mục tiêu này&quot;.</Alert>
+      <Alert tone="info">Đây là bản nháp. Hồ sơ của bạn chưa thay đổi cho tới khi bạn chọn “Dùng mục tiêu này”.</Alert>
       <Alert>{error}</Alert>
-      <div className="card" style={{ background: "var(--surface-2)", boxShadow: "none" }}>
-        <strong>Mục tiêu đã làm rõ (bản nháp)</strong>
-        {editing ? (
-          <>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={MAX_GOAL} disabled={busy} style={{ marginTop: 6, minHeight: 140 }} />
-            <div className="hint">{trimmed.length}/{MAX_GOAL} ký tự{trimmed.length < MIN_GOAL ? ` — tối thiểu ${MIN_GOAL} ký tự` : ""}</div>
-          </>
-        ) : (
-          <p style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{text}</p>
-        )}
-      </div>
-      {suggested.length > 0 && (
-        <div style={{ marginTop: "1rem" }}>
-          <strong>Kỹ năng từ CV</strong>
-          <p className="muted small">Chọn kỹ năng muốn thêm vào hồ sơ ({chosen.length}/{suggested.length} đã chọn).</p>
-          <div className="chips">
-            {suggested.map((s) => (
-              <button key={s} type="button" className={`chip${chosen.includes(s) ? " match" : ""}`} style={{ cursor: "pointer" }} aria-pressed={chosen.includes(s)}
-                disabled={busy} onClick={() => toggle(s)}>
-                {chosen.includes(s) ? "✓ " : "+ "}{s}
-              </button>
-            ))}
-          </div>
+      {editing ? (
+        <Field label="Mục tiêu đã làm rõ" id="goal-text"
+          error={trimmed.length < MIN_GOAL ? `Tối thiểu ${MIN_GOAL} ký tự.` : undefined}
+          hint={`${trimmed.length}/${MAX_GOAL} ký tự`}>
+          <Textarea id="goal-text" value={text} onChange={(e) => setText(e.target.value)} maxLength={MAX_GOAL} disabled={busy} className="min-h-[140px]" />
+        </Field>
+      ) : (
+        <div className="well flex flex-col gap-2">
+          <div className="eyebrow">Mục tiêu đã làm rõ · bản nháp</div>
+          <p className="whitespace-pre-wrap">{text}</p>
         </div>
       )}
-      <div className="row" style={{ gap: 8, marginTop: "1rem" }}>
-        <button type="button" className="btn" disabled={busy || !valid} onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed, chosen))}>
-          {busy ? "Đang lưu..." : "Dùng mục tiêu này"}
-        </button>
-        {!editing && <button type="button" className="btn secondary" disabled={busy} onClick={() => setEditing(true)}>Sửa</button>}
-        <button type="button" className="btn ghost" disabled={busy} onClick={discard}>Bỏ qua</button>
+      {suggested.length > 0 && (
+        <Field label="Kỹ năng từ CV" hint={`Chọn kỹ năng muốn thêm vào hồ sơ (${chosen.length}/${suggested.length} đã chọn).`}>
+          <Chips>
+            {suggested.map((s) => (
+              <Chip key={s} selected={chosen.includes(s)} onClick={busy ? undefined : () => toggle(s)}>
+                {chosen.includes(s) ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
+                {s}
+              </Chip>
+            ))}
+          </Chips>
+        </Field>
+      )}
+      <div className="form-actions">
+        <Button variant="primary" loading={busy} disabled={!valid} onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed, chosen))}>
+          {busy ? "Đang lưu…" : "Dùng mục tiêu này"}
+        </Button>
+        {!editing && <Button disabled={busy} onClick={() => setEditing(true)}>Sửa</Button>}
+        <Button variant="ghost" disabled={busy} onClick={discard}>Bỏ qua</Button>
       </div>
     </div>
   );

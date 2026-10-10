@@ -12,6 +12,7 @@ import type {
   SessionDuration,
   SessionType,
 } from "@/types";
+import type { StatusTone } from "@/lib/format";
 
 // Nhãn tiếng Việt cho các giá trị enum của mentoring-service (contracts/mentoring-service.yaml).
 
@@ -59,11 +60,11 @@ export const MENTORING_STATUS_LABELS: Record<string, string> = {
 /** Nhãn riêng cho trạng thái PENDING của phiên (chờ thanh toán). */
 export const SESSION_STATUS_LABELS: Record<string, string> = { ...MENTORING_STATUS_LABELS, PENDING: "Chờ thanh toán" };
 
-/** Màu badge theo trạng thái (cùng lớp CSS với StatusBadge). */
-export function mentoringTone(status: string): "good" | "bad" | "warn" | "neutral" {
-  if (["CONFIRMED", "COMPLETED", "ACCEPTED", "SUCCESS"].includes(status)) return "good";
-  if (["CANCELLED", "REJECTED", "FAILED", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED"].includes(status)) return "bad";
-  if (["PENDING", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW"].includes(status)) return "warn";
+/** Sắc thái badge theo trạng thái mentoring / thanh toán. */
+export function mentoringTone(status: string): StatusTone {
+  if (["CONFIRMED", "COMPLETED", "ACCEPTED", "SUCCESS"].includes(status)) return "success";
+  if (["CANCELLED", "REJECTED", "FAILED", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED"].includes(status)) return "danger";
+  if (["PENDING", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW"].includes(status)) return "warning";
   return "neutral";
 }
 

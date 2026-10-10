@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Empty, Loading, PageHead, ProgressBar, Alert } from "@/components/ui";
+import { BookOpen, Map as MapIcon, Search } from "lucide-react";
+import { Alert, Badge, Button, Card, Chip, Chips, EmptyState, Input, Loading, PageHeader, Progress, Select, Tabs } from "@/components/ui";
+import { domainLabel } from "@/features/profile/api";
 import { learningApi } from "@/features/learning/api";
 import { errorMessage } from "@/lib/api";
 import { DOMAINS } from "@/features/profile/api";
@@ -43,58 +45,68 @@ function LearningHub() {
     };
   }, [tab, domain, q, reloadKey]);
 
-  const retry = <button className="btn ghost sm" onClick={() => setReloadKey((k) => k + 1)}>Thử lại</button>;
+  const retry = <Button size="sm" variant="ghost" onClick={() => setReloadKey((k) => k + 1)}>Thử lại</Button>;
 
   return (
     <>
-      <PageHead title="Learning Hub" subtitle="Khoá học, tài liệu và lộ trình học theo từng hướng đi." />
-      <div className="tabs">
-        <button className={tab === "mine" ? "active" : ""} onClick={() => setTab("mine")}>Khoá học của tôi</button>
-        <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>Tất cả khoá học</button>
-        <button className={tab === "roadmaps" ? "active" : ""} onClick={() => setTab("roadmaps")}>Roadmap</button>
-      </div>
+      <PageHeader title="Learning Hub" description="Khoá học, tài liệu và roadmap theo từng hướng đi, để học giữa các phiên mentoring." />
+      <Tabs className="mb-4" value={tab} onChange={setTab} tabs={[
+        { id: "mine", label: "Khoá học của tôi" },
+        { id: "all", label: "Tất cả khoá học" },
+        { id: "roadmaps", label: "Roadmap" },
+      ]} />
 
       {tab === "all" && (
-        <div className="row" style={{ marginBottom: "1rem" }}>
-          <select value={domain} onChange={(e) => setDomain(e.target.value)} style={{ maxWidth: 220 }}>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Select aria-label="Lĩnh vực" value={domain} onChange={(e) => setDomain(e.target.value)} className="w-auto min-w-[200px]">
             <option value="">Mọi lĩnh vực</option>
             {DOMAINS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <input placeholder="Tìm khoá học..." value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320 }} />
+          </Select>
+          <div className="relative w-full max-w-[320px]">
+            <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
+            <Input type="search" aria-label="Tìm khoá học" placeholder="Tìm khoá học" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
+          </div>
         </div>
       )}
 
       {tab !== "roadmaps" && (courses === undefined ? <Loading /> : courses === null ? (
-        <Alert>{coursesError || "Không tải được danh sách khoá học."} {retry}</Alert>
+        <Alert action={retry}>{coursesError || "Không tải được danh sách khoá học."}</Alert>
       ) : courses.length === 0 ? (
-        <Empty>{tab === "mine" ? "Bạn chưa đăng ký khoá học nào — xem tab Tất cả khoá học." : "Không có khoá học phù hợp."}</Empty>
+        <Card>
+          <EmptyState icon={BookOpen} title={tab === "mine" ? "Bạn chưa đăng ký khoá học nào" : "Không có khoá học phù hợp"}
+            action={tab === "mine" && <Button size="sm" onClick={() => setTab("all")}>Xem tất cả khoá học</Button>}>
+            {tab === "mine" ? "Đăng ký khoá học để theo dõi tiến độ ở đây." : "Thử lĩnh vực hoặc từ khoá khác."}
+          </EmptyState>
+        </Card>
       ) : (
-        <div className="grid grid-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {courses.map((c) => (
-            <Link key={c.id} href={`/learning/courses/${c.id}`} className="card" style={{ color: "inherit", textDecoration: "none" }}>
-              <div className="row between"><span className="badge primary">{c.domain}</span><span className="badge">{LEVELS[c.level]}</span></div>
-              <h3 style={{ marginTop: 8 }}>{c.title}</h3>
-              <p className="muted small">{c.description}</p>
-              <div className="chips" style={{ marginBottom: 8 }}>{c.skills.map((s) => <span className="chip" key={s}>{s}</span>)}</div>
-              <div className="row between small muted"><span>{c.materialCount} tài liệu</span>{c.enrolled && <span>{c.percentComplete}%</span>}</div>
-              {c.enrolled && <ProgressBar value={c.percentComplete} />}
+            <Link key={c.id} href={`/learning/courses/${c.id}`} className="card flex flex-col gap-3 p-5">
+              <div className="flex flex-wrap gap-2"><Badge tone="accent" plain>{domainLabel(c.domain)}</Badge><Badge plain>{LEVELS[c.level]}</Badge></div>
+              <div className="text-title-3 font-semibold text-ink">{c.title}</div>
+              <p className="line-clamp-3 text-small text-ink-muted">{c.description}</p>
+              {c.skills.length > 0 && <Chips>{c.skills.map((s) => <Chip key={s}>{s}</Chip>)}</Chips>}
+              <div className="mt-auto flex flex-col gap-2 pt-1">
+                <div className="flex justify-between text-small text-ink-muted"><span>{c.materialCount} tài liệu</span>{c.enrolled && <span className="tabular">{c.percentComplete}%</span>}</div>
+                {c.enrolled && <Progress value={c.percentComplete} label={`Tiến độ ${c.title}`} />}
+              </div>
             </Link>
           ))}
         </div>
       ))}
 
       {tab === "roadmaps" && (roadmaps === undefined ? <Loading /> : roadmaps === null ? (
-        <Alert>{roadmapsError || "Không tải được danh sách roadmap."} {retry}</Alert>
+        <Alert action={retry}>{roadmapsError || "Không tải được danh sách roadmap."}</Alert>
       ) : roadmaps.length === 0 ? (
-        <Empty>Chưa có roadmap nào.</Empty>
+        <Card><EmptyState icon={MapIcon} title="Chưa có roadmap nào" /></Card>
       ) : (
-        <div className="grid grid-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {roadmaps.map((r) => (
-            <Link key={r.id} href={`/learning/roadmaps/${r.id}`} className="card" style={{ color: "inherit", textDecoration: "none" }}>
-              <span className="badge primary">{r.track}</span>
-              <h3 style={{ marginTop: 8 }}>{r.title}</h3>
-              <p className="muted small">{r.description}</p>
-              <p className="small">{r.itemCount} bước</p>
+            <Link key={r.id} href={`/learning/roadmaps/${r.id}`} className="card flex flex-col gap-3 p-5">
+              <div><Badge tone="accent" plain>{r.track}</Badge></div>
+              <div className="text-title-3 font-semibold text-ink">{r.title}</div>
+              <p className="line-clamp-3 text-small text-ink-muted">{r.description}</p>
+              <div className="mt-auto text-small text-ink-muted tabular">{r.itemCount} bước</div>
             </Link>
           ))}
         </div>

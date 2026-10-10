@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead } from "@/components/ui";
+import { Handshake } from "lucide-react";
+import { Alert, Avatar, Badge, ButtonLink, Card, EmptyState, List, ListRow, Loading, PageHeader } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { MentoringRequest, SessionUser } from "@/types";
@@ -21,27 +21,34 @@ function Relationships({ user }: { user: SessionUser }) {
   const isMentor = user.role === "MENTOR";
   return (
     <>
-      <PageHead title="Không gian mentoring" subtitle="Mục tiêu chung và các buổi học của từng quan hệ mentoring." />
-      <Alert>{error}</Alert>
-      {!items ? (error ? null : <Loading />) : items.length === 0 ? (
-        <Empty>Chưa có quan hệ mentoring nào. Khi mentor chấp nhận yêu cầu, không gian mentoring sẽ xuất hiện ở đây.</Empty>
-      ) : (
-        <div className="stack">
-          {items.map((r) => (
-            <div key={r.id} className="card row between">
-              <div>
-                <strong>{isMentor ? r.menteeName : r.mentorName}</strong>
-                <div className="small muted">
-                  {RELATIONSHIP_STATUS_LABELS[r.status] || r.status} · bắt đầu {formatDate(r.respondedAt || r.createdAt)}
-                </div>
-                <div className="small" style={{ marginTop: 4 }}>{r.goal.length > 140 ? `${r.goal.slice(0, 140)}…` : r.goal}</div>
-              </div>
-              <Link className={`btn sm ${r.status === "ACCEPTED" ? "" : "secondary"}`} href={`/mentoring/relationships/${r.id}`}>
-                {r.status === "ACCEPTED" ? "Mở không gian" : "Xem lại"}
-              </Link>
-            </div>
-          ))}
-        </div>
+      <PageHeader title="Quan hệ mentoring" description="Mục tiêu chung, phiên học và ghi chú của từng quan hệ mentoring." />
+      <Alert className="mb-6">{error}</Alert>
+      {!items ? (error ? null : <Loading />) : (
+        <Card>
+          {items.length === 0 ? (
+            <EmptyState icon={Handshake} title="Chưa có quan hệ mentoring nào"
+              action={!isMentor && <ButtonLink href="/matching" size="sm">Tìm mentor</ButtonLink>}>
+              Khi mentor chấp nhận yêu cầu, không gian mentoring sẽ xuất hiện ở đây.
+            </EmptyState>
+          ) : (
+            <List>
+              {items.map((r) => {
+                const name = isMentor ? r.menteeName : r.mentorName;
+                const active = r.status === "ACCEPTED";
+                return (
+                  <ListRow
+                    key={r.id}
+                    href={`/mentoring/relationships/${r.id}`}
+                    leading={<Avatar name={name} />}
+                    title={<span className="inline-flex flex-wrap items-center gap-2">{name}<Badge tone={active ? "success" : "neutral"}>{RELATIONSHIP_STATUS_LABELS[r.status] || r.status}</Badge></span>}
+                    meta={<>Bắt đầu {formatDate(r.respondedAt || r.createdAt)} · {r.goal.length > 140 ? `${r.goal.slice(0, 140)}…` : r.goal}</>}
+                    trailing={<span className="text-small font-medium text-accent">{active ? "Mở không gian" : "Xem lại"}</span>}
+                  />
+                );
+              })}
+            </List>
+          )}
+        </Card>
       )}
     </>
   );

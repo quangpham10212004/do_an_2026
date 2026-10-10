@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Loading, useDialog } from "@/components/ui";
+import { Download, Eye, FileText, Trash2 } from "lucide-react";
+import { Alert, Button, Card, CardHeader, EmptyState, List, ListRow, Loading, useDialog } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -105,41 +106,45 @@ export default function MyCvs({ refreshKey = 0, onDeleted }: MyCvsProps) {
   }
 
   return (
-    <div className="card" id="my-cvs">
+    <Card>
+      <div id="my-cvs" />
       {dialog}
-      <h2>CV của tôi</h2>
-      <p className="muted small">
-        Với mỗi CV, hệ thống lưu file PDF gốc, văn bản và thông tin trích xuất (kỹ năng, kinh nghiệm, dự án, học vấn) cùng cuộc
-        trò chuyện làm rõ mục tiêu nếu có. File và văn bản gốc được tự động xoá sau 12 tháng (thông tin bạn đã xác nhận được
-        giữ lại). Bạn có thể xoá bất cứ lúc nào.
-      </p>
-      <Alert type="success">{msg}</Alert>
-      {error && (
-        <Alert>
-          {error} <button type="button" className="btn ghost sm" onClick={() => load()}>Thử lại</button>
-        </Alert>
-      )}
-      {cvs === undefined && <Loading text="Đang tải danh sách CV..." />}
-      {cvs?.length === 0 && <p className="muted">Bạn chưa tải CV nào lên.</p>}
-      {cvs?.map((cv) => (
-        <div key={cv.id} className="list-item">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <strong>{cv.fileName}</strong>
-            <div className="muted small">
-              Tải lên {formatDateTime(cv.uploadedAt)} · {cv.consentExternalAi ? "đồng ý gửi AI bên ngoài (DeepSeek)" : "chỉ xử lý trên nền tảng (rule-based)"}
-              <br />{cv.purgedAt ? `File đã được xoá theo chính sách lưu giữ (${formatDateTime(cv.purgedAt)})` : `Tự động xoá file sau ${formatDateTime(cv.deleteAfter)}`}
-              {(cv.addedSkills ?? []).length > 0 && <> · Kỹ năng đã thêm: {cv.addedSkills.join(", ")}</>}
-            </div>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            {!cv.purgedAt && <button type="button" className="btn secondary sm" onClick={() => open(cv, false)}>Xem</button>}
-            {!cv.purgedAt && <button type="button" className="btn ghost sm" onClick={() => open(cv, true)}>Tải xuống</button>}
-            <button type="button" className="btn danger sm" disabled={busyId === cv.id} onClick={() => remove(cv)}>
-              {busyId === cv.id ? "Đang xoá..." : "Xoá"}
-            </button>
-          </div>
+      <CardHeader
+        title="CV của tôi"
+        description="Mỗi CV gồm file PDF gốc, văn bản và thông tin trích xuất, cùng cuộc trò chuyện làm rõ mục tiêu nếu có. File và văn bản gốc tự động xoá sau 12 tháng; thông tin bạn đã xác nhận được giữ lại."
+      />
+      {(msg || error) && (
+        <div className="flex flex-col gap-2 px-5 pt-4">
+          <Alert tone="success">{msg}</Alert>
+          {error && <Alert action={<Button size="sm" variant="ghost" onClick={() => load()}>Thử lại</Button>}>{error}</Alert>}
         </div>
-      ))}
-    </div>
+      )}
+      {cvs === undefined && <Loading text="Đang tải danh sách CV…" />}
+      {cvs?.length === 0 && <EmptyState icon={FileText} title="Chưa có CV nào">CV bạn tải lên sẽ hiện ở đây.</EmptyState>}
+      {!!cvs?.length && (
+        <List>
+          {cvs.map((cv) => (
+            <ListRow
+              key={cv.id}
+              leading={<FileText aria-hidden="true" className="size-5 flex-none text-ink-subtle" />}
+              title={cv.fileName}
+              meta={<>
+                Tải lên {formatDateTime(cv.uploadedAt)} · {cv.consentExternalAi ? "đồng ý gửi AI bên ngoài (DeepSeek)" : "chỉ xử lý trên MentorHub (rule-based)"}
+                <br />
+                {cv.purgedAt ? `File đã xoá theo chính sách lưu giữ (${formatDateTime(cv.purgedAt)})` : `Tự động xoá file sau ${formatDateTime(cv.deleteAfter)}`}
+                {(cv.addedSkills ?? []).length > 0 && <> · Kỹ năng đã thêm: {cv.addedSkills.join(", ")}</>}
+              </>}
+              trailing={<>
+                {!cv.purgedAt && <Button size="sm" icon={Eye} onClick={() => open(cv, false)}>Xem</Button>}
+                {!cv.purgedAt && <Button size="sm" variant="ghost" iconOnly icon={Download} label="Tải xuống" onClick={() => open(cv, true)} />}
+                <Button size="sm" variant="danger-quiet" icon={Trash2} loading={busyId === cv.id} onClick={() => remove(cv)}>
+                  {busyId === cv.id ? "Đang xoá…" : "Xoá"}
+                </Button>
+              </>}
+            />
+          ))}
+        </List>
+      )}
+    </Card>
   );
 }

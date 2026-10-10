@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Flag, Send } from "lucide-react";
+import { Alert, Avatar, Button, ButtonLink, Card, FlashAlerts, Loading, PageHeader, Select, Textarea } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import { MESSAGE_MAX, MESSAGE_REPORT_REASONS, MESSAGE_REPORT_REASON_LABELS } from "@/features/mentoring/labels";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
@@ -25,16 +25,16 @@ function ReportForm({ messageId, onDone, onCancel }: { messageId: string; onDone
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
-    <div className="card stack" style={{ boxShadow: "none", marginTop: 4, alignSelf: "flex-start", maxWidth: 420 }}>
-      <strong className="small">Báo cáo tin nhắn</strong>
+    <div className="well flex w-full max-w-[420px] flex-col gap-2 self-start">
+      <div className="text-small font-semibold">Báo cáo tin nhắn</div>
       <Alert>{error}</Alert>
-      <select value={reason} onChange={(e) => setReason(e.target.value as MessageReportReason | "")}>
-        <option value="">— Chọn lý do —</option>
+      <Select aria-label="Lý do báo cáo" value={reason} onChange={(e) => setReason(e.target.value as MessageReportReason | "")}>
+        <option value="">Chọn lý do</option>
         {MESSAGE_REPORT_REASONS.map((r) => <option key={r} value={r}>{MESSAGE_REPORT_REASON_LABELS[r]}</option>)}
-      </select>
-      <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Mô tả thêm (tuỳ chọn)" />
-      <div className="row">
-        <button className="btn danger sm" disabled={!reason || busy} onClick={async () => {
+      </Select>
+      <Textarea aria-label="Mô tả thêm" className="min-h-[64px]" value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Mô tả thêm (không bắt buộc)" />
+      <div className="form-actions">
+        <Button size="sm" variant="danger" disabled={!reason} loading={busy} onClick={async () => {
           if (!reason) return;
           setBusy(true);
           try {
@@ -45,8 +45,8 @@ function ReportForm({ messageId, onDone, onCancel }: { messageId: string; onDone
           } finally {
             setBusy(false);
           }
-        }}>Gửi báo cáo</button>
-        <button className="btn secondary sm" onClick={onCancel}>Thôi</button>
+        }}>Gửi báo cáo</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Huỷ</Button>
       </div>
     </div>
   );
@@ -117,35 +117,36 @@ function Thread({ id }: { id: string }) {
     }
   };
 
+  const name = c.counterpartName || "Người dùng";
   return (
-    <>
-      <PageHead
-        title={<>{c.counterpartName || "Người dùng"} <span className="muted small">· {c.counterpartRole === "MENTOR" ? "mentor" : "mentee"}</span></>}
-        subtitle={<>Yêu cầu mentoring <MentoringStatusBadge status={c.requestStatus} /></>}
-      >
-        <Link className="btn secondary sm" href="/messages">← Hộp thư</Link>
-        <Link className="btn secondary sm" href="/mentoring/requests">Yêu cầu</Link>
-      </PageHead>
-      <Alert type="success">{ok}</Alert>
-      <Alert>{error}</Alert>
+    <div className="mx-auto flex max-w-[860px] flex-col gap-4">
+      <PageHeader
+        back={{ href: "/messages", label: "Tin nhắn" }}
+        title={<span className="inline-flex items-center gap-3"><Avatar name={name} />{name}</span>}
+        description={<span className="inline-flex flex-wrap items-center gap-2">{c.counterpartRole === "MENTOR" ? "Mentor" : "Mentee"} · Yêu cầu mentoring <MentoringStatusBadge status={c.requestStatus} /></span>}
+        actions={<ButtonLink href="/mentoring/requests" size="sm">Xem yêu cầu</ButtonLink>}
+      />
+      <FlashAlerts flash={{ ok, error }} />
       {view.contactsMasked && (
-        <Alert type="info">
-          Số điện thoại và email được ẩn cho tới khi có phiên trả phí đầu tiên được xác nhận — hãy giữ giao dịch trên MentorHub để được bảo vệ khi có sự cố.
+        <Alert tone="info">
+          Số điện thoại và email được ẩn cho tới khi có phiên trả phí đầu tiên được xác nhận. Giữ giao dịch trên MentorHub để được bảo vệ khi có sự cố.
         </Alert>
       )}
-      <div className="card">
-        <div className="chat" style={{ maxHeight: "60vh", overflowY: "auto" }}>
-          {messages.length === 0 && <div className="muted small">Chưa có tin nhắn. Hãy mở đầu cuộc trò chuyện.</div>}
+      <Card>
+        <div className="chat max-h-[60vh] overflow-y-auto p-5 max-sm:p-4">
+          {messages.length === 0 && <div className="bubble-system bubble">Chưa có tin nhắn. Hãy mở đầu cuộc trò chuyện.</div>}
           {messages.map((m) => (
-            <div key={m.id} style={{ display: "flex", flexDirection: "column" }}>
-              <div className={`bubble ${m.mine ? "me" : "bot"}`}>
-                <div className="meta">{m.mine ? "Bạn" : c.counterpartName || "Người dùng"} · {formatDateTime(m.createdAt)}</div>
-                {m.body}
+            <div key={m.id} className="group flex flex-col gap-1">
+              <div className={`bubble ${m.mine ? "bubble-me" : ""}`}>{m.body}</div>
+              <div className={`bubble-meta flex items-center gap-2 ${m.mine ? "bubble-meta-me" : ""}`}>
+                {m.mine ? "Bạn" : name} · {formatDateTime(m.createdAt)}
+                {!m.mine && reporting !== m.id && (
+                  <button type="button" className="inline-flex cursor-pointer items-center gap-1 text-ink-subtle hover:text-danger"
+                    onClick={() => { setOk(""); setReporting(m.id); }}>
+                    <Flag aria-hidden="true" className="size-3" />Báo cáo
+                  </button>
+                )}
               </div>
-              {!m.mine && reporting !== m.id && (
-                <button className="btn secondary sm" style={{ alignSelf: "flex-start", marginTop: 2 }}
-                  onClick={() => { setOk(""); setReporting(m.id); }}>Báo cáo</button>
-              )}
               {reporting === m.id && (
                 <ReportForm messageId={m.id} onCancel={() => setReporting(null)}
                   onDone={(msg) => { setReporting(null); setOk(msg); }} />
@@ -154,34 +155,32 @@ function Thread({ id }: { id: string }) {
           ))}
           <div ref={bottom} />
         </div>
-      </div>
-      <div className="card stack" style={{ marginTop: 12 }}>
-        {!c.writable ? (
-          <div className="muted small">Cuộc trò chuyện đã đóng{view.readOnlyAt ? ` từ ${formatDateTime(view.readOnlyAt)}` : ""} — chỉ còn để xem.</div>
-        ) : (
-          <>
-            {remaining !== null && (
-              <div className="small muted">
-                Trước khi mentor chấp nhận, bạn còn gửi được <strong>{remaining}</strong> tin nhắn.
+        <div className="card-foot flex-col items-stretch">
+          {!c.writable ? (
+            <div className="text-small text-ink-muted">Cuộc trò chuyện đã đóng{view.readOnlyAt ? ` từ ${formatDateTime(view.readOnlyAt)}` : ""}, chỉ còn để xem.</div>
+          ) : (
+            <>
+              {remaining !== null && (
+                <div className="text-small text-ink-muted">Trước khi mentor chấp nhận, bạn còn gửi được <strong className="text-ink tabular">{remaining}</strong> tin nhắn.</div>
+              )}
+              {view.readOnlyAt && (
+                <div className="text-small text-ink-muted">Yêu cầu đã đóng; cuộc trò chuyện chuyển sang chỉ xem lúc {formatDateTime(view.readOnlyAt)}.</div>
+              )}
+              <div className="flex items-end gap-2">
+                <Textarea value={draft} maxLength={MESSAGE_MAX} disabled={blocked} rows={2} aria-label="Tin nhắn" className="min-h-[44px]"
+                  placeholder={blocked ? "Bạn đã dùng hết lượt nhắn trước khi được chấp nhận" : "Nhập tin nhắn…"}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send();
+                  }} />
+                <Button variant="primary" iconOnly icon={Send} label="Gửi" loading={sending} disabled={blocked || !draft.trim()} onClick={send} />
               </div>
-            )}
-            {c.writable && view.readOnlyAt && (
-              <div className="small muted">Yêu cầu đã đóng; cuộc trò chuyện chuyển sang chỉ xem lúc {formatDateTime(view.readOnlyAt)}.</div>
-            )}
-            <textarea value={draft} maxLength={MESSAGE_MAX} disabled={blocked} rows={3}
-              placeholder={blocked ? "Bạn đã dùng hết lượt nhắn trước khi được chấp nhận" : "Nhập tin nhắn…"}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send();
-              }} />
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span className="small muted">{draft.length}/{MESSAGE_MAX} · Ctrl/⌘ + Enter để gửi</span>
-              <button className="btn sm" disabled={blocked || sending || !draft.trim()} onClick={send}>Gửi</button>
-            </div>
-          </>
-        )}
-      </div>
-    </>
+              <span className="text-small text-ink-subtle tabular">{draft.length}/{MESSAGE_MAX} · Ctrl/⌘ + Enter để gửi</span>
+            </>
+          )}
+        </div>
+      </Card>
+    </div>
   );
 }
 

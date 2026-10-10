@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { mentoringApi } from "@/features/mentoring/api";
 import type { AvailableSlots, IsoDateTime, TimeSlot, Uuid } from "@/types";
 import { errorMessage } from "@/lib/api";
+import { Alert, Loading } from "@/components/ui";
 
 const DAYS = 14;
 
@@ -68,33 +69,35 @@ export default function SlotPicker({ mentorId, durationMinutes, value, onChange,
     if (value && !data.slots.some((s) => s.startAt === value)) onChange(null);
   }, [data, byDay, days, day, value, onChange]);
 
-  if (data === undefined) return <p className="muted small">Đang tải lịch trống của mentor...</p>;
-  if (error || !data) return <div className="alert error">{error || "Không tải được lịch trống."}</div>;
+  if (data === undefined) return <Loading text="Đang tải lịch trống của mentor…" />;
+  if (error || !data) return <Alert>{error || "Không tải được lịch trống. Tải lại trang để thử lại."}</Alert>;
   if (data.slots.length === 0) {
-    return <div className="alert info">Mentor không còn khung giờ trống cho phiên {durationMinutes} phút trong {DAYS} ngày tới. Hãy thử thời lượng ngắn hơn.</div>;
+    return <Alert tone="info">Mentor không còn khung giờ trống cho phiên {durationMinutes} phút trong {DAYS} ngày tới. Thử thời lượng ngắn hơn.</Alert>;
   }
 
   const times = (day && byDay[day]) || [];
   const timeLabel = (iso: IsoDateTime) => new Date(iso).toLocaleTimeString("vi-VN", { timeZone, hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div>
-      <div className="slot-days" role="group" aria-label="Chọn ngày">
+    <div className="flex flex-col gap-4">
+      <div className="days" role="group" aria-label="Chọn ngày">
         {days.map((d) => (
-          <button key={d.key} type="button" className="slot-day" aria-pressed={d.key === day}
+          <button key={d.key} type="button" className="day" aria-pressed={d.key === day}
             disabled={!byDay[d.key]} onClick={() => setDay(d.key)}>
-            {d.weekday}<small>{d.label}</small>
+            <small>{d.weekday}</small>
+            <strong>{d.label}</strong>
           </button>
         ))}
       </div>
-      <div className="slot-times" role="group" aria-label="Chọn giờ bắt đầu">
+      <div className="times" role="group" aria-label="Chọn giờ bắt đầu">
         {times.map((s) => (
-          <button key={s.startAt} type="button" className="slot-time" aria-pressed={s.startAt === value}
+          <button key={s.startAt} type="button" className="time" aria-pressed={s.startAt === value}
             onClick={() => onChange(s.startAt)} title={`${timeLabel(s.startAt)} – ${timeLabel(s.endAt)}`}>
             {timeLabel(s.startAt)}
           </button>
         ))}
       </div>
+      <div className="field-hint">Giờ hiển thị theo múi giờ {timeZone}.</div>
     </div>
   );
 }

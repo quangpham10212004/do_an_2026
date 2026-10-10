@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead } from "@/components/ui";
+import { ClipboardList, Filter } from "lucide-react";
+import { Alert, Button, Card, CardBody, CardFooter, EmptyState, Field, Input, Loading, PageHeader, Pagination, Table } from "@/components/ui";
 import { authApi, type AuditFilters } from "@/features/auth/api";
 import { formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
@@ -22,21 +23,21 @@ function Diff({ before, after }: { before: JsonObject | null; after: JsonObject 
   const keys = Array.from(new Set([...Object.keys(before || {}), ...Object.keys(after || {})]));
   const changed = keys.filter((k) => show(before?.[k]) !== show(after?.[k]));
   const same = keys.length - changed.length;
-  if (!keys.length) return <span className="muted">—</span>;
+  if (!keys.length) return <span className="text-ink-subtle">—</span>;
   return (
-    <div className="small" style={{ fontFamily: "monospace", wordBreak: "break-word" }}>
+    <div className="font-mono text-[12px] leading-5 break-words">
       {changed.map((k) => (
         <div key={k}>
-          <strong>{k}</strong>:{" "}
-          {before && k in before ? <span style={{ textDecoration: "line-through", opacity: 0.7 }}>{show(before[k])}</span> : null}
+          <span className="font-semibold">{k}</span>:{" "}
+          {before && k in before ? <span className="text-danger line-through">{show(before[k])}</span> : null}
           {before && k in before && after && k in after ? " → " : null}
-          {after && k in after ? <span>{show(after[k])}</span> : null}
+          {after && k in after ? <span className="text-success">{show(after[k])}</span> : null}
         </div>
       ))}
       {same > 0 && (
-        <details>
-          <summary className="muted">{same} trường không đổi</summary>
-          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(after ?? before, null, 2)}</pre>
+        <details className="mt-1">
+          <summary className="cursor-pointer font-sans text-small text-ink-muted">{same} trường không đổi</summary>
+          <pre className="mt-1 rounded-sm bg-surface-sunken p-2 whitespace-pre-wrap">{JSON.stringify(after ?? before, null, 2)}</pre>
         </details>
       )}
     </div>
@@ -69,55 +70,56 @@ function Audit() {
     setFilters({ ...form, page: 0 });
   }
 
-  const field = (key: keyof Omit<AuditFilters, "page">, label: string, type = "text") => (
-    <div className="field" style={{ minWidth: 150, flex: 1 }}>
-      <label>{label}</label>
-      <input type={type} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
-    </div>
+  const field = (key: keyof Omit<AuditFilters, "page">, label: string, type = "text", placeholder?: string) => (
+    <Field label={label} id={`audit-${key}`}>
+      <Input id={`audit-${key}`} type={type} placeholder={placeholder} className={type === "text" ? "font-mono text-small" : undefined}
+        value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+    </Field>
   );
 
   return (
     <>
-      <PageHead title="Nhật ký kiểm toán" subtitle="Mọi hành động quản trị và mọi dòng tiền — chỉ đọc, lưu 2 năm." />
-      <form className="card" onSubmit={submit} style={{ marginBottom: "1rem" }}>
-        <div className="row" style={{ flexWrap: "wrap", alignItems: "end" }}>
-          {field("action", "Hành động (vd. USER_LOCKED)")}
-          {field("targetType", "Loại đối tượng (vd. INTERVIEW)")}
-          {field("targetId", "Mã đối tượng")}
-          {field("actorId", "Mã người thực hiện")}
-          {field("from", "Từ ngày", "date")}
-          {field("to", "Đến ngày", "date")}
-        </div>
-        <div className="row">
-          <button className="btn">Lọc</button>
-          <button type="button" className="btn secondary" onClick={() => { setForm(EMPTY); setFilters(EMPTY); }}>Xoá bộ lọc</button>
-        </div>
-      </form>
-      <Alert>{error}</Alert>
-      {!data ? (error ? null : <Loading />) : data.items.length === 0 ? <Empty>Không có dòng nhật ký nào.</Empty> : (
-        <div className="card table-wrap">
-          <table>
-            <thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>Thay đổi (trước → sau)</th></tr></thead>
-            <tbody>
-              {data.items.map((a) => (
-                <tr key={a.id}>
-                  <td className="small">{formatDateTime(a.createdAt)}</td>
-                  <td className="small">{a.actorEmail || (a.actorId ? a.actorId.slice(0, 8) : "—")}<div className="muted">{a.actorRole}</div></td>
-                  <td><code>{a.action}</code></td>
-                  <td className="small">{a.targetType}<div className="muted" style={{ wordBreak: "break-all" }}>{a.targetId}</div></td>
-                  <td style={{ maxWidth: 420 }}><Diff before={a.before} after={a.after} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="row between small" style={{ marginTop: 8 }}>
-            <span className="muted">{data.totalItems} dòng · trang {data.page + 1}/{Math.max(data.totalPages, 1)}</span>
-            <div className="row">
-              <button className="btn sm secondary" disabled={data.page === 0} onClick={() => setFilters({ ...filters, page: filters.page - 1 })}>← Trước</button>
-              <button className="btn sm secondary" disabled={data.page + 1 >= data.totalPages} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Sau →</button>
+      <PageHeader title="Nhật ký kiểm toán" description="Mọi hành động quản trị và mọi dòng tiền. Chỉ đọc, lưu 2 năm." />
+      <form onSubmit={submit} className="mb-6">
+        <Card>
+          <CardBody>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {field("action", "Hành động", "text", "USER_LOCKED")}
+              {field("targetType", "Loại đối tượng", "text", "INTERVIEW")}
+              {field("targetId", "Mã đối tượng")}
+              {field("actorId", "Mã người thực hiện")}
+              {field("from", "Từ ngày", "date")}
+              {field("to", "Đến ngày", "date")}
             </div>
-          </div>
-        </div>
+          </CardBody>
+          <CardFooter>
+            <Button variant="ghost" onClick={() => { setForm(EMPTY); setFilters(EMPTY); }}>Xoá bộ lọc</Button>
+            <Button type="submit" variant="primary" icon={Filter}>Lọc</Button>
+          </CardFooter>
+        </Card>
+      </form>
+      <Alert className="mb-6">{error}</Alert>
+      {!data ? (error ? null : <Loading />) : (
+        <Card>
+          {data.items.length === 0 ? <EmptyState icon={ClipboardList} title="Không có dòng nhật ký nào" /> : (
+            <Table>
+              <thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>Thay đổi (trước → sau)</th></tr></thead>
+              <tbody>
+                {data.items.map((a) => (
+                  <tr key={a.id} className="align-top">
+                    <td className="whitespace-nowrap text-small">{formatDateTime(a.createdAt)}</td>
+                    <td className="text-small">{a.actorEmail || (a.actorId ? <span className="font-mono">{a.actorId.slice(0, 8)}</span> : "—")}<div className="text-ink-muted">{a.actorRole}</div></td>
+                    <td><code className="rounded-sm bg-surface-sunken px-1.5 py-0.5">{a.action}</code></td>
+                    <td className="text-small">{a.targetType}<div className="font-mono break-all text-ink-muted">{a.targetId}</div></td>
+                    <td className="max-w-[420px] min-w-[240px]"><Diff before={a.before} after={a.after} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+          <Pagination page={data.page} totalPages={data.totalPages} summary={`${data.totalItems} dòng · trang ${data.page + 1}/${Math.max(data.totalPages, 1)}`}
+            onChange={(p) => setFilters({ ...filters, page: p })} />
+        </Card>
       )}
     </>
   );
