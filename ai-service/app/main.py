@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app import config
 from app.clients.http import close_clients
 from app.db import close_pool, get_pool
-from app.enrichment.service import retry_profile_sync_forever
+from app.enrichment.service import purge_expired_cvs_forever, retry_profile_sync_forever
 from app.interview import service as interview_service
 from app.errors import AiError
 from app.llm.deepseek import get_client
@@ -31,9 +31,12 @@ async def lifespan(_: FastAPI):
     retry_job = asyncio.create_task(retry_profile_sync_forever())
     # US-43 (PRD-AIV-3) — quét buổi phỏng vấn bỏ dở quá 72 giờ
     abandon_job = asyncio.create_task(interview_service.abandon_stale_forever())
+    # US-45 (PRD-CV-6) — xoá file + văn bản gốc của CV quá 12 tháng
+    retention_job = asyncio.create_task(purge_expired_cvs_forever())
     yield
     retry_job.cancel()
     abandon_job.cancel()
+    retention_job.cancel()
     await close_clients()
     await close_pool()
 

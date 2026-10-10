@@ -10,7 +10,7 @@ import sys
 import time
 import uuid
 
-from common import AI, AUTH, PROFILE, ApiError, call
+from common import AI, AUTH, PROFILE, SAMPLE_CV_LINES, ApiError, call, make_pdf, multipart_file
 
 RUN = uuid.uuid4().hex[:6]
 results = []
@@ -91,7 +91,80 @@ def us43(ctx):
     check("US-43", "Bắt đầu được buổi mới ngay (không thời gian chờ)", iv3["id"] != iv2["id"] and iv3["status"] == "IN_PROGRESS")
 
 
-STORIES = {"US-43": us43}
+CHAT_ANSWER = "Toi muon tro thanh backend developer Java trong 6 thang, tap trung system design."
+
+
+def cv_conversation(mentee, skills):
+    body, ctype = multipart_file("file", "cv.pdf", make_pdf(SAMPLE_CV_LINES), fields={"consentExternalAi": "false"})
+    cv = call("POST", f"{AI}/api/ai/mentee/{mentee['userId']}/cv-upload", token=mentee["accessToken"],
+              raw_body=body, content_type=ctype)["cv"]
+    call("PUT", f"{AI}/api/ai/cv/{cv['id']}/confirmed-fields", {"skills": skills}, token=mentee["accessToken"])
+    return call("POST", f"{AI}/api/ai/cv/{cv['id']}/enrichment-conversation", token=mentee["accessToken"])["conversation"]
+
+
+def mentee_skills(mentee):
+    return call("GET", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", token=mentee["accessToken"])["skills"]
+
+
+def us45(ctx):
+    print("US-45 — chatbot CV: bỏ qua câu hỏi, chọn kỹ năng gợi ý, xoá kèm kỹ năng, lưu giữ 12 tháng")
+    mentee = register("MENTEE", "cv")
+    token = mentee["accessToken"]
+    call("PUT", f"{PROFILE}/api/profile/mentee/{mentee['userId']}", {
+        "displayName": f"S5 CV {RUN}", "domain": "backend", "currentLevel": "BEGINNER", "skills": ["React"],
+        "goal": "Hoc backend Java", "portfolioLinks": []}, token=token)
+
+    conv = cv_conversation(mentee, ["Java", "Docker", "PostgreSQL"])
+    check("US-45", "Hội thoại trả kỹ năng gợi ý từ CV (chip)", conv["suggestedSkills"] == ["Java", "Docker", "PostgreSQL"],
+          str(conv.get("suggestedSkills")))
+    url = f"{AI}/api/ai/enrichment/conversations/{conv['id']}/answers"
+    check("US-45", "Câu trả lời rỗng (không bấm Bỏ qua) → 400 ANSWER_REQUIRED",
+          error_code(lambda: call("POST", url, {"answer": "  "}, token=token)) == (400, "ANSWER_REQUIRED"))
+    conv = call("POST", url, {"skipped": True}, token=token)
+    check("US-45", "“Bỏ qua” lưu skipped và chuyển sang câu tiếp theo",
+          conv["messages"][0]["skipped"] is True and conv["currentTurn"] == 2)
+    while conv["status"] == "IN_PROGRESS":
+        conv = call("POST", url, {"answer": CHAT_ANSWER}, token=token)
+    check("US-45", "Bỏ qua 1 câu vẫn tạo được mục tiêu nháp", conv["goalStatus"] == "DRAFT" and bool(conv["enrichedGoal"]))
+
+    confirm = f"{AI}/api/ai/enrichment/conversations/{conv['id']}/confirm-goal"
+    check("US-45", "Kỹ năng ngoài danh sách gợi ý → 400 INVALID_SKILLS",
+          error_code(lambda: call("POST", confirm, {"goal": conv["enrichedGoal"], "skills": ["Kubernetes"]},
+                                  token=token)) == (400, "INVALID_SKILLS"))
+    done = call("POST", confirm, {"goal": conv["enrichedGoal"], "skills": ["java", "Docker"]}, token=token)
+    check("US-45", "Chỉ kỹ năng được chọn được thêm (giữ cách viết trong CV)", done["addedSkills"] == ["Java", "Docker"],
+          str(done["addedSkills"]))
+    skills = []
+    for _ in range(20):  # đồng bộ hồ sơ chạy ngay sau confirm (có job thử lại)
+        skills = mentee_skills(mentee)
+        if "Docker" in skills:
+            break
+        time.sleep(0.5)
+    check("US-45", "Hồ sơ có kỹ năng đã chọn, không có kỹ năng bỏ chọn",
+          "Java" in skills and "Docker" in skills and "PostgreSQL" not in skills and "React" in skills, str(skills))
+
+    [row] = [c for c in call("GET", f"{AI}/api/ai/cv/mine", token=token) if c["id"] == conv["cvId"]]
+    check("US-45", "CV của tôi: hiển thị kỹ năng đã thêm và hạn xoá 12 tháng",
+          row["addedSkills"] == ["Java", "Docker"] and row["deleteAfter"] and row["purgedAt"] is None)
+
+    # Lưu giữ 12 tháng: CV thứ hai (chưa xác nhận mục tiêu) bị lùi ngày 366 ngày rồi chạy job.
+    old = cv_conversation(mentee, ["Git"])
+    purged = call("POST", f"{AI}/internal/dev/cvs/{old['cvId']}/age?days=366", internal=True)
+    check("US-45", "Job lưu giữ xoá CV quá 12 tháng", purged["purged"] >= 1, str(purged))
+    check("US-45", "Tải file CV đã quá hạn → 410 CV_PURGED",
+          error_code(lambda: call("GET", f"{AI}/api/ai/cv/{old['cvId']}/file", token=token)) == (410, "CV_PURGED"))
+    [aged] = [c for c in call("GET", f"{AI}/api/ai/cv/mine", token=token) if c["id"] == old["cvId"]]
+    check("US-45", "CV quá hạn vẫn trong danh sách với purgedAt", aged["purgedAt"] is not None)
+    check("US-45", "CV mới không bị job xoá",
+          any(c["id"] == conv["cvId"] and c["purgedAt"] is None for c in call("GET", f"{AI}/api/ai/cv/mine", token=token)))
+
+    call("DELETE", f"{AI}/api/ai/cv/{conv['cvId']}?removeSkills=true", token=token)
+    skills = mentee_skills(mentee)
+    check("US-45", "Xoá CV kèm “gỡ kỹ năng” bỏ Java, Docker khỏi hồ sơ, giữ kỹ năng khác",
+          "Java" not in skills and "Docker" not in skills and "React" in skills, str(skills))
+
+
+STORIES = {"US-43": us43, "US-45": us45}
 
 
 def main(selected):

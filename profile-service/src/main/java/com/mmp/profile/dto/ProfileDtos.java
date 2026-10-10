@@ -220,6 +220,10 @@ public final class ProfileDtos {
     public record AvailabilityInput(@NotNull @Size(max = 50) List<@Valid AvailabilitySlot> slots) {
     }
 
+    /** US-45 — kỹ năng cần gỡ khỏi hồ sơ mentee. */
+    public record RemoveSkillsInput(@NotNull @Size(max = 30) List<@Size(max = 50) String> skills) {
+    }
+
     public record EnrichmentInput(
             @NotBlank @Size(max = 3000) String enrichedGoalText,
             @Size(max = 30) List<@Size(max = 50) String> cvSkills,

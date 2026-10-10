@@ -76,7 +76,7 @@ async def mine(user: AuthUser = Depends(require_user)) -> list[CvSummaryView]:
 
 
 @router.delete("/cv/{cv_id}", status_code=204)
-async def delete(cv_id: UUID, user: AuthUser = Depends(require_user)) -> Response:
-    """Xoá CV (chủ CV hoặc ADMIN) — chính sách dữ liệu CV."""
-    await service.delete_cv(user, cv_id)
+async def delete(cv_id: UUID, removeSkills: bool = False, user: AuthUser = Depends(require_user)) -> Response:
+    """Xoá CV (chủ CV hoặc ADMIN) — chính sách dữ liệu CV. removeSkills=true (US-45): gỡ cả kỹ năng đã thêm từ CV này."""
+    await service.delete_cv(user, cv_id, removeSkills)
     return Response(status_code=204)

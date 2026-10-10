@@ -25,6 +25,10 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dialog, ask] = useDialog();
+  // US-45 (PRD-CV-5) — kỹ năng gợi ý từ CV, mặc định chọn hết; bấm chip để bỏ chọn
+  const suggested = conversation.suggestedSkills ?? [];
+  const [chosen, setChosen] = useState<string[]>(suggested);
+  const toggle = (s: string) => setChosen((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
   const trimmed = text.trim();
   const valid = trimmed.length >= MIN_GOAL && trimmed.length <= MAX_GOAL;
 
@@ -55,12 +59,15 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
       <div>
         <Alert type="success">
           {conversation.profileSynced
-            ? "Đã dùng mục tiêu này cho hồ sơ (kèm kỹ năng bạn đã xác nhận); gợi ý mentor được cập nhật ngay sau đó."
+            ? "Đã dùng mục tiêu này cho hồ sơ (kèm kỹ năng bạn đã chọn); gợi ý mentor được cập nhật ngay sau đó."
             : "Đã ghi nhận mục tiêu, đang đồng bộ vào hồ sơ (hệ thống sẽ tự thử lại nếu dịch vụ hồ sơ tạm lỗi)..."}
         </Alert>
         <div className="card" style={{ background: "var(--surface-2)", boxShadow: "none" }}>
           <strong>Mục tiêu đã dùng</strong>
           <p style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{conversation.confirmedGoal}</p>
+          {(conversation.addedSkills ?? []).length > 0 && (
+            <div className="chips" style={{ marginTop: 6 }}>{conversation.addedSkills.map((s) => <span key={s} className="chip">{s}</span>)}</div>
+          )}
         </div>
         <Link href="/matching" className="btn" style={{ marginTop: "1rem" }}>Tìm mentor phù hợp</Link>
       </div>
@@ -87,8 +94,22 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
           <p style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{text}</p>
         )}
       </div>
+      {suggested.length > 0 && (
+        <div style={{ marginTop: "1rem" }}>
+          <strong>Kỹ năng từ CV</strong>
+          <p className="muted small">Chọn kỹ năng muốn thêm vào hồ sơ ({chosen.length}/{suggested.length} đã chọn).</p>
+          <div className="chips">
+            {suggested.map((s) => (
+              <button key={s} type="button" className={`chip${chosen.includes(s) ? " match" : ""}`} style={{ cursor: "pointer" }} aria-pressed={chosen.includes(s)}
+                disabled={busy} onClick={() => toggle(s)}>
+                {chosen.includes(s) ? "✓ " : "+ "}{s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="row" style={{ gap: 8, marginTop: "1rem" }}>
-        <button type="button" className="btn" disabled={busy || !valid} onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed))}>
+        <button type="button" className="btn" disabled={busy || !valid} onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed, chosen))}>
           {busy ? "Đang lưu..." : "Dùng mục tiêu này"}
         </button>
         {!editing && <button type="button" className="btn secondary" disabled={busy} onClick={() => setEditing(true)}>Sửa</button>}

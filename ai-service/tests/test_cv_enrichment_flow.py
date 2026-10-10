@@ -311,7 +311,8 @@ def test_my_cvs_lists_only_callers_cvs_newest_first(client, db, fake_profile, me
     assert res.status_code == 200
     items = res.json()
     assert [i["id"] for i in items] == [second, first]
-    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl", "consentExternalAi"}
+    assert set(items[0]) == {"id", "fileName", "uploadedAt", "fileUrl", "consentExternalAi", "purgedAt", "deleteAfter",
+                             "addedSkills"}
     assert items[0]["fileName"] == "cv.pdf"
     assert items[0]["fileUrl"] == f"/api/ai/cv/{second}/file"
     assert client.get("/api/ai/cv/mine", headers=auth(uuid.uuid4(), "MENTOR")).json() == []

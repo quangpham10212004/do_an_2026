@@ -81,12 +81,20 @@ export default function MyCvs({ refreshKey = 0, onDeleted }: MyCvsProps) {
       danger: true,
     });
     if (!ok) return;
+    // US-45 (PRD-CV-6) — hỏi thêm khi CV đã thêm kỹ năng vào hồ sơ
+    const added = cv.addedSkills ?? [];
+    const removeSkills = added.length > 0 && !!(await ask({
+      title: "Gỡ cả kỹ năng đã thêm từ CV này?",
+      message: `Các kỹ năng sau được thêm vào hồ sơ từ CV này: ${added.join(", ")}. Chọn "Gỡ kỹ năng" để xoá chúng khỏi hồ sơ, hoặc "Giữ kỹ năng".`,
+      confirmText: "Gỡ kỹ năng",
+      cancelText: "Giữ kỹ năng",
+    }));
     setBusyId(cv.id);
     setError("");
     setMsg("");
     try {
-      await aiApi.deleteCv(cv.id);
-      setMsg(`Đã xoá CV "${cv.fileName}".`);
+      await aiApi.deleteCv(cv.id, removeSkills);
+      setMsg(`Đã xoá CV "${cv.fileName}"${removeSkills ? " và gỡ các kỹ năng đã thêm từ CV" : ""}.`);
       onDeleted?.(cv);
     } catch (e) {
       setError(errorMessage(e));
@@ -102,7 +110,8 @@ export default function MyCvs({ refreshKey = 0, onDeleted }: MyCvsProps) {
       <h2>CV của tôi</h2>
       <p className="muted small">
         Với mỗi CV, hệ thống lưu file PDF gốc, văn bản và thông tin trích xuất (kỹ năng, kinh nghiệm, dự án, học vấn) cùng cuộc
-        trò chuyện làm rõ mục tiêu nếu có. Bạn có thể xoá bất cứ lúc nào.
+        trò chuyện làm rõ mục tiêu nếu có. File và văn bản gốc được tự động xoá sau 12 tháng (thông tin bạn đã xác nhận được
+        giữ lại). Bạn có thể xoá bất cứ lúc nào.
       </p>
       <Alert type="success">{msg}</Alert>
       {error && (
@@ -118,11 +127,13 @@ export default function MyCvs({ refreshKey = 0, onDeleted }: MyCvsProps) {
             <strong>{cv.fileName}</strong>
             <div className="muted small">
               Tải lên {formatDateTime(cv.uploadedAt)} · {cv.consentExternalAi ? "đồng ý gửi AI bên ngoài (DeepSeek)" : "chỉ xử lý trên nền tảng (rule-based)"}
+              <br />{cv.purgedAt ? `File đã được xoá theo chính sách lưu giữ (${formatDateTime(cv.purgedAt)})` : `Tự động xoá file sau ${formatDateTime(cv.deleteAfter)}`}
+              {(cv.addedSkills ?? []).length > 0 && <> · Kỹ năng đã thêm: {cv.addedSkills.join(", ")}</>}
             </div>
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn secondary sm" onClick={() => open(cv, false)}>Xem</button>
-            <button type="button" className="btn ghost sm" onClick={() => open(cv, true)}>Tải xuống</button>
+            {!cv.purgedAt && <button type="button" className="btn secondary sm" onClick={() => open(cv, false)}>Xem</button>}
+            {!cv.purgedAt && <button type="button" className="btn ghost sm" onClick={() => open(cv, true)}>Tải xuống</button>}
             <button type="button" className="btn danger sm" disabled={busyId === cv.id} onClick={() => remove(cv)}>
               {busyId === cv.id ? "Đang xoá..." : "Xoá"}
             </button>

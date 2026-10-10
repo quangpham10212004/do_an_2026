@@ -376,6 +376,23 @@ public class ProfileService {
         return menteeResponse(findMentee(userId));
     }
 
+    /** US-45 (PRD-CV-6) — gỡ kỹ năng (không phân biệt hoa thường) rồi báo matching-service lập lại chỉ mục. */
+    public MenteeProfileResponse removeMenteeSkills(UUID userId, List<String> skills) {
+        Set<String> remove = new HashSet<>();
+        skills.forEach(x -> { if (x != null) remove.add(x.strip().toLowerCase(Locale.ROOT)); });
+        Boolean changed = tx.execute(st -> {
+            MenteeProfile p = findMentee(userId);
+            String[] kept = Arrays.stream(p.getSkills()).filter(x -> !remove.contains(x.toLowerCase(Locale.ROOT)))
+                    .toArray(String[]::new);
+            if (kept.length == p.getSkills().length) return false;
+            p.setSkills(kept);
+            menteeRepo.save(p);
+            return true;
+        });
+        if (Boolean.TRUE.equals(changed)) matchingIndexClient.reindexAsync(ROLE_MENTEE, userId);
+        return menteeResponse(findMentee(userId));
+    }
+
     // ---------------- Shared ----------------
 
     // ---- US-37: múi giờ, ảnh đại diện ----

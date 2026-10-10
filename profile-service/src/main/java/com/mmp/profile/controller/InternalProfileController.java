@@ -68,6 +68,12 @@ public class InternalProfileController {
         profileService.updateActiveMentees(mentorId, body.activeMenteeCount());
     }
 
+    /** US-45 (PRD-CV-6) — ai-service gỡ các kỹ năng đã thêm từ một CV bị xoá (so khớp không phân biệt hoa thường). */
+    @PostMapping("/mentee/{menteeId}/skills/remove")
+    public MenteeProfileResponse removeSkills(@PathVariable UUID menteeId, @Valid @RequestBody RemoveSkillsInput body) {
+        return profileService.removeMenteeSkills(menteeId, body.skills());
+    }
+
     /** ai-service gọi sau khi người dùng xoá CV: gỡ cvFileUrl nếu hồ sơ còn trỏ tới đúng file đó. */
     @DeleteMapping("/profile/{userId}/cv-file")
     @ResponseStatus(HttpStatus.NO_CONTENT)

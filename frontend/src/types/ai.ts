@@ -155,6 +155,8 @@ export interface EnrichmentMessage {
   slotLabel: string;
   question: string;
   answer: string | null;
+  /** US-45: mentee bấm "Bỏ qua" (answer = ""). */
+  skipped: boolean;
 }
 
 /** US-21: NONE (chưa xong) → DRAFT → CONFIRMED (đồng bộ hồ sơ) | DISCARDED (không gửi gì). */
@@ -179,6 +181,9 @@ export interface Conversation {
   profileSynced: boolean;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
+  /** US-45: kỹ năng đã duyệt từ CV — chip gợi ý; addedSkills = những kỹ năng đã thêm vào hồ sơ. */
+  suggestedSkills: string[];
+  addedSkills: string[];
 }
 
 /** Một CV trong danh sách "CV của tôi" (GET /api/ai/cv/mine). */
@@ -189,6 +194,10 @@ export interface CvSummary {
   /** Dạng /api/ai/cv/{id}/file — cần access token, tải qua apiBlob(). */
   fileUrl: string;
   consentExternalAi: boolean;
+  /** US-45: file + văn bản gốc bị xoá 12 tháng sau khi tải lên. */
+  purgedAt: IsoDateTime | null;
+  deleteAfter: IsoDateTime;
+  addedSkills: string[];
 }
 
 export interface CvUploadResult {

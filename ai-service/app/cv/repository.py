@@ -51,8 +51,25 @@ async def latest_for_user(conn: Db, user_id: UUID) -> asyncpg.Record | None:
 
 async def list_for_user(conn: Db, user_id: UUID) -> list[asyncpg.Record]:
     return await conn.fetch(
-        "SELECT id, file_name, created_at, consent_external_ai FROM cv_documents WHERE user_id = $1 ORDER BY created_at DESC", user_id)
+        """SELECT d.id, d.file_name, d.created_at, d.consent_external_ai, d.purged_at,
+                  COALESCE(c.added_skills, '{}') AS added_skills
+             FROM cv_documents d LEFT JOIN enrichment_conversations c ON c.cv_id = d.id
+            WHERE d.user_id = $1 ORDER BY d.created_at DESC""", user_id)
 
 
 async def delete(conn: Db, cv_id: UUID) -> None:
     await conn.execute("DELETE FROM cv_documents WHERE id = $1", cv_id)
+
+
+async def purge_before(conn: Db, before) -> list[asyncpg.Record]:
+    """
+    US-45 (PRD-CV-6) — CV tải lên trước `before` chưa bị xoá dữ liệu: xoá văn bản gốc; kết quả parse giữ lại chỉ khi người
+    dùng đã xác nhận (confirmed_fields — thay parsed_json bằng chính phần đã xác nhận), ngược lại xoá. Trả (id, user_id,
+    storage_path) để xoá file sau transaction.
+    """
+    return await conn.fetch(
+        """UPDATE cv_documents
+              SET raw_text = '', purged_at = now(),
+                  parsed_json = CASE WHEN confirmed_fields IS NULL THEN '{}'::jsonb ELSE parsed_json END
+            WHERE purged_at IS NULL AND created_at < $1
+        RETURNING id, user_id, storage_path""", before)

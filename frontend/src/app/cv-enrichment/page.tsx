@@ -89,13 +89,14 @@ function Enrichment({ user }: { user: SessionUser }) {
     }
   }
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    if (!answer.trim() || !state?.conversation) return;
+  // US-45 (PRD-CV-3) — skip = "Bỏ qua" câu hiện tại (không cần nhập gì)
+  async function send(e: FormEvent | null, skip = false) {
+    e?.preventDefault();
+    if ((!skip && !answer.trim()) || !state?.conversation) return;
     setBusy(true);
     setError("");
     try {
-      const conversation = await aiApi.answerEnrichment(state.conversation.id, answer);
+      const conversation = await aiApi.answerEnrichment(state.conversation.id, skip ? "" : answer, skip);
       setState({ ...state, conversation });
       setAnswer("");
     } catch (err) {
@@ -137,7 +138,8 @@ function Enrichment({ user }: { user: SessionUser }) {
               {conv.messages.map((m) => (
                 <div key={m.turnNo} className="chat">
                   <div className="bubble bot"><div className="meta">{m.slotLabel}</div>{m.question}</div>
-                  {m.answer && <div className="bubble me">{m.answer}</div>}
+                  {m.skipped ? <div className="bubble me muted"><em>Đã bỏ qua</em></div>
+                    : m.answer && <div className="bubble me">{m.answer}</div>}
                 </div>
               ))}
               <div ref={bottom} />
@@ -145,7 +147,10 @@ function Enrichment({ user }: { user: SessionUser }) {
             {!completed && (
               <form onSubmit={send} style={{ marginTop: "1rem" }}>
                 <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Nhập câu trả lời..." maxLength={5000} disabled={busy} />
-                <button className="btn" disabled={busy || !answer.trim()} style={{ marginTop: 8 }}>{busy ? "Đang xử lý..." : "Gửi"}</button>
+                <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                  <button className="btn" disabled={busy || !answer.trim()}>{busy ? "Đang xử lý..." : "Gửi"}</button>
+                  <button type="button" className="btn ghost" disabled={busy} onClick={() => send(null, true)}>Bỏ qua câu này</button>
+                </div>
               </form>
             )}
             {completed && (

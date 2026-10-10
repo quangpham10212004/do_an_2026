@@ -44,15 +44,17 @@ async def mark_synced(conn: Db, conversation_id: UUID) -> bool:
     return row is not None
 
 
-async def decide_goal(conn: Db, conversation_id: UUID, status: str, goal: str | None) -> asyncpg.Record | None:
+async def decide_goal(conn: Db, conversation_id: UUID, status: str, goal: str | None,
+                      added_skills: list[str] | None = None) -> asyncpg.Record | None:
     """
     US-21 — DRAFT → CONFIRMED (kèm goal người dùng chọn/sửa) hoặc DISCARDED, nguyên tử: chỉ một request thắng,
     nên xác nhận hai lần (kể cả đồng thời) chỉ đồng bộ một lần. None nếu goal không còn ở DRAFT.
     """
     return await conn.fetchrow(
-        """UPDATE enrichment_conversations SET goal_status = $2, confirmed_goal = $3, goal_decided_at = now()
+        """UPDATE enrichment_conversations SET goal_status = $2, confirmed_goal = $3, goal_decided_at = now(),
+                  added_skills = COALESCE($4, added_skills)
            WHERE id = $1 AND goal_status = 'DRAFT' RETURNING *""",
-        conversation_id, status, goal)
+        conversation_id, status, goal, added_skills)
 
 
 async def messages_of(conn: Db, conversation_id: UUID) -> list[asyncpg.Record]:
@@ -67,12 +69,12 @@ async def insert_message(conn: Db, conversation_id: UUID, turn_no: int, slot: st
         conversation_id, turn_no, slot, question)
 
 
-async def answer_message(conn: Db, message_id: UUID, answer: str) -> bool:
-    """Ghi câu trả lời; trả False nếu lượt đã được trả lời (chống double-submit)."""
+async def answer_message(conn: Db, message_id: UUID, answer: str, skipped: bool = False) -> bool:
+    """Ghi câu trả lời (skipped = mentee bỏ qua — US-45); trả False nếu lượt đã được trả lời (chống double-submit)."""
     row = await conn.fetchrow(
-        """UPDATE enrichment_messages SET answer = $2, answered_at = now()
+        """UPDATE enrichment_messages SET answer = $2, skipped = $3, answered_at = now()
            WHERE id = $1 AND answer IS NULL RETURNING id""",
-        message_id, answer)
+        message_id, answer, skipped)
     return row is not None
 
 
@@ -90,8 +92,9 @@ async def complete(conn: Db, conversation_id: UUID, enriched_goal: str) -> async
 
 
 def to_exchange(message: asyncpg.Record) -> Exchange:
-    return Exchange(turn_no=message["turn_no"], slot=message["slot"], question=message["question"],
-                    answer=message["answer"])
+    # US-45 — câu bị bỏ qua đưa cho engine như "không biết"
+    answer = "Tôi không biết / bỏ qua câu này." if message.get("skipped") else message["answer"]
+    return Exchange(turn_no=message["turn_no"], slot=message["slot"], question=message["question"], answer=answer)
 
 
 async def delete_for_cv(conn: Db, cv_id: UUID) -> None:
