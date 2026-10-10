@@ -3,7 +3,9 @@ package com.mmp.auth.controller;
 import com.mmp.auth.dto.AuthDtos.*;
 import com.mmp.auth.security.CurrentUser;
 import com.mmp.auth.service.AuthService;
+import com.mmp.auth.service.LoginRateLimit;
 import com.mmp.auth.service.PasswordResetService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -16,10 +18,12 @@ public class AuthController {
     private final PasswordResetService passwordResetService;
 
     private final com.mmp.auth.service.EmailVerificationService emailVerification;
+    private final LoginRateLimit loginRateLimit;
 
     public AuthController(AuthService authService, PasswordResetService passwordResetService,
-                          com.mmp.auth.service.EmailVerificationService emailVerification) {
+                          com.mmp.auth.service.EmailVerificationService emailVerification, LoginRateLimit loginRateLimit) {
         this.emailVerification = emailVerification;
+        this.loginRateLimit = loginRateLimit;
         this.authService = authService;
         this.passwordResetService = passwordResetService;
     }
@@ -44,7 +48,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest req) {
+    public AuthResponse login(@Valid @RequestBody LoginRequest req, HttpServletRequest http) {
+        loginRateLimit.check(http); // US-46: 5 lần / phút / IP
         return authService.login(req);
     }
 

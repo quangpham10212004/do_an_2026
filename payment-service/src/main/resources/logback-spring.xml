@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- US-46 (NFR-17): log JSON một dòng / sự kiện (@timestamp, level, logger_name, message, service, requestId từ MDC). -->
+<configuration>
+  <springProperty scope="context" name="SERVICE" source="spring.application.name"/>
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeContext>false</includeContext>
+      <customFields>{"service":"${SERVICE}"}</customFields>
+      <fieldNames>
+        <version>[ignore]</version>
+        <levelValue>[ignore]</levelValue>
+      </fieldNames>
+    </encoder>
+  </appender>
+  <root level="INFO">
+    <appender-ref ref="JSON"/>
+  </root>
+</configuration>

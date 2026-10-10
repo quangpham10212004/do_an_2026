@@ -54,3 +54,11 @@ def auth(user_id, role: str, email: str = "user@test.local") -> dict:
     token = jwt.encode({"sub": str(user_id), "email": email, "role": role, "typ": "access"},
                        config.JWT_SECRET, algorithm="HS256")
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """US-46 — bộ đếm giới hạn tần suất sống trong tiến trình; mỗi test bắt đầu với bộ đếm trống."""
+    from app.routers.cv import upload_limiter
+    upload_limiter.reset()
+    yield

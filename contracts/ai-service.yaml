@@ -290,6 +290,15 @@ components:
 security:
   - bearerAuth: []
 paths:
+  /metrics:
+    get:
+      summary: US-46 (NFR-17) — số liệu Prometheus (text/plain; version=0.0.4), không cần xác thực
+      description: >-
+        http_requests_total, http_request_duration_seconds (method, route, status). Mọi response của service có header X-Request-Id (nhận từ request nếu hợp lệ [A-Za-z0-9._:-]{1,64}, ngược
+        lại sinh UUID); id được ghi trong mọi dòng log JSON ("requestId") và chuyển tiếp sang các service được gọi.
+      security: []
+      responses:
+        "200": { description: OK }
   /health:
     get:
       security: []
@@ -456,6 +465,7 @@ paths:
               schema: { $ref: "#/components/schemas/CvUploadResult" }
         "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | PROFILE_REQUIRED | FILE_REQUIRED | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
+        "429": { description: "RATE_LIMITED — US-46 (NFR-10) quá 5 CV / giờ / người dùng (cv-upload + cv/parse cộng chung; form thiếu consent không bị đếm); header Retry-After (giây)" }
   /api/ai/mentee/{id}/enrichment/latest:
     get:
       summary: CV mới nhất của mentee + hội thoại của CV đó (`conversation` null nếu chưa duyệt / chưa bắt đầu)
@@ -530,6 +540,7 @@ paths:
               schema: { $ref: "#/components/schemas/Cv" }
         "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
+        "429": { description: "RATE_LIMITED — US-46 (NFR-10) quá 5 CV / giờ / người dùng; header Retry-After (giây)" }
   /api/ai/cv/{id}/confirmed-fields:
     put:
       summary: >

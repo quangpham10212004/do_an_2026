@@ -15,3 +15,11 @@ import pytest
 def anyio_backend():
     """Cho phép @pytest.mark.anyio chạy test async bằng plugin pytest của anyio."""
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """US-46 — bộ đếm giới hạn tần suất sống trong tiến trình; mỗi test bắt đầu với bộ đếm trống."""
+    from app.routers.matching import match_limiter
+    match_limiter.reset()
+    yield

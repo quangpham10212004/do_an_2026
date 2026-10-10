@@ -38,7 +38,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/health", "/actuator/health/**", "/error").permitAll();
+                    auth.requestMatchers("/health", "/actuator/health/**", "/error", "/metrics").permitAll();
                     publicPaths.stream().filter(p -> !p.isBlank())
                             .forEach(p -> auth.requestMatchers(p.trim()).permitAll());
                     auth.requestMatchers("/internal/**").hasRole(AuthUser.ROLE_INTERNAL);

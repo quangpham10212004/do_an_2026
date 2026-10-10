@@ -1,6 +1,7 @@
 package com.mmp.payment.client;
 
 import com.mmp.payment.exception.ApiException;
+import com.mmp.payment.observability.RequestIds;
 import com.mmp.payment.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
@@ -21,6 +22,7 @@ public class MentoringClient {
     public MentoringClient(@Value("${app.services.mentoring-url}") String mentoringUrl,
                            @Value("${app.security.internal-api-key}") String internalApiKey) {
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(mentoringUrl)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)
                 .build();

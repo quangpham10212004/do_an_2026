@@ -1,5 +1,6 @@
 package com.mmp.auth.client;
 
+import com.mmp.auth.observability.RequestIds;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,7 +33,8 @@ public class ProfileClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(3000);
-        this.restClient = RestClient.builder().baseUrl(profileUrl).requestFactory(factory)
+        this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor()).baseUrl(profileUrl).requestFactory(factory)
                 .defaultHeader("X-Internal-Token", internalApiKey).build();
     }
 

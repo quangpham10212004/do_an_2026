@@ -31,6 +31,10 @@ spring:
       timeout: 500ms
 
 management:
+  # US-46: nhãn service trên mọi metric của GET /metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
@@ -50,6 +54,10 @@ app:
   jwt:
     access-token-ttl: ${ACCESS_TOKEN_TTL:PT30M}
     refresh-token-ttl: ${REFRESH_TOKEN_TTL:P7D}
+  # US-46 (NFR-10): giới hạn đăng nhập theo IP; X-Forwarded-For chỉ nên tin khi service nằm sau proxy (frontend BFF)
+  rate-limit:
+    login-per-minute: ${LOGIN_RATE_LIMIT_PER_MINUTE:5}
+    trust-forwarded-for: ${TRUST_FORWARDED_FOR:true}
   login-protection:
     max-failed-attempts: 5
     block-duration: PT15M

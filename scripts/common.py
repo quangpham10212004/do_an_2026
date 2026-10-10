@@ -2,6 +2,7 @@
 import json
 import re
 import os
+import random
 import urllib.error
 import urllib.request
 import uuid
@@ -28,6 +29,7 @@ _AI_REVIEW = re.compile(r"/api/ai/admin/interviews/[^/]+/review/?$")
 MIN_OVERRULE_NOTE = 10
 
 
+_LOGIN = re.compile(r"/api/auth/login/?$")
 _SESSION_REVIEW = re.compile(r"/api/mentoring/sessions/[^/]+/review/?$")
 
 
@@ -106,6 +108,9 @@ def call(method, url, body=None, token=None, internal=False, raw_body=None, cont
     headers = dict(headers or {})
     keep_unverified = headers.pop(KEEP_UNVERIFIED, None) is not None
     headers = {"Accept": "application/json", **headers}
+    if _LOGIN.search(url) and "X-Forwarded-For" not in headers:
+        # US-46: đăng nhập bị giới hạn 5 lần / phút / IP — mỗi lần e2e đăng nhập giả lập một client (IP) khác nhau.
+        headers["X-Forwarded-For"] = f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"
     data = None
     if raw_body is not None:
         data = raw_body

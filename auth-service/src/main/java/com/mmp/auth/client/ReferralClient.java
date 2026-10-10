@@ -1,5 +1,6 @@
 package com.mmp.auth.client;
 
+import com.mmp.auth.observability.RequestIds;
 import com.mmp.auth.security.JwtAuthenticationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ public class ReferralClient {
     public ReferralClient(@Value("${app.services.payment-url}") String paymentUrl,
                           @Value("${app.security.internal-api-key}") String internalApiKey) {
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(paymentUrl)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)
                 .build();

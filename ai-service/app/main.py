@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app import config
+from app import config, observability
 from app.clients.http import close_clients
 from app.db import close_pool, get_pool
 from app.enrichment.service import purge_expired_cvs_forever, retry_profile_sync_forever
@@ -15,7 +15,7 @@ from app.errors import AiError
 from app.llm.deepseek import get_client
 from app.routers import cv, enrichment, interview
 
-logging.basicConfig(level=logging.INFO)
+observability.setup_logging("ai-service")  # US-46: log JSON có requestId
 log = logging.getLogger(__name__)
 
 
@@ -51,20 +51,24 @@ app = FastAPI(
 
 @app.exception_handler(AiError)
 async def ai_error_handler(_: Request, exc: AiError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status, content={"error": {"code": exc.code, "message": exc.message, **exc.extra}})
+    return JSONResponse(status_code=exc.status, content={"error": {"code": exc.code, "message": exc.message, **exc.extra}},
+                        headers=exc.headers or None)
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     body = exc.detail if isinstance(exc.detail, dict) and "code" in exc.detail else {
         "code": f"HTTP_{exc.status_code}", "message": str(exc.detail)}
-    return JSONResponse(status_code=exc.status_code, content={"error": body})
+    return JSONResponse(status_code=exc.status_code, content={"error": body}, headers=getattr(exc, "headers", None))
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     message = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
     return JSONResponse(status_code=400, content={"error": {"code": "VALIDATION_ERROR", "message": message}})
+
+
+observability.install(app, "ai-service")  # US-46: X-Request-Id, access log, GET /metrics
 
 
 @app.get("/health")

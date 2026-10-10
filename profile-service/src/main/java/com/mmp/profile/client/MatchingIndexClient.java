@@ -1,5 +1,6 @@
 package com.mmp.profile.client;
 
+import com.mmp.profile.observability.RequestIds;
 import com.mmp.profile.security.JwtAuthenticationFilter;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -57,6 +58,7 @@ public class MatchingIndexClient {
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(20));
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(matchingServiceUrl)
                 .requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)
@@ -66,7 +68,7 @@ public class MatchingIndexClient {
     /** role: MENTOR hoặc MENTEE. */
     public void reindexAsync(String role, UUID userId) {
         try {
-            executor.execute(() -> reindex(role, userId));
+            executor.execute(RequestIds.wrap(() -> reindex(role, userId)));
         } catch (RejectedExecutionException e) {
             log.debug("Bỏ qua thông báo reindex cho {} {}: hàng đợi đầy", role, userId);
         }
