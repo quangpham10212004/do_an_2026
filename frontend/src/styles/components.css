@@ -507,10 +507,12 @@ button.chip:hover {
   color: var(--ink);
   text-decoration: none;
 }
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-current="page"] {
   color: var(--accent-ink);
 }
-.tab[aria-selected="true"]::after {
+.tab[aria-selected="true"]::after,
+.tab[aria-current="page"]::after {
   content: "";
   position: absolute;
   left: 8px;
@@ -656,18 +658,15 @@ a.list-row:hover {
   min-width: 0;
 }
 .stat-label {
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
   color: var(--ink-muted);
 }
 .stat-value {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  line-height: 32px;
-  font-weight: 500;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
@@ -821,9 +820,12 @@ a.list-row:hover {
   overflow: hidden;
   background: var(--surface-sunken);
 }
-.meter > span:nth-child(1) { background: var(--accent); }
-.meter > span:nth-child(2) { background: var(--info); }
-.meter > span:nth-child(3) { background: var(--amber); }
+/* Một màu (accent) giảm dần độ đậm theo thứ tự phần — không mã hoá dữ liệu bằng nhiều màu. */
+.meter > span:nth-child(1), .legend > span:nth-child(1) i { background: var(--accent); }
+.meter > span:nth-child(2), .legend > span:nth-child(2) i { background: color-mix(in srgb, var(--accent) 75%, var(--surface)); }
+.meter > span:nth-child(3), .legend > span:nth-child(3) i { background: color-mix(in srgb, var(--accent) 55%, var(--surface)); }
+.meter > span:nth-child(4), .legend > span:nth-child(4) i { background: color-mix(in srgb, var(--accent) 38%, var(--surface)); }
+.meter > span:nth-child(5), .legend > span:nth-child(5) i { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -837,6 +839,194 @@ a.list-row:hover {
   height: 8px;
   margin-right: 6px;
   border-radius: 2px;
+}
+
+/* ---------- Gợi ý mentor (AI Matching) ---------- */
+.match-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+.match-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+.match-card-best {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
+}
+.match-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--accent-ink);
+}
+.match-score strong {
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.match-score span {
+  font-size: 13px;
+  font-weight: 500;
+}
+.reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.reasons li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.reasons svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  flex: none;
+  color: var(--accent);
+}
+.match-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.match-row:first-child {
+  border-top: 0;
+}
+@media (max-width: 640px) {
+  .match-row { grid-template-columns: auto minmax(0, 1fr); }
+  .match-row > :last-child { grid-column: 1 / -1; justify-content: flex-start; }
+}
+.disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+}
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure > summary svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 120ms ease;
+}
+.disclosure[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+/* ---------- Bước tiếp theo (tổng quan) ---------- */
+.next-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.next-step-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--accent);
+  flex: none;
+}
+.next-step-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.next-step h2 {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+}
+.next-step p {
+  color: var(--ink-muted);
+}
+
+/* ---------- Onboarding (wizard) ---------- */
+.wizard {
+  width: min(640px, 100%);
+  margin: 0 auto;
+}
+.wizard-steps {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+.wizard-steps span {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.wizard-steps span[data-done="true"] {
+  background: var(--accent);
+}
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.choice:hover {
+  background: var(--surface-hover);
+}
+.choice[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--accent-soft);
+}
+.choice small {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.why {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.why svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: none;
 }
 
 /* ---------- Page header ---------- */
@@ -1075,7 +1265,7 @@ a.list-row:hover {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--surface);
   overflow-y: auto;
 }
 .sidebar-brand {
@@ -1119,11 +1309,9 @@ a.list-row:hover {
 }
 .nav-group-label {
   padding: 0 var(--space-3) var(--space-1);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--ink-subtle);
 }
 .nav-item {

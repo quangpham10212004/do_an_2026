@@ -8,8 +8,6 @@
 | Phạm Ninh Phương Thảo (B) | `profile-service` (8082), `matching-service` (8090) | `frontend/src/features/profile`, `frontend/src/features/matching` | AI Matching |
 | Đinh Quyết Thắng (C) | `mentoring-service` (8083), `payment-service` (8084), `ai-service/app/interview` | `frontend/src/features/mentoring`, `frontend/src/features/payment` | AI Interview |
 
-Quy tắc: **không sửa code trong service không thuộc quyền sở hữu của mình** mà không thông báo/xin
-review từ người phụ trách. Mọi thay đổi contract (mục 3) phải được cả 2 bên liên quan đồng ý trước khi merge.
 
 `ai-service` (8091, Python) có đồng sở hữu theo module: `app/interview/` (Thắng), `app/cv/` và
 `app/enrichment/` (Quang); phần dùng chung (`app/llm/`, `app/engines.py`, `app/db.py`, `app/main.py`,
@@ -26,6 +24,26 @@ mentoring-service (`POST /internal/notifications`) bằng header `X-Internal-Tok
 endpoint đó phải cập nhật contract trước.
 
 Trang giao diện (`frontend/src/app/**`) thuộc người sở hữu feature mà trang đó gọi API chính.
+
+**Ngoại lệ cho giao diện dùng chung:** design system (`frontend/design-system/**`, `src/styles/**`,
+`src/components/ui/**`, `src/components/shell/**`) là của chung, ai cũng được sửa. Thay đổi thuần
+trình bày (bố cục, màu, chữ, thứ tự hiển thị, ẩn/hiện chi tiết) ở bất kỳ trang nào cũng không cần
+người sở hữu feature duyệt trước, miễn là không đổi lời gọi API, dữ liệu gửi đi hay luật nghiệp vụ;
+đổi những thứ đó vẫn theo quyền sở hữu ở trên. PR chỉ cần báo cho người sở hữu các trang bị ảnh hưởng.
+
+### Nguyên tắc UI/UX
+
+- **Một hành động chính mỗi màn hình**: chỉ một nút `primary`; hành động khác dùng `secondary`/`ghost`/link.
+- **Tóm tắt trước, chi tiết khi cần** (progressive disclosure, tối đa 2 tầng): giải thích dài, phân
+  rã điểm, bộ lọc nâng cao để sau nút "Xem chi tiết" / `<details>`.
+- **Ít lựa chọn cùng lúc** (Hick's Law): danh sách gợi ý hiện ít mục nổi bật trước, phần còn lại
+  sau "Xem thêm".
+- **Màu có nghĩa**: chỉ `accent` cho hành động/mục chọn, màu trạng thái cho trạng thái; không dùng nhiều
+  màu để trang trí hoặc mã hoá dữ liệu khi một màu với độ đậm nhạt là đủ.
+- **Không lặp lại**: một thông tin/CTA chỉ xuất hiện một lần trên màn hình; ẩn ô số liệu bằng 0 và
+  thẻ trống thừa với người dùng mới, thay bằng một bước tiếp theo rõ ràng.
+- **Onboarding ngắn**: mentee đi tới gợi ý mentor đầu tiên trong ≤ 3 bước; câu hỏi nào cũng ghi rõ
+  vì sao hỏi; thông tin không bắt buộc (CV, lịch học) hỏi sau khi người dùng đã thấy giá trị.
 
 ## 2. Git workflow
 

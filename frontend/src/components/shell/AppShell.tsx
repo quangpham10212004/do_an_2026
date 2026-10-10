@@ -10,7 +10,7 @@ import { ROLE_LABELS } from "@/lib/format";
 import type { NotificationList, SessionUser } from "@/types";
 import { Avatar, Button, Count } from "@/components/ui";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
-import { NAV, activeItem } from "./nav";
+import { ACCOUNT_LINKS, NAV, activeItem } from "./nav";
 import { useTheme, type ThemeChoice } from "./theme";
 
 export function Brand({ href }: { href: string }) {
@@ -91,6 +91,12 @@ function UserMenu({ user }: { user: SessionUser }) {
             <Settings aria-hidden="true" />
             Tài khoản & bảo mật
           </Link>
+          {ACCOUNT_LINKS[user.role].map(({ href, label, icon: Icon }) => (
+            <Link key={href} href={href} className="menu-item" role="menuitem" onClick={() => setOpen(false)}>
+              <Icon aria-hidden="true" />
+              {label}
+            </Link>
+          ))}
           <div className="px-3 pb-1 pt-2 eyebrow">Giao diện</div>
           {THEME_OPTIONS.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" className="menu-item" role="menuitemradio" aria-checked={theme === id} onClick={() => setTheme(id)}>

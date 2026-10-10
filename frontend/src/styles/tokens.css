@@ -1,19 +1,19 @@
 /* MentorHub — generated from tokens.json — đừng sửa tay: node design-system/build-tokens.mjs */
 :root {
-  --bg: #f5f7f6;
+  --bg: #faf9f7;
   --surface: #ffffff;
-  --surface-sunken: #edf1ef;
-  --surface-hover: #f0f4f2;
-  --border: #dce3df;
-  --border-strong: #7c8984;
-  --ink: #15201b;
-  --ink-muted: #506059;
-  --ink-subtle: #66756f;
-  --accent: #0d6b59;
-  --accent-hover: #0a5547;
-  --accent-soft: #e2f2ed;
+  --surface-sunken: #f4f2ee;
+  --surface-hover: #f3f1ed;
+  --border: #ebe7e1;
+  --border-strong: #857d75;
+  --ink: #292524;
+  --ink-muted: #5c554f;
+  --ink-subtle: #6e6760;
+  --accent: #0f766e;
+  --accent-hover: #115e59;
+  --accent-soft: #e7f4f2;
   --on-accent: #ffffff;
-  --accent-ink: #0a5547;
+  --accent-ink: #115e59;
   --amber: #9e5f00;
   --info: #1c5aa0;
   --info-soft: #e7eff9;
@@ -24,10 +24,10 @@
   --danger: #b3261e;
   --danger-soft: #fcebe9;
   --on-danger: #ffffff;
-  --overlay: #15201b73;
-  --shadow-sm: 0 1px 2px #15201b0f;
-  --shadow-md: 0 6px 20px #15201b14;
-  --shadow-lg: 0 16px 48px #15201b2e;
+  --overlay: #29252473;
+  --shadow-sm: 0 1px 2px #2925240f;
+  --shadow-md: 0 6px 20px #29252414;
+  --shadow-lg: 0 16px 48px #2925242e;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -46,20 +46,20 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e1412;
-    --surface: #151d1a;
-    --surface-sunken: #0a0f0d;
-    --surface-hover: #1c2622;
-    --border: #26312d;
-    --border-strong: #5d6c66;
-    --ink: #e5ece8;
-    --ink-muted: #a0aea8;
-    --ink-subtle: #859590;
-    --accent: #4cc3a7;
-    --accent-hover: #72d4bd;
-    --accent-soft: #123129;
-    --on-accent: #04211a;
-    --accent-ink: #7fdcc6;
+    --bg: #141210;
+    --surface: #1c1a17;
+    --surface-sunken: #0f0d0c;
+    --surface-hover: #25221f;
+    --border: #302c28;
+    --border-strong: #6f6860;
+    --ink: #ece8e3;
+    --ink-muted: #b3aca4;
+    --ink-subtle: #968e86;
+    --accent: #3cc9b6;
+    --accent-hover: #6fdccd;
+    --accent-soft: #123430;
+    --on-accent: #04211d;
+    --accent-ink: #86e3d6;
     --amber: #f0b357;
     --info: #86b7ef;
     --info-soft: #14243a;
@@ -78,20 +78,20 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0e1412;
-  --surface: #151d1a;
-  --surface-sunken: #0a0f0d;
-  --surface-hover: #1c2622;
-  --border: #26312d;
-  --border-strong: #5d6c66;
-  --ink: #e5ece8;
-  --ink-muted: #a0aea8;
-  --ink-subtle: #859590;
-  --accent: #4cc3a7;
-  --accent-hover: #72d4bd;
-  --accent-soft: #123129;
-  --on-accent: #04211a;
-  --accent-ink: #7fdcc6;
+  --bg: #141210;
+  --surface: #1c1a17;
+  --surface-sunken: #0f0d0c;
+  --surface-hover: #25221f;
+  --border: #302c28;
+  --border-strong: #6f6860;
+  --ink: #ece8e3;
+  --ink-muted: #b3aca4;
+  --ink-subtle: #968e86;
+  --accent: #3cc9b6;
+  --accent-hover: #6fdccd;
+  --accent-soft: #123430;
+  --on-accent: #04211d;
+  --accent-ink: #86e3d6;
   --amber: #f0b357;
   --info: #86b7ef;
   --info-soft: #14243a;

@@ -40,7 +40,7 @@ function RegisterForm() {
       const query = new URLSearchParams({ welcome: "1" });
       if (res.referralApplied === false) query.set("referral", "invalid");
       if (res.emailVerificationToken) query.set("verify", res.emailVerificationToken);
-      router.push(`/dashboard?${query}`);
+      router.push(`${form.role === "MENTEE" ? "/onboarding" : "/dashboard"}?${query}`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

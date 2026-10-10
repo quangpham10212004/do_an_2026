@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
-import { BookOpen, CalendarDays, CheckCircle2, Circle } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { BookOpen, CalendarDays, CheckCircle2, Circle, Inbox, ListChecks, Sparkles, type LucideIcon } from "lucide-react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Avatar, ButtonLink, Card, CardHeader, EmptyState, List, ListRow, PageHeader, Progress, Stat, Stats, StatusBadge } from "@/components/ui";
+import WelcomeAlerts from "@/components/WelcomeAlerts";
+import { Avatar, ButtonLink, Card, CardBody, CardHeader, List, ListRow, PageHeader, Progress, Stat, Stats, StatusBadge } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
-import { CompletenessCard } from "@/features/profile/ProfileExtras";
 import { aiApi } from "@/features/ai/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import { learningApi } from "@/features/learning/api";
@@ -36,23 +35,6 @@ function Step({ done, title, desc, href, action }: StepProps) {
   );
 }
 
-function Welcome() {
-  const params = useSearchParams();
-  const verify = params.get("verify");
-  return (
-    <>
-      {params.get("welcome") && <Alert tone="success">Chào mừng bạn đến với MentorHub. Làm theo các bước bên dưới để bắt đầu.</Alert>}
-      {params.get("referral") === "invalid" && <Alert tone="warning">Mã giới thiệu không hợp lệ nên chưa được ghi nhận.</Alert>}
-      {verify && (
-        <Alert tone="info">
-          Email xác thực đã được gửi (môi trường demo ghi vào log).{" "}
-          <Link href={`/verify-email?token=${verify}`}>Xác thực ngay</Link>.
-        </Alert>
-      )}
-    </>
-  );
-}
-
 function Dashboard({ user }: { user: SessionUser }) {
   const [profile, setProfile] = useState<MentorProfile | MenteeProfile | null | undefined>(undefined);
   const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
@@ -78,9 +60,15 @@ function Dashboard({ user }: { user: SessionUser }) {
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   const pendingRequests = requests.filter((r) => r.status === "PENDING");
 
+  const missing = profile?.completeness?.items.filter((i) => !i.done) ?? [];
   const steps: StepProps[] = isMentor
     ? [
-        { done: !!profile, title: "Hoàn thành hồ sơ mentor", desc: "Chuyên môn, kinh nghiệm, mức phí, sức chứa", href: "/profile", action: profile ? "Sửa" : "Tạo hồ sơ" },
+        {
+          done: !!profile && missing.length === 0,
+          title: "Hoàn thành hồ sơ mentor",
+          desc: profile ? (missing.length ? `Hoàn thiện ${profile.completeness?.score}% · còn thiếu ${missing.map((i) => i.label).join(", ")}` : "Đã đầy đủ") : "Chuyên môn, kinh nghiệm, mức phí, sức chứa",
+          href: "/profile", action: profile ? "Bổ sung" : "Tạo hồ sơ",
+        },
         { done: !!mentorProfile?.availability.length, title: "Khai báo lịch rảnh", desc: "Mentee chỉ đặt được lịch trong khung giờ này", href: "/profile#availability", action: "Cập nhật" },
         {
           done: mentorProfile?.verificationStatus === "APPROVED",
@@ -91,101 +79,130 @@ function Dashboard({ user }: { user: SessionUser }) {
         },
       ]
     : [
-        { done: !!profile, title: "Tạo hồ sơ nghề nghiệp", desc: "Lĩnh vực, trình độ, kỹ năng và mục tiêu", href: "/profile", action: profile ? "Sửa" : "Tạo hồ sơ" },
-        { done: enrichment?.conversation?.status === "COMPLETED", title: "Tải CV và làm rõ mục tiêu", desc: "Chatbot hỏi thêm dựa trên CV của bạn", href: "/cv-enrichment", action: "Bắt đầu" },
-        { done: requests.length > 0, title: "Tìm mentor phù hợp", desc: "AI gợi ý mentor dựa trên hồ sơ của bạn", href: "/matching", action: "Tìm mentor" },
+        {
+          // Đủ để mở AI Matching (≥ 50%) là xong bước này; các mục còn lại chỉ giúp gợi ý chính xác hơn.
+          done: !!profile && "matchingEnabled" in profile && profile.matchingEnabled,
+          title: "Tạo hồ sơ học tập",
+          desc: profile ? `Hoàn thiện ${profile.completeness?.score}%${missing.length ? ` · có thể bổ sung: ${missing.map((i) => i.label).join(", ")}` : ""}` : "Lĩnh vực, trình độ, kỹ năng và mục tiêu",
+          href: profile ? "/profile" : "/onboarding", action: profile ? "Bổ sung" : "Bắt đầu",
+        },
+        { done: enrichment?.conversation?.status === "COMPLETED", title: "Tải CV và làm rõ mục tiêu", desc: "Chatbot hỏi thêm dựa trên CV — gợi ý mentor sẽ chính xác hơn", href: "/cv-enrichment", action: "Bắt đầu" },
+        { done: requests.length > 0, title: "Gửi yêu cầu tới một mentor", desc: "Chọn trong các mentor AI gợi ý cho bạn", href: "/matching", action: "Xem gợi ý" },
       ];
   const remaining = steps.filter((st) => !st.done).length;
+  const next = nextStep();
+  const hasActivity = upcoming.length > 0 || requests.length > 0 || courses.length > 0;
+
+  /** Một việc quan trọng nhất lúc này — thay cho nhiều nút "Tìm mentor" rải rác. */
+  function nextStep(): { icon: LucideIcon; title: string; desc: string; href: string; action: string } | null {
+    if (profile === undefined) return null; // đang tải
+    const soon = upcoming[0];
+    if (soon) {
+      const other = isMentor ? soon.menteeName : soon.mentorName;
+      return { icon: CalendarDays, title: `Phiên tiếp theo với ${other}`, desc: `${formatDateTime(soon.scheduledAt)} · ${soon.durationMinutes} phút`, href: "/mentoring/sessions", action: "Xem phiên" };
+    }
+    if (isMentor) {
+      if (pendingRequests.length) return { icon: Inbox, title: `${pendingRequests.length} yêu cầu đang chờ bạn`, desc: "Mentee cần phản hồi trong 48 giờ, quá hạn yêu cầu sẽ tự đóng.", href: "/mentoring/requests", action: "Phản hồi ngay" };
+      const todo = steps.find((st) => !st.done);
+      if (todo?.href) return { icon: ListChecks, title: todo.title, desc: "Hoàn tất để mentee tìm thấy và đặt lịch với bạn.", href: todo.href, action: todo.action || "Tiếp tục" };
+      return { icon: CalendarDays, title: "Chưa có phiên nào sắp tới", desc: "Mở thêm khung giờ rảnh để mentee dễ đặt lịch hơn.", href: "/profile#availability", action: "Cập nhật lịch rảnh" };
+    }
+    if (!profile) return { icon: Sparkles, title: "Cho chúng tôi biết bạn muốn học gì", desc: "3 câu hỏi ngắn, sau đó AI gợi ý ngay những mentor hợp với bạn.", href: "/onboarding", action: "Bắt đầu" };
+    if (!requests.length) return { icon: Sparkles, title: "Mentor AI gợi ý cho bạn đã sẵn sàng", desc: "Xem 3 mentor phù hợp nhất và gửi yêu cầu tới người bạn thích.", href: "/matching", action: "Xem gợi ý" };
+    if (pendingRequests.length) return { icon: Inbox, title: "Đang chờ mentor phản hồi", desc: `${pendingRequests.length} yêu cầu đang chờ. Mentor thường trả lời trong 48 giờ.`, href: "/mentoring/requests", action: "Xem yêu cầu" };
+    return { icon: CalendarDays, title: "Đặt lịch phiên học tiếp theo", desc: "Chọn khung giờ rảnh của mentor để tiếp tục lộ trình.", href: "/mentoring/relationships", action: "Đặt lịch" };
+  }
 
   return (
     <>
-      <div className="mb-6 flex flex-col gap-2 empty:hidden">
-        <Suspense>
-          <Welcome />
-        </Suspense>
-      </div>
+      <WelcomeAlerts welcome="Chào mừng bạn đến với MentorHub." />
       <PageHeader
         title={`Chào ${profile?.displayName || user.fullName || user.email}`}
         description={isMentor ? "Lịch dạy, yêu cầu mới và việc cần làm của bạn." : "Lịch học, mentor và tiến độ học tập của bạn."}
-        actions={isMentor
-          ? <ButtonLink href="/mentoring/requests" variant="primary">Xem yêu cầu</ButtonLink>
-          : <ButtonLink href="/matching" variant="primary">Tìm mentor</ButtonLink>}
       />
 
-      <div className="mb-6">
-        <Stats>
-          <Stat label="Phiên sắp tới" value={upcoming.length} hint={upcoming[0] ? `Gần nhất ${formatDateTime(upcoming[0].scheduledAt)}` : "Chưa có lịch"} />
-          <Stat label={isMentor ? "Yêu cầu chờ phản hồi" : "Yêu cầu đã gửi"} value={isMentor ? pendingRequests.length : requests.length}
-            hint={isMentor ? "Phản hồi trong 48 giờ" : `${pendingRequests.length} đang chờ mentor`} />
-          <Stat label="Khoá học" value={courses.length} hint={courses.length ? `${courses.filter((c) => c.percentComplete >= 100).length} đã hoàn thành` : "Chưa đăng ký"} />
-        </Stats>
-      </div>
+      <div className="flex flex-col gap-6">
+        {next && (
+          <section className="next-step" aria-label="Việc nên làm tiếp theo">
+            <span className="next-step-icon"><next.icon aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1">
+              <h2>{next.title}</h2>
+              <p>{next.desc}</p>
+            </div>
+            <ButtonLink href={next.href} variant="primary" size="lg">{next.action}</ButtonLink>
+          </section>
+        )}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-6">
-          {isMentor && pendingRequests.length > 0 && (
-            <Alert tone="info" action={<ButtonLink href="/mentoring/requests" size="sm">Xem ngay</ButtonLink>}>
-              Bạn có {pendingRequests.length} yêu cầu mentoring đang chờ phản hồi.
-            </Alert>
-          )}
-          <Card>
-            <CardHeader title="Phiên sắp tới" actions={<Link href="/mentoring/sessions" className="text-small">Xem tất cả</Link>} />
-            {upcoming.length === 0 ? (
-              <EmptyState icon={CalendarDays} title="Chưa có phiên nào sắp diễn ra"
-                action={!isMentor && <ButtonLink href="/matching" size="sm">Tìm mentor để đặt lịch</ButtonLink>}>
-                {isMentor ? "Phiên mentee đặt với bạn sẽ hiện ở đây." : "Đặt lịch với mentor để bắt đầu học."}
-              </EmptyState>
-            ) : (
-              <List>
-                {upcoming.slice(0, 5).map((s) => {
-                  const other = isMentor ? s.menteeName : s.mentorName;
-                  return (
-                    <ListRow
-                      key={s.id}
-                      href="/mentoring/sessions"
-                      leading={<Avatar name={other} />}
-                      title={other}
-                      meta={`${formatDateTime(s.scheduledAt)} · ${s.durationMinutes} phút`}
-                      trailing={<StatusBadge status={s.status} labels={SESSION_STATUS_LABELS} tone={mentoringTone} />}
-                    />
-                  );
-                })}
-              </List>
+        {hasActivity && (
+          <Stats>
+            <Stat label="Phiên sắp tới" value={upcoming.length} hint={upcoming[0] ? `Gần nhất ${formatDateTime(upcoming[0].scheduledAt)}` : "Chưa có lịch"} />
+            <Stat label={isMentor ? "Yêu cầu chờ phản hồi" : "Yêu cầu đã gửi"} value={isMentor ? pendingRequests.length : requests.length}
+              hint={isMentor ? "Phản hồi trong 48 giờ" : `${pendingRequests.length} đang chờ mentor`} />
+            <Stat label="Khoá học" value={courses.length} hint={courses.length ? `${courses.filter((c) => c.percentComplete >= 100).length} đã hoàn thành` : "Chưa đăng ký"} />
+          </Stats>
+        )}
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-6">
+            {upcoming.length > 1 && (
+              <Card>
+                <CardHeader title="Phiên sắp tới" actions={<Link href="/mentoring/sessions" className="text-small">Xem tất cả</Link>} />
+                <List>
+                  {upcoming.slice(0, 5).map((s) => {
+                    const other = isMentor ? s.menteeName : s.mentorName;
+                    return (
+                      <ListRow
+                        key={s.id}
+                        href="/mentoring/sessions"
+                        leading={<Avatar name={other} />}
+                        title={other}
+                        meta={`${formatDateTime(s.scheduledAt)} · ${s.durationMinutes} phút`}
+                        trailing={<StatusBadge status={s.status} labels={SESSION_STATUS_LABELS} tone={mentoringTone} />}
+                      />
+                    );
+                  })}
+                </List>
+              </Card>
             )}
-          </Card>
-          <Card>
-            <CardHeader title="Khoá học của tôi" actions={<Link href="/learning" className="text-small">Learning Hub</Link>} />
-            {courses.length === 0 ? (
-              <EmptyState icon={BookOpen} title="Chưa đăng ký khoá học nào" action={<ButtonLink href="/learning" size="sm">Xem khoá học</ButtonLink>}>
-                Khoá học và roadmap trên Learning Hub giúp bạn học giữa các phiên.
-              </EmptyState>
-            ) : (
-              <List>
-                {courses.slice(0, 4).map((c) => (
-                  <ListRow key={c.id} href={`/learning/courses/${c.id}`} title={c.title}
-                    trailing={<span className="text-small text-ink-muted tabular">{c.percentComplete}%</span>}>
-                    <div className="mt-2 max-w-[360px]"><Progress value={c.percentComplete} label={`Tiến độ ${c.title}`} /></div>
-                  </ListRow>
-                ))}
-              </List>
+            {remaining > 0 && (
+              <Card>
+                <CardHeader title="Các bước bắt đầu" description={`Đã xong ${steps.length - remaining}/${steps.length} bước`} />
+                <div className="px-5 pt-4"><Progress value={((steps.length - remaining) / steps.length) * 100} label="Tiến độ bắt đầu" /></div>
+                <List>
+                  {steps.map((st) => <Step key={st.title} {...st} />)}
+                </List>
+              </Card>
             )}
-          </Card>
-        </div>
-        <div className="flex min-w-0 flex-col gap-6">
-          <Card>
-            <CardHeader title="Các bước bắt đầu" description={remaining ? `Còn ${remaining} bước` : "Bạn đã hoàn thành tất cả các bước."} />
-            <List>
-              {steps.map((st) => <Step key={st.title} {...st} />)}
-            </List>
+            {courses.length > 0 && (
+              <Card>
+                <CardHeader title="Khoá học của tôi" actions={<Link href="/learning" className="text-small">Learning Hub</Link>} />
+                <List>
+                  {courses.slice(0, 4).map((c) => (
+                    <ListRow key={c.id} href={`/learning/courses/${c.id}`} title={c.title}
+                      trailing={<span className="text-small text-ink-muted tabular">{c.percentComplete}%</span>}>
+                      <div className="mt-2 max-w-[360px]"><Progress value={c.percentComplete} label={`Tiến độ ${c.title}`} /></div>
+                    </ListRow>
+                  ))}
+                </List>
+              </Card>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col gap-6">
+            {courses.length === 0 && (
+              <Card>
+                <CardBody className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 font-semibold"><BookOpen aria-hidden="true" className="size-4 text-accent" />Learning Hub</div>
+                  <p className="text-small text-ink-muted">Khoá học và roadmap giúp bạn {isMentor ? "chia sẻ tài liệu với mentee" : "tự học giữa các phiên"}.</p>
+                  <Link href="/learning" className="text-small font-medium">Xem khoá học</Link>
+                </CardBody>
+              </Card>
+            )}
             {!isMentor && (
-              <div className="card-foot justify-start text-small text-ink-muted">
-                <span>Muốn tự chọn? <Link href="/mentors">Duyệt danh sách mentor</Link>.</span>
-              </div>
+              <p className="text-small text-ink-muted">
+                Muốn tự chọn mentor? <Link href="/mentors">Xem tất cả mentor</Link>.
+              </p>
             )}
-          </Card>
-          {profile?.completeness && profile.completeness.score < 100 && (
-            <CompletenessCard completeness={profile.completeness} matchingMin={isMentor ? undefined : 50} />
-          )}
+          </div>
         </div>
       </div>
     </>
