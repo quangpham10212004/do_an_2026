@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Search, Sparkles, Users } from "lucide-react";
 import { Alert, Avatar, Badge, Button, ButtonLink, Checkbox, Chip, Chips, EmptyState, Input, Loading, PageHeader, Pagination, Select, Stars, StatusBadge } from "@/components/ui";
+import FindMentorTabs from "@/features/matching/FindMentorTabs";
 import { DOMAINS, domainLabel, mentorStatusText, profileApi, publicMentorStatusText } from "@/features/profile/api";
 import { errorMessage } from "@/lib/api";
 import { formatRate } from "@/lib/format";
@@ -112,10 +113,10 @@ function MentorBrowser({ user }: { user: SessionUser }) {
   return (
     <>
       <PageHeader
-        title="Danh sách mentor"
+        title={user.role === "MENTEE" ? "Tìm mentor" : "Danh sách mentor"}
         description={isAdmin ? "Tra cứu toàn bộ hồ sơ mentor trên hệ thống." : "Mentor đã được xác thực qua AI Interview. Lọc theo lĩnh vực hoặc tìm theo tên."}
-        actions={user.role === "MENTEE" && <ButtonLink href="/matching" icon={Sparkles}>Gợi ý bằng AI</ButtonLink>}
       />
+      {user.role === "MENTEE" && <FindMentorTabs current="mentors" />}
 
       <form className="mb-6 flex flex-wrap items-center gap-2" onSubmit={submit}>
         <div className="relative w-full max-w-[360px]">

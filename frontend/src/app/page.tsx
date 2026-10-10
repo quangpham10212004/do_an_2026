@@ -48,9 +48,9 @@ function MatchPreview() {
             <span style={{ width: "14%" }} />
           </div>
           <div className="legend">
-            <span><i style={{ background: "var(--accent)" }} />Kỹ năng</span>
-            <span><i style={{ background: "var(--info)" }} />Mục tiêu</span>
-            <span><i style={{ background: "var(--amber)" }} />Lịch rảnh</span>
+            <span><i />Kỹ năng</span>
+            <span><i />Mục tiêu</span>
+            <span><i />Lịch rảnh</span>
           </div>
         </div>
         <p className="well text-small text-ink-muted">

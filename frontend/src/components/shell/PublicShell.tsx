@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui";
 import { Brand } from "./AppShell";
+import ThemeToggle from "./ThemeToggle";
 
 /** Khung trang công khai (giới thiệu, đăng nhập, đăng ký, khôi phục mật khẩu). */
 export default function PublicShell({ children }: { children: ReactNode }) {
@@ -13,6 +14,7 @@ export default function PublicShell({ children }: { children: ReactNode }) {
         <div className="public-header-inner">
           <Brand href="/" />
           <div className="flex-1" />
+          <ThemeToggle />
           <ButtonLink href="/login" variant="ghost">Đăng nhập</ButtonLink>
           <ButtonLink href="/register" variant="primary">Tạo tài khoản</ButtonLink>
         </div>

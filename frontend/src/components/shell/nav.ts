@@ -30,6 +30,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Số đếm hiển thị cạnh mục (vd. tin nhắn chưa đọc). */
   badge?: "messages";
+  /** Đường dẫn khác cũng tính là mục này (vd. "Tìm mentor" gồm cả /mentors). */
+  also?: string[];
 }
 
 export interface NavGroup {
@@ -49,28 +51,19 @@ const MENTORING: NavGroup = {
 
 export const NAV: Record<Role, NavGroup[]> = {
   MENTEE: [
-    { items: [{ href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard }] },
     {
-      label: "Tìm mentor",
       items: [
-        { href: "/matching", label: "AI Matching", icon: Sparkles },
-        { href: "/mentors", label: "Danh sách mentor", icon: Users },
+        { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
+        { href: "/matching", label: "Tìm mentor", icon: Sparkles, also: ["/mentors"] },
       ],
     },
     MENTORING,
     {
       label: "Phát triển",
       items: [
+        { href: "/profile", label: "Hồ sơ", icon: UserRound },
         { href: "/cv-enrichment", label: "CV & mục tiêu", icon: FileText },
         { href: "/learning", label: "Learning Hub", icon: BookOpen },
-      ],
-    },
-    {
-      label: "Tài khoản",
-      items: [
-        { href: "/profile", label: "Hồ sơ", icon: UserRound },
-        { href: "/payment/transactions", label: "Giao dịch", icon: Receipt },
-        { href: "/referral", label: "Giới thiệu bạn bè", icon: Gift },
       ],
     },
   ],
@@ -90,7 +83,6 @@ export const NAV: Record<Role, NavGroup[]> = {
         { href: "/profile", label: "Hồ sơ", icon: UserRound },
         { href: "/interview", label: "AI Interview", icon: BadgeCheck },
         { href: "/learning", label: "Learning Hub", icon: BookOpen },
-        { href: "/referral", label: "Giới thiệu bạn bè", icon: Gift },
       ],
     },
   ],
@@ -123,13 +115,24 @@ export const NAV: Record<Role, NavGroup[]> = {
   ],
 };
 
+/** Mục ít dùng, đặt trong menu tài khoản thay vì sidebar. */
+export const ACCOUNT_LINKS: Record<Role, NavItem[]> = {
+  MENTEE: [
+    { href: "/payment/transactions", label: "Giao dịch", icon: Receipt },
+    { href: "/referral", label: "Giới thiệu bạn bè", icon: Gift },
+  ],
+  MENTOR: [{ href: "/referral", label: "Giới thiệu bạn bè", icon: Gift }],
+  ADMIN: [],
+};
+
 /** Mục nav khớp đường dẫn hiện tại (khớp dài nhất; trang chủ của vai trò chỉ khớp chính xác). */
 export function activeItem(role: Role, pathname: string): NavItem | undefined {
   let best: NavItem | undefined;
   for (const group of NAV[role]) {
     for (const item of group.items) {
       const exactOnly = item.href === "/admin" || item.href === "/dashboard";
-      const hit = exactOnly ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");
+      const hit = exactOnly ? pathname === item.href
+        : [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(h + "/"));
       if (hit && (!best || item.href.length > best.href.length)) best = item;
     }
   }
