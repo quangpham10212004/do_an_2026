@@ -1,6 +1,8 @@
 """Truy cập bảng interviews / interview_turns (ai_db)."""
 from uuid import UUID
 
+from datetime import datetime
+
 import asyncpg
 
 from app.db import Db
@@ -39,6 +41,24 @@ async def insert(conn: Db, mentor_id: UUID, domain: str, skills: list[str], max_
         f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged)
             VALUES ($1, $2, $3, $4, $5, true) RETURNING {INTERVIEW_COLUMNS}""",
         mentor_id, domain, skills, max_turns, engine)
+
+
+async def abandon_stale(conn: Db, before: datetime, mentor_id: UUID | None = None) -> list[asyncpg.Record]:
+    """
+    US-43 (PRD-AIV-3) — đánh dấu ABANDONED các buổi IN_PROGRESS không có hoạt động (bắt đầu / trả lời) từ trước
+    `before`. mentor_id = chỉ của một mentor (kiểm tra lười khi mentor mở trang); None = quét toàn bộ (job nền).
+    Trả về (id, mentor_id) các buổi vừa đánh dấu.
+    """
+    return await conn.fetch(
+        """UPDATE interviews i SET status = 'ABANDONED', abandoned_at = now()
+            WHERE i.status = 'IN_PROGRESS' AND ($2::uuid IS NULL OR i.mentor_id = $2)
+              AND GREATEST(i.created_at, COALESCE((SELECT max(t.answered_at) FROM interview_turns t
+                                                    WHERE t.interview_id = i.id), i.created_at)) < $1
+        RETURNING i.id, i.mentor_id""", before, mentor_id)
+
+
+async def last_answered_at(conn: Db, interview_id: UUID) -> datetime | None:
+    return await conn.fetchval("SELECT max(answered_at) FROM interview_turns WHERE interview_id = $1", interview_id)
 
 
 async def outcomes_since_unlock(conn: Db, mentor_id: UUID) -> list[asyncpg.Record]:

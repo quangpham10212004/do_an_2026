@@ -54,6 +54,23 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
   );
 }
 
+/** US-43 (PRD-AIV-2) — đồng hồ gợi ý mỗi câu (chỉ hiển thị, không chặn gửi). */
+function SoftTimer({ askedAt, limitSeconds }: { askedAt: string; limitSeconds: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, Math.floor((now - new Date(askedAt).getTime()) / 1000));
+  const over = elapsed > limitSeconds;
+  const mm = (n: number) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  return (
+    <span className={`small ${over ? "" : "muted"}`} title="Gợi ý thời gian, không bắt buộc" style={over ? { color: "#c0392b" } : undefined}>
+      ⏱ {mm(elapsed)} / {mm(limitSeconds)}{over ? " — nên gửi câu trả lời" : ""}
+    </span>
+  );
+}
+
 function Interview() {
   const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
   const [answer, setAnswer] = useState("");
@@ -103,6 +120,9 @@ function Interview() {
 
   if (interview === undefined) return <Loading />;
   const inProgress = interview?.status === "IN_PROGRESS";
+  const minChars = interview?.answerMinChars ?? 50;
+  const maxChars = interview?.answerMaxChars ?? 3000;
+  const len = answer.trim().length;
 
   return (
     <>
@@ -124,16 +144,28 @@ function Interview() {
             <div ref={bottom} />
             {inProgress && (
               <form onSubmit={send} style={{ marginTop: "1rem" }}>
-                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onPaste={(e) => { if (e.clipboardData.getData("text").length > 500) setPasted(true); }} maxLength={5000} disabled={busy} placeholder="Nhập câu trả lời của bạn..." style={{ minHeight: 140 }} />
-                <div className="row" style={{ marginTop: 8 }}>
-                  <button className="btn" disabled={busy || !answer.trim()}>{busy ? "AI đang đánh giá..." : "Gửi câu trả lời"}</button>
-                  <span className="muted small">{answer.length}/5000</span>
+                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onPaste={(e) => { if (e.clipboardData.getData("text").length > 500) setPasted(true); }} maxLength={maxChars} disabled={busy} placeholder="Nhập câu trả lời của bạn..." style={{ minHeight: 140 }} />
+                <div className="row between" style={{ marginTop: 8 }}>
+                  <button className="btn" disabled={busy || len < minChars || len > maxChars}>{busy ? "AI đang đánh giá..." : "Gửi câu trả lời"}</button>
+                  <span className={`small ${len > 0 && len < minChars ? "" : "muted"}`}>{len}/{maxChars} ký tự{len < minChars ? ` · tối thiểu ${minChars}` : ""}</span>
+                  {interview.currentQuestion && <SoftTimer askedAt={interview.currentQuestion.askedAt} limitSeconds={interview.softTimerSeconds ?? 360} />}
                 </div>
+                {interview.resumeDeadline && (
+                  <div className="small muted" style={{ marginTop: 6 }}>
+                    Bạn có thể tạm dừng và quay lại tới {formatDateTime(interview.resumeDeadline)}; quá hạn buổi phỏng vấn bị huỷ và tính là một lần.
+                  </div>
+                )}
               </form>
             )}
           </div>
           <div className="stack">
-            {interview.status === "PENDING_REVIEW" && <Alert type="info">Bạn đã hoàn thành phỏng vấn. Kết quả đang chờ quản trị viên xem xét.</Alert>}
+            {interview.status === "PENDING_REVIEW" && <Alert type="info">Bạn đã hoàn thành phỏng vấn. Kết quả đang chờ quản trị viên xem xét — nhận xét từng câu sẽ hiện sau khi quản trị viên quyết định.</Alert>}
+            {interview.status === "ABANDONED" && (
+              <div className="card">
+                <Alert>Buổi phỏng vấn đã quá 72 giờ không hoạt động nên bị huỷ và tính là một lần phỏng vấn.</Alert>
+                <button className="btn" onClick={() => { setInterview(null); }} disabled={eligibility != null && !eligibility.canStart}>Bắt đầu buổi mới</button>
+              </div>
+            )}
             {interview.status === "APPROVED" && <Alert type="success">Tài khoản mentor đã được kích hoạt. Bạn sẽ xuất hiện trong kết quả gợi ý cho mentee.</Alert>}
             {interview.status === "RETAKE_REQUESTED" && (
               <div className="card">

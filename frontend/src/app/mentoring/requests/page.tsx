@@ -108,6 +108,16 @@ function Requests({ user }: { user: SessionUser }) {
     load();
   }, [load]);
 
+  // US-41 (PRD-REV-4) — huy hiệu "Mentee đáng tin cậy" từ nhận xét riêng của các mentor trước, cho yêu cầu đang chờ.
+  const [reliable, setReliable] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!isMentor || !items) return;
+    const mentees = [...new Set(items.filter((r) => r.status === "PENDING").map((r) => r.menteeId))];
+    mentees.forEach((id) => mentoringApi.menteeReliability(id)
+      .then((res) => setReliable((cur) => ({ ...cur, [id]: res.badge === "RELIABLE" })))
+      .catch(() => {}));
+  }, [isMentor, items]);
+
   async function act(fn: () => Promise<unknown>, ok: string) {
     setMsg({});
     try {
@@ -145,6 +155,7 @@ function Requests({ user }: { user: SessionUser }) {
               <div style={{ flex: 1 }}>
                 <div className="row">
                   <strong>{isMentor ? r.menteeName : <Link href={`/mentors/${r.mentorId}`}>{r.mentorName}</Link>}</strong>
+                  {isMentor && reliable[r.menteeId] && <span className="badge good" title="Các mentor trước đánh giá chuẩn bị và tham gia tốt">Mentee đáng tin cậy</span>}
                   <MentoringStatusBadge status={r.status} />
                   <span className="muted small">{formatDateTime(r.createdAt)}</span>
                 </div>

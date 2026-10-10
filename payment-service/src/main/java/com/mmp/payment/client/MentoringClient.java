@@ -44,6 +44,25 @@ public class MentoringClient {
                 .body(SessionInfo.class);
     }
 
+    /**
+     * US-42 — thông báo trong ứng dụng (và email nếu loại có ✉) qua mentoring-service. Best-effort: lỗi chỉ bị bỏ qua,
+     * không làm hỏng thao tác tiền đã ghi.
+     */
+    public void notify(UUID recipientId, String recipientRole, String type, String title, String message, String link) {
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("recipientId", recipientId == null ? null : recipientId.toString());
+            body.put("recipientRole", recipientRole);
+            body.put("type", type);
+            body.put("title", title);
+            body.put("message", message);
+            body.put("link", link);
+            restClient.post().uri("/internal/notifications").body(body).retrieve().toBodilessEntity();
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(MentoringClient.class).warn("Notification {} not sent: {}", type, e.getMessage());
+        }
+    }
+
     /** FR-6.2 — báo mentoring-service xác nhận phiên sau khi thanh toán thành công. */
     public void notifyPaymentSucceeded(UUID sessionId, UUID transactionId) {
         restClient.post()

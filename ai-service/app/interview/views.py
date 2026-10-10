@@ -3,6 +3,8 @@ from datetime import datetime
 from uuid import UUID
 
 import asyncpg
+
+from app.interview import attempts
 from pydantic import Field
 
 from app.interview.models import Recommendation, Strategy
@@ -56,6 +58,14 @@ class InterviewView(CamelModel):
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
+    # US-43 (PRD-AIV-3): hạn tiếp tục buổi đang làm (hoạt động gần nhất + 72 giờ); quá hạn => ABANDONED
+    resume_deadline: datetime | None = None
+    # US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định
+    feedback_visible: bool = False
+    # US-43 (PRD-AIV-2): giới hạn câu trả lời + đồng hồ gợi ý mỗi câu (không bắt buộc)
+    answer_min_chars: int = 50
+    answer_max_chars: int = 3000
+    soft_timer_seconds: int = 360
 
 
 class StartInterviewInput(CamelModel):
@@ -133,14 +143,18 @@ def turn_view(turn: asyncpg.Record, reveal_scores: bool, for_admin: bool = False
         asked_at=turn["asked_at"], answered_at=answered)
 
 
+DECIDED_STATUSES = ("APPROVED", "REJECTED", "RETAKE_REQUESTED")
+
+
 def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_admin: bool,
                    mentor_name: str | None = None) -> InterviewView:
     """
-    Trong lúc phỏng vấn, mentor KHÔNG thấy điểm/nhận xét từng câu (tránh "học tủ"
-    theo phản hồi). Sau khi hoàn thành, mentor và admin xem được toàn bộ.
+    US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét / rubric từng câu SAU KHI admin quyết định (APPROVED,
+    REJECTED, RETAKE_REQUESTED) — trong lúc làm và lúc chờ duyệt đều ẩn (tránh "học tủ" theo phản hồi). Tổng điểm và
+    nhận xét chung vẫn hiện sau khi hoàn thành. Admin luôn thấy đủ.
     """
     in_progress = interview["status"] == "IN_PROGRESS"
-    reveal = for_admin or not in_progress
+    reveal = for_admin or interview["status"] in DECIDED_STATUSES
     turn_views = [turn_view(t, reveal, for_admin) for t in turns]
     current = next((t for t in turn_views if t.answer is None), None) if in_progress else None
     return InterviewView(
@@ -153,4 +167,8 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
         self_answer_acknowledged=interview["self_answer_acknowledged"],
         created_at=interview["created_at"], completed_at=interview["completed_at"],
-        reviewed_at=interview["reviewed_at"])
+        reviewed_at=interview["reviewed_at"],
+        resume_deadline=(attempts.resume_deadline(interview["created_at"],
+                                                  max((t["answered_at"] for t in turns if t["answered_at"]), default=None))
+                         if in_progress else None),
+        feedback_visible=reveal)

@@ -309,7 +309,9 @@ def main():
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/attendance", {"answer": "HELD"}, token=referred_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/review", {"rating": 4, "comment": "Rat huu ich"}, token=referred_token)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
-    check(9, "Mentee đánh giá được; rating mentor được cập nhật", mentor_profile["ratingCount"] == 1 and abs(mentor_profile["rating"] - 4) < 0.01)
+    # US-41 (PRD-REV-5): rating đồng bộ là trung bình Bayes (prior 3 đánh giá ở trung bình nền tảng), không còn bằng
+    # điểm thô của 1 đánh giá — chỉ kiểm tra rating đã được cập nhật và số đánh giá đúng.
+    check(9, "Mentee đánh giá được; rating mentor được cập nhật", mentor_profile["ratingCount"] == 1 and 1 <= mentor_profile["rating"] <= 5)
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/review",
                                       {"rating": 5}, token=referred_token), 409)
     check(9, "Không đánh giá 2 lần cho 1 phiên", ok)

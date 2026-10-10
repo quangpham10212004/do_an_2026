@@ -262,7 +262,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
               <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
               <div className="row between small">
                 <span>Mentee đang hướng dẫn: <strong>{profile.activeMenteeCount}/{profile.capacity}</strong></span>
-                <span>Đánh giá: <strong>{profile.ratingCount ? `${profile.rating.toFixed(1)}/5 (${profile.ratingCount})` : "chưa có"}</strong></span>
+                <span>Đánh giá: <strong>{profile.ratingCount >= 3 ? `${profile.rating.toFixed(1)}/5 (${profile.ratingCount})` : profile.ratingCount ? `${profile.ratingCount} đánh giá — điểm hiện khi đủ 3` : "chưa có"}</strong></span>
               </div>
               <p className="muted small" style={{ marginTop: 8 }}>Trạng thái xác thực: {STATUS_LABELS[profile.verificationStatus]}</p>
             </>

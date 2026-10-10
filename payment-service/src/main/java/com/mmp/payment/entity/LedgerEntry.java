@@ -39,6 +39,10 @@ public class LedgerEntry {
     @Column(name = "refund_id", updatable = false)
     private UUID refundId;
 
+    /** US-42 — dòng PAYOUT: lần rút tiền đã chi trả. */
+    @Column(name = "payout_id", updatable = false)
+    private UUID payoutId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -54,6 +58,14 @@ public class LedgerEntry {
         this.refundId = refundId;
     }
 
+    /** US-42 — dòng PAYOUT của một lần rút tiền. */
+    public static LedgerEntry payout(Transaction t, BigDecimal amount, UUID payoutId) {
+        LedgerEntry e = new LedgerEntry(t, Type.PAYOUT, amount, null);
+        e.payoutId = payoutId;
+        return e;
+    }
+
+    public UUID getPayoutId() { return payoutId; }
     public UUID getId() { return id; }
     public UUID getMentorId() { return mentorId; }
     public UUID getSessionId() { return sessionId; }

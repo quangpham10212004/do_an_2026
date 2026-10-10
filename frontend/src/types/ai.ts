@@ -1,7 +1,7 @@
 import type { IsoDateTime, Uuid } from "./common";
 
 // contracts/ai-service.yaml — AI Interview
-export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "RETAKE_REQUESTED";
+export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "RETAKE_REQUESTED" | "ABANDONED";
 export type InterviewStrategy = "OPENING" | "DEEPEN" | "PIVOT";
 export type Recommendation = "APPROVE" | "REJECT" | "NEEDS_REVIEW";
 export type ReviewDecision = "APPROVE" | "REJECT" | "REQUEST_RETAKE";
@@ -63,6 +63,14 @@ export interface Interview {
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
   reviewedAt: IsoDateTime | null;
+  /** US-43 (PRD-AIV-3): hạn tiếp tục (hoạt động gần nhất + 72 giờ); null khi không còn IN_PROGRESS. */
+  resumeDeadline?: IsoDateTime | null;
+  /** US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định. */
+  feedbackVisible?: boolean;
+  /** US-43 (PRD-AIV-2) */
+  answerMinChars?: number;
+  answerMaxChars?: number;
+  softTimerSeconds?: number;
 }
 
 /** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */

@@ -9,6 +9,8 @@ thông báo admin → admin APPROVE/REJECT → đồng bộ trạng thái xác t
 ai-service sở hữu cả luồng lẫn dữ liệu: buổi phỏng vấn và từng lượt hỏi-đáp nằm trong ai_db.
 Lời gọi engine (DeepSeek) mất vài giây nên luôn thực hiện NGOÀI transaction.
 """
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -24,6 +26,8 @@ from app.interview.models import InterviewContext, TurnRecord
 from app.interview.views import (EligibilityView, InterviewStats, InterviewView, ReviewInterviewInput,
                                  interview_view)
 from app.security import AuthUser
+
+log = logging.getLogger(__name__)
 
 MAX_TURNS = config.INTERVIEW_MAX_TURNS
 _DATETIME = TypeAdapter(datetime)
@@ -64,8 +68,31 @@ def _eligibility_view(e: attempts.Eligibility, latest) -> EligibilityView:
                            can_start=reason in (None, "IN_PROGRESS"), reason=reason, question_count=MAX_TURNS)
 
 
+async def abandon_stale(mentor_id: UUID | None = None) -> int:
+    """US-43 (PRD-AIV-3) — buổi IN_PROGRESS không hoạt động quá 72 giờ → ABANDONED (tính là 1 lần phỏng vấn)."""
+    pool = await get_pool()
+    rows = await repo.abandon_stale(pool, datetime.now(timezone.utc) - attempts.RESUME_WINDOW, mentor_id)
+    for r in rows:
+        await audit.record(None, "SYSTEM", "INTERVIEW_ABANDONED", "INTERVIEW", str(r["id"]),
+                           None, {"mentorId": str(r["mentor_id"])})
+    if rows and mentor_id is None:
+        log.info("Abandoned %d stale interviews", len(rows))
+    return len(rows)
+
+
+async def abandon_stale_forever(interval_seconds: float = 600) -> None:
+    """Job nền của ai-service: quét buổi bỏ dở mỗi 10 phút (ngoài kiểm tra lười khi mentor mở trang)."""
+    while True:
+        try:
+            await abandon_stale()
+        except Exception as e:  # noqa: BLE001 — job nền không được chết
+            log.warning("Interview abandonment sweep failed: %s", e)
+        await asyncio.sleep(interval_seconds)
+
+
 async def eligibility(mentor_id: UUID) -> EligibilityView:
     """US-22 — GET /api/ai/interviews/eligibility (mentor) và bản admin cho 1 mentor bất kỳ."""
+    await abandon_stale(mentor_id)
     pool = await get_pool()
     return _eligibility_view(await _eligibility(pool, mentor_id), await repo.latest_for_mentor(pool, mentor_id))
 
@@ -79,6 +106,7 @@ async def start(user: AuthUser, self_answer_acknowledged: bool) -> InterviewView
     if mentor is None:
         raise errors.bad_request("PROFILE_REQUIRED", "Bạn cần hoàn thành hồ sơ mentor trước khi phỏng vấn")
 
+    await abandon_stale(user.user_id)  # US-43 — quá 72 giờ thì không tiếp tục được nữa
     pool = await get_pool()
     latest = await repo.latest_for_mentor(pool, user.user_id)
     if latest is not None:
@@ -119,6 +147,18 @@ async def answer(user: AuthUser, interview_id: UUID, text: str, pasted_large_tex
     interview = await _find(pool, interview_id)
     if interview["mentor_id"] != user.user_id:
         raise errors.forbidden("Đây không phải buổi phỏng vấn của bạn")
+    # US-43 (PRD-AIV-3) — quá 72 giờ không hoạt động: buổi bị bỏ dở, không trả lời tiếp được.
+    if interview["status"] == "IN_PROGRESS" and await abandon_stale(user.user_id):
+        interview = await _find(pool, interview_id)
+    if interview["status"] == "ABANDONED":
+        raise errors.conflict("INTERVIEW_ABANDONED",
+                              "Buổi phỏng vấn đã quá 72 giờ không hoạt động nên bị huỷ và tính là một lần phỏng vấn")
+    # US-43 (PRD-AIV-2) — 50–3000 ký tự.
+    length_error = attempts.answer_length_error(text)
+    if length_error == "ANSWER_TOO_SHORT":
+        raise errors.bad_request(length_error, f"Câu trả lời cần ít nhất {attempts.ANSWER_MIN} ký tự")
+    if length_error == "ANSWER_TOO_LONG":
+        raise errors.bad_request(length_error, f"Câu trả lời tối đa {attempts.ANSWER_MAX} ký tự")
     if interview["status"] != "IN_PROGRESS":
         raise errors.conflict("INTERVIEW_NOT_IN_PROGRESS", "Buổi phỏng vấn đã kết thúc")
 
@@ -178,6 +218,7 @@ async def answer(user: AuthUser, interview_id: UUID, text: str, pasted_large_tex
 
 
 async def latest_for(user: AuthUser) -> InterviewView | None:
+    await abandon_stale(user.user_id)
     pool = await get_pool()
     interview = await repo.latest_for_mentor(pool, user.user_id)
     return None if interview is None else await _view(pool, interview, for_admin=False)
@@ -284,6 +325,18 @@ async def stats() -> InterviewStats:
         mentors_rejected=counts.get("REJECTED", 0),
         retakes_requested=counts.get("RETAKE_REQUESTED", 0),
         **agreement([(r["status"], r["recommendation"], r["total"]) for r in reviewed]))
+
+
+async def dev_age(interview_id: UUID, hours: float) -> InterviewView:
+    """Chỉ dev/e2e (không có ở APP_ENV=prod): lùi mốc bắt đầu và các câu trả lời `hours` giờ (kiểm thử US-43 72 giờ)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("UPDATE interviews SET created_at = created_at - make_interval(secs => $2) WHERE id = $1",
+                           interview_id, hours * 3600)
+        await conn.execute("""UPDATE interview_turns SET asked_at = asked_at - make_interval(secs => $2),
+                                     answered_at = answered_at - make_interval(secs => $2) WHERE interview_id = $1""",
+                           interview_id, hours * 3600)
+    return await _view(pool, await _find(pool, interview_id), for_admin=True)
 
 
 async def _find(db, interview_id: UUID):

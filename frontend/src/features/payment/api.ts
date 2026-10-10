@@ -1,6 +1,11 @@
-import { api } from "@/lib/api";
+import { api, apiBlob } from "@/lib/api";
 import type {
+  BankAccount,
   CardInput,
+  Payout,
+  PayoutOverview,
+  PayoutStatus,
+  Receipt,
   EarningRow,
   EarningSummary,
   MyReferral,
@@ -30,6 +35,28 @@ export const paymentApi = {
   /** US-25 — thu nhập của mentor đang đăng nhập. */
   earningSummary: () => api<EarningSummary>("/api/payment/earnings/summary"),
   earnings: () => api<EarningRow[]>("/api/payment/earnings"),
+  // US-42 — rút tiền, biên lai, CSV
+  payoutOverview: () => api<PayoutOverview>("/api/payment/payouts/overview"),
+  saveBankAccount: (body: { bankName: string; accountNumber: string; holderName: string }) =>
+    api<BankAccount>("/api/payment/bank-account", { method: "PUT", body }),
+  requestPayout: () => api<Payout>("/api/payment/payouts", { method: "POST" }),
+  receipt: (transactionId: Uuid) => api<Receipt>(`/api/payment/transactions/${transactionId}/receipt`),
+  downloadEarningsCsv: async (month: string) => {
+    const blob = await apiBlob(`/api/payment/earnings/export?month=${month}`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `thu-nhap-${month}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+  adminPayouts: (status: PayoutStatus | "" = "REQUESTED") => api<Payout[]>(`/api/payment/admin/payouts?status=${status}`),
+  markPayoutPaid: (id: Uuid, reference: string, note?: string) =>
+    api<Payout>(`/api/payment/admin/payouts/${id}/paid`, { method: "POST", body: { reference, note } }),
+  rejectPayout: (id: Uuid, reason: string) =>
+    api<Payout>(`/api/payment/admin/payouts/${id}/reject`, { method: "POST", body: { reason } }),
   adminTransactions: (status: TransactionStatus | "" = "", page = 0) =>
     api<PageResponse<Transaction>>(`/api/payment/admin/transactions?status=${status}&page=${page}`),
   adminStats: () => api<PaymentStats>("/api/payment/admin/stats"),

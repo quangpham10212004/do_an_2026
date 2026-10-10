@@ -124,3 +124,64 @@ export interface PaymentStats {
   onHoldCount: number;
   totalPlatformFee: number;
 }
+
+// US-42 (PRD-PAY-4..6) — rút tiền, biên lai
+export type PayoutStatus = "REQUESTED" | "PAID" | "REJECTED";
+
+export interface BankAccount {
+  bankName: string;
+  /** "••••1234" */
+  accountNumberMasked: string;
+  holderName: string;
+  updatedAt: string;
+}
+
+export interface Payout {
+  id: string;
+  mentorId: string;
+  mentorName: string | null;
+  amount: number;
+  status: PayoutStatus;
+  bankName: string;
+  accountNumberMasked: string;
+  /** Chỉ admin nhận (để chuyển khoản). */
+  accountNumber: string | null;
+  holderName: string;
+  reference: string | null;
+  note: string | null;
+  requestedAt: string;
+  decidedAt: string | null;
+}
+
+export interface PayoutOverview {
+  available: number;
+  requested: number;
+  minimum: number;
+  canRequest: boolean;
+  bankAccount: BankAccount | null;
+  openPayout: Payout | null;
+  history: Payout[];
+}
+
+export interface Receipt {
+  receiptNumber: string;
+  transactionId: string;
+  status: string;
+  paidAt: string;
+  sessionId: string;
+  sessionStart: string | null;
+  durationMinutes: number | null;
+  payerId: string;
+  payerName: string;
+  mentorId: string;
+  mentorName: string;
+  amount: number;
+  fee: number;
+  mentorEarning: number;
+  currency: string;
+  provider: string;
+  providerReference: string | null;
+  refunded: number;
+  netPaid: number;
+  refunds: { receiptNumber: string; refundId: string; amount: number; reason: string | null; createdAt: string }[];
+}

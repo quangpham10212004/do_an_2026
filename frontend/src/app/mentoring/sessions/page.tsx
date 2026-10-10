@@ -1,5 +1,6 @@
 "use client";
 
+import ReviewForm, { MenteeFeedbackForm } from "@/features/mentoring/ReviewForm";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -21,39 +22,6 @@ import SlotPicker from "@/features/mentoring/SlotPicker";
 import { formatDateTime, formatMoney, formatInZone, getDisplayTimeZone } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
-
-function ReviewForm({ session, onDone }: { session: MentoringSession; onDone: () => void }) {
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-  const [error, setError] = useState("");
-  return (
-    <form
-      className="card"
-      style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8 }}
-      onSubmit={async (e) => {
-        e.preventDefault();
-        try {
-          await mentoringApi.review(session.id, rating, comment);
-          onDone();
-        } catch (err) {
-          setError(errorMessage(err));
-        }
-      }}
-    >
-      <Alert>{error}</Alert>
-      <div className="row">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button type="button" key={n} className="btn ghost sm" style={{ fontSize: "1.3rem", padding: 0, color: "#f59f00" }} onClick={() => setRating(n)}>
-            {n <= rating ? "★" : "☆"}
-          </button>
-        ))}
-        <span className="small muted">{rating}/5</span>
-      </div>
-      <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Nhận xét về buổi mentoring" maxLength={2000} style={{ minHeight: 70, marginTop: 6 }} />
-      <button className="btn sm" style={{ marginTop: 6 }}>Gửi đánh giá</button>
-    </form>
-  );
-}
 
 /** US-04 — nút "Tham gia" hiện từ 15 phút trước giờ bắt đầu tới khi phiên kết thúc. */
 const JOIN_EARLY_MS = 15 * 60 * 1000;
@@ -310,6 +278,9 @@ function Sessions({ user }: { user: SessionUser }) {
                     {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
                       <button className="btn sm" onClick={() => setReviewing(reviewing === s.id ? null : s.id)}>Đánh giá</button>
                     )}
+                    {isMentor && s.status === "COMPLETED" && (
+                      <button className="btn secondary sm" onClick={() => setReviewing(reviewing === s.id ? null : s.id)}>Nhận xét mentee</button>
+                    )}
                   </div>
                 </div>
                 {attendanceOpen(s) && <AttendancePrompt session={s} isMentor={isMentor} ask={ask} act={act} />}
@@ -341,7 +312,7 @@ function Sessions({ user }: { user: SessionUser }) {
                 )}
                 {reviewing === s.id && (
                   <div style={{ width: "100%" }}>
-                    <ReviewForm session={s} onDone={() => { setReviewing(null); setMsg({ ok: "Cảm ơn bạn đã đánh giá!" }); load(); }} />
+                    {isMentor ? <MenteeFeedbackForm sessionId={s.id} onDone={(ok) => { setReviewing(null); setMsg({ ok }); }} /> : <ReviewForm sessionId={s.id} onDone={() => { setReviewing(null); setMsg({ ok: "Cảm ơn bạn đã đánh giá!" }); load(); }} />}
                   </div>
                 )}
               </div>

@@ -27,7 +27,7 @@ function MentorCardView({ m, showStatus }: { m: MentorCard; showStatus: boolean 
         {m.domain && <span className="badge primary">{domainLabel(m.domain)}</span>}
       </div>
       <div className="small" style={{ margin: "6px 0 10px" }}>
-        {m.ratingCount > 0
+        {m.ratingCount >= 3 /* US-41 (PRD-REV-5) */
           ? <><Stars value={m.rating} /> <span className="muted">{Number(m.rating).toFixed(1)} ({m.ratingCount})</span></>
           : <span className="badge new">Mentor mới</span>}
       </div>

@@ -453,29 +453,6 @@ public class SessionService {
         return toView(session);
     }
 
-    /** FR-5.6 — mentee đánh giá mentor sau phiên; điểm trung bình được đồng bộ sang profile-service. */
-    public ReviewView review(AuthUser mentee, UUID sessionId, ReviewInput in) {
-        Review saved = tx.execute(s -> {
-            MentoringSession session = find(sessionId);
-            if (!session.getMenteeId().equals(mentee.userId())) {
-                throw ApiException.forbidden("Chỉ mentee của phiên mới được đánh giá");
-            }
-            if (session.getStatus() != MentoringSession.Status.COMPLETED) {
-                throw ApiException.conflict("SESSION_NOT_COMPLETED", "Chỉ đánh giá được sau khi phiên kết thúc");
-            }
-            if (reviewRepo.existsBySessionId(sessionId)) {
-                throw ApiException.conflict("ALREADY_REVIEWED", "Bạn đã đánh giá phiên này");
-            }
-            return reviewRepo.save(new Review(sessionId, session.getMenteeId(), session.getMentorId(), in.rating(),
-                    MentoringRequestService.trimToNull(in.comment())));
-        });
-        double avg = Math.round(reviewRepo.averageRating(saved.getMentorId()) * 100) / 100.0;
-        profileClient.updateRating(saved.getMentorId(), avg, reviewRepo.countByMentorId(saved.getMentorId()));
-        notifications.notifyUser(saved.getMentorId(), "REVIEW_RECEIVED", "Bạn nhận được đánh giá mới",
-                "Mentee đã đánh giá " + saved.getRating() + "/5 sao.", "/mentoring/sessions");
-        return toReviewView(saved, profileClient.displayNames(List.of(saved.getMenteeId())));
-    }
-
     /** FR-5.7 — lịch sử phiên của người dùng. */
     public List<SessionView> mine(AuthUser user, String status) {
         List<MentoringSession> list = switch (user.role()) {
@@ -498,12 +475,6 @@ public class SessionService {
 
     public SessionInternalView getInternal(UUID sessionId) {
         return toInternal(find(sessionId));
-    }
-
-    public List<ReviewView> mentorReviews(UUID mentorId) {
-        List<Review> reviews = reviewRepo.findByMentorIdOrderByCreatedAtDesc(mentorId);
-        Map<UUID, String> names = profileClient.displayNames(reviews.stream().map(Review::getMenteeId).toList());
-        return reviews.stream().map(r -> toReviewView(r, names)).toList();
     }
 
     private void notifyBoth(MentoringSession s, String type, String title, String message) {
@@ -583,8 +554,4 @@ public class SessionService {
                 s.getPrice(), s.getStatus().name());
     }
 
-    private static ReviewView toReviewView(Review r, Map<UUID, String> names) {
-        return new ReviewView(r.getId(), r.getSessionId(), r.getMenteeId(), names.get(r.getMenteeId()), r.getMentorId(),
-                r.getRating(), r.getComment(), r.getCreatedAt());
-    }
 }

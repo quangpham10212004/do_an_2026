@@ -10,7 +10,7 @@ from app import config
 from app.interview import rubric
 from app.interview.rubric import RubricScores
 from tests.conftest import auth
-from tests.test_interview_flow import STRONG_ANSWER, answer_all, start
+from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, answer_all, start
 
 
 def r(t, d, c, m):
@@ -113,8 +113,15 @@ def test_rule_based_turns_have_rubric_and_reproducibility_info(client, db, fake_
     expected = rubric.overall_score([t["score"] for t in detail["turns"]])
     assert detail["overallScore"] == expected
     assert detail["recommendation"] == rubric.recommend(expected, False)
-    # mentor xem lại sau khi xong: có điểm rubric nhưng không thấy thông tin engine/cờ (chỉ admin)
+    # US-43 (PRD-AIV-5): chờ admin duyệt → mentor chưa thấy điểm / rubric từng câu, không bao giờ thấy engine/cờ
     mine = client.get(f"/api/ai/interviews/{interview['id']}", headers=auth(mentor_id, "MENTOR")).json()
+    assert mine["feedbackVisible"] is False
+    assert mine["turns"][0]["rubric"] is None and mine["turns"][0]["score"] is None and mine["turns"][0]["engine"] is None
+    assert mine["overallScore"] is not None  # tổng điểm vẫn hiện
+    review(client, interview["id"], rubric.recommend(expected, False) if rubric.recommend(expected, False) != "NEEDS_REVIEW"
+           else "APPROVE", "Ghi chú đủ dài cho quyết định của admin")
+    mine = client.get(f"/api/ai/interviews/{interview['id']}", headers=auth(mentor_id, "MENTOR")).json()
+    assert mine["feedbackVisible"] is True
     assert mine["turns"][0]["rubric"] is not None and mine["turns"][0]["engine"] is None
 
 
@@ -134,7 +141,7 @@ def test_injection_and_paste_flags_force_needs_review(client, db, fake_profile, 
 
 
 def test_note_required_when_overruling_ai(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
-    interview = finished(client, mentor_id, text="Khong biet")
+    interview = finished(client, mentor_id, text=WEAK_ANSWER)
     assert interview["recommendation"] == "REJECT"
     res = review(client, interview["id"], "APPROVE", "ok")
     assert res.status_code == 400 and res.json()["error"]["code"] == "REVIEW_NOTE_REQUIRED"
@@ -148,7 +155,7 @@ def test_note_required_when_overruling_ai(client, db, fake_profile, fake_mentori
 
 
 def test_matching_decision_needs_no_note(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
-    interview = finished(client, mentor_id, text="Khong biet")
+    interview = finished(client, mentor_id, text=WEAK_ANSWER)
     res = review(client, interview["id"], "REJECT")
     assert res.status_code == 200 and res.json()["status"] == "REJECTED"
     assert fake_audit.records[-1]["action"] == "INTERVIEW_REJECTED"
@@ -157,7 +164,7 @@ def test_matching_decision_needs_no_note(client, db, fake_profile, fake_mentorin
 
 def test_request_retake_allows_immediate_restart_without_using_attempt(client, db, fake_profile, fake_mentoring,
                                                                          fake_audit, mentor_id):
-    interview = finished(client, mentor_id, text="Khong biet")
+    interview = finished(client, mentor_id, text=WEAK_ANSWER)
     assert review(client, interview["id"], "REQUEST_RETAKE").status_code == 400  # AI: REJECT => cần ghi chú
     res = review(client, interview["id"], "REQUEST_RETAKE", "Mạng lỗi giữa chừng, làm lại giúp mình")
     assert res.status_code == 200 and res.json()["status"] == "RETAKE_REQUESTED"
@@ -209,10 +216,10 @@ def test_agreement_counts_pure():
 
 
 def test_admin_stats_report_agreement(client, db, fake_profile, fake_mentoring, mentor_id):
-    weak = finished(client, mentor_id, text="Khong biet")              # AI: REJECT
+    weak = finished(client, mentor_id, text=WEAK_ANSWER)              # AI: REJECT
     review(client, weak["id"], "REJECT")                                 # đồng thuận
     other = uuid.uuid4()
-    weak2 = finished(client, other, text="Khong biet")
+    weak2 = finished(client, other, text=WEAK_ANSWER)
     review(client, weak2["id"], "APPROVE", "Phỏng vấn trực tiếp đạt yêu cầu")  # bác AI
     stats = client.get("/api/ai/admin/stats", headers=ADMIN).json()
     assert stats["decisionsTotal"] == 2 and stats["decisionsComparable"] == 2
