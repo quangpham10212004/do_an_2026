@@ -35,6 +35,8 @@ function ReplyForm({ review, onDone }: { review: Review; onDone: () => void }) {
 export default function MentorReviews({ mentorId }: { mentorId: Uuid }) {
   const [data, setData] = useState<MentorReviewSummary | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  // US-44 (PRD-MATCH-9) — 5 đánh giá gần nhất, mở rộng khi cần
+  const [showAll, setShowAll] = useState(false);
   const load = useCallback(() => mentoringApi.reviewSummary(mentorId).then(setData).catch(() => setData(null)), [mentorId]);
   useEffect(() => {
     load();
@@ -44,6 +46,7 @@ export default function MentorReviews({ mentorId }: { mentorId: Uuid }) {
   return (
     <div className="card" id="reviews">
       <h2>Đánh giá ({data.reviewCount})</h2>
+      <p className="small muted">{data.sessionsCompleted} phiên đã hoàn thành</p>
       {data.newMentor
         ? <p><span className="badge new">Mentor mới</span> <span className="small muted">Điểm hiển thị khi có từ 3 đánh giá.</span></p>
         : <p><Stars value={data.rating} /> {data.rating?.toFixed(1)}/5</p>}
@@ -58,7 +61,7 @@ export default function MentorReviews({ mentorId }: { mentorId: Uuid }) {
         </div>
       )}
       {data.reviews.length === 0 && <p className="muted">Chưa có đánh giá.</p>}
-      {data.reviews.map((r) => (
+      {(showAll ? data.reviews : data.reviews.slice(0, 5)).map((r) => (
         <div key={r.id} className="list-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <div className="row"><Stars value={r.rating} /><strong className="small">{r.menteeName}</strong>
             <span className="muted small">{formatDate(r.createdAt)}{r.updatedAt ? " · đã sửa" : ""}</span></div>
@@ -74,6 +77,9 @@ export default function MentorReviews({ mentorId }: { mentorId: Uuid }) {
           {editing === r.id && <ReviewForm sessionId={r.sessionId} existing={r} onDone={() => { setEditing(null); load(); }} />}
         </div>
       ))}
+      {data.reviews.length > 5 && (
+        <button className="btn ghost sm" onClick={() => setShowAll(!showAll)}>{showAll ? "Thu gọn" : `Xem tất cả ${data.reviews.length} đánh giá`}</button>
+      )}
     </div>
   );
 }

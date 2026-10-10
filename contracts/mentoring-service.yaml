@@ -794,6 +794,7 @@ paths:
                   preparation: { type: number, nullable: true }
                   tags: { type: object, additionalProperties: { type: integer } }
                   reviews: { type: array, items: { $ref: "#/components/schemas/Review" } }
+                  sessionsCompleted: { type: integer, description: "US-44 (PRD-MATCH-9) — số phiên COMPLETED của mentor" }
   /api/mentoring/mentors/{id}/available-slots:
     get:
       summary: >
