@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, PageHead, useDialog, Flash } from "@/components/ui";
+import { Plus, Trash2 } from "lucide-react";
+import { Button, Card, CardBody, CardFooter, CardHeader, EmptyState, Field, FlashAlerts, Input, PageHeader, Select, Tabs, Textarea, useDialog, type Flash } from "@/components/ui";
 import { learningApi } from "@/features/learning/api";
 import { DOMAINS } from "@/features/profile/api";
 import { errorMessage } from "@/lib/api";
@@ -26,6 +27,7 @@ function ContentAdmin() {
   const [roadmapForm, setRoadmapForm] = useState<RoadmapInput>({ title: "", track: "", description: "" });
   const [item, setItem] = useState<ItemForm>({ title: "", description: "", courseId: "" });
   const [msg, setMsg] = useState<Flash>({});
+  const [tab, setTab] = useState<"courses" | "roadmaps">("courses");
   const [dialog, ask] = useDialog();
 
   const load = useCallback(async () => {
@@ -53,95 +55,140 @@ function ContentAdmin() {
 
   const splitSkills = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
+  const row = (key: string, active: boolean, title: string, meta: string, onOpen: () => void, onDelete: () => void) => (
+    <div key={key} className={`flex items-center gap-3 px-5 py-3 ${active ? "bg-accent-soft" : ""}`}>
+      <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={onOpen}>
+        <div className="font-semibold">{title}</div>
+        <div className="text-small text-ink-muted">{meta}</div>
+      </button>
+      <Button size="sm" variant="ghost" iconOnly icon={Trash2} label="Xoá" onClick={onDelete} />
+    </div>
+  );
+
   return (
     <>
-      <PageHead title="Quản lý nội dung Learning Hub" subtitle="Thêm/sửa/xoá khoá học, tài liệu và roadmap." />
+      <PageHeader title="Nội dung học" description="Thêm, sửa và xoá khoá học, tài liệu và roadmap của Learning Hub." />
       {dialog}
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="grid grid-2" style={{ alignItems: "start" }}>
-        <div className="stack">
-          <div className="card">
-            <h2>Khoá học</h2>
-            {courses.map((c) => (
-              <div className="list-item" key={c.id}>
-                <div style={{ flex: 1 }}><strong>{c.title}</strong><div className="muted small">{c.domain} · {c.materialCount} tài liệu</div></div>
-                <button className="btn secondary sm" onClick={() => learningApi.course(c.id).then(setSelected).catch((e) => setMsg({ error: errorMessage(e) }))}>Tài liệu</button>
-                <button className="btn danger sm" onClick={async () => (await ask({ title: `Xoá khoá "${c.title}"?`, message: "Tài liệu và tiến độ học của khoá này cũng bị xoá. Không thể hoàn tác.", confirmText: "Xoá", danger: true })) && run(() => learningApi.admin.deleteCourse(c.id), "Đã xoá khoá học")}>Xoá</button>
-              </div>
-            ))}
-          </div>
-          <form className="card" onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createCourse({ ...courseForm, skills: splitSkills(courseForm.skills) }), "Đã tạo khoá học").then((ok) => ok && setCourseForm(emptyCourse)); }}>
-            <h2>Thêm khoá học</h2>
-            <div className="field"><label>Tiêu đề</label><input required value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} /></div>
-            <div className="field"><label>Mô tả</label><textarea value={courseForm.description} onChange={(e) => setCourseForm({ ...courseForm, description: e.target.value })} /></div>
-            <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <div className="field"><label>Lĩnh vực</label><select value={courseForm.domain} onChange={(e) => setCourseForm({ ...courseForm, domain: e.target.value })}>{DOMAINS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-              <div className="field"><label>Cấp độ</label><select value={courseForm.level} onChange={(e) => setCourseForm({ ...courseForm, level: e.target.value as Level })}><option value="BEGINNER">Cơ bản</option><option value="INTERMEDIATE">Trung cấp</option><option value="ADVANCED">Nâng cao</option></select></div>
-            </div>
-            <div className="field"><label>Kỹ năng</label><input value={courseForm.skills} onChange={(e) => setCourseForm({ ...courseForm, skills: e.target.value })} placeholder="Java, Spring Boot" /></div>
-            <button className="btn">Tạo khoá học</button>
-          </form>
-        </div>
+      <FlashAlerts flash={msg} className="mb-6" />
+      <Tabs className="mb-4" value={tab} onChange={setTab} tabs={[
+        { id: "courses", label: "Khoá học", count: courses.length },
+        { id: "roadmaps", label: "Roadmap", count: roadmaps.length },
+      ]} />
 
-        <div className="stack">
-          {selected && (
-            <div className="card">
-              <h2>Tài liệu: {selected.title}</h2>
-              {selected.materials.map((m) => (
-                <div className="list-item" key={m.id}>
-                  <div style={{ flex: 1 }}><strong>{m.orderIndex}. {m.title}</strong><div className="muted small">{m.type} {m.url && `· ${m.url}`}</div></div>
-                  <button className="btn danger sm" onClick={() => run(() => learningApi.admin.deleteMaterial(m.id), "Đã xoá tài liệu")}>Xoá</button>
+      {tab === "courses" && (
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-6">
+            <Card>
+              <CardHeader title="Khoá học" description="Chọn một khoá để quản lý tài liệu." />
+              {courses.length === 0 ? <EmptyState title="Chưa có khoá học nào" /> : (
+                <div className="flex flex-col divide-y divide-border">
+                  {courses.map((c) => row(c.id, selected?.id === c.id, c.title, `${c.domain} · ${c.materialCount} tài liệu`,
+                    () => learningApi.course(c.id).then(setSelected).catch((e) => setMsg({ error: errorMessage(e) })),
+                    async () => (await ask({ title: `Xoá khoá "${c.title}"?`, message: "Tài liệu và tiến độ học của khoá này cũng bị xoá. Không thể hoàn tác.", confirmText: "Xoá", danger: true })) && run(() => learningApi.admin.deleteCourse(c.id), "Đã xoá khoá học.")))}
                 </div>
-              ))}
-              <form onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createMaterial(selected.id, material), "Đã thêm tài liệu").then((ok) => ok && setMaterial({ title: "", type: "ARTICLE", url: "", content: "" })); }} style={{ marginTop: "1rem" }}>
-                <div className="field"><label>Tiêu đề tài liệu</label><input required value={material.title} onChange={(e) => setMaterial({ ...material, title: e.target.value })} /></div>
-                <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 2fr" }}>
-                  <div className="field"><label>Loại</label><select value={material.type} onChange={(e) => setMaterial({ ...material, type: e.target.value as MaterialType })}>{MATERIAL_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
-                  <div className="field"><label>URL</label><input value={material.url} onChange={(e) => setMaterial({ ...material, url: e.target.value })} /></div>
-                </div>
-                <div className="field"><label>Nội dung tóm tắt</label><textarea style={{ minHeight: 60 }} value={material.content} onChange={(e) => setMaterial({ ...material, content: e.target.value })} /></div>
-                <button className="btn">Thêm tài liệu</button>
-              </form>
-            </div>
-          )}
-          <div className="card">
-            <h2>Roadmap</h2>
-            {roadmaps.map((r) => (
-              <div className="list-item" key={r.id}>
-                <div style={{ flex: 1 }}><strong>{r.title}</strong><div className="muted small">{r.track} · {r.itemCount} bước</div></div>
-                <button className="btn secondary sm" onClick={() => learningApi.roadmap(r.id).then(setSelectedRoadmap).catch((e) => setMsg({ error: errorMessage(e) }))}>Các bước</button>
-                <button className="btn danger sm" onClick={async () => (await ask({ title: `Xoá roadmap "${r.title}"?`, message: "Các bước và tiến độ của roadmap này cũng bị xoá. Không thể hoàn tác.", confirmText: "Xoá", danger: true })) && run(() => learningApi.admin.deleteRoadmap(r.id), "Đã xoá roadmap")}>Xoá</button>
-              </div>
-            ))}
-            <form onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createRoadmap(roadmapForm), "Đã tạo roadmap").then((ok) => ok && setRoadmapForm({ title: "", track: "", description: "" })); }} style={{ marginTop: "1rem" }}>
-              <div className="grid grid-2" style={{ gridTemplateColumns: "2fr 1fr" }}>
-                <div className="field"><label>Tên roadmap</label><input required value={roadmapForm.title} onChange={(e) => setRoadmapForm({ ...roadmapForm, title: e.target.value })} /></div>
-                <div className="field"><label>Hướng</label><input required value={roadmapForm.track} onChange={(e) => setRoadmapForm({ ...roadmapForm, track: e.target.value })} placeholder="Backend" /></div>
-              </div>
-              <div className="field"><label>Mô tả</label><input value={roadmapForm.description} onChange={(e) => setRoadmapForm({ ...roadmapForm, description: e.target.value })} /></div>
-              <button className="btn">Tạo roadmap</button>
+              )}
+            </Card>
+            <form onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createCourse({ ...courseForm, skills: splitSkills(courseForm.skills) }), "Đã tạo khoá học.").then((ok) => ok && setCourseForm(emptyCourse)); }}>
+              <Card>
+                <CardHeader title="Thêm khoá học" />
+                <CardBody>
+                  <div className="form-grid">
+                    <Field label="Tiêu đề" id="c-title" required className="span-2"><Input id="c-title" required value={courseForm.title} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} /></Field>
+                    <Field label="Mô tả" id="c-desc" className="span-2"><Textarea id="c-desc" value={courseForm.description} onChange={(e) => setCourseForm({ ...courseForm, description: e.target.value })} /></Field>
+                    <Field label="Lĩnh vực" id="c-domain"><Select id="c-domain" value={courseForm.domain} onChange={(e) => setCourseForm({ ...courseForm, domain: e.target.value })}>{DOMAINS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
+                    <Field label="Cấp độ" id="c-level"><Select id="c-level" value={courseForm.level} onChange={(e) => setCourseForm({ ...courseForm, level: e.target.value as Level })}><option value="BEGINNER">Cơ bản</option><option value="INTERMEDIATE">Trung cấp</option><option value="ADVANCED">Nâng cao</option></Select></Field>
+                    <Field label="Kỹ năng" id="c-skills" className="span-2" hint="Phân tách bằng dấu phẩy."><Input id="c-skills" value={courseForm.skills} onChange={(e) => setCourseForm({ ...courseForm, skills: e.target.value })} placeholder="Java, Spring Boot" /></Field>
+                  </div>
+                </CardBody>
+                <CardFooter><Button type="submit" variant="primary" icon={Plus}>Tạo khoá học</Button></CardFooter>
+              </Card>
             </form>
           </div>
-          {selectedRoadmap && (
-            <div className="card">
-              <h2>Các bước: {selectedRoadmap.title}</h2>
-              {selectedRoadmap.items.map((i) => (
-                <div className="list-item" key={i.id}>
-                  <div style={{ flex: 1 }}><strong>{i.orderIndex}. {i.title}</strong><div className="muted small">{i.courseTitle || i.description}</div></div>
-                  <button className="btn danger sm" onClick={() => run(() => learningApi.admin.deleteRoadmapItem(i.id), "Đã xoá bước")}>Xoá</button>
+          {selected ? (
+            <Card>
+              <CardHeader title={`Tài liệu: ${selected.title}`} description={`${selected.materials.length} tài liệu`} />
+              <div className="flex flex-col divide-y divide-border">
+                {selected.materials.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3 px-5 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold">{m.orderIndex}. {m.title}</div>
+                      <div className="truncate text-small text-ink-muted">{m.type}{m.url && ` · ${m.url}`}</div>
+                    </div>
+                    <Button size="sm" variant="ghost" iconOnly icon={Trash2} label="Xoá tài liệu" onClick={() => run(() => learningApi.admin.deleteMaterial(m.id), "Đã xoá tài liệu.")} />
+                  </div>
+                ))}
+              </div>
+              <form className="flex flex-col gap-4 border-t border-border p-5" onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createMaterial(selected.id, material), "Đã thêm tài liệu.").then((ok) => ok && setMaterial({ title: "", type: "ARTICLE", url: "", content: "" })); }}>
+                <div className="font-semibold">Thêm tài liệu</div>
+                <Field label="Tiêu đề tài liệu" id="m-title" required><Input id="m-title" required value={material.title} onChange={(e) => setMaterial({ ...material, title: e.target.value })} /></Field>
+                <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
+                  <Field label="Loại" id="m-type"><Select id="m-type" value={material.type} onChange={(e) => setMaterial({ ...material, type: e.target.value as MaterialType })}>{MATERIAL_TYPES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
+                  <Field label="URL" id="m-url"><Input id="m-url" value={material.url} onChange={(e) => setMaterial({ ...material, url: e.target.value })} /></Field>
                 </div>
-              ))}
-              <form onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createRoadmapItem(selectedRoadmap.id, { ...item, courseId: item.courseId || null }), "Đã thêm bước").then((ok) => ok && setItem({ title: "", description: "", courseId: "" })); }} style={{ marginTop: "1rem" }}>
-                <div className="field"><label>Tiêu đề bước</label><input required value={item.title} onChange={(e) => setItem({ ...item, title: e.target.value })} /></div>
-                <div className="field"><label>Mô tả</label><input value={item.description} onChange={(e) => setItem({ ...item, description: e.target.value })} /></div>
-                <div className="field"><label>Liên kết khoá học</label><select value={item.courseId} onChange={(e) => setItem({ ...item, courseId: e.target.value })}><option value="">— Không —</option>{courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
-                <button className="btn">Thêm bước</button>
+                <Field label="Nội dung tóm tắt" id="m-content"><Textarea id="m-content" className="min-h-[64px]" value={material.content} onChange={(e) => setMaterial({ ...material, content: e.target.value })} /></Field>
+                <div><Button type="submit" icon={Plus}>Thêm tài liệu</Button></div>
               </form>
-            </div>
+            </Card>
+          ) : (
+            <Card><EmptyState title="Chọn một khoá học">Tài liệu của khoá được chọn sẽ hiện ở đây.</EmptyState></Card>
           )}
         </div>
-      </div>
+      )}
+
+      {tab === "roadmaps" && (
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-6">
+            <Card>
+              <CardHeader title="Roadmap" description="Chọn một roadmap để quản lý các bước." />
+              {roadmaps.length === 0 ? <EmptyState title="Chưa có roadmap nào" /> : (
+                <div className="flex flex-col divide-y divide-border">
+                  {roadmaps.map((r) => row(r.id, selectedRoadmap?.id === r.id, r.title, `${r.track} · ${r.itemCount} bước`,
+                    () => learningApi.roadmap(r.id).then(setSelectedRoadmap).catch((e) => setMsg({ error: errorMessage(e) })),
+                    async () => (await ask({ title: `Xoá roadmap "${r.title}"?`, message: "Các bước và tiến độ của roadmap này cũng bị xoá. Không thể hoàn tác.", confirmText: "Xoá", danger: true })) && run(() => learningApi.admin.deleteRoadmap(r.id), "Đã xoá roadmap.")))}
+                </div>
+              )}
+            </Card>
+            <form onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createRoadmap(roadmapForm), "Đã tạo roadmap.").then((ok) => ok && setRoadmapForm({ title: "", track: "", description: "" })); }}>
+              <Card>
+                <CardHeader title="Thêm roadmap" />
+                <CardBody>
+                  <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+                    <Field label="Tên roadmap" id="r-title" required><Input id="r-title" required value={roadmapForm.title} onChange={(e) => setRoadmapForm({ ...roadmapForm, title: e.target.value })} /></Field>
+                    <Field label="Hướng" id="r-track" required><Input id="r-track" required value={roadmapForm.track} onChange={(e) => setRoadmapForm({ ...roadmapForm, track: e.target.value })} placeholder="Backend" /></Field>
+                    <Field label="Mô tả" id="r-desc" className="sm:col-span-2"><Input id="r-desc" value={roadmapForm.description} onChange={(e) => setRoadmapForm({ ...roadmapForm, description: e.target.value })} /></Field>
+                  </div>
+                </CardBody>
+                <CardFooter><Button type="submit" variant="primary" icon={Plus}>Tạo roadmap</Button></CardFooter>
+              </Card>
+            </form>
+          </div>
+          {selectedRoadmap ? (
+            <Card>
+              <CardHeader title={`Các bước: ${selectedRoadmap.title}`} description={`${selectedRoadmap.items.length} bước`} />
+              <div className="flex flex-col divide-y divide-border">
+                {selectedRoadmap.items.map((i) => (
+                  <div key={i.id} className="flex items-center gap-3 px-5 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold">{i.orderIndex}. {i.title}</div>
+                      <div className="text-small text-ink-muted">{i.courseTitle || i.description}</div>
+                    </div>
+                    <Button size="sm" variant="ghost" iconOnly icon={Trash2} label="Xoá bước" onClick={() => run(() => learningApi.admin.deleteRoadmapItem(i.id), "Đã xoá bước.")} />
+                  </div>
+                ))}
+              </div>
+              <form className="flex flex-col gap-4 border-t border-border p-5" onSubmit={(e) => { e.preventDefault(); run(() => learningApi.admin.createRoadmapItem(selectedRoadmap.id, { ...item, courseId: item.courseId || null }), "Đã thêm bước.").then((ok) => ok && setItem({ title: "", description: "", courseId: "" })); }}>
+                <div className="font-semibold">Thêm bước</div>
+                <Field label="Tiêu đề bước" id="i-title" required><Input id="i-title" required value={item.title} onChange={(e) => setItem({ ...item, title: e.target.value })} /></Field>
+                <Field label="Mô tả" id="i-desc"><Input id="i-desc" value={item.description} onChange={(e) => setItem({ ...item, description: e.target.value })} /></Field>
+                <Field label="Liên kết khoá học" id="i-course"><Select id="i-course" value={item.courseId} onChange={(e) => setItem({ ...item, courseId: e.target.value })}><option value="">Không liên kết</option>{courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</Select></Field>
+                <div><Button type="submit" icon={Plus}>Thêm bước</Button></div>
+              </form>
+            </Card>
+          ) : (
+            <Card><EmptyState title="Chọn một roadmap">Các bước của roadmap được chọn sẽ hiện ở đây.</EmptyState></Card>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -78,3 +78,9 @@ async def clear_cv_file(user_id: UUID, cv_file_url: str) -> None:
     """Gỡ cvFileUrl khỏi hồ sơ nếu hồ sơ còn trỏ tới CV vừa bị xoá (profile-service tự so khớp)."""
     res = await _client().delete(f"/internal/profile/{user_id}/cv-file", params={"cvFileUrl": cv_file_url})
     res.raise_for_status()
+
+
+async def remove_skills(user_id: UUID, skills: list[str]) -> None:
+    """US-45 (PRD-CV-6) — gỡ các kỹ năng đã thêm từ CV khỏi hồ sơ mentee (profile-service so khớp không phân biệt hoa thường)."""
+    res = await _client().post(f"/internal/mentee/{user_id}/skills/remove", json={"skills": skills})
+    res.raise_for_status()

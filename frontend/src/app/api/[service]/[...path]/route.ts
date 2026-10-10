@@ -32,6 +32,11 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // US-46 (NFR-17): một X-Request-Id cho cả chuỗi frontend → service → service; NFR-10: IP người dùng cho giới hạn đăng nhập
+  const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
+  headers.set("x-request-id", requestId);
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
   const hasBody = !["GET", "HEAD"].includes(request.method);
   try {
     const upstream = await fetch(target, {
@@ -41,7 +46,7 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
       cache: "no-store",
     });
     const responseHeaders = new Headers();
-    for (const name of ["content-type", "content-disposition", "cache-control"]) {
+    for (const name of ["content-type", "content-disposition", "cache-control", "retry-after", "x-request-id"]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
     }

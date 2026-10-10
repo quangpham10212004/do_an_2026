@@ -10,7 +10,7 @@ from app import config
 from app.interview import attempts
 from app.interview.attempts import InterviewOutcome
 from tests.conftest import auth
-from tests.test_interview_flow import answer_all, start
+from tests.test_interview_flow import WEAK_ANSWER, answer_all, start
 
 NOW = datetime(2026, 11, 10, 3, 0, tzinfo=timezone.utc)
 WEEK = timedelta(days=7)
@@ -85,7 +85,7 @@ def reject(client, interview_id, admin):
 def finish(client, mentor_id):
     res = start(client, mentor_id)
     assert res.status_code == 200, res.text
-    interview, _ = answer_all(client, res.json(), mentor_id, text="Khong biet")
+    interview, _ = answer_all(client, res.json(), mentor_id, text=WEAK_ANSWER)
     return interview
 
 
@@ -148,3 +148,56 @@ def test_eligibility_cooldown_lock_and_unlock(client, db, fake_profile, fake_men
     again = client.post(path, json={}, headers=admin)
     assert again.status_code == 409 and again.json()["error"]["code"] == "INTERVIEW_NOT_LOCKED"
     assert start(client, mentor_id).status_code == 200
+
+
+# ---------- US-43 (PRD-AIV-2, AIV-3) ----------
+
+def test_answer_length_rules():
+    assert attempts.answer_length_error("x" * 49) == "ANSWER_TOO_SHORT"
+    assert attempts.answer_length_error("   " + "x" * 50 + "   ") is None
+    assert attempts.answer_length_error("x" * 3000) is None
+    assert attempts.answer_length_error("x" * 3001) == "ANSWER_TOO_LONG"
+
+
+def test_abandoned_counts_as_attempt():
+    e = attempts.evaluate([outcome("ABANDONED", 5)], NOW, 3, WEEK)
+    assert e.attempts_used == 1 and e.cooldown_until is None
+
+
+def test_resume_deadline_follows_last_activity():
+    started = NOW - timedelta(hours=100)
+    assert attempts.resume_deadline(started, None) == started + timedelta(hours=72)
+    assert attempts.resume_deadline(started, NOW - timedelta(hours=1)) == NOW + timedelta(hours=71)
+
+
+def test_short_and_long_answers_are_rejected(client, db, fake_profile, fake_mentoring, mentor_id):
+    interview = start(client, mentor_id).json()
+    headers = auth(mentor_id, "MENTOR")
+    short = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": "Khong biet"}, headers=headers)
+    assert short.status_code == 400 and short.json()["error"]["code"] == "ANSWER_TOO_SHORT"
+    long = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": "a " * 1600}, headers=headers)
+    assert long.status_code == 400 and long.json()["error"]["code"] == "ANSWER_TOO_LONG"
+    assert interview["answerMinChars"] == 50 and interview["softTimerSeconds"] == 360
+    assert interview["resumeDeadline"] is not None
+
+
+def test_interview_idle_72h_is_abandoned_and_counts(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
+    interview = start(client, mentor_id).json()
+    internal = {"X-Internal-Token": config.INTERNAL_API_KEY}
+    aged = client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=73", headers=internal)
+    assert aged.status_code == 200, aged.text
+    headers = auth(mentor_id, "MENTOR")
+    res = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": WEAK_ANSWER}, headers=headers)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_ABANDONED"
+    e = client.get("/api/ai/interviews/eligibility", headers=headers).json()
+    assert e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2 and e["canStart"]
+    again = start(client, mentor_id).json()
+    assert again["id"] != interview["id"] and again["status"] == "IN_PROGRESS"
+
+
+def test_interview_resumable_within_72h(client, db, fake_profile, fake_mentoring, mentor_id):
+    interview = start(client, mentor_id).json()
+    client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=71",
+                headers={"X-Internal-Token": config.INTERNAL_API_KEY})
+    resumed = start(client, mentor_id).json()
+    assert resumed["id"] == interview["id"] and resumed["status"] == "IN_PROGRESS"

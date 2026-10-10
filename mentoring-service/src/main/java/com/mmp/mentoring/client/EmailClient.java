@@ -1,5 +1,6 @@
 package com.mmp.mentoring.client;
 
+import com.mmp.mentoring.observability.RequestIds;
 import com.mmp.mentoring.security.JwtAuthenticationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +46,9 @@ public class EmailClient {
             // Kết quả AI Interview (ai-service gửi qua /internal/notifications) — luôn gửi
             Map.entry("MENTOR_APPROVED", "ACCOUNT"),
             Map.entry("MENTOR_REJECTED", "ACCOUNT"),
-            Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"));
+            Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"),
+            // US-42 — payment-service gửi qua /internal/notifications khi admin đã chuyển tiền rút
+            Map.entry("PAYOUT_PAID", "ACCOUNT"));
 
     private final RestClient restClient;
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 2, 30, TimeUnit.SECONDS,
@@ -60,7 +63,8 @@ public class EmailClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(5000);
-        this.restClient = RestClient.builder().baseUrl(authUrl).requestFactory(factory)
+        this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor()).baseUrl(authUrl).requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey).build();
     }
 
@@ -81,7 +85,7 @@ public class EmailClient {
         body.put("sessionStartAt", sessionStart == null ? null : sessionStart.toString());
         body.put("dedupeKey", dedupeKey(userId, type, title, message, link));
         try {
-            executor.execute(() -> send(body));
+            executor.execute(RequestIds.wrap(() -> send(body)));
         } catch (RuntimeException e) {
             log.debug("Email {} dropped: {}", type, e.getMessage());
         }

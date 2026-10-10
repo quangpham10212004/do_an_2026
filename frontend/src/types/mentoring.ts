@@ -245,6 +245,49 @@ export interface Review {
   rating: number;
   comment: string | null;
   createdAt: IsoDateTime;
+  // US-41 (PRD-REV-1..3) — null ở đánh giá trước US-41
+  knowledge?: number | null;
+  clarity?: number | null;
+  preparation?: number | null;
+  tags?: string[];
+  updatedAt?: IsoDateTime | null;
+  editableUntil?: IsoDateTime;
+  mentorReply?: string | null;
+  mentorRepliedAt?: IsoDateTime | null;
+  canEdit?: boolean;
+  canReply?: boolean;
+}
+
+/** US-41 — đánh giá có cấu trúc. */
+export interface StructuredReviewInput {
+  rating: number;
+  knowledge: number;
+  clarity: number;
+  preparation: number;
+  comment?: string;
+  tags: string[];
+}
+
+/** US-41 (PRD-REV-5) — rating = trung bình Bayes, chỉ có khi reviewCount ≥ 3. */
+export interface MentorReviewSummary {
+  mentorId: Uuid;
+  reviewCount: number;
+  newMentor: boolean;
+  rating: number | null;
+  knowledge: number | null;
+  clarity: number | null;
+  preparation: number | null;
+  tags: Record<string, number>;
+  reviews: Review[];
+  /** US-44 */
+  sessionsCompleted: number;
+}
+
+/** US-41 (PRD-REV-4) — huy hiệu tổng hợp từ nhận xét riêng của mentor. */
+export interface MenteeReliability {
+  menteeId: Uuid;
+  feedbackCount: number;
+  badge: "RELIABLE" | null;
 }
 
 export interface TimeSlot {

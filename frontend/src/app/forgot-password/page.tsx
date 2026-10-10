@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { Alert } from "@/components/ui";
+import { Alert, Button, Field, Input } from "@/components/ui";
+import AuthCard from "@/components/shell/AuthCard";
 import { authApi } from "@/features/auth/api";
 import { errorMessage } from "@/lib/api";
 
@@ -27,29 +28,25 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "2rem auto" }}>
-      <div className="card">
-        <h1>Quên mật khẩu</h1>
-        <Alert>{error}</Alert>
-        {sent ? (
-          <Alert type="success">
-            Nếu email {email.trim()} đã đăng ký tài khoản, chúng tôi đã gửi liên kết đặt lại mật khẩu. Liên kết có hiệu lực
-            trong 30 phút và chỉ dùng được một lần. Hãy kiểm tra hộp thư (kể cả thư rác).
-          </Alert>
-        ) : (
-          <form onSubmit={submit}>
-            <p className="muted small">Nhập email đăng ký, chúng tôi sẽ gửi liên kết để bạn đặt mật khẩu mới.</p>
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input id="email" type="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-            <button className="btn block" disabled={loading}>{loading ? "Đang gửi..." : "Gửi liên kết đặt lại"}</button>
-          </form>
-        )}
-        <p className="muted small" style={{ marginTop: "1rem" }}>
-          <Link href="/login">← Quay lại đăng nhập</Link>
-        </p>
-      </div>
-    </div>
+    <AuthCard
+      title="Quên mật khẩu"
+      description={sent ? undefined : "Nhập email đăng ký, chúng tôi sẽ gửi liên kết để bạn đặt mật khẩu mới."}
+      footer={<Link href="/login">Quay lại đăng nhập</Link>}
+    >
+      <Alert>{error}</Alert>
+      {sent ? (
+        <Alert tone="success" title="Đã gửi liên kết">
+          Nếu email {email.trim()} đã đăng ký tài khoản, bạn sẽ nhận được liên kết đặt lại mật khẩu. Liên kết có hiệu lực
+          trong 30 phút và chỉ dùng được một lần. Kiểm tra cả hộp thư rác.
+        </Alert>
+      ) : (
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <Field label="Email" id="email">
+            <Input id="email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+          <Button type="submit" variant="primary" size="lg" block loading={loading}>{loading ? "Đang gửi…" : "Gửi liên kết đặt lại"}</Button>
+        </form>
+      )}
+    </AuthCard>
   );
 }

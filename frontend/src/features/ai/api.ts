@@ -43,13 +43,16 @@ export const aiApi = {
   cvFile: (url: string) => apiBlob(url),
   myCvs: () => api<CvSummary[]>("/api/ai/cv/mine"),
   // 204 → null; 403 FORBIDDEN (không phải chủ CV/admin), 404 CV_NOT_FOUND
-  deleteCv: (id: Uuid) => api<null>(`/api/ai/cv/${id}`, { method: "DELETE" }),
+  // US-45: removeSkills = gỡ cả kỹ năng đã thêm vào hồ sơ từ CV này
+  deleteCv: (id: Uuid, removeSkills = false) =>
+    api<null>(`/api/ai/cv/${id}${removeSkills ? "?removeSkills=true" : ""}`, { method: "DELETE" }),
   // 204 (null) khi mentee chưa tải CV lần nào
   latestEnrichment: (menteeId: Uuid) => api<CvUploadResult | null>(`/api/ai/mentee/${menteeId}/enrichment/latest`),
-  answerEnrichment: (id: Uuid, answer: string) =>
-    api<Conversation>(`/api/ai/enrichment/conversations/${id}/answers`, { method: "POST", body: { answer } }),
+  answerEnrichment: (id: Uuid, answer: string, skipped = false) =>
+    api<Conversation>(`/api/ai/enrichment/conversations/${id}/answers`, { method: "POST", body: { answer, skipped } }),
   // US-21: goal nháp chỉ vào hồ sơ khi người dùng xác nhận (gọi lại không đồng bộ lần hai); bỏ qua = không gửi gì
-  confirmGoal: (id: Uuid, goal: string) =>
-    api<Conversation>(`/api/ai/enrichment/conversations/${id}/confirm-goal`, { method: "POST", body: { goal } }),
+  // US-45: skills = kỹ năng gợi ý được chọn thêm vào hồ sơ (bỏ trống = tất cả)
+  confirmGoal: (id: Uuid, goal: string, skills?: string[]) =>
+    api<Conversation>(`/api/ai/enrichment/conversations/${id}/confirm-goal`, { method: "POST", body: { goal, skills } }),
   discardGoal: (id: Uuid) => api<Conversation>(`/api/ai/enrichment/conversations/${id}/discard-goal`, { method: "POST" }),
 };

@@ -168,18 +168,6 @@ public class MentoringController {
         return disputeService.forSession(CurrentUser.get(), id);
     }
 
-    @PostMapping("/sessions/{id}/review")
-    @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('MENTEE')")
-    public ReviewView review(@PathVariable UUID id, @Valid @RequestBody ReviewInput in) {
-        return sessionService.review(CurrentUser.get(), id, in);
-    }
-
-    @GetMapping("/mentors/{mentorId}/reviews")
-    public List<ReviewView> mentorReviews(@PathVariable UUID mentorId) {
-        return sessionService.mentorReviews(mentorId);
-    }
-
     @GetMapping("/mentors/{mentorId}/available-slots")
     public AvailableSlotsView availableSlots(@PathVariable UUID mentorId,
                                              @RequestParam(defaultValue = "60") int durationMinutes,

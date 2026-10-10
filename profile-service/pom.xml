@@ -35,6 +35,16 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- US-46 (NFR-17): GET /metrics (Prometheus) + log JSON -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>7.4</version>
+    </dependency>
     <!-- US-11: migration CSDL (V1 = baseline db/init/profile-service.sql) -->
     <dependency>
       <groupId>org.flywaydb</groupId>

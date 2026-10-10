@@ -115,6 +115,7 @@ export const STATUS_LABELS: Record<string, string> = {
   TODO: "Chưa bắt đầu",
   DONE: "Đã xong",
   RETAKE_REQUESTED: "Yêu cầu phỏng vấn lại",
+  ABANDONED: "Bỏ dở (quá 72 giờ)",
   REQUEST_RETAKE: "Yêu cầu làm lại",
   PROMPT_INJECTION: "Nghi chèn lệnh cho AI",
   COPIED_ANSWER: "Dán nội dung dài",
@@ -122,11 +123,12 @@ export const STATUS_LABELS: Record<string, string> = {
 
 export const ROLE_LABELS: Record<Role, string> = { MENTEE: "Mentee", MENTOR: "Mentor", ADMIN: "Quản trị viên" };
 
-export type StatusTone = "good" | "bad" | "warn" | "neutral";
+/** Sắc thái badge trong design system (xem design-system/components/Badge). */
+export type StatusTone = "success" | "danger" | "warning" | "info" | "neutral";
 
 export function statusTone(status: string): StatusTone {
-  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE"].includes(status)) return "good";
-  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "SUSPENDED"].includes(status)) return "bad";
-  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER"].includes(status)) return "warn";
+  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE"].includes(status)) return "success";
+  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "SUSPENDED"].includes(status)) return "danger";
+  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER"].includes(status)) return "warning";
   return "neutral";
 }

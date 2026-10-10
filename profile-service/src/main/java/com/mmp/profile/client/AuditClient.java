@@ -1,5 +1,6 @@
 package com.mmp.profile.client;
 
+import com.mmp.profile.observability.RequestIds;
 import com.mmp.profile.security.JwtAuthenticationFilter;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -45,6 +46,7 @@ public class AuditClient {
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(10));
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(authUrl)
                 .requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)
@@ -69,7 +71,7 @@ public class AuditClient {
                             Map<String, ?> before, Map<String, ?> after) {
         Map<String, Object> body = body(actorId, actorRole, action, targetType, targetId, before, after);
         try {
-            executor.execute(() -> send(body));
+            executor.execute(RequestIds.wrap(() -> send(body)));
         } catch (RejectedExecutionException e) {
             log.warn("Bỏ audit {} {}: hàng đợi đầy", action, targetId);
         }

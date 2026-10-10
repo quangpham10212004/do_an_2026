@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
-import { Alert, ProgressBar } from "@/components/ui";
+import { useId, useState } from "react";
+import { Check, Circle, Sparkles, Trash2, Upload } from "lucide-react";
+import { Avatar, Badge, Button, ButtonLink, Card, CardBody, CardHeader, Field, FlashAlerts, Progress, Select, type Flash } from "@/components/ui";
 import { COMMON_TIMEZONES, profileApi } from "@/features/profile/api";
 import { errorMessage } from "@/lib/api";
 import type { Completeness, Uuid } from "@/types";
@@ -11,39 +11,50 @@ import type { Completeness, Uuid } from "@/types";
 export function CompletenessCard({ completeness, matchingMin }: { completeness: Completeness; matchingMin?: number }) {
   const missing = completeness.items.filter((i) => !i.done);
   return (
-    <div className="card stack">
-      <div className="row between">
-        <h2>Hồ sơ hoàn thiện {completeness.score}%</h2>
-        {matchingMin !== undefined && (
+    <Card>
+      <CardHeader
+        title={`Hồ sơ hoàn thiện ${completeness.score}%`}
+        description={missing.length ? "Hoàn thiện các mục còn thiếu để được gợi ý chính xác hơn." : "Hồ sơ đã đầy đủ."}
+        actions={matchingMin !== undefined && (
           completeness.score >= matchingMin
-            ? <Link className="btn sm" href="/matching">Tìm mentor bằng AI</Link>
-            : <span className="badge warn">Cần ≥ {matchingMin}% để dùng AI Matching</span>
+            ? <ButtonLink size="sm" icon={Sparkles} href="/matching">Tìm mentor bằng AI</ButtonLink>
+            : <Badge tone="warning">Cần từ {matchingMin}% để dùng AI Matching</Badge>
         )}
-      </div>
-      <ProgressBar value={completeness.score} />
-      {missing.length === 0 ? (
-        <div className="small muted">Hồ sơ đã đầy đủ.</div>
-      ) : (
-        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          {missing.map((i) => <li key={i.key}>{i.label} <span className="muted">(+{i.weight}%)</span></li>)}
-        </ul>
-      )}
-    </div>
+      />
+      <CardBody className="flex flex-col gap-4">
+        <Progress value={completeness.score} label="Mức hoàn thiện hồ sơ" />
+        {completeness.items.length > 0 && (
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-6 gap-y-1.5">
+            {completeness.items.map((i) => (
+              <li key={i.key} className={`flex items-center gap-2 ${i.done ? "text-ink-muted" : ""}`}>
+                {i.done
+                  ? <Check aria-hidden="true" className="size-4 text-success" />
+                  : <Circle aria-hidden="true" className="size-4 text-ink-subtle" />}
+                <span className={i.done ? "line-through" : ""}>{i.label}</span>
+                {!i.done && <span className="text-small text-ink-subtle tabular">+{i.weight}%</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
 /** US-37 (PRD-PROF-3, PROF-6) — ảnh đại diện JPG/PNG ≤ 2 MB và múi giờ hiển thị. */
-export function AvatarAndTimezone({ userId, avatarUrl, timezone, showTimezone = true, onChange }: {
+export function AvatarAndTimezone({ userId, name, avatarUrl, timezone, showTimezone = true, onChange }: {
   userId: Uuid;
+  name?: string | null;
   avatarUrl: string | null;
   timezone: string;
   showTimezone?: boolean;
   onChange: () => void;
 }) {
   const [tz, setTz] = useState(timezone);
-  const [msg, setMsg] = useState<{ ok?: string; error?: string }>({});
+  const [msg, setMsg] = useState<Flash>({});
   const [busy, setBusy] = useState(false);
   const known = COMMON_TIMEZONES.some(([v]) => v === tz);
+  const fileId = useId();
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);
@@ -60,46 +71,51 @@ export function AvatarAndTimezone({ userId, avatarUrl, timezone, showTimezone = 
   };
 
   return (
-    <div className="card stack">
-      <h2>Ảnh đại diện{showTimezone ? " & múi giờ" : ""}</h2>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="row" style={{ gap: 16 }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden", background: "var(--surface-2, #eee)", flex: "none" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {avatarUrl && <img src={avatarUrl} alt="Ảnh đại diện" width={72} height={72} style={{ objectFit: "cover" }} />}
-        </div>
-        <div className="stack" style={{ gap: 6 }}>
-          <input type="file" accept="image/jpeg,image/png" disabled={busy} onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            if (f.size > 2 * 1024 * 1024) {
-              setMsg({ error: "Ảnh đại diện tối đa 2 MB" });
-              return;
-            }
-            run(() => profileApi.uploadAvatar(userId, f), "Đã cập nhật ảnh đại diện.");
-          }} />
-          <span className="hint">JPG hoặc PNG, tối đa 2 MB.</span>
-          {avatarUrl && <button type="button" className="btn ghost sm" disabled={busy}
-            onClick={() => run(() => profileApi.deleteAvatar(userId), "Đã xoá ảnh đại diện.")}>Xoá ảnh</button>}
-        </div>
-      </div>
-      {showTimezone && (
-        <div className="field">
-          <label>Múi giờ</label>
-          <div className="row">
-            <select value={known ? tz : "__other"} onChange={(e) => e.target.value !== "__other" && setTz(e.target.value)}>
-              {COMMON_TIMEZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              {!known && <option value="__other">{tz}</option>}
-            </select>
-            <button type="button" className="btn secondary sm" disabled={busy || tz === timezone}
-              onClick={() => run(() => profileApi.saveTimezone(userId, tz), "Đã đổi múi giờ — mọi giờ trên trang hiển thị theo múi giờ này.")}>
-              Lưu múi giờ
-            </button>
+    <Card>
+      <CardHeader title={showTimezone ? "Ảnh đại diện và múi giờ" : "Ảnh đại diện"} />
+      <CardBody className="flex flex-col gap-5">
+        <FlashAlerts flash={msg} />
+        <div className="flex items-center gap-4">
+          <Avatar name={name} src={avatarUrl} size="xl" />
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              <label htmlFor={fileId} className={`btn btn-sm ${busy ? "pointer-events-none opacity-50" : ""}`}>
+                <Upload aria-hidden="true" />
+                Tải ảnh lên
+              </label>
+              <input id={fileId} type="file" accept="image/jpeg,image/png" className="sr-only" disabled={busy} onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                if (f.size > 2 * 1024 * 1024) {
+                  setMsg({ error: "Ảnh đại diện tối đa 2 MB. Chọn ảnh nhỏ hơn." });
+                  return;
+                }
+                run(() => profileApi.uploadAvatar(userId, f), "Đã cập nhật ảnh đại diện.");
+              }} />
+              {avatarUrl && (
+                <Button size="sm" variant="ghost" icon={Trash2} disabled={busy}
+                  onClick={() => run(() => profileApi.deleteAvatar(userId), "Đã xoá ảnh đại diện.")}>Xoá ảnh</Button>
+              )}
+            </div>
+            <span className="field-hint">JPG hoặc PNG, tối đa 2 MB.</span>
           </div>
-          <div className="hint">Giờ phiên học, nhắc lịch và tin nhắn hiển thị theo múi giờ này.</div>
         </div>
-      )}
-    </div>
+        {showTimezone && (
+          <Field label="Múi giờ" id="profile-tz" hint="Giờ phiên học, nhắc lịch và tin nhắn hiển thị theo múi giờ này.">
+            <div className="input-group">
+              <Select id="profile-tz" value={known ? tz : "__other"} onChange={(e) => e.target.value !== "__other" && setTz(e.target.value)}>
+                {COMMON_TIMEZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {!known && <option value="__other">{tz}</option>}
+              </Select>
+              <Button disabled={busy || tz === timezone}
+                onClick={() => run(() => profileApi.saveTimezone(userId, tz), "Đã đổi múi giờ. Mọi giờ trên trang hiển thị theo múi giờ này.")}>
+                Lưu
+              </Button>
+            </div>
+          </Field>
+        )}
+      </CardBody>
+    </Card>
   );
 }

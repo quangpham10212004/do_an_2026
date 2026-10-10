@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Send, SkipForward, Upload } from "lucide-react";
+import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Chip, Chips, DescriptionList, Loading, PageHeader, Textarea } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import CvConsent from "@/features/ai/CvConsent";
 import CvReview, { initialFields } from "@/features/ai/CvReview";
@@ -15,35 +16,39 @@ import type { ConfirmedCvFields, Cv, CvUploadResult, SessionUser } from "@/types
 function ConfirmedCvCard({ cv }: { cv: Cv }) {
   const p = initialFields(cv);
   return (
-    <div className="card">
-      <h2>{cv.confirmedFields ? "Thông tin CV đã xác nhận" : "Thông tin trích xuất từ CV (chưa duyệt)"}</h2>
-      <p className="muted small">
-        {cv.fileName} · engine {cv.engine} · {cv.consentExternalAi ? "đã đồng ý gửi AI bên ngoài" : "chỉ xử lý trên nền tảng (rule-based)"}
-      </p>
-      {p.role && <p><strong>Vai trò:</strong> {p.role}</p>}
-      <p><strong>Kinh nghiệm:</strong> {p.yearsExperience != null ? `${p.yearsExperience} năm` : "chưa xác định"}</p>
-      <div className="field">
-        <strong>Kỹ năng</strong>
-        <div className="chips" style={{ marginTop: 4 }}>
-          {p.skills.length === 0 && <span className="muted small">Không có</span>}
-          {p.skills.map((s) => <span className="chip" key={s}>{s}</span>)}
+    <Card>
+      <CardHeader
+        title={cv.confirmedFields ? "Thông tin CV đã xác nhận" : "Thông tin trích xuất từ CV (chưa duyệt)"}
+        description={`${cv.fileName} · engine ${cv.engine} · ${cv.consentExternalAi ? "đã đồng ý gửi AI bên ngoài" : "chỉ xử lý trên MentorHub (rule-based)"}`}
+      />
+      <CardBody className="flex flex-col gap-4">
+        <DescriptionList items={[
+          ["Vai trò", p.role || "Chưa xác định"],
+          ["Kinh nghiệm", p.yearsExperience != null ? `${p.yearsExperience} năm` : "Chưa xác định"],
+          ...(p.education.length > 0 ? [["Học vấn", p.education.join("; ")] as [string, string]] : []),
+        ]} />
+        <div>
+          <div className="eyebrow mb-2">Kỹ năng</div>
+          <Chips>
+            {p.skills.length === 0 && <span className="text-small text-ink-muted">Không có</span>}
+            {p.skills.map((s) => <Chip key={s}>{s}</Chip>)}
+          </Chips>
         </div>
-      </div>
-      {p.projects.length > 0 && (
-        <div className="field">
-          <strong>Dự án</strong>
-          <ul style={{ margin: "4px 0", paddingLeft: "1.2rem" }}>
-            {p.projects.map((pr, i) => (
-              <li key={i}>
-                {pr.name}
-                {pr.technologies.length > 0 && <span className="muted small"> — {pr.technologies.join(", ")}</span>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {p.education.length > 0 && <p className="small"><strong>Học vấn:</strong> {p.education.join("; ")}</p>}
-    </div>
+        {p.projects.length > 0 && (
+          <div>
+            <div className="eyebrow mb-2">Dự án</div>
+            <ul className="flex flex-col gap-1">
+              {p.projects.map((pr, i) => (
+                <li key={i}>
+                  <span className="font-medium">{pr.name}</span>
+                  {pr.technologies.length > 0 && <span className="text-small text-ink-muted"> · {pr.technologies.join(", ")}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -89,13 +94,14 @@ function Enrichment({ user }: { user: SessionUser }) {
     }
   }
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    if (!answer.trim() || !state?.conversation) return;
+  // US-45 (PRD-CV-3) — skip = "Bỏ qua" câu hiện tại (không cần nhập gì)
+  async function send(e: FormEvent | null, skip = false) {
+    e?.preventDefault();
+    if ((!skip && !answer.trim()) || !state?.conversation) return;
     setBusy(true);
     setError("");
     try {
-      const conversation = await aiApi.answerEnrichment(state.conversation.id, answer);
+      const conversation = await aiApi.answerEnrichment(state.conversation.id, skip ? "" : answer, skip);
       setState({ ...state, conversation });
       setAnswer("");
     } catch (err) {
@@ -109,50 +115,70 @@ function Enrichment({ user }: { user: SessionUser }) {
   const conv = state?.conversation ?? null;
   const completed = conv?.status === "COMPLETED";
 
+  const uploadCard = (
+    <Card>
+      <CardHeader title={state ? "Tải CV mới để bắt đầu lại" : "Tải CV của bạn"} description="PDF có lớp văn bản, tối đa 5 MB." />
+      <CardBody className="flex flex-col gap-4">
+        <CvConsent checked={consent} onChange={setConsent} audience="MENTEE" disabled={busy} />
+      </CardBody>
+      <CardFooter>
+        <label htmlFor="cv-file" className={`btn ${state ? "" : "btn-primary"} ${busy ? "pointer-events-none opacity-50" : ""}`}>
+          {busy ? <span className="spinner" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+          {busy ? "Đang xử lý…" : "Chọn file PDF"}
+        </label>
+        <input id="cv-file" type="file" accept="application/pdf" className="sr-only" disabled={busy}
+          onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
+      </CardFooter>
+    </Card>
+  );
+
   return (
     <>
-      <PageHead title="CV & làm rõ mục tiêu" subtitle="Tải CV (PDF), xem lại thông tin trích xuất, rồi chatbot sẽ hỏi thêm vài câu để hiểu rõ mục tiêu học tập của bạn." />
-      <Alert>{error}</Alert>
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <CvConsent checked={consent} onChange={setConsent} audience="MENTEE" disabled={busy} />
-        <div className="row">
-          <div style={{ flex: 1 }}>
-            <strong>{state ? "Tải CV mới để bắt đầu lại" : "Tải CV của bạn"}</strong>
-            <div className="hint">PDF có lớp văn bản, tối đa 5MB.</div>
-          </div>
-          <input type="file" accept="application/pdf" disabled={busy} style={{ maxWidth: 300 }} onChange={(e) => upload(e.target.files?.[0])} />
+      <PageHeader
+        title="CV và mục tiêu"
+        description="Tải CV, xem lại thông tin trích xuất, rồi trả lời vài câu hỏi để chatbot hiểu rõ mục tiêu học tập của bạn."
+      />
+      <Alert className="mb-6">{error}</Alert>
+      {!state && <div className="max-w-[720px]">{uploadCard}</div>}
+      {state && !conv && (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <CvReview key={state.cv.id} cv={state.cv} busy={busy} onConfirm={(fields) => confirmAndStart(state.cv, fields)} />
+          {uploadCard}
         </div>
-      </div>
-      {busy && !state && <Loading text="Đang phân tích CV..." />}
-      {state && !conv && <CvReview key={state.cv.id} cv={state.cv} busy={busy} onConfirm={(fields) => confirmAndStart(state.cv, fields)} />}
+      )}
       {state && conv && (
-        <div className="grid grid-2" style={{ alignItems: "start" }}>
-          <ConfirmedCvCard cv={state.cv} />
-          <div className="card">
-            <div className="row between">
-              <h2>Chatbot làm rõ mục tiêu</h2>
-              <span className="badge primary">{completed ? "Hoàn thành" : `Câu ${conv.currentTurn}/${conv.maxTurns}`}</span>
-            </div>
-            <div className="chat">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <Card>
+            <CardHeader
+              title="Chatbot làm rõ mục tiêu"
+              actions={<Badge tone={completed ? "success" : "accent"}>{completed ? "Hoàn thành" : `Câu ${conv.currentTurn}/${conv.maxTurns}`}</Badge>}
+            />
+            <CardBody className="flex flex-col gap-6">
               {conv.messages.map((m) => (
                 <div key={m.turnNo} className="chat">
-                  <div className="bubble bot"><div className="meta">{m.slotLabel}</div>{m.question}</div>
-                  {m.answer && <div className="bubble me">{m.answer}</div>}
+                  <div className="bubble-meta">{m.slotLabel}</div>
+                  <div className="bubble">{m.question}</div>
+                  {m.skipped ? <div className="bubble-meta bubble-meta-me italic">Đã bỏ qua</div>
+                    : m.answer && <div className="bubble bubble-me">{m.answer}</div>}
                 </div>
               ))}
               <div ref={bottom} />
-            </div>
+              {completed && <GoalDraft key={conv.id} conversation={conv} onChange={(conversation) => setState({ ...state, conversation })} />}
+            </CardBody>
             {!completed && (
-              <form onSubmit={send} style={{ marginTop: "1rem" }}>
-                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Nhập câu trả lời..." maxLength={5000} disabled={busy} />
-                <button className="btn" disabled={busy || !answer.trim()} style={{ marginTop: 8 }}>{busy ? "Đang xử lý..." : "Gửi"}</button>
+              <form onSubmit={send} className="card-foot flex-col items-stretch">
+                <Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} aria-label="Câu trả lời"
+                  placeholder="Nhập câu trả lời…" maxLength={5000} disabled={busy} className="min-h-[88px]" />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="ghost" icon={SkipForward} disabled={busy} onClick={() => send(null, true)}>Bỏ qua câu này</Button>
+                  <Button type="submit" variant="primary" icon={Send} loading={busy} disabled={!answer.trim()}>{busy ? "Đang xử lý…" : "Gửi"}</Button>
+                </div>
               </form>
             )}
-            {completed && (
-              <div style={{ marginTop: "1rem" }}>
-                <GoalDraft key={conv.id} conversation={conv} onChange={(conversation) => setState({ ...state, conversation })} />
-              </div>
-            )}
+          </Card>
+          <div className="flex min-w-0 flex-col gap-6">
+            <ConfirmedCvCard cv={state.cv} />
+            {uploadCard}
           </div>
         </div>
       )}

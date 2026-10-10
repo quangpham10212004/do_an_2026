@@ -14,6 +14,7 @@ import subprocess
 import sys
 import urllib.parse
 import uuid
+from zoneinfo import ZoneInfo
 
 from common import AI, AUTH, PROFILE, ApiError, call
 
@@ -159,8 +160,11 @@ def main():
     by_actor = audit(admin, actorId=admin_id, size=2)
     check("Lọc theo actorId + phân trang (size=2)", len(by_actor["items"]) <= 2 and by_actor["size"] == 2
           and all(r["actorId"] == admin_id for r in by_actor["items"]) and by_actor["totalItems"] >= 2, by_actor)
-    tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
-    today = datetime.date.today().isoformat()
+    # Bộ lọc from/to của audit tính theo ngày Việt Nam (AuditService.ZONE), không theo đồng hồ máy chạy test
+    # (CI chạy UTC: 17:00–24:00 UTC đã là ngày hôm sau ở Việt Nam).
+    vn_today = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+    tomorrow = (vn_today + datetime.timedelta(days=1)).isoformat()
+    today = vn_today.isoformat()
     check("Lọc khoảng ngày: từ ngày mai → 0 dòng", audit(admin, targetId=RUN, **{"from": tomorrow})["totalItems"] == 0)
     check("Lọc khoảng ngày: hôm nay → thấy dòng vừa ghi", audit(admin, targetId=RUN, **{"from": today, "to": today})
           ["items"][0]["after"] == {"run": RUN})

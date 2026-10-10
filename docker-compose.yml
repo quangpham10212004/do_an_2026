@@ -187,6 +187,7 @@ services:
       MENTORING_SERVICE_URL: http://mentoring-service:8083
       AUTH_SERVICE_URL: http://auth-service:8081
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      PROFILE_SERVICE_URL: http://profile-service:8082
     depends_on:
       payment-db: { condition: service_healthy }
     healthcheck:

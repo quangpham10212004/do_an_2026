@@ -1,59 +1,66 @@
-# Thiết kế giao diện — MentorHub
+# Thiết kế giao diện
 
-Giao diện frontend (Next.js 14 + TypeScript) áp dụng design system do nhóm cung cấp trong 3 file:
+Giao diện MentorHub dùng design system **MentorHub** được xây trên Claude Design
+(<https://claude.ai/artifact/WViqsnLfX7GWD1M6EbpXjp>): brand book, token màu/chữ/khoảng cách, 19 component kèm
+preview trực tiếp. Mã nguồn của design system nằm trong repo và là nguồn duy nhất cho cả app lẫn Claude Design.
+
+## 1. Cấu trúc
 
 | File | Vai trò |
 |---|---|
-| `frontend/DESIGN.md` | Mô tả phong cách, token màu/chữ/khoảng cách, thành phần, Do's & Don'ts |
-| `frontend/tokens.json` | Design tokens dạng W3C (màu, typography, spacing, radius, surface) |
-| `frontend/tailwind/theme.css` | Cùng bộ token ở dạng `@theme` của Tailwind CSS v4 |
+| `frontend/design-system/tokens.json` | Token gốc: 25 màu (theme sáng + tối), 2 họ font, 11 kiểu chữ, 8 bước khoảng cách, 4 bán kính bo góc, 3 mức bóng |
+| `frontend/design-system/build-tokens.mjs` | Sinh `src/styles/tokens.css` (app) và `design-system/tokens.css` (Claude Design) từ `tokens.json` |
+| `frontend/design-system/README.md` | Brand book: nguyên tắc, nội dung, màu, chữ, khoảng cách, bố cục, biểu tượng |
+| `frontend/design-system/components/<Comp>/` | `README.md` (hướng dẫn dùng) + `preview.html` (preview trên Claude Design) cho từng component, và `Cover` |
+| `frontend/src/styles/components.css` | CSS của component (`.btn`, `.card`, `.badge`…), CSS thuần nên dùng lại làm `components/bundle.css` trên Claude Design |
+| `frontend/src/components/ui/index.tsx` | Component React: `Button`, `Card`, `Field`, `Badge`, `StatusBadge`, `Alert`, `Tabs`, `Table`, `ListRow`, `Stat`, `Avatar`, `EmptyState`, `ScoreRing`, `Progress`, `Stars`, `PageHeader`, `useDialog`, `Modal`, `Pagination`… |
+| `frontend/src/components/shell/` | `AppShell` (sidebar theo vai trò + thanh trên), `PublicShell`, `AuthCard`, cấu hình menu `nav.ts`, theme sáng/tối |
 
-## 1. Cách tích hợp
+`src/app/globals.css` nạp Tailwind CSS v4, `tokens.css` và `components.css` (trong `@layer components`), rồi map token sang
+tiện ích Tailwind qua `@theme inline` (`bg-surface`, `text-ink-muted`, `text-title-2`…). Bảng màu mặc định của Tailwind bị
+xoá (`--color-*: initial`) nên trang chỉ dùng được màu của design system. Tailwind chỉ dùng cho bố cục; màu, bo góc, bóng
+và font đều trỏ về token.
 
-- Tailwind CSS v4 (`tailwindcss`, `@tailwindcss/postcss`, cấu hình `frontend/postcss.config.mjs`).
-- `src/app/globals.css` nạp `@import "tailwindcss"` và `@import "../../tailwind/theme.css"`; toàn bộ lớp giao
-  diện dùng chung (`.btn`, `.card`, `.badge`, `.nav`, `.footer`…) được viết lại **chỉ bằng biến token**
-  (`var(--color-eager-green)`, `var(--text-nav-label)`, `var(--spacing-24)`, `var(--radius-xl)`…).
-- Các biến ngữ nghĩa cũ của trang (`--primary`, `--good`, `--surface-2`…) được giữ làm alias trỏ về token.
-- Font: `feather` và `duolingo-sans` là font độc quyền → dùng bản thay thế DESIGN.md gợi ý, tự host
-  qua gói npm `@fontsource/nunito` và `@fontsource/nunito-sans` (import trong `app/layout`, mỗi file CSS
-  khai báo `@font-face` theo subset latin / latin-ext / vietnamese; không gọi Google Fonts lúc build hay
-  lúc chạy): **Nunito 900** cho tiêu đề display,
-  **Nunito Sans 500/700** cho nội dung.
+Đổi token: sửa `design-system/tokens.json` → `node design-system/build-tokens.mjs` → đồng bộ lên Claude Design.
 
-## 2. Áp dụng quy tắc
+## 2. Định hướng
 
-| Quy tắc trong DESIGN.md | Hiện thực |
+- **Calm professional**: nền trung tính hơi ngả xanh (`bg`), bề mặt trắng (`surface`), một màu nhấn duy nhất **Pine**
+  `#0d6b59` (`accent`) cho hành động chính, mục đang chọn, link và vòng focus.
+- Trạng thái luôn có chữ đi kèm màu (`StatusBadge`); success và danger khác nhau cả về độ sáng.
+- Số liệu (tiền, mã giao dịch, điểm phù hợp) dùng **JetBrains Mono** với chữ số đều cột; chữ giao diện dùng
+  **Be Vietnam Pro** (thiết kế cho dấu tiếng Việt). Cả hai tự host qua `@fontsource`.
+- Theme sáng và tối đầy đủ: mặc định theo hệ điều hành, người dùng chọn Sáng / Tối / Theo hệ thống trong menu tài khoản
+  (`data-theme` trên `<html>`, lưu trong `localStorage`).
+- Mọi cặp chữ / nền đạt WCAG AA (≥ 4.5:1) ở cả hai theme; viền điều khiển (`border-strong`) và vòng focus ≥ 3:1.
+
+## 3. Bố cục và điều hướng
+
+| Khu vực | Bố cục |
 |---|---|
-| Nền trắng Paper White cho mọi section | `body`, `.card`, `.nav` nền `#ffffff` |
-| Eager Green cho CTA, tiến độ, tiêu đề display, footer | `.btn` (nền xanh, chữ trắng 15px/700 viết hoa, tracking 0.795px), `.progress`, `.display`, `.footer` |
-| Spark Blue cho link & nút phụ viền | `a`, `.btn.secondary` (viền 2px Faded Gray, chữ xanh dương 14px/700), menu đang chọn |
-| Chữ nội dung Pencil Gray 17px/500; tiêu đề Charcoal | `body` 17px/500 `#777777`; `h1` 32px/700 `#4b4b4b` (Hero Headline) |
-| Font display chỉ dùng từ 48px trở lên | `.display` 64px (48px trên mobile và `.display.md`) — chỉ ở trang chủ |
-| Mọi nút/pill bo 12px, viền dày 2px | `.btn`, `.badge`, `.chip`, input, card, bubble chat đều `--radius-xl` + viền 2px |
-| Nhãn menu viết hoa 15px, tracking 0.053em | `.nav-links a`, `.tabs button`, tiêu đề cột bảng, nhãn thống kê |
-| Không gradient / shadow / glass | Đã bỏ toàn bộ `box-shadow` và gradient (vòng điểm AI Interview chuyển sang vòng viền phẳng) |
-| Bố cục editorial: chữ trái – minh hoạ phải, section cách nhau rộng, không lưới thẻ | Trang chủ: 5 section xen kẽ trái/phải, cách nhau 80px, minh hoạ bằng hình lớn |
-| Footer dải xanh full-bleed | `components/Footer` |
-| Max width 1200px, card padding 16–24px, element gap 12px | `.container`, `.card`, `.row` |
+| Trang công khai (giới thiệu, đăng nhập, đăng ký, khôi phục mật khẩu, xác thực email) | `PublicShell`: thanh trên + chân trang; biểu mẫu trong `AuthCard` 420px ở giữa |
+| Sau khi đăng nhập | `AppShell`: sidebar 248px nhóm theo vai trò, thanh trên 56px (tiêu đề trang, chuông thông báo, menu tài khoản), nội dung tối đa 1160px. Dưới 960px sidebar thành ngăn kéo mở bằng nút menu |
+| Banner xác thực email | Dải cảnh báo dưới thanh trên (US-39) |
 
-## 3. Điểm điều chỉnh có chủ đích (ngoài DESIGN.md)
+Nhóm menu: **Mentee** Tổng quan · Tìm mentor (AI Matching, Danh sách mentor) · Mentoring (Yêu cầu, Quan hệ mentoring,
+Phiên học, Tin nhắn) · Phát triển (CV & mục tiêu, Learning Hub) · Tài khoản (Hồ sơ, Giao dịch, Giới thiệu bạn bè).
+**Mentor** Tổng quan · Mentoring · Thu nhập (Thu nhập, Giao dịch) · Hồ sơ mentor (Hồ sơ, AI Interview, Learning Hub,
+Giới thiệu). **Admin** Tổng quan · Người dùng (Tài khoản, Duyệt mentor, Mentor) · Tài chính (Giao dịch, Rút tiền) ·
+Kiểm duyệt (Tranh chấp, Báo cáo tin nhắn, Nội dung học, Nhật ký).
 
-| Điều chỉnh | Lý do |
-|---|---|
-| Thêm 2 màu phản hồi `--color-feedback-error: #ea2b2b`, `--color-feedback-warning: #ffc800` | Bảng màu gốc không có màu lỗi/cảnh báo; ứng dụng cần báo lỗi (thẻ bị từ chối, huỷ phiên…) và hiển thị sao đánh giá. Chỉ dùng cho trạng thái phản hồi, không dùng cho giao diện chung |
-| Link footer màu Paper White thay vì Fresh Leaf | Fresh Leaf trên nền Eager Green có độ tương phản quá thấp, khó đọc |
-| Header 2 tầng (logo + tài khoản / menu) | Ứng dụng có 5–7 mục menu mỗi vai trò, không vừa 1 hàng với nhãn viết hoa 15px; trên điện thoại menu thành 1 hàng cuộn ngang |
-| Trang ứng dụng (dashboard, danh sách) dùng lưới thẻ | Quy tắc "không lưới thẻ" dành cho trang giới thiệu; màn hình nghiệp vụ cần hiển thị nhiều dữ liệu song song |
-| Hộp thoại có lớp phủ tối `rgb(0 4 55 / 0.35)` (Night Ink) | DESIGN.md không có thành phần modal; lớp phủ làm nổi hộp thoại mà vẫn không dùng shadow/gradient |
+Trang được tổ chức lại theo nguyên tắc "tóm tắt trước, chi tiết sau": `PageHeader` → dải `Stats` (khi số liệu là trọng
+tâm) → nội dung chính bên trái (~2/3) và ngữ cảnh bên phải. Các trang dài được tách thành tab: Hồ sơ (thông tin / lịch và
+đặt lịch / trạng thái / CV; `/profile#availability` mở thẳng tab lịch), Yêu cầu (đang chờ / đang hoạt động / đã đóng),
+Thu nhập (theo phiên / rút tiền), Nội dung học của admin (khoá học / roadmap). URL các trang giữ nguyên.
 
 ## 4. Thành phần tương tác
 
 | Thành phần | File | Hành vi |
 |---|---|---|
-| Hộp thoại xác nhận / nhập liệu | `components/ui` — `useDialog()` | Thay toàn bộ `window.confirm` / `window.prompt` (gửi yêu cầu, từ chối yêu cầu, kết thúc mentoring, huỷ phiên, xoá nội dung, sinh lại embedding). `await ask({...})` trả chuỗi / `true` / `null`; tự focus, đóng bằng Esc hoặc bấm ra ngoài; nút thao tác phá huỷ dùng `.btn.danger` và nói rõ hậu quả (hoàn tiền, xoá dây chuyền) |
-| Phân rã điểm phù hợp | `app/matching/page` — `ScoreBreakdown` | Thanh 3 màu = tương đồng hồ sơ (Eager Green) + đánh giá (Spark Blue) + kinh nghiệm (Night Ink) theo trọng số pipeline; phần đánh giá lấy phần còn lại của `finalScore` nên luôn khớp matching-service (kể cả rating trung tính của *Mentor mới*) |
-| Bộ chọn khung giờ | `features/mentoring/SlotPicker` | Gọi `GET /api/mentoring/mentors/{id}/available-slots`; hàng ngày 14 ngày tới (ngày không còn giờ bị mờ, cuộn ngang trên điện thoại) + lưới giờ bắt đầu; đổi thời lượng thì tải lại và bỏ chọn giờ không còn hợp lệ; nút *Xác nhận* khoá tới khi đã chọn giờ |
+| Hộp thoại xác nhận / nhập liệu | `components/ui` — `useDialog()` | Thay `window.confirm` / `window.prompt`. `await ask({...})` trả chuỗi / `true` / `null`; tự focus, đóng bằng Esc hoặc bấm ra ngoài; thao tác phá huỷ dùng nút `danger` và nói rõ hậu quả |
+| Phân rã điểm phù hợp | `app/matching/page` — `ScoreBreakdown` | Thanh `.meter` 5 phần (tương đồng hồ sơ, đánh giá, kinh nghiệm, khớp lịch, phản hồi nhanh) theo `scoreParts` của matching-service, cộng lại đúng bằng `finalScore` |
+| Bộ chọn khung giờ | `features/mentoring/SlotPicker` | Dải 14 ngày (ngày hết giờ bị khoá) + lưới giờ bắt đầu; đổi thời lượng thì tải lại và bỏ chọn giờ không còn hợp lệ; ghi rõ múi giờ hiển thị |
+| Đặt lịch | `app/mentoring/book/[mentorId]` | Biểu mẫu bên trái, thẻ tóm tắt (thời gian, chi phí, nút xác nhận) dính bên phải |
 
 ## 5. Ảnh chụp giao diện
 
@@ -62,10 +69,10 @@ Chụp tự động bằng Chrome headless với dữ liệu demo (`scripts/seed
 | Trang | Ảnh |
 |---|---|
 | Trang chủ | ![landing](images/01-landing.png) |
-| Dashboard mentee | ![dashboard](images/03-dashboard.png) |
-| Mentor phù hợp (AI Matching) | ![matching](images/04-matching.png) |
-| Hồ sơ mentor + lịch rảnh | ![mentor profile](images/07-mentor-profile.png) |
-| Bảng điều khiển admin | ![admin](images/08-admin.png) |
+| Tổng quan mentee | ![dashboard](images/03-dashboard.png) |
+| AI Matching | ![matching](images/04-matching.png) |
+| Hồ sơ mentor | ![mentor profile](images/07-mentor-profile.png) |
+| Tổng quan quản trị | ![admin](images/08-admin.png) |
 | AI Matching trên điện thoại | ![mobile](images/10-mobile-matching.png) |
-| Hộp thoại gửi yêu cầu mentoring | ![dialog](images/11-request-dialog.png) |
-| Bộ chọn khung giờ đặt lịch | ![slot picker](images/12-booking-slots.png) |
+| Tổng quan, theme tối | ![dark](images/11-dashboard-dark.png) |
+| Hồ sơ nghề nghiệp (tab) | ![profile](images/12-profile.png) |

@@ -1,3 +1,4 @@
+import { StatusBadge } from "@/components/ui";
 import { MENTORING_STATUS_LABELS, mentoringTone } from "@/features/mentoring/labels";
 
 /**
@@ -8,6 +9,5 @@ export default function MentoringStatusBadge({ status, labels = MENTORING_STATUS
   status: string | null | undefined;
   labels?: Record<string, string>;
 }) {
-  if (!status) return null;
-  return <span className={`badge ${mentoringTone(status)}`}>{labels[status] || MENTORING_STATUS_LABELS[status] || status}</span>;
+  return <StatusBadge status={status} labels={{ ...MENTORING_STATUS_LABELS, ...labels }} tone={mentoringTone} />;
 }

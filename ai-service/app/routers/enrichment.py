@@ -27,7 +27,7 @@ async def conversation(conversation_id: UUID, user: AuthUser = Depends(require_u
              response_model_by_alias=True)
 async def answer(conversation_id: UUID, body: AnswerInput,
                  user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
-    return await service.answer(user, conversation_id, body.answer)
+    return await service.answer(user, conversation_id, body.answer, body.skipped)
 
 
 @router.post("/enrichment/conversations/{conversation_id}/confirm-goal", response_model=ConversationView,
@@ -35,7 +35,7 @@ async def answer(conversation_id: UUID, body: AnswerInput,
 async def confirm_goal(conversation_id: UUID, body: GoalInput,
                        user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
     """US-21 — "Dùng mục tiêu này" (goal có thể đã sửa): ghi vào hồ sơ; gọi lại không đồng bộ lần hai."""
-    return await service.confirm_goal(user, conversation_id, body.goal)
+    return await service.confirm_goal(user, conversation_id, body.goal, body.skills)
 
 
 @router.post("/enrichment/conversations/{conversation_id}/discard-goal", response_model=ConversationView,

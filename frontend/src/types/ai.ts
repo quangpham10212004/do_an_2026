@@ -1,7 +1,7 @@
 import type { IsoDateTime, Uuid } from "./common";
 
 // contracts/ai-service.yaml — AI Interview
-export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "RETAKE_REQUESTED";
+export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "RETAKE_REQUESTED" | "ABANDONED";
 export type InterviewStrategy = "OPENING" | "DEEPEN" | "PIVOT";
 export type Recommendation = "APPROVE" | "REJECT" | "NEEDS_REVIEW";
 export type ReviewDecision = "APPROVE" | "REJECT" | "REQUEST_RETAKE";
@@ -63,6 +63,14 @@ export interface Interview {
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
   reviewedAt: IsoDateTime | null;
+  /** US-43 (PRD-AIV-3): hạn tiếp tục (hoạt động gần nhất + 72 giờ); null khi không còn IN_PROGRESS. */
+  resumeDeadline?: IsoDateTime | null;
+  /** US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định. */
+  feedbackVisible?: boolean;
+  /** US-43 (PRD-AIV-2) */
+  answerMinChars?: number;
+  answerMaxChars?: number;
+  softTimerSeconds?: number;
 }
 
 /** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
@@ -147,6 +155,8 @@ export interface EnrichmentMessage {
   slotLabel: string;
   question: string;
   answer: string | null;
+  /** US-45: mentee bấm "Bỏ qua" (answer = ""). */
+  skipped: boolean;
 }
 
 /** US-21: NONE (chưa xong) → DRAFT → CONFIRMED (đồng bộ hồ sơ) | DISCARDED (không gửi gì). */
@@ -171,6 +181,9 @@ export interface Conversation {
   profileSynced: boolean;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
+  /** US-45: kỹ năng đã duyệt từ CV — chip gợi ý; addedSkills = những kỹ năng đã thêm vào hồ sơ. */
+  suggestedSkills: string[];
+  addedSkills: string[];
 }
 
 /** Một CV trong danh sách "CV của tôi" (GET /api/ai/cv/mine). */
@@ -181,6 +194,10 @@ export interface CvSummary {
   /** Dạng /api/ai/cv/{id}/file — cần access token, tải qua apiBlob(). */
   fileUrl: string;
   consentExternalAi: boolean;
+  /** US-45: file + văn bản gốc bị xoá 12 tháng sau khi tải lên. */
+  purgedAt: IsoDateTime | null;
+  deleteAfter: IsoDateTime;
+  addedSkills: string[];
 }
 
 export interface CvUploadResult {

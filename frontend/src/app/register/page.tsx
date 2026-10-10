@@ -3,10 +3,17 @@
 import Link from "next/link";
 import { Suspense, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { GraduationCap, Presentation } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import type { RegisterInput } from "@/types";
-import { Alert } from "@/components/ui";
+import type { RegisterInput, Role } from "@/types";
+import { Alert, Button, Field, Input } from "@/components/ui";
+import AuthCard from "@/components/shell/AuthCard";
 import { errorMessage } from "@/lib/api";
+
+const ROLES: { value: Exclude<Role, "ADMIN">; title: string; desc: string; icon: typeof GraduationCap }[] = [
+  { value: "MENTEE", title: "Mentee", desc: "Tôi muốn tìm mentor để học", icon: GraduationCap },
+  { value: "MENTOR", title: "Mentor", desc: "Tôi muốn hướng dẫn người khác", icon: Presentation },
+];
 
 function RegisterForm() {
   const { register } = useAuth();
@@ -42,49 +49,47 @@ function RegisterForm() {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "2rem auto" }}>
-      <div className="card">
-        <h1>Tạo tài khoản</h1>
-        <Alert>{error}</Alert>
-        <form onSubmit={submit}>
-          <div className="field">
-            <label>Bạn tham gia với vai trò</label>
-            <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              {[
-                ["MENTEE", "Mentee", "Tôi muốn tìm mentor để học"],
-                ["MENTOR", "Mentor", "Tôi muốn hướng dẫn người khác"],
-              ].map(([value, title, desc]) => (
-                <label key={value} className={`card ${form.role === value ? "highlight" : ""}`} style={{ cursor: "pointer", marginBottom: 0 }}>
-                  <input type="radio" name="role" value={value} checked={form.role === value} onChange={set("role")} /> {title}
-                  <div className="hint">{desc}</div>
+    <AuthCard
+      title="Tạo tài khoản"
+      description="Miễn phí. Bạn có thể đổi thông tin hồ sơ bất cứ lúc nào."
+      footer={<>Đã có tài khoản? <Link href="/login">Đăng nhập</Link></>}
+    >
+      <Alert>{error}</Alert>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <fieldset className="flex flex-col gap-2">
+          <legend className="field-label mb-1.5">Bạn tham gia với vai trò</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {ROLES.map(({ value, title, desc, icon: Icon }) => {
+              const checked = form.role === value;
+              return (
+                <label
+                  key={value}
+                  className={`flex cursor-pointer flex-col gap-1 rounded-md border p-3 ${checked ? "border-accent bg-accent-soft" : "border-border-strong bg-surface hover:bg-surface-hover"}`}
+                >
+                  <input type="radio" name="role" value={value} checked={checked} onChange={set("role")} className="sr-only" />
+                  <Icon aria-hidden="true" className={`size-5 ${checked ? "text-accent" : "text-ink-muted"}`} />
+                  <span className="font-semibold">{title}</span>
+                  <span className="text-small text-ink-muted">{desc}</span>
                 </label>
-              ))}
-            </div>
+              );
+            })}
           </div>
-          <div className="field">
-            <label htmlFor="fullName">Họ và tên</label>
-            <input id="fullName" value={form.fullName} onChange={set("fullName")} maxLength={100} />
-          </div>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" required value={form.email} onChange={set("email")} />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Mật khẩu</label>
-            <input id="password" type="password" required minLength={8} value={form.password} onChange={set("password")} />
-            <div className="hint">Tối thiểu 8 ký tự.</div>
-          </div>
-          <div className="field">
-            <label htmlFor="referralCode">Mã giới thiệu (nếu có)</label>
-            <input id="referralCode" value={form.referralCode} onChange={set("referralCode")} maxLength={32} />
-          </div>
-          <button className="btn block" disabled={loading}>{loading ? "Đang tạo tài khoản..." : "Đăng ký"}</button>
-        </form>
-        <p className="muted small" style={{ marginTop: "1rem" }}>
-          Đã có tài khoản? <Link href="/login">Đăng nhập</Link>
-        </p>
-      </div>
-    </div>
+        </fieldset>
+        <Field label="Họ và tên" id="fullName">
+          <Input id="fullName" autoComplete="name" value={form.fullName} onChange={set("fullName")} maxLength={100} />
+        </Field>
+        <Field label="Email" id="email" required>
+          <Input id="email" type="email" autoComplete="email" required value={form.email} onChange={set("email")} />
+        </Field>
+        <Field label="Mật khẩu" id="password" required hint="Tối thiểu 8 ký tự.">
+          <Input id="password" type="password" autoComplete="new-password" required minLength={8} value={form.password} onChange={set("password")} />
+        </Field>
+        <Field label="Mã giới thiệu" id="referralCode" hint="Không bắt buộc. Nhập nếu bạn được bạn bè mời.">
+          <Input id="referralCode" value={form.referralCode} onChange={set("referralCode")} maxLength={32} className="font-mono" />
+        </Field>
+        <Button type="submit" variant="primary" size="lg" block loading={loading}>{loading ? "Đang tạo tài khoản…" : "Tạo tài khoản"}</Button>
+      </form>
+    </AuthCard>
   );
 }
 

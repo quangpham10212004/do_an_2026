@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { Role, SessionUser } from "@/types";
-import { Loading } from "./ui";
+import { Alert, Loading } from "./ui";
 
 /** Bảo vệ trang: yêu cầu đăng nhập và (tuỳ chọn) đúng vai trò. */
 interface RequireAuthProps {
@@ -23,7 +23,7 @@ export default function RequireAuth({ roles, children }: RequireAuthProps) {
 
   if (!ready || !user) return <Loading />;
   if (roles && !roles.includes(user.role)) {
-    return <div className="alert error">Trang này không dành cho vai trò của bạn.</div>;
+    return <Alert tone="warning" title="Không có quyền truy cập">Trang này không dành cho vai trò của bạn.</Alert>;
   }
   return typeof children === "function" ? children(user) : children;
 }

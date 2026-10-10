@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert } from "@/components/ui";
+import { Alert, Button, Field, Select, Textarea } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import {
   DISPUTE_DESCRIPTION_MAX,
@@ -39,8 +39,7 @@ export default function DisputeForm({ session, onDone, onCancel }: {
 
   return (
     <form
-      className="card"
-      style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8 }}
+      className="well flex flex-col gap-4"
       onSubmit={async (e) => {
         e.preventDefault();
         setError("");
@@ -60,32 +59,30 @@ export default function DisputeForm({ session, onDone, onCancel }: {
         }
       }}
     >
-      <strong>Báo cáo sự cố</strong>
-      <p className="small muted">
-        Gửi trong 7 ngày sau khi phiên kết thúc. {paid && "Khoản thanh toán sẽ được tạm giữ cho tới khi quản trị viên kết luận."}
-      </p>
+      <div>
+        <div className="font-semibold">Báo cáo sự cố</div>
+        <p className="text-small text-ink-muted">
+          Gửi trong 7 ngày sau khi phiên kết thúc. {paid && "Khoản thanh toán được tạm giữ cho tới khi quản trị viên kết luận."}
+        </p>
+      </div>
       <Alert>{error}</Alert>
-      <div className="field">
-        <label htmlFor={`dispute-type-${session.id}`}>Loại sự cố</label>
-        <select id={`dispute-type-${session.id}`} value={type} onChange={(e) => setType(e.target.value as DisputeType)}>
+      <Field label="Loại sự cố" id={`dispute-type-${session.id}`}>
+        <Select id={`dispute-type-${session.id}`} value={type} onChange={(e) => setType(e.target.value as DisputeType)}>
           {DISPUTE_TYPES.map((t) => <option key={t} value={t}>{DISPUTE_TYPE_LABELS[t]}</option>)}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={`dispute-desc-${session.id}`}>Mô tả ({DISPUTE_DESCRIPTION_MIN}–{DISPUTE_DESCRIPTION_MAX} ký tự)</label>
-        <textarea id={`dispute-desc-${session.id}`} value={description} maxLength={DISPUTE_DESCRIPTION_MAX}
-          onChange={(e) => setDescription(e.target.value)} style={{ minHeight: 90 }}
-          placeholder="Điều gì đã xảy ra? Thời điểm, diễn biến, ảnh hưởng tới bạn..." />
-        <div className="hint">{len}/{DISPUTE_DESCRIPTION_MAX}</div>
-      </div>
-      <div className="field">
-        <label htmlFor={`dispute-links-${session.id}`}>Link bằng chứng (tuỳ chọn, tối đa {DISPUTE_MAX_LINKS}, mỗi dòng 1 link https)</label>
-        <textarea id={`dispute-links-${session.id}`} value={links} onChange={(e) => setLinks(e.target.value)}
-          style={{ minHeight: 60 }} placeholder="https://drive.google.com/..." />
-      </div>
-      <div className="row">
-        <button className="btn danger sm" disabled={busy}>Gửi báo cáo</button>
-        <button type="button" className="btn secondary sm" onClick={onCancel}>Huỷ</button>
+        </Select>
+      </Field>
+      <Field label="Mô tả" id={`dispute-desc-${session.id}`} hint={`${len}/${DISPUTE_DESCRIPTION_MAX} ký tự, tối thiểu ${DISPUTE_DESCRIPTION_MIN}.`}>
+        <Textarea id={`dispute-desc-${session.id}`} value={description} maxLength={DISPUTE_DESCRIPTION_MAX}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Điều gì đã xảy ra? Thời điểm, diễn biến, ảnh hưởng tới bạn…" />
+      </Field>
+      <Field label="Link bằng chứng" id={`dispute-links-${session.id}`} hint={`Không bắt buộc. Tối đa ${DISPUTE_MAX_LINKS} link https, mỗi dòng một link.`}>
+        <Textarea id={`dispute-links-${session.id}`} value={links} onChange={(e) => setLinks(e.target.value)}
+          className="min-h-[64px] font-mono text-small" placeholder="https://drive.google.com/…" />
+      </Field>
+      <div className="form-actions">
+        <Button type="submit" variant="danger" loading={busy}>Gửi báo cáo</Button>
+        <Button variant="ghost" onClick={onCancel}>Huỷ</Button>
       </div>
     </form>
   );

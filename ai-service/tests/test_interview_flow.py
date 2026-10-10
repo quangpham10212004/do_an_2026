@@ -10,6 +10,8 @@ STRONG_ANSWER = (
     "xuong 40ms. Toi can nhac trade-off giua consistency va hieu nang, dung index, transaction, REST API "
     "versioning, status code 201/404, pagination va idempotent. Vi du cu the o production."
 )
+# Câu trả lời yếu nhưng đủ độ dài tối thiểu 50 ký tự (US-43, PRD-AIV-2).
+WEAK_ANSWER = "Khong biet, em chua lam bao gio va cung khong nho gi ca."
 
 
 @pytest.fixture
@@ -49,8 +51,9 @@ def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id
     assert turns + 1 == final["maxTurns"]
     assert final["status"] == "PENDING_REVIEW"
     assert final["overallScore"] is not None and final["summary"]
-    # Hoàn thành: điểm từng câu được mở cho mentor.
-    assert all(t["score"] is not None for t in final["turns"])
+    # US-43 (PRD-AIV-5): hoàn thành nhưng chờ admin → điểm từng câu vẫn ẩn với mentor (tổng điểm thì có).
+    assert all(t["score"] is None and t["feedback"] is None for t in final["turns"])
+    assert final["feedbackVisible"] is False and final["resumeDeadline"] is None
     assert (mentor_id, "PENDING_REVIEW") in fake_profile.verifications
     assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
 

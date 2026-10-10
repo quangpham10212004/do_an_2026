@@ -15,6 +15,23 @@ def test_mentee_slots_cover_14_days_of_preferred_weekdays():
     assert slots[0][0] == datetime(2026, 11, 2, 11, 0, tzinfo=timezone.utc)
 
 
+def test_slot_in_progress_is_not_counted():
+    """Đang 21:30 giờ Việt Nam: khung tối hôm nay đã bắt đầu nên bị bỏ, còn 13 ngày tới."""
+    late = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    slots = rs.mentee_slots(late, [], "EVENING", "Asia/Ho_Chi_Minh")
+    assert len(slots) == 13
+    assert slots[0][0] == datetime(2026, 11, 3, 11, 0, tzinfo=timezone.utc)
+
+
+def test_fit_does_not_depend_on_time_of_call():
+    """Mentor rảnh 18:00–22:00 mỗi ngày khớp trọn buổi tối, dù gọi API lúc 07:00, 21:00, 21:54 hay 22:30 giờ Việt Nam."""
+    availability = [(d, time(18, 0), time(22, 0)) for d in range(1, 8)]
+    mentee = {"preferred_days": [], "preferred_time_of_day": "EVENING", "timezone": "Asia/Ho_Chi_Minh"}
+    for hour, minute in [(0, 0), (14, 0), (14, 54), (15, 30)]:  # UTC
+        now = datetime(2026, 11, 2, hour, minute, tzinfo=timezone.utc)
+        assert rs.schedule_fit(now, mentee, "Asia/Ho_Chi_Minh", availability, []) == 1.0, now
+
+
 def test_full_fit_when_mentor_free_every_evening():
     availability = [(d, time(18, 0), time(22, 0)) for d in range(1, 8)]
     assert rs.schedule_fit(NOW, EVENING_MON_WED, "Asia/Ho_Chi_Minh", availability, []) == 1.0

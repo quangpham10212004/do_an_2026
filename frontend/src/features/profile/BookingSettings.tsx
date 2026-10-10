@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Alert, type Flash } from "@/components/ui";
+import { Button, Card, CardBody, CardFooter, CardHeader, Chip, Chips, Field, FlashAlerts, Input, Select, type Flash } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, profileApi } from "@/features/profile/api";
 import type { BookingSettingsInput, LanguageCode, MentorProfile, SessionType } from "@/types";
@@ -47,56 +47,51 @@ export default function BookingSettings({ profile, onChange }: { profile: Mentor
 
   return (
     <form onSubmit={save}>
-      <h3>Cài đặt đặt lịch</h3>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="field">
-        <label>Link phòng họp</label>
-        <input value={form.meetingLink || ""} maxLength={500} placeholder="https://meet.google.com/abc-defg-hij" onChange={(e) => setForm({ ...form, meetingLink: e.target.value })} />
-        <div className="hint">{linkInvalid ? "Chỉ nhận link https của Google Meet, Zoom hoặc Microsoft Teams." : "Chỉ gửi cho mentee khi phiên đã xác nhận."}</div>
-      </div>
-      <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div className="field">
-          <label>Nghỉ giữa các phiên</label>
-          <select value={form.bufferMinutes} onChange={(e) => setForm({ ...form, bufferMinutes: Number(e.target.value) as BookingSettingsInput["bufferMinutes"] })}>
-            {BUFFERS.map((b) => <option key={b} value={b}>{b === 0 ? "Không nghỉ" : `${b} phút`}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label>Đặt trước tối thiểu (giờ)</label>
-          <input type="number" min={1} max={72} required value={form.minNoticeHours} onChange={(e) => setForm({ ...form, minNoticeHours: Number(e.target.value) })} />
-        </div>
-      </div>
-      <div className="field">
-        <label>Ngôn ngữ hướng dẫn</label>
-        <div className="row small">
-          {(Object.keys(LANGUAGE_LABELS) as LanguageCode[]).map((l) => (
-            <label key={l} className="row" style={{ gap: 4 }}>
-              <input type="checkbox" checked={form.languages.includes(l)} onChange={() => setForm({ ...form, languages: toggle(form.languages, l) })} /> {LANGUAGE_LABELS[l]}
-            </label>
-          ))}
-        </div>
-      </div>
-      <div className="field">
-        <label>Loại phiên nhận</label>
-        <div className="row small" style={{ flexWrap: "wrap" }}>
-          {(Object.keys(SESSION_TYPE_LABELS) as SessionType[]).map((t) => (
-            <label key={t} className="row" style={{ gap: 4 }}>
-              <input type="checkbox" checked={form.sessionTypes.includes(t)} onChange={() => setForm({ ...form, sessionTypes: toggle(form.sessionTypes, t) })} /> {SESSION_TYPE_LABELS[t]}
-            </label>
-          ))}
-        </div>
-      </div>
-      <div className="field">
-        <label>Múi giờ</label>
-        <select value={form.timezone || "Asia/Ho_Chi_Minh"} onChange={(e) => setForm({ ...form, timezone: e.target.value })}>
-          {timezones.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-        </select>
-        <div className="hint">Lịch rảnh, ngày nghỉ và nghỉ phép tính theo múi giờ này.</div>
-      </div>
-      <button className="btn secondary sm" disabled={busy || linkInvalid || form.languages.length === 0 || form.sessionTypes.length === 0}>
-        Lưu cài đặt
-      </button>
+      <Card>
+        <CardHeader title="Cài đặt đặt lịch" description="Áp dụng khi mentee đặt phiên với bạn." />
+        <CardBody className="flex flex-col gap-5">
+          <FlashAlerts flash={msg} />
+          <Field label="Link phòng họp" id="bs-link"
+            error={linkInvalid ? "Chỉ nhận link https của Google Meet, Zoom hoặc Microsoft Teams." : undefined}
+            hint="Chỉ gửi cho mentee khi phiên đã xác nhận.">
+            <Input id="bs-link" value={form.meetingLink || ""} maxLength={500} placeholder="https://meet.google.com/abc-defg-hij" onChange={(e) => setForm({ ...form, meetingLink: e.target.value })} />
+          </Field>
+          <div className="form-grid">
+            <Field label="Nghỉ giữa các phiên" id="bs-buffer">
+              <Select id="bs-buffer" value={form.bufferMinutes} onChange={(e) => setForm({ ...form, bufferMinutes: Number(e.target.value) as BookingSettingsInput["bufferMinutes"] })}>
+                {BUFFERS.map((b) => <option key={b} value={b}>{b === 0 ? "Không nghỉ" : `${b} phút`}</option>)}
+              </Select>
+            </Field>
+            <Field label="Đặt trước tối thiểu (giờ)" id="bs-notice">
+              <Input id="bs-notice" type="number" min={1} max={72} required value={form.minNoticeHours} onChange={(e) => setForm({ ...form, minNoticeHours: Number(e.target.value) })} />
+            </Field>
+          </div>
+          <Field label="Ngôn ngữ hướng dẫn" error={form.languages.length === 0 ? "Chọn ít nhất một ngôn ngữ." : undefined}>
+            <Chips>
+              {(Object.keys(LANGUAGE_LABELS) as LanguageCode[]).map((l) => (
+                <Chip key={l} selected={form.languages.includes(l)} onClick={() => setForm({ ...form, languages: toggle(form.languages, l) })}>{LANGUAGE_LABELS[l]}</Chip>
+              ))}
+            </Chips>
+          </Field>
+          <Field label="Loại phiên nhận" error={form.sessionTypes.length === 0 ? "Chọn ít nhất một loại phiên." : undefined}>
+            <Chips>
+              {(Object.keys(SESSION_TYPE_LABELS) as SessionType[]).map((t) => (
+                <Chip key={t} selected={form.sessionTypes.includes(t)} onClick={() => setForm({ ...form, sessionTypes: toggle(form.sessionTypes, t) })}>{SESSION_TYPE_LABELS[t]}</Chip>
+              ))}
+            </Chips>
+          </Field>
+          <Field label="Múi giờ" id="bs-tz" hint="Lịch rảnh, ngày nghỉ và nghỉ phép tính theo múi giờ này.">
+            <Select id="bs-tz" value={form.timezone || "Asia/Ho_Chi_Minh"} onChange={(e) => setForm({ ...form, timezone: e.target.value })}>
+              {timezones.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+            </Select>
+          </Field>
+        </CardBody>
+        <CardFooter>
+          <Button type="submit" variant="primary" loading={busy} disabled={linkInvalid || form.languages.length === 0 || form.sessionTypes.length === 0}>
+            Lưu cài đặt
+          </Button>
+        </CardFooter>
+      </Card>
     </form>
   );
 }

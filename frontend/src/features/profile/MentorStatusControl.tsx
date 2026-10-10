@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, type Flash } from "@/components/ui";
+import { Alert, Button, Card, CardBody, CardHeader, Field, FlashAlerts, Input, type Flash } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { MENTOR_STATUS_LABELS, mentorStatusText, profileApi } from "@/features/profile/api";
 import type { MentorProfile, MentorStatusInput } from "@/types";
@@ -22,9 +22,9 @@ export default function MentorStatusControl({ profile, onChange }: { profile: Me
 
   if (profile.status === "SUSPENDED") {
     return (
-      <Alert type="warn">
-        <strong>Tài khoản mentor đang bị đình chỉ.</strong> Bạn không xuất hiện trong tìm kiếm/gợi ý và không nhận được yêu cầu mới.
-        {profile.statusReason && <> Lý do: {profile.statusReason}.</>} Vui lòng liên hệ quản trị viên.
+      <Alert tone="warning" title="Tài khoản mentor đang bị đình chỉ">
+        Bạn không xuất hiện trong tìm kiếm, gợi ý và không nhận được yêu cầu mới.
+        {profile.statusReason && <> Lý do: {profile.statusReason}.</>} Liên hệ quản trị viên để được gỡ đình chỉ.
       </Alert>
     );
   }
@@ -44,26 +44,30 @@ export default function MentorStatusControl({ profile, onChange }: { profile: Me
   }
 
   return (
-    <div>
-      <h3>Trạng thái nhận mentee</h3>
-      <p className="small">Hiện tại: <strong>{mentorStatusText(profile.status, profile.onLeaveUntil)}</strong></p>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      {CHOICES.map(([value, hint]) => (
-        <label key={value} className="row small" style={{ gap: 6, alignItems: "flex-start", marginBottom: 4 }}>
-          <input type="radio" name="mentor-status" checked={status === value} onChange={() => setStatus(value)} />
-          <span><strong>{MENTOR_STATUS_LABELS[value]}</strong> — <span className="muted">{hint}</span></span>
-        </label>
-      ))}
-      {status === "ON_LEAVE" && (
-        <div className="field">
-          <label>Nghỉ đến hết ngày</label>
-          <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} required />
+    <Card>
+      <CardHeader title="Trạng thái nhận mentee" description={<>Hiện tại: <strong className="text-ink">{mentorStatusText(profile.status, profile.onLeaveUntil)}</strong></>} />
+      <CardBody className="flex flex-col gap-4">
+        <FlashAlerts flash={msg} />
+        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Trạng thái nhận mentee">
+          {CHOICES.map(([value, hint]) => (
+            <label key={value} className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${status === value ? "border-accent bg-accent-soft" : "border-border hover:bg-surface-hover"}`}>
+              <input type="radio" name="mentor-status" className="mt-1 accent-[var(--accent)]" checked={status === value} onChange={() => setStatus(value)} />
+              <span>
+                <span className="block font-semibold">{MENTOR_STATUS_LABELS[value]}</span>
+                <span className="text-small text-ink-muted">{hint}</span>
+              </span>
+            </label>
+          ))}
         </div>
-      )}
-      <button type="button" className="btn secondary sm" disabled={busy || (status === "ON_LEAVE" && !until)} onClick={save}>
-        Lưu trạng thái
-      </button>
-    </div>
+        {status === "ON_LEAVE" && (
+          <Field label="Nghỉ đến hết ngày" id="leave-until" required>
+            <Input id="leave-until" type="date" value={until} onChange={(e) => setUntil(e.target.value)} required className="max-w-[220px]" />
+          </Field>
+        )}
+        <div>
+          <Button variant="primary" loading={busy} disabled={status === "ON_LEAVE" && !until} onClick={save}>Lưu trạng thái</Button>
+        </div>
+      </CardBody>
+    </Card>
   );
 }

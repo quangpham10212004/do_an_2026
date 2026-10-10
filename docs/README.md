@@ -18,7 +18,7 @@ Lớp E22CNPM03 — GVHD: Đào Ngọc Phong.
 | [testing-report.md](testing-report.md) | Chiến lược, unit test, kiểm tra e2e theo DoD (DoD 2 nay là nhất quán cuối cùng), hiệu năng, bảo mật, lỗi phát hiện, giới hạn | Ch.5 Kiểm thử & đánh giá |
 | [deployment-guide.md](deployment-guide.md) | Cài đặt, cấu hình, tài khoản demo, kịch bản demo ~20 phút, xử lý sự cố, **nâng cấp/migration CSDL** | Ch.5 Triển khai · Phụ lục |
 | [cv-data-policy.md](cv-data-policy.md) | **Chính sách dữ liệu CV**: nơi lưu, giới hạn, quyền truy cập, gửi DeepSeek, thời hạn lưu, cách xoá, phần chưa hiện thực | Ch.4 (phần CV) · Ch.5 Bảo mật |
-| [ui-design.md](ui-design.md) | Design system giao diện (DESIGN.md, tokens.json, Tailwind v4), điểm điều chỉnh, ảnh chụp màn hình | Ch.3 Thiết kế giao diện |
+| [ui-design.md](ui-design.md) | Design system MentorHub (Claude Design, tokens.json, Tailwind v4), bố cục, điều hướng, ảnh chụp màn hình | Ch.3 Thiết kế giao diện |
 | [user-guide.md](user-guide.md) | Hướng dẫn sử dụng theo vai trò | Phụ lục |
 | [system-analysis-status.md](system-analysis-status.md) | **Hiện trạng hệ thống & sổ khoảng trống**: những gì đã có, refactor đang dở, danh sách cần cập nhật theo mức ưu tiên, kế hoạch 3 đợt | Quản lý tiến độ · Rà soát trước khi nộp |
 | [archive/](archive/) | SRD v0.2 (bản trước khi hiện thực) | Tham khảo lịch sử |

@@ -273,9 +273,58 @@ components:
         updatedBy: { type: string, format: uuid, nullable: true }
         updatedByName: { type: string, nullable: true }
         updatedAt: { type: string, format: date-time, nullable: true }
+    ReviewInput:
+      type: object
+      required: [rating, knowledge, clarity, preparation]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        knowledge: { type: integer, minimum: 1, maximum: 5 }
+        clarity: { type: integer, minimum: 1, maximum: 5 }
+        preparation: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 2000, description: "Bắt buộc ≥ 20 ký tự khi rating ≤ 2" }
+        tags:
+          type: array
+          maxItems: 5
+          items: { type: string, enum: [PRACTICAL_EXAMPLES, GOOD_LISTENER, WELL_PREPARED, CLEAR_EXPLANATION, ACTIONABLE_ADVICE, RAN_OVER_TIME, STARTED_LATE, TOO_THEORETICAL] }
+    Review:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        menteeId: { type: string, format: uuid }
+        menteeName: { type: string }
+        mentorId: { type: string, format: uuid }
+        rating: { type: integer }
+        knowledge: { type: integer, nullable: true, description: null ở đánh giá trước US-41 }
+        clarity: { type: integer, nullable: true }
+        preparation: { type: integer, nullable: true }
+        comment: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time, nullable: true }
+        editableUntil: { type: string, format: date-time }
+        mentorReply: { type: string, nullable: true }
+        mentorRepliedAt: { type: string, format: date-time, nullable: true }
+        canEdit: { type: boolean, description: Người xem là mentee viết và còn trong 48 giờ }
+        canReply: { type: boolean, description: Người xem là mentor được đánh giá và chưa phản hồi }
+    MenteeReliability:
+      type: object
+      properties:
+        menteeId: { type: string, format: uuid }
+        feedbackCount: { type: integer }
+        badge: { type: string, nullable: true, enum: [RELIABLE] }
 security:
   - bearerAuth: []
 paths:
+  /metrics:
+    get:
+      summary: US-46 (NFR-17) — số liệu Prometheus (text/plain; version=0.0.4), không cần xác thực
+      description: >-
+        Micrometer: http_server_requests_seconds, JVM, Hikari.... Mọi response của service có header X-Request-Id (nhận từ request nếu hợp lệ [A-Za-z0-9._:-]{1,64}, ngược
+        lại sinh UUID); id được ghi trong mọi dòng log JSON ("requestId") và chuyển tiếp sang các service được gọi.
+      security: []
+      responses:
+        "200": { description: OK }
   /health:
     get:
       security: []
@@ -632,7 +681,64 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/Dispute" } }
   /api/mentoring/sessions/{id}/review:
     post:
-      summary: FR-5.6 (MENTEE) Đánh giá sau phiên COMPLETED (không đánh giá được NO_SHOW_*/DISPUTED/CANCELLED) — rating trung bình đồng bộ sang profile-service
+      summary: >
+        US-41 (PRD-REV-1/2, MENTEE) — đánh giá có cấu trúc phiên COMPLETED trong 14 ngày sau khi hoàn thành (resolved_at),
+        1 đánh giá / phiên. Tổng + kiến thức / truyền đạt / chuẩn bị (1–5), nhận xét bắt buộc ≥ 20 ký tự khi tổng ≤ 2,
+        tối đa 5 thẻ. Điểm đồng bộ sang profile-service = trung bình Bayes (prior 3 đánh giá ở trung bình nền tảng).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewInput" }
+      responses:
+        "201":
+          description: Đã đăng
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "400": { description: VALIDATION_ERROR / COMMENT_REQUIRED / INVALID_REVIEW_TAG }
+        "403": { description: FORBIDDEN }
+        "409": { description: SESSION_NOT_COMPLETED / ALREADY_REVIEWED / REVIEW_WINDOW_CLOSED }
+    put:
+      summary: US-41 — sửa đánh giá của chính mình trong 48 giờ sau khi đăng.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "404": { description: REVIEW_NOT_FOUND }
+        "409": { description: REVIEW_EDIT_WINDOW_CLOSED }
+  /api/mentoring/reviews/{id}/reply:
+    post:
+      summary: US-41 (PRD-REV-3) — mentor phản hồi công khai 1 lần (≤ 500 ký tự); mentee được thông báo REVIEW_REPLIED.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reply], properties: { reply: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "400": { description: INVALID_REPLY }
+        "403": { description: FORBIDDEN }
+        "409": { description: ALREADY_REPLIED }
+  /api/mentoring/sessions/{id}/mentee-feedback:
+    post:
+      summary: >
+        US-41 (PRD-REV-4, MENTOR) — nhận xét riêng về mentee sau phiên COMPLETED (14 ngày, 1 lần / phiên). Không công khai;
+        chỉ dùng tổng hợp thành huy hiệu RELIABLE (≥ 3 nhận xét, trung bình chuẩn bị và tham gia ≥ 4).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -640,19 +746,64 @@ paths:
           application/json:
             schema:
               type: object
-              required: [rating]
+              required: [preparation, engagement]
               properties:
-                rating: { type: integer, minimum: 1, maximum: 5 }
-                comment: { type: string, maxLength: 2000 }
+                preparation: { type: integer, minimum: 1, maximum: 5 }
+                engagement: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 1000 }
       responses:
-        "201": { description: Review }
-        "409": { description: SESSION_NOT_COMPLETED / ALREADY_REVIEWED }
-  /api/mentoring/mentors/{id}/reviews:
+        "201":
+          description: Đã lưu — trả huy hiệu hiện tại của mentee
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenteeReliability" }
+        "403": { description: FORBIDDEN }
+        "409": { description: SESSION_NOT_COMPLETED / REVIEW_WINDOW_CLOSED / FEEDBACK_EXISTS }
+  /api/mentoring/mentees/{id}/reliability:
     get:
-      summary: Các đánh giá của 1 mentor
+      summary: US-41 — huy hiệu tổng hợp của mentee (chỉ MENTOR / ADMIN; mentee → 403).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
-        "200": { description: "Review[]" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenteeReliability" }
+        "403": { description: FORBIDDEN }
+  /api/mentoring/mentors/{id}/reviews:
+    get:
+      summary: Các đánh giá của 1 mentor (mới nhất trước) — US-41 kèm điểm thành phần, thẻ, phản hồi của mentor, canEdit/canReply
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Review" } }
+  /api/mentoring/mentors/{id}/review-summary:
+    get:
+      summary: >
+        US-41 (PRD-REV-5) — tổng hợp công khai: rating (trung bình Bayes) chỉ khi reviewCount ≥ 3, ngược lại newMentor = true
+        và rating = null; trung bình điểm thành phần; số lần mỗi thẻ được chọn; danh sách đánh giá.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentorId: { type: string, format: uuid }
+                  reviewCount: { type: integer }
+                  newMentor: { type: boolean }
+                  rating: { type: number, nullable: true }
+                  knowledge: { type: number, nullable: true }
+                  clarity: { type: number, nullable: true }
+                  preparation: { type: number, nullable: true }
+                  tags: { type: object, additionalProperties: { type: integer } }
+                  reviews: { type: array, items: { $ref: "#/components/schemas/Review" } }
+                  sessionsCompleted: { type: integer, description: "US-44 (PRD-MATCH-9) — số phiên COMPLETED của mentor" }
   /api/mentoring/mentors/{id}/available-slots:
     get:
       summary: >
@@ -868,6 +1019,7 @@ paths:
               properties:
                 endedMinutesAgo: { type: integer, default: 0 }
                 startsInMinutes: { type: integer, description: "US-34 — đặt giờ bắt đầu = bây giờ + N phút (ưu tiên hơn endedMinutesAgo)" }
+                resolvedDaysAgo: { type: integer, description: "US-41 — đặt mốc COMPLETED (resolved_at) N ngày trước, giờ phiên ngay trước đó" }
       responses:
         "200": { description: "{ id, scheduledAt, endsAt, status }" }
   /internal/dev/requests/{id}/shift:
@@ -1142,7 +1294,7 @@ paths:
         "403": { description: FORBIDDEN }
         "404": { description: CONVERSATION_NOT_FOUND }
         "409": { description: "CONVERSATION_READ_ONLY — yêu cầu đã huỷ, hoặc đã quá 30 ngày sau ENDED/REJECTED/EXPIRED" }
-        "429": { description: MESSAGE_LIMIT_BEFORE_ACCEPT }
+        "429": { description: "MESSAGE_LIMIT_BEFORE_ACCEPT | RATE_LIMITED — US-46 (NFR-10) quá 30 tin / phút / người gửi (mọi cuộc trò chuyện); header Retry-After (giây)" }
   /api/mentoring/messages/{messageId}/report:
     post:
       summary: >

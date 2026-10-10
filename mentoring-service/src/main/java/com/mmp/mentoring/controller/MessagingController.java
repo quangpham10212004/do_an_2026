@@ -1,14 +1,19 @@
 package com.mmp.mentoring.controller;
 
 import com.mmp.mentoring.dto.MessagingDtos.*;
+import com.mmp.mentoring.exception.RateLimitedException;
+import com.mmp.mentoring.security.AuthUser;
 import com.mmp.mentoring.security.CurrentUser;
 import com.mmp.mentoring.service.MessagingService;
+import com.mmp.mentoring.service.RateLimiter;
+import org.springframework.beans.factory.annotation.Value;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -22,9 +27,14 @@ import java.util.UUID;
 public class MessagingController {
 
     private final MessagingService messaging;
+    private final RateLimiter rateLimiter;
+    private final int messagesPerMinute;
 
-    public MessagingController(MessagingService messaging) {
+    public MessagingController(MessagingService messaging, RateLimiter rateLimiter,
+                               @Value("${app.rate-limit.messages-per-minute:30}") int messagesPerMinute) {
         this.messaging = messaging;
+        this.rateLimiter = rateLimiter;
+        this.messagesPerMinute = messagesPerMinute;
     }
 
     @GetMapping("/conversations")
@@ -48,7 +58,13 @@ public class MessagingController {
     @PostMapping("/conversations/{id}/messages")
     @ResponseStatus(HttpStatus.CREATED)
     public MessageView send(@PathVariable UUID id, @Valid @RequestBody SendMessageInput in) {
-        return messaging.send(CurrentUser.get(), id, in);
+        AuthUser user = CurrentUser.get();
+        // US-46 (NFR-10): tối đa 30 tin / phút / người gửi (mọi cuộc trò chuyện)
+        long wait = rateLimiter.acquire("messages:" + user.userId(), messagesPerMinute, Duration.ofMinutes(1));
+        if (wait > 0) {
+            throw new RateLimitedException("Bạn gửi tin nhắn quá nhanh. Vui lòng thử lại sau " + wait + " giây.", wait);
+        }
+        return messaging.send(user, id, in);
     }
 
     @PostMapping("/messages/{messageId}/report")

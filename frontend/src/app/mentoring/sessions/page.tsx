@@ -1,10 +1,12 @@
 "use client";
 
+import ReviewForm, { MenteeFeedbackForm } from "@/features/mentoring/ReviewForm";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead, Stars, useDialog, Flash, type AskFn } from "@/components/ui";
+import { CalendarDays, CalendarPlus, FileText, Flag, Link2, MessageSquareText, Repeat, Star, Video, X } from "lucide-react";
+import { Alert, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import DisputeForm, { canReportIssue } from "@/features/mentoring/DisputeForm";
 import {
@@ -21,39 +23,6 @@ import SlotPicker from "@/features/mentoring/SlotPicker";
 import { formatDateTime, formatMoney, formatInZone, getDisplayTimeZone } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
-
-function ReviewForm({ session, onDone }: { session: MentoringSession; onDone: () => void }) {
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-  const [error, setError] = useState("");
-  return (
-    <form
-      className="card"
-      style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8 }}
-      onSubmit={async (e) => {
-        e.preventDefault();
-        try {
-          await mentoringApi.review(session.id, rating, comment);
-          onDone();
-        } catch (err) {
-          setError(errorMessage(err));
-        }
-      }}
-    >
-      <Alert>{error}</Alert>
-      <div className="row">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button type="button" key={n} className="btn ghost sm" style={{ fontSize: "1.3rem", padding: 0, color: "#f59f00" }} onClick={() => setRating(n)}>
-            {n <= rating ? "★" : "☆"}
-          </button>
-        ))}
-        <span className="small muted">{rating}/5</span>
-      </div>
-      <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Nhận xét về buổi mentoring" maxLength={2000} style={{ minHeight: 70, marginTop: 6 }} />
-      <button className="btn sm" style={{ marginTop: 6 }}>Gửi đánh giá</button>
-    </form>
-  );
-}
 
 /** US-04 — nút "Tham gia" hiện từ 15 phút trước giờ bắt đầu tới khi phiên kết thúc. */
 const JOIN_EARLY_MS = 15 * 60 * 1000;
@@ -91,10 +60,10 @@ function AttendancePrompt({ session, isMentor, ask, act }: {
   const deadline = formatDateTime(session.attendanceDeadline);
   if (mine) {
     return (
-      <div className="alert info" style={{ width: "100%", marginTop: 8 }}>
+      <Alert tone="info">
         Bạn đã xác nhận: <strong>{ATTENDANCE_LABELS[mine]}</strong>.{" "}
         {other ? "" : `Đang chờ ${isMentor ? "mentee" : "mentor"} xác nhận (hạn ${deadline}); nếu không phản hồi, câu trả lời của bạn được áp dụng.`}
-      </div>
+      </Alert>
     );
   }
   const choose = async (answer: AttendanceAnswer) => {
@@ -112,17 +81,16 @@ function AttendancePrompt({ session, isMentor, ask, act }: {
     act(() => mentoringApi.answerAttendance(session.id, answer), "Đã ghi nhận xác nhận tham dự");
   };
   return (
-    <div className="alert warn" style={{ width: "100%", marginTop: 8 }}>
-      <strong>Phiên đã kết thúc — phiên có diễn ra không?</strong> Hạn xác nhận: {deadline}.
-      {other && <> {isMentor ? "Mentee" : "Mentor"} đã xác nhận.</>}
-      <div className="row" style={{ marginTop: 6 }}>
+    <Alert tone="warning" title="Phiên có diễn ra không?">
+      Hạn xác nhận: {deadline}.{other && <> {isMentor ? "Mentee" : "Mentor"} đã xác nhận.</>}
+      <div className="mt-2 flex flex-wrap gap-2">
         {ATTENDANCE_CHOICES[isMentor ? "MENTOR" : "MENTEE"].map((a) => (
-          <button key={a} className={`btn sm ${a === "HELD" ? "good" : "secondary"}`} onClick={() => choose(a)}>
+          <Button key={a} size="sm" variant={a === "HELD" ? "primary" : "secondary"} onClick={() => choose(a)}>
             {ATTENDANCE_LABELS[a]}
-          </button>
+          </Button>
         ))}
       </div>
-    </div>
+    </Alert>
   );
 }
 
@@ -170,12 +138,15 @@ function RescheduleForm({ session, onDone }: { session: MentoringSession; onDone
   const [version, setVersion] = useState(0);
   const pick = useCallback((v: string | null) => setNewStart(v), []);
   return (
-    <div className="card" style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8 }}>
+    <div className="well flex flex-col gap-3">
+      <div>
+        <div className="font-semibold">Đề xuất giờ mới</div>
+        <p className="text-small text-ink-muted">{session.durationMinutes} phút, giữ nguyên chi phí. Bên còn lại cần đồng ý trong 24 giờ (và trước giờ bắt đầu cũ 1 giờ).</p>
+      </div>
       <Alert>{error}</Alert>
-      <p className="small muted">Chọn giờ mới ({session.durationMinutes} phút, giữ nguyên chi phí). Bên còn lại cần đồng ý trong 24 giờ (và trước giờ bắt đầu cũ 1 giờ).</p>
       <SlotPicker mentorId={session.mentorId} durationMinutes={session.durationMinutes} value={newStart} onChange={pick}
         refreshKey={version} excludeSessionId={session.id} />
-      <button className="btn sm" style={{ marginTop: 6 }} disabled={!newStart || busy} onClick={async () => {
+      <div><Button variant="primary" size="sm" disabled={!newStart} loading={busy} onClick={async () => {
         if (!newStart) return;
         setBusy(true);
         setError("");
@@ -188,7 +159,20 @@ function RescheduleForm({ session, onDone }: { session: MentoringSession; onDone
         } finally {
           setBusy(false);
         }
-      }}>Gửi đề xuất dời lịch</button>
+      }}>Gửi đề xuất dời lịch</Button></div>
+    </div>
+  );
+}
+
+/** Ô ngày kiểu tờ lịch: thứ, ngày, giờ — theo múi giờ hiển thị của người xem. */
+function DateTile({ iso }: { iso: string }) {
+  const d = new Date(iso);
+  const timeZone = getDisplayTimeZone();
+  return (
+    <div className="flex w-16 flex-none flex-col items-center rounded-md border border-border bg-surface-sunken py-1.5 text-center">
+      <span className="text-[11px] leading-4 font-semibold uppercase text-ink-muted">{d.toLocaleDateString("vi-VN", { timeZone, weekday: "short" })}</span>
+      <span className="font-mono text-title-2 leading-7 font-medium tabular">{d.toLocaleDateString("vi-VN", { timeZone, day: "2-digit" })}</span>
+      <span className="text-[11px] leading-4 text-ink-muted tabular">{d.toLocaleDateString("vi-VN", { timeZone, month: "2-digit", year: "2-digit" })}</span>
     </div>
   );
 }
@@ -224,127 +208,134 @@ function Sessions({ user }: { user: SessionUser }) {
 
   return (
     <>
-      <PageHead title="Phiên mentoring" subtitle="Lịch sử và các phiên sắp tới của bạn." />
+      <PageHeader title="Phiên học" description="Các phiên sắp tới và lịch sử phiên mentoring của bạn." />
       {dialog}
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="tabs">
-        {FILTERS.map(([v, l]) => (
-          <button key={v} className={filter === v ? "active" : ""} onClick={() => setFilter(v)}>{l}</button>
-        ))}
-      </div>
-      {items === undefined ? <Loading /> : (
-        <div className="card">
-          {items.length === 0 && <Empty>Chưa có phiên nào.</Empty>}
+      <FlashAlerts flash={msg} className="mb-6" />
+      <Tabs className="mb-4" value={filter} onChange={setFilter} tabs={FILTERS.map(([v, l]) => ({ id: v, label: l }))} />
+      {items === undefined ? <Loading /> : items.length === 0 ? (
+        <Card>
+          <EmptyState icon={CalendarDays} title={filter ? "Không có phiên nào ở trạng thái này" : "Chưa có phiên nào"}
+            action={!isMentor && !filter && <ButtonLink href="/mentoring/requests" size="sm">Đặt lịch từ yêu cầu đã được chấp nhận</ButtonLink>}>
+            {filter ? "Chọn bộ lọc khác để xem phiên." : "Phiên bạn đặt hoặc được đặt sẽ hiện ở đây."}
+          </EmptyState>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-4">
           {items.map((s) => {
             const future = new Date(s.scheduledAt) > new Date();
+            const other = isMentor ? s.menteeName : s.mentorName;
+            const otherTz = isMentor ? s.menteeTimezone : s.mentorTimezone;
+            const tzTitle = otherTz && otherTz !== getDisplayTimeZone() ? `Giờ của ${other}: ${formatInZone(s.scheduledAt, otherTz)}` : undefined;
+            const toggle = (cur: string | null, set: (v: string | null) => void) => () => set(cur === s.id ? null : s.id);
+            const outcome = outcomeText(s);
+            const dispute = disputeText(s);
             return (
-              <div key={s.id} className="list-item" style={{ flexDirection: "column" }}>
-                <div className="row" style={{ width: "100%" }}>
-                  <div style={{ flex: 1 }}>
-                    <div className="row">
-                      <strong>{isMentor ? s.menteeName : <Link href={`/mentors/${s.mentorId}`}>{s.mentorName}</Link>}</strong>
-                      <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
-                      {s.reviewed && <Stars value={s.reviewRating} />}
-                    </div>
-                    <div className="muted small">
-                      <span title={(() => {
-                        const otherTz = isMentor ? s.menteeTimezone : s.mentorTimezone;
-                        return otherTz && otherTz !== getDisplayTimeZone()
-                          ? `Giờ của ${isMentor ? s.menteeName : s.mentorName}: ${formatInZone(s.scheduledAt, otherTz)}` : undefined;
-                      })()}>{formatDateTime(s.scheduledAt)}</span> · {s.durationMinutes} phút · {formatMoney(s.price)}
-                      {s.sessionType && ` · ${SESSION_TYPE_LABELS[s.sessionType]}`}
-                      {s.topic && ` · ${s.topic}`}
-                    </div>
-                    {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
-                      <div className="small muted">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
-                    )}
-                    {outcomeText(s) && <div className="small muted">{outcomeText(s)}</div>}
-                    {disputeText(s) && <div className="small"><strong>{disputeText(s)}</strong></div>}
-                    {s.agenda && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{s.agenda}</div>}
-                    {s.preReadLink && <div className="small"><a href={s.preReadLink} target="_blank" rel="noreferrer">Tài liệu đọc trước</a></div>}
-                  </div>
-                  <div className="row">
-                    {!isMentor && s.status === "PENDING" && <Link className="btn sm" href={`/payment/${s.id}`}>Thanh toán</Link>}
-                    {!["PENDING", "EXPIRED"].includes(s.status) && (
-                      <Link className="btn secondary sm" href={`/mentoring/sessions/${s.id}/notes`}>Ghi chú</Link>
-                    )}
-                    {s.status === "CONFIRMED" && future && (
-                      <button className="btn secondary sm" title="Tải file .ics; tải lại sau khi dời lịch để cập nhật"
-                        onClick={() => mentoringApi.downloadCalendar(s.id).catch((e) => setMsg({ error: errorMessage(e) }))}>
-                        Thêm vào lịch
-                      </button>
-                    )}
-                    {s.status === "CONFIRMED" && s.meetingLink && canJoin(s) && (
-                      <a className="btn good sm" href={s.meetingLink} target="_blank" rel="noreferrer">Tham gia</a>
-                    )}
-                    {isMentor && ["PENDING", "CONFIRMED"].includes(s.status) && future && (
-                      <button className="btn secondary sm" onClick={async () => {
-                        const link = await ask({ title: "Link phòng họp cho phiên này", message: "Hỗ trợ https Google Meet, Zoom hoặc Microsoft Teams.", input: { label: "Link phòng họp", defaultValue: s.meetingLink || "", maxLength: 500, placeholder: "https://meet.google.com/..." }, confirmText: "Lưu link" });
-                        if (link) act(() => mentoringApi.updateMeetingLink(s.id, link.trim()), "Đã cập nhật link phòng họp");
-                      }}>Link họp</button>
-                    )}
-                    {["PENDING", "CONFIRMED"].includes(s.status) && future && (
-                      <button className="btn secondary sm" onClick={async () => {
-                        setMsg({});
-                        let preview: CancelPreview;
-                        try {
-                          preview = await mentoringApi.cancelPreview(s.id);
-                        } catch (e) {
-                          setMsg({ error: errorMessage(e) });
-                          return;
-                        }
-                        const paid = s.status === "CONFIRMED" && Number(s.price) > 0;
-                        const refundLine = paid ? `Số tiền được hoàn: ${Number(preview.refundAmount) > 0 ? formatMoney(preview.refundAmount) : "0 đ"} (${preview.refundPercent}%).` : "";
-                        const reason = await ask({ title: "Huỷ phiên mentoring?", message: <>{refundLine && <strong>{refundLine}<br /></strong>}{preview.policyText}</>, input: { label: "Lý do huỷ (tuỳ chọn)", maxLength: 300 }, confirmText: "Huỷ phiên", cancelText: "Giữ phiên", danger: true });
-                        if (reason !== null) act(() => mentoringApi.cancelSession(s.id, reason), Number(preview.refundAmount) > 0 ? `Đã huỷ phiên, ${formatMoney(preview.refundAmount)} sẽ được hoàn lại.` : "Đã huỷ phiên");
-                      }}>Huỷ</button>
-                    )}
-                    {s.status === "CONFIRMED" && !s.pendingReschedule && s.rescheduleCount < 2
-                      && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
-                      <button className="btn secondary sm" onClick={() => setRescheduling(rescheduling === s.id ? null : s.id)}>Dời lịch</button>
-                    )}
-                    {canReportIssue(s) && (
-                      <button className="btn secondary sm" onClick={() => setReporting(reporting === s.id ? null : s.id)}>Báo cáo sự cố</button>
-                    )}
-                    {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
-                      <button className="btn sm" onClick={() => setReviewing(reviewing === s.id ? null : s.id)}>Đánh giá</button>
-                    )}
-                  </div>
-                </div>
-                {attendanceOpen(s) && <AttendancePrompt session={s} isMentor={isMentor} ask={ask} act={act} />}
-                {s.pendingReschedule && (
-                  <div className="alert info" style={{ width: "100%", marginTop: 8 }}>
-                    Đề xuất dời sang <strong>{formatDateTime(s.pendingReschedule.newStart)}</strong> · hết hạn {formatDateTime(s.pendingReschedule.expiresAt)}
-                    <div className="row" style={{ marginTop: 6 }}>
-                      {s.pendingReschedule.proposedBy === user.userId ? (
-                        <button className="btn secondary sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.declineReschedule(s.pendingReschedule!.id), "Đã rút lại đề xuất dời lịch")}>Rút lại đề xuất</button>
-                      ) : (
-                        <>
-                          <button className="btn good sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.acceptReschedule(s.pendingReschedule!.id), "Đã đồng ý dời lịch")}>Đồng ý</button>
-                          <button className="btn danger sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.declineReschedule(s.pendingReschedule!.id), "Đã từ chối đề xuất dời lịch")}>Từ chối</button>
-                        </>
+              <Card as="article" key={s.id}>
+                <div className="flex flex-col gap-4 p-5 max-sm:p-4">
+                  <div className="flex items-start gap-4">
+                    <DateTile iso={s.scheduledAt} />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isMentor ? <strong className="text-title-3">{other}</strong> : <Link href={`/mentors/${s.mentorId}`} className="text-title-3 font-semibold">{other}</Link>}
+                        <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
+                        {s.reviewed && <Stars value={s.reviewRating} />}
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-small text-ink-muted">
+                        <span title={tzTitle} className="tabular">{formatDateTime(s.scheduledAt)}</span>
+                        <span>{s.durationMinutes} phút</span>
+                        <span className="tabular">{formatMoney(s.price)}</span>
+                        {s.sessionType && <span>{SESSION_TYPE_LABELS[s.sessionType]}</span>}
+                        {s.topic && <span>{s.topic}</span>}
+                      </div>
+                      {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
+                        <div className="text-small text-ink-subtle">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
                       )}
                     </div>
+                    {s.status === "CONFIRMED" && s.meetingLink && canJoin(s) && (
+                      <a className="btn btn-primary" href={s.meetingLink} target="_blank" rel="noreferrer"><Video aria-hidden="true" />Tham gia</a>
+                    )}
                   </div>
-                )}
-                {rescheduling === s.id && (
-                  <div style={{ width: "100%" }}>
-                    <RescheduleForm session={s} onDone={(ok) => { setRescheduling(null); setMsg({ ok }); load(); }} />
-                  </div>
-                )}
-                {reporting === s.id && (
-                  <div style={{ width: "100%" }}>
+                  {(s.agenda || s.preReadLink) && (
+                    <div className="well flex flex-col gap-1">
+                      {s.agenda && <p className="whitespace-pre-wrap">{s.agenda}</p>}
+                      {s.preReadLink && <a href={s.preReadLink} target="_blank" rel="noreferrer" className="text-small">Tài liệu đọc trước</a>}
+                    </div>
+                  )}
+                  {outcome && <div className="text-small text-ink-muted">{outcome}</div>}
+                  {dispute && <Alert tone={s.dispute?.status === "RESOLVED" ? "info" : "warning"}>{dispute}</Alert>}
+                  {attendanceOpen(s) && <AttendancePrompt session={s} isMentor={isMentor} ask={ask} act={act} />}
+                  {s.pendingReschedule && (
+                    <Alert tone="info" title={`Đề xuất dời sang ${formatDateTime(s.pendingReschedule.newStart)}`}>
+                      Hết hạn {formatDateTime(s.pendingReschedule.expiresAt)}.
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {s.pendingReschedule.proposedBy === user.userId ? (
+                          <Button size="sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.declineReschedule(s.pendingReschedule!.id), "Đã rút lại đề xuất dời lịch.")}>Rút lại đề xuất</Button>
+                        ) : (
+                          <>
+                            <Button size="sm" variant="primary" onClick={() => s.pendingReschedule && act(() => mentoringApi.acceptReschedule(s.pendingReschedule!.id), "Đã đồng ý dời lịch.")}>Đồng ý</Button>
+                            <Button size="sm" onClick={() => s.pendingReschedule && act(() => mentoringApi.declineReschedule(s.pendingReschedule!.id), "Đã từ chối đề xuất dời lịch.")}>Từ chối</Button>
+                          </>
+                        )}
+                      </div>
+                    </Alert>
+                  )}
+                  {rescheduling === s.id && <RescheduleForm session={s} onDone={(ok) => { setRescheduling(null); setMsg({ ok }); load(); }} />}
+                  {reporting === s.id && (
                     <DisputeForm session={s} onCancel={() => setReporting(null)}
                       onDone={(ok) => { setReporting(null); setMsg({ ok }); load(); }} />
-                  </div>
-                )}
-                {reviewing === s.id && (
-                  <div style={{ width: "100%" }}>
-                    <ReviewForm session={s} onDone={() => { setReviewing(null); setMsg({ ok: "Cảm ơn bạn đã đánh giá!" }); load(); }} />
-                  </div>
-                )}
-              </div>
+                  )}
+                  {reviewing === s.id && (
+                    isMentor
+                      ? <MenteeFeedbackForm sessionId={s.id} onDone={(ok) => { setReviewing(null); setMsg({ ok }); }} />
+                      : <ReviewForm sessionId={s.id} onDone={() => { setReviewing(null); setMsg({ ok: "Cảm ơn bạn đã đánh giá." }); load(); }} />
+                  )}
+                </div>
+                <div className="card-foot">
+                  {["PENDING", "CONFIRMED"].includes(s.status) && future && (
+                    <Button variant="danger-quiet" icon={X} className="mr-auto" onClick={async () => {
+                      setMsg({});
+                      let preview: CancelPreview;
+                      try {
+                        preview = await mentoringApi.cancelPreview(s.id);
+                      } catch (e) {
+                        setMsg({ error: errorMessage(e) });
+                        return;
+                      }
+                      const paid = s.status === "CONFIRMED" && Number(s.price) > 0;
+                      const refundLine = paid ? `Số tiền được hoàn: ${Number(preview.refundAmount) > 0 ? formatMoney(preview.refundAmount) : "0 đ"} (${preview.refundPercent}%).` : "";
+                      const reason = await ask({ title: "Huỷ phiên học?", message: <>{refundLine && <strong className="text-ink">{refundLine}<br /></strong>}{preview.policyText}</>, input: { label: "Lý do huỷ (không bắt buộc)", maxLength: 300 }, confirmText: "Huỷ phiên", cancelText: "Giữ phiên", danger: true });
+                      if (reason !== null) act(() => mentoringApi.cancelSession(s.id, reason), Number(preview.refundAmount) > 0 ? `Đã huỷ phiên, ${formatMoney(preview.refundAmount)} sẽ được hoàn lại.` : "Đã huỷ phiên.");
+                    }}>Huỷ phiên</Button>
+                  )}
+                  {canReportIssue(s) && <Button variant="ghost" icon={Flag} className="mr-auto" onClick={toggle(reporting, setReporting)}>Báo cáo sự cố</Button>}
+                  {!["PENDING", "EXPIRED"].includes(s.status) && (
+                    <ButtonLink href={`/mentoring/sessions/${s.id}/notes`} icon={FileText}>Ghi chú</ButtonLink>
+                  )}
+                  {s.status === "CONFIRMED" && future && (
+                    <Button icon={CalendarPlus} title="Tải file .ics; tải lại sau khi dời lịch để cập nhật"
+                      onClick={() => mentoringApi.downloadCalendar(s.id).catch((e) => setMsg({ error: errorMessage(e) }))}>
+                      Thêm vào lịch
+                    </Button>
+                  )}
+                  {isMentor && ["PENDING", "CONFIRMED"].includes(s.status) && future && (
+                    <Button icon={Link2} onClick={async () => {
+                      const link = await ask({ title: "Link phòng họp cho phiên này", message: "Hỗ trợ link https của Google Meet, Zoom hoặc Microsoft Teams.", input: { label: "Link phòng họp", defaultValue: s.meetingLink || "", maxLength: 500, placeholder: "https://meet.google.com/…" }, confirmText: "Lưu link" });
+                      if (link) act(() => mentoringApi.updateMeetingLink(s.id, link.trim()), "Đã cập nhật link phòng họp.");
+                    }}>Link họp</Button>
+                  )}
+                  {s.status === "CONFIRMED" && !s.pendingReschedule && s.rescheduleCount < 2
+                    && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
+                    <Button icon={Repeat} onClick={toggle(rescheduling, setRescheduling)}>Dời lịch</Button>
+                  )}
+                  {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
+                    <Button variant="primary" icon={Star} onClick={toggle(reviewing, setReviewing)}>Đánh giá</Button>
+                  )}
+                  {isMentor && s.status === "COMPLETED" && (
+                    <Button icon={MessageSquareText} onClick={toggle(reviewing, setReviewing)}>Nhận xét mentee</Button>
+                  )}
+                  {!isMentor && s.status === "PENDING" && <ButtonLink href={`/payment/${s.id}`} variant="primary">Thanh toán</ButtonLink>}
+                </div>
+              </Card>
             );
           })}
         </div>

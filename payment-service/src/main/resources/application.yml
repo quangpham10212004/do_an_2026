@@ -21,6 +21,10 @@ spring:
     baseline-version: 1
 
 management:
+  # US-46: nhãn service trên mọi metric của GET /metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
@@ -33,6 +37,7 @@ app:
     public-paths: ""
   services:
     mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
+    profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}   # US-42 — tên trên biên lai
     auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}     # US-30 — POST /internal/audit (bắn-rồi-quên)
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   payment:                         # US-13

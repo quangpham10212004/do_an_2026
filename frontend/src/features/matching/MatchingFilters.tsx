@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Search } from "lucide-react";
+import { Button, Card, CardBody, CardFooter, Checkbox, Chip, Chips, Field, Input, Select } from "@/components/ui";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, TIME_OF_DAY_LABELS } from "@/features/profile/api";
 import type { LanguageCode, MatchFilterName, MatchFilterValues, SessionType, TimeOfDay } from "@/types";
 
@@ -67,7 +69,7 @@ export default function MatchingFilters({ value, fromProfile, busy, onSearch, on
     setRate(value.maxRate === null ? "" : String(value.maxRate));
   }, [value]);
 
-  const tag = (name: MatchFilterName) => (fromProfile.includes(name) ? <span className="muted"> (từ hồ sơ)</span> : null);
+  const tag = (name: MatchFilterName) => (fromProfile.includes(name) ? <span className="ml-1 font-normal text-ink-subtle">· từ hồ sơ</span> : null);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -75,60 +77,56 @@ export default function MatchingFilters({ value, fromProfile, busy, onSearch, on
   }
 
   return (
-    <form className="card" onSubmit={submit} style={{ marginBottom: "var(--spacing-16)" }}>
-      <div className="grid grid-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        <div className="field">
-          <label>Giá tối đa (đ/giờ){tag("maxRate")}</label>
-          <input type="number" min={0} step={10000} value={rate} placeholder="Không giới hạn" onChange={(e) => setRate(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Buổi{tag("timeOfDay")}</label>
-          <select value={f.timeOfDay || ""} onChange={(e) => setF({ ...f, timeOfDay: (e.target.value || null) as TimeOfDay | null })}>
-            <option value="">Giờ nào cũng được</option>
-            {(Object.keys(TIME_OF_DAY_LABELS) as TimeOfDay[]).map((t) => <option key={t} value={t}>{TIME_OF_DAY_LABELS[t]}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label>Loại phiên</label>
-          <select value={f.sessionType || ""} onChange={(e) => setF({ ...f, sessionType: (e.target.value || null) as SessionType | null })}>
-            <option value="">Mọi loại phiên</option>
-            {(Object.keys(SESSION_TYPE_LABELS) as SessionType[]).map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label>Đánh giá tối thiểu</label>
-          <select value={f.minRating ?? ""} onChange={(e) => setF({ ...f, minRating: e.target.value === "" ? null : Number(e.target.value) })}>
-            <option value="">Không yêu cầu</option>
-            {RATINGS.map((r) => <option key={r} value={r}>≥ {r} sao</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="row small" style={{ flexWrap: "wrap", gap: "var(--spacing-16)" }}>
-        <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-          <strong>Ngày{tag("days")}:</strong>
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <label key={d} className="row" style={{ gap: 2 }}>
-              <input type="checkbox" checked={f.days.includes(d)} onChange={() => setF({ ...f, days: toggle(f.days, d).sort((a, b) => a - b) })} /> {SHORT_DAYS[d]}
-            </label>
-          ))}
-        </span>
-        <span className="row" style={{ gap: 6 }}>
-          <strong>Ngôn ngữ{tag("language")}:</strong>
-          {(Object.keys(LANGUAGE_LABELS) as LanguageCode[]).map((l) => (
-            <label key={l} className="row" style={{ gap: 2 }}>
-              <input type="checkbox" checked={f.language.includes(l)} onChange={() => setF({ ...f, language: toggle(f.language, l) })} /> {LANGUAGE_LABELS[l]}
-            </label>
-          ))}
-        </span>
-        <label className="row" style={{ gap: 4 }}>
-          <input type="checkbox" checked={f.freeOnly} onChange={() => setF({ ...f, freeOnly: !f.freeOnly })} /> Chỉ mentor miễn phí
-        </label>
-      </div>
-      <div className="row" style={{ marginTop: "0.75rem" }}>
-        <button className="btn sm" disabled={busy}>Tìm mentor</button>
-        <button type="button" className="btn ghost sm" disabled={busy} onClick={onUseProfile}>Dùng sở thích trong hồ sơ</button>
-        <span className="muted small">Bộ lọc chỉ áp dụng cho lượt tìm này, không thay đổi hồ sơ.</span>
-      </div>
+    <form onSubmit={submit}>
+      <Card>
+        <CardBody className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label={<>Giá tối đa (đ/giờ){tag("maxRate")}</>} id="mf-rate">
+              <Input id="mf-rate" type="number" min={0} step={10000} value={rate} placeholder="Không giới hạn" onChange={(e) => setRate(e.target.value)} />
+            </Field>
+            <Field label={<>Buổi{tag("timeOfDay")}</>} id="mf-time">
+              <Select id="mf-time" value={f.timeOfDay || ""} onChange={(e) => setF({ ...f, timeOfDay: (e.target.value || null) as TimeOfDay | null })}>
+                <option value="">Giờ nào cũng được</option>
+                {(Object.keys(TIME_OF_DAY_LABELS) as TimeOfDay[]).map((t) => <option key={t} value={t}>{TIME_OF_DAY_LABELS[t]}</option>)}
+              </Select>
+            </Field>
+            <Field label="Loại phiên" id="mf-type">
+              <Select id="mf-type" value={f.sessionType || ""} onChange={(e) => setF({ ...f, sessionType: (e.target.value || null) as SessionType | null })}>
+                <option value="">Mọi loại phiên</option>
+                {(Object.keys(SESSION_TYPE_LABELS) as SessionType[]).map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
+              </Select>
+            </Field>
+            <Field label="Đánh giá tối thiểu" id="mf-rating">
+              <Select id="mf-rating" value={f.minRating ?? ""} onChange={(e) => setF({ ...f, minRating: e.target.value === "" ? null : Number(e.target.value) })}>
+                <option value="">Không yêu cầu</option>
+                {RATINGS.map((r) => <option key={r} value={r}>Từ {r} sao</option>)}
+              </Select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+            <Field label={<>Ngày{tag("days")}</>}>
+              <Chips>
+                {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                  <Chip key={d} selected={f.days.includes(d)} onClick={() => setF({ ...f, days: toggle(f.days, d).sort((a, b) => a - b) })}>{SHORT_DAYS[d]}</Chip>
+                ))}
+              </Chips>
+            </Field>
+            <Field label={<>Ngôn ngữ{tag("language")}</>}>
+              <Chips>
+                {(Object.keys(LANGUAGE_LABELS) as LanguageCode[]).map((l) => (
+                  <Chip key={l} selected={f.language.includes(l)} onClick={() => setF({ ...f, language: toggle(f.language, l) })}>{LANGUAGE_LABELS[l]}</Chip>
+                ))}
+              </Chips>
+            </Field>
+            <Checkbox className="mt-7" label="Chỉ mentor miễn phí" checked={f.freeOnly} onChange={() => setF({ ...f, freeOnly: !f.freeOnly })} />
+          </div>
+        </CardBody>
+        <CardFooter>
+          <span className="mr-auto self-center text-small text-ink-muted">Bộ lọc chỉ áp dụng cho lượt tìm này, không thay đổi hồ sơ.</span>
+          <Button variant="ghost" disabled={busy} onClick={onUseProfile}>Dùng sở thích trong hồ sơ</Button>
+          <Button type="submit" variant="primary" icon={Search} loading={busy}>Tìm mentor</Button>
+        </CardFooter>
+      </Card>
     </form>
   );
 }

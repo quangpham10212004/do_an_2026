@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { homePathFor, useAuth } from "@/lib/auth";
-import { Alert } from "@/components/ui";
+import { Alert, Button, Field, Input } from "@/components/ui";
+import AuthCard from "@/components/shell/AuthCard";
 import { errorMessage } from "@/lib/api";
 
 export default function LoginPage() {
@@ -30,26 +31,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "2rem auto" }}>
-      <div className="card">
-        <h1>Đăng nhập</h1>
-        <Alert>{error}</Alert>
-        <form onSubmit={submit}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Mật khẩu</label>
-            <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-            <div className="hint" style={{ textAlign: "right" }}><Link href="/forgot-password">Quên mật khẩu?</Link></div>
-          </div>
-          <button className="btn block" disabled={loading}>{loading ? "Đang đăng nhập..." : "Đăng nhập"}</button>
-        </form>
-        <p className="muted small" style={{ marginTop: "1rem" }}>
-          Chưa có tài khoản? <Link href="/register">Đăng ký</Link>
-        </p>
-      </div>
-    </div>
+    <AuthCard
+      title="Đăng nhập"
+      description="Tiếp tục với mentor, phiên học và lộ trình của bạn."
+      footer={<>Chưa có tài khoản? <Link href="/register">Tạo tài khoản</Link></>}
+    >
+      <Alert>{error}</Alert>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <Field label="Email" id="email">
+          <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Mật khẩu" id="password">
+          <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        <div className="-mt-2 text-right text-small"><Link href="/forgot-password">Quên mật khẩu?</Link></div>
+        <Button type="submit" variant="primary" size="lg" block loading={loading}>{loading ? "Đang đăng nhập…" : "Đăng nhập"}</Button>
+      </form>
+    </AuthCard>
   );
 }

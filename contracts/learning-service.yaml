@@ -69,6 +69,15 @@ components:
 security:
   - bearerAuth: []
 paths:
+  /metrics:
+    get:
+      summary: US-46 (NFR-17) — số liệu Prometheus (text/plain; version=0.0.4), không cần xác thực
+      description: >-
+        Micrometer: http_server_requests_seconds, JVM, Hikari.... Mọi response của service có header X-Request-Id (nhận từ request nếu hợp lệ [A-Za-z0-9._:-]{1,64}, ngược
+        lại sinh UUID); id được ghi trong mọi dòng log JSON ("requestId") và chuyển tiếp sang các service được gọi.
+      security: []
+      responses:
+        "200": { description: OK }
   /health:
     get:
       security: []
