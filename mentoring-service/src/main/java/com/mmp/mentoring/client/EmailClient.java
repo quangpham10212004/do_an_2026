@@ -45,7 +45,9 @@ public class EmailClient {
             // Kết quả AI Interview (ai-service gửi qua /internal/notifications) — luôn gửi
             Map.entry("MENTOR_APPROVED", "ACCOUNT"),
             Map.entry("MENTOR_REJECTED", "ACCOUNT"),
-            Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"));
+            Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"),
+            // US-42 — payment-service gửi qua /internal/notifications khi admin đã chuyển tiền rút
+            Map.entry("PAYOUT_PAID", "ACCOUNT"));
 
     private final RestClient restClient;
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 2, 30, TimeUnit.SECONDS,

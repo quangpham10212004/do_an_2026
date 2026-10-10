@@ -102,6 +102,30 @@ components:
         rejectReason: { type: string, nullable: true, enum: [REFERRER_IS_SESSION_MENTOR, DAILY_LIMIT_EXCEEDED] }
         createdAt: { type: string, format: date-time }
         qualifiedAt: { type: string, format: date-time, nullable: true }
+    Payout:
+      type: object
+      description: US-42 (PRD-PAY-5) — yêu cầu rút tiền REQUESTED → PAID | REJECTED
+      properties:
+        id: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string, nullable: true, description: Chỉ ở API admin }
+        amount: { type: number }
+        status: { type: string, enum: [REQUESTED, PAID, REJECTED] }
+        bankName: { type: string }
+        accountNumberMasked: { type: string, example: "••••5678" }
+        accountNumber: { type: string, nullable: true, description: Chỉ admin (để chuyển khoản); mentor nhận null }
+        holderName: { type: string }
+        reference: { type: string, nullable: true }
+        note: { type: string, nullable: true, description: Ghi chú khi PAID / lý do khi REJECTED }
+        requestedAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time, nullable: true }
+    BankAccount:
+      type: object
+      properties:
+        bankName: { type: string }
+        accountNumberMasked: { type: string }
+        holderName: { type: string }
+        updatedAt: { type: string, format: date-time }
 security:
   - bearerAuth: []
 paths:
@@ -405,3 +429,129 @@ paths:
       responses:
         "200":
           description: "Bản ghi reward_ledger { id, points, reason, createdAt }"
+  /api/payment/payouts/overview:
+    get:
+      summary: US-42 (MENTOR) — số dư khả dụng, yêu cầu đang mở, tài khoản (che số), lịch sử rút; canRequest khi không có yêu cầu mở, đã có tài khoản và khả dụng ≥ 200.000đ.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: number }
+                  requested: { type: number }
+                  minimum: { type: number, example: 200000 }
+                  canRequest: { type: boolean }
+                  bankAccount: { allOf: [{ $ref: "#/components/schemas/BankAccount" }], nullable: true }
+                  openPayout: { allOf: [{ $ref: "#/components/schemas/Payout" }], nullable: true }
+                  history: { type: array, items: { $ref: "#/components/schemas/Payout" } }
+  /api/payment/bank-account:
+    put:
+      summary: US-42 (MENTOR) — lưu tài khoản nhận tiền; số tài khoản 6–20 chữ số, API chỉ trả 4 số cuối.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bankName, accountNumber, holderName]
+              properties:
+                bankName: { type: string }
+                accountNumber: { type: string }
+                holderName: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BankAccount" }
+        "400": { description: INVALID_BANK_ACCOUNT }
+  /api/payment/payouts:
+    post:
+      summary: US-42 (MENTOR) — yêu cầu rút TOÀN BỘ số dư khả dụng; admin nhận thông báo PAYOUT_REQUESTED.
+      responses:
+        "201":
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "400": { description: PAYOUT_BELOW_MINIMUM (< 200.000đ) / BANK_ACCOUNT_REQUIRED }
+        "409": { description: PAYOUT_ALREADY_OPEN }
+  /api/payment/transactions/{id}/receipt:
+    get:
+      summary: >
+        US-42 (PRD-PAY-6) — biên lai giao dịch đã thanh toán (SUCCESS / ON_HOLD / PARTIALLY_REFUNDED / REFUNDED) kèm biên
+        lai từng lần hoàn tiền. Người trả, mentor của giao dịch hoặc admin. Frontend in / lưu PDF bằng trình duyệt.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "Receipt { receiptNumber (RC-xxxxxxxx), transactionId, paidAt, session, payerName, mentorName, amount, fee, mentorEarning, refunded, netPaid, refunds[{receiptNumber (RF-…), amount, reason, createdAt}] }" }
+        "403": { description: FORBIDDEN }
+        "404": { description: TRANSACTION_NOT_FOUND }
+        "409": { description: RECEIPT_NOT_AVAILABLE }
+  /api/payment/earnings/export:
+    get:
+      summary: US-42 (PRD-PAY-4, MENTOR) — CSV thu nhập theo tháng (yyyy-MM, theo ngày thu tiền giờ Việt Nam), UTF-8 có BOM.
+      parameters:
+        - { name: month, in: query, required: true, schema: { type: string, example: "2026-11" } }
+      responses:
+        "200":
+          description: text/csv — date, session_id, transaction_id, session_price, mentor_earning, pending, available, paid_out, reversed, status
+          content:
+            text/csv: { schema: { type: string } }
+        "400": { description: INVALID_MONTH }
+  /api/payment/admin/payouts:
+    get:
+      summary: US-42 (ADMIN) — status = REQUESTED (cũ nhất trước) | PAID | REJECTED; trống = tất cả.
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [REQUESTED, PAID, REJECTED] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Payout" } }
+  /api/payment/admin/payouts/{id}/paid:
+    post:
+      summary: >
+        US-42 (ADMIN) — đã chuyển khoản: ghi dòng PAYOUT vào sổ thu nhập phân bổ FIFO theo giao dịch, mentor nhận thông báo
+        + email PAYOUT_PAID, audit PAYOUT_PAID. Số dư khả dụng giảm dưới số tiền yêu cầu (bị thu hồi sau khi yêu cầu) → 409.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties:
+                reference: { type: string, maxLength: 100 }
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "404": { description: PAYOUT_NOT_FOUND }
+        "409": { description: PAYOUT_NOT_OPEN / PAYOUT_EXCEEDS_AVAILABLE }
+  /api/payment/admin/payouts/{id}/reject:
+    post:
+      summary: US-42 (ADMIN) — từ chối kèm lý do; mentor nhận thông báo PAYOUT_REJECTED.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "409": { description: PAYOUT_NOT_OPEN }

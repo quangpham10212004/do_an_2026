@@ -937,3 +937,9 @@ hr {
     flex-wrap: wrap;
   }
 }
+
+/* US-42 — biên lai: ẩn điều hướng khi in / lưu PDF */
+@media print {
+  .nav, .footer, .no-print { display: none !important; }
+  body { background: #fff; }
+}

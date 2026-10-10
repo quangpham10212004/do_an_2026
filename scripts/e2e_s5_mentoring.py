@@ -8,9 +8,10 @@ Dùng lại helper của e2e Sprint 3 và endpoint dev (X-Internal-Token).
 """
 import sys
 import time
+import urllib.request
 
-from common import AUTH, MENTORING, PROFILE, ApiError, call
-from e2e_s3_mentoring import (RUN, accepted_mentee, approved_mentor, at, completed, dev, error_code, paid)
+from common import AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call
+from e2e_s3_mentoring import (RUN, accepted_mentee, approved_mentor, at, completed, dev, error_code, paid, pay_dev, txs)
 
 results = []
 
@@ -78,7 +79,77 @@ def us41(ctx):
     check("US-41", "3 nhận xét tốt → huy hiệu RELIABLE", rel["badge"] == "RELIABLE", rel)
 
 
-STORIES = {"US-41": us41}
+def released(mentee, mentor, days):
+    """Phiên có phí đã hoàn thành và thu nhập đã giải phóng (khả dụng)."""
+    s = done_session(mentee, mentor, days)
+    pay_dev(f"earnings/{s['id']}/due")
+    pay_dev("jobs/earning-release")
+    return s
+
+
+def overview(mentor):
+    return call("GET", f"{PAYMENT}/api/payment/payouts/overview", token=mentor["accessToken"])
+
+
+def us42(ctx):
+    print("US-42 — rút tiền, biên lai, CSV")
+    admin = ctx["admin"]
+    small = approved_mentor(admin["accessToken"], "payout-small", hourly_rate=100000)
+    small_mentee = accepted_mentee(small, "payout-small")
+    released(small_mentee, small, 3)                       # 150.000đ × 85% = 127.500đ khả dụng
+    call("PUT", f"{PAYMENT}/api/payment/bank-account", {"bankName": "Vietcombank", "accountNumber": "0011002345678",
+                                                         "holderName": "Nguyen Van A"}, token=small["accessToken"])
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/payouts", token=small["accessToken"]))
+    check("US-42", "Khả dụng 127.500đ < 200.000đ → 400 PAYOUT_BELOW_MINIMUM", status == 400 and code == "PAYOUT_BELOW_MINIMUM", (status, code))
+
+    mentor = approved_mentor(admin["accessToken"], "payout")
+    mentee = accepted_mentee(mentor, "payout")
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/payouts", token=mentor["accessToken"]))
+    check("US-42", "Chưa có tài khoản → 400 (thiếu tài khoản / dưới tối thiểu)", status == 400, (status, code))
+    s1 = released(mentee, mentor, 3)
+    bank = call("PUT", f"{PAYMENT}/api/payment/bank-account", {"bankName": "Techcombank", "accountNumber": "1903 4567 8901",
+                                                                "holderName": "Tran Thi B"}, token=mentor["accessToken"])
+    check("US-42", "Số tài khoản chỉ hiện 4 số cuối", bank["accountNumberMasked"] == "••••8901" and "accountNumber" not in bank, bank)
+    o = overview(mentor)
+    check("US-42", "Khả dụng 255.000đ → được rút", float(o["available"]) == 255000 and o["canRequest"], o)
+    p = call("POST", f"{PAYMENT}/api/payment/payouts", token=mentor["accessToken"])
+    check("US-42", "Yêu cầu rút toàn bộ khả dụng", p["status"] == "REQUESTED" and float(p["amount"]) == 255000 and p["accountNumber"] is None, p)
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/payouts", token=mentor["accessToken"]))
+    check("US-42", "Yêu cầu thứ 2 khi đang mở → 409 PAYOUT_ALREADY_OPEN", status == 409 and code == "PAYOUT_ALREADY_OPEN", (status, code))
+    status, _ = error_code(lambda: call("GET", f"{PAYMENT}/api/payment/admin/payouts", token=mentor["accessToken"]))
+    check("US-42", "Mentor gọi API admin → 403", status == 403, status)
+    queue = call("GET", f"{PAYMENT}/api/payment/admin/payouts?status=REQUESTED", token=admin["accessToken"])
+    row = next((x for x in queue if x["id"] == p["id"]), None)
+    check("US-42", "Admin thấy yêu cầu kèm số tài khoản đầy đủ", row and row["accountNumber"] == "190345678901", row)
+    paid_p = call("POST", f"{PAYMENT}/api/payment/admin/payouts/{p['id']}/paid", {"reference": f"FT{RUN}"}, token=admin["accessToken"])
+    check("US-42", "Admin đánh dấu PAID kèm mã tham chiếu", paid_p["status"] == "PAID" and paid_p["reference"] == f"FT{RUN}")
+    o = overview(mentor)
+    summary = call("GET", f"{PAYMENT}/api/payment/earnings/summary", token=mentor["accessToken"])
+    check("US-42", "Sau khi chuyển: khả dụng 0, đã chi trả 255.000đ", float(o["available"]) == 0 and float(summary["paidOut"]) == 255000,
+          (o["available"], summary["paidOut"]))
+    notes = call("GET", f"{MENTORING}/api/mentoring/notifications?limit=50", token=mentor["accessToken"])["items"]
+    check("US-42", "Mentor nhận thông báo PAYOUT_PAID", any(n["type"] == "PAYOUT_PAID" for n in notes))
+
+    t = txs(mentee, s1["id"])[0]
+    rc = call("GET", f"{PAYMENT}/api/payment/transactions/{t['id']}/receipt", token=mentee["accessToken"])
+    check("US-42", "Biên lai: số RC-, phí 45.000đ, mentor nhận 255.000đ, tên hai bên",
+          rc["receiptNumber"].startswith("RC-") and float(rc["fee"]) == 45000 and float(rc["mentorEarning"]) == 255000
+          and rc["payerName"] and rc["mentorName"], rc)
+    stranger = accepted_mentee(small, "payout-stranger")
+    status, _ = error_code(lambda: call("GET", f"{PAYMENT}/api/payment/transactions/{t['id']}/receipt", token=stranger["accessToken"]))
+    check("US-42", "Người ngoài xem biên lai → 403", status == 403, status)
+
+    month = rc["paidAt"][:7]
+    req = urllib.request.Request(f"{PAYMENT}/api/payment/earnings/export?month={month}",
+                                 headers={"Authorization": f"Bearer {mentor['accessToken']}"})
+    with urllib.request.urlopen(req, timeout=30) as res:
+        csv_text = res.read().decode("utf-8-sig")
+        ctype = res.headers.get("Content-Type", "")
+    lines = [l for l in csv_text.splitlines() if l]
+    check("US-42", "CSV tháng: header + 1 dòng của phiên", ctype.startswith("text/csv") and len(lines) == 2 and t["id"] in lines[1], lines)
+
+
+STORIES = {"US-41": us41, "US-42": us42}
 
 
 def main(selected):

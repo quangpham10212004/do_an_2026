@@ -43,6 +43,7 @@ const LINKS: Record<Role, [href: string, label: string][]> = {
     ["/admin/transactions", "Giao dịch"],
     ["/admin/disputes", "Tranh chấp"],
     ["/admin/message-reports", "Báo cáo tin nhắn"],
+    ["/admin/payouts", "Rút tiền"],
     ["/admin/audit", "Nhật ký"],
   ],
 };

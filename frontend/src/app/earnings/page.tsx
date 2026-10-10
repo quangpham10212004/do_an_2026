@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead } from "@/components/ui";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
+import PayoutPanel from "@/features/payment/PayoutPanel";
 import { LEDGER_TYPE_LABELS, paymentApi } from "@/features/payment/api";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime, formatVnd } from "@/lib/format";
@@ -26,10 +27,11 @@ function Earnings() {
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const reload = () => {
     paymentApi.earningSummary().then(setSummary).catch((e) => setError(errorMessage(e)));
     paymentApi.earnings().then(setRows).catch((e) => { setRows([]); setError(errorMessage(e)); });
-  }, []);
+  };
+  useEffect(reload, []);
 
   if (rows === undefined) return <Loading />;
   const delay = summary?.releaseDelayHours ?? 48;
@@ -62,6 +64,7 @@ function Earnings() {
           </div>
         </div>
       )}
+      <PayoutPanel onChange={reload} />
       <div className="card table-wrap">
         {rows.length === 0 ? (
           <Empty>Chưa có thu nhập nào. Thu nhập được ghi khi mentee thanh toán phiên có phí.</Empty>

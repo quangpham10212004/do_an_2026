@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Empty, Loading, PageHead } from "@/components/ui";
@@ -52,6 +53,9 @@ function Transactions({ user }: { user: SessionUser }) {
                 Phí nền tảng {feePercent(t.feeRate)}: {formatMoney(t.fee)} · Mentor nhận: {formatMoney(t.mentorEarning)}
                 {t.holdReason && t.status === "ON_HOLD" && ` · Tạm giữ: ${paymentReasonLabel(t.holdReason)}`}
               </div>
+            )}
+            {t.status !== "FAILED" && t.status !== "PENDING" && (
+              <Link className="small" href={`/payment/receipts/${t.id}`}>Biên lai</Link>
             )}
             {t.refunds.map((r) => (
               <div key={r.id} className="small">
