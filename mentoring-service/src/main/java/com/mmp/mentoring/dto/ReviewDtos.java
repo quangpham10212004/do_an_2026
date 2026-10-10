@@ -50,7 +50,8 @@ public final class ReviewDtos {
      */
     public record MentorReviewSummary(UUID mentorId, long reviewCount, boolean newMentor, Double rating,
                                       Double knowledge, Double clarity, Double preparation,
-                                      java.util.Map<String, Long> tags, List<ReviewDetail> reviews) {
+                                      java.util.Map<String, Long> tags, List<ReviewDetail> reviews,
+                                      /* US-44 (PRD-MATCH-9) */ long sessionsCompleted) {
     }
 
     /** PRD-REV-4 — chỉ dạng tổng hợp; badge = RELIABLE hoặc null. */

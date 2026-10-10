@@ -149,7 +149,28 @@ def us42(ctx):
     check("US-42", "CSV tháng: header + 1 dòng của phiên", ctype.startswith("text/csv") and len(lines) == 2 and t["id"] in lines[1], lines)
 
 
-STORIES = {"US-41": us41, "US-42": us42}
+def us44(ctx):
+    print("US-44 — trang mentor: số phiên hoàn thành, khung giờ trống gần nhất, đánh giá kèm phản hồi")
+    admin = ctx["admin"]
+    mentor = approved_mentor(admin["accessToken"], "page")
+    mentee = accepted_mentee(mentor, "page")
+    s = done_session(mentee, mentor, 3)
+    done_session(mentee, mentor, 4)
+    r = review(mentee, s["id"], 5, "Rat huu ich")
+    call("POST", f"{MENTORING}/api/mentoring/reviews/{r['id']}/reply", {"reply": "Cam on em"}, token=mentor["accessToken"])
+    viewer = accepted_mentee(mentor, "page-viewer")
+    summary = call("GET", f"{MENTORING}/api/mentoring/mentors/{mentor['userId']}/review-summary", token=viewer["accessToken"])
+    check("US-44", "Số phiên đã hoàn thành = 2", summary["sessionsCompleted"] == 2, summary.get("sessionsCompleted"))
+    check("US-44", "Đánh giá kèm phản hồi của mentor", summary["reviews"][0]["mentorReply"] == "Cam on em")
+    slots = call("GET", f"{MENTORING}/api/mentoring/mentors/{mentor['userId']}/available-slots?durationMinutes=60&days=14",
+                 token=viewer["accessToken"])
+    check("US-44", "Có khung giờ trống trong 14 ngày (trang mentor lấy 3 khung đầu)", len(slots["slots"]) >= 3, len(slots["slots"]))
+    profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=viewer["accessToken"])
+    check("US-44", "Hồ sơ công khai có headline / thời gian phản hồi (trường có mặt)",
+          "headline" in profile and "medianResponseHours" in profile)
+
+
+STORIES = {"US-41": us41, "US-42": us42, "US-44": us44}
 
 
 def main(selected):

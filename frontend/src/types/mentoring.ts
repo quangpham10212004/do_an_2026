@@ -279,6 +279,8 @@ export interface MentorReviewSummary {
   preparation: number | null;
   tags: Record<string, number>;
   reviews: Review[];
+  /** US-44 */
+  sessionsCompleted: number;
 }
 
 /** US-41 (PRD-REV-4) — huy hiệu tổng hợp từ nhận xét riêng của mentor. */

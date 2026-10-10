@@ -164,7 +164,8 @@ public class ReviewService {
                 .collect(Collectors.groupingBy(t -> t, TreeMap::new, Collectors.counting()));
         return new MentorReviewSummary(mentorId, n, !ReviewRules.isPublic(n), rating,
                 avg(reviews, Review::getKnowledge), avg(reviews, Review::getClarity), avg(reviews, Review::getPreparation),
-                tags, reviews.stream().map(r -> detail(r, viewer, names.get(r.getMenteeId()))).toList());
+                tags, reviews.stream().map(r -> detail(r, viewer, names.get(r.getMenteeId()))).toList(),
+                sessionRepo.countByMentorIdAndStatus(mentorId, MentoringSession.Status.COMPLETED));
     }
 
     public List<ReviewDetail> list(AuthUser viewer, UUID mentorId) {

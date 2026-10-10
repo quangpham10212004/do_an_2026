@@ -3,19 +3,22 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, Stars, StatusBadge } from "@/components/ui";
+import { Alert, Loading, PageHead, StatusBadge } from "@/components/ui";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi, publicMentorStatusText } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
-import { DAY_NAMES, formatDate, formatRate } from "@/lib/format";
+import { DAY_NAMES, formatDateTime, formatRate } from "@/lib/format";
 import MentorReviews from "@/features/mentoring/MentorReviews";
-import type { MentorProfile, MentoringRequest, SessionUser } from "@/types";
+import type { MentorProfile, MentoringRequest, SessionUser, TimeSlot } from "@/types";
 
 function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
   const [mentor, setMentor] = useState<MentorProfile | null | undefined>(undefined);
   const [request, setRequest] = useState<MentoringRequest | null>(null);
+  // US-44 (PRD-MATCH-9) — 3 khung giờ rảnh gần nhất (phiên 60 phút, 14 ngày tới)
+  const [nextSlots, setNextSlots] = useState<TimeSlot[] | null>(null);
 
   useEffect(() => {
     profileApi.getMentor(id).then(setMentor).catch(() => setMentor(null));
+    mentoringApi.availableSlots(id, 60, 14).then((r) => setNextSlots(r.slots.slice(0, 3))).catch(() => setNextSlots([]));
     if (user.role === "MENTEE") {
       mentoringApi.requests().then((rs) => setRequest(rs.find((r) => r.mentorId === id && ["PENDING", "ACCEPTED"].includes(r.status)) || null)).catch(() => {});
     }
@@ -55,6 +58,19 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
               <ul className="small" style={{ marginTop: "0.75rem" }}>
                 {mentor.portfolioLinks.map((l) => <li key={l}><a href={l} target="_blank" rel="noreferrer">{l}</a></li>)}
               </ul>
+            )}
+          </div>
+          <div className="card">
+            <h2>Khung giờ trống gần nhất</h2>
+            {nextSlots === null ? <p className="muted small">Đang tải…</p>
+              : nextSlots.length === 0 ? <p className="muted small">Chưa có khung giờ trống trong 14 ngày tới.</p>
+              : (
+                <div className="chips">
+                  {nextSlots.map((sl) => <span key={sl.startAt} className="chip">{formatDateTime(sl.startAt)}</span>)}
+                </div>
+              )}
+            {nextSlots && nextSlots.length > 0 && user.role === "MENTEE" && request?.status === "ACCEPTED" && (
+              <p className="small" style={{ marginTop: 6 }}><Link href={`/mentoring/book/${id}`}>Đặt một khung giờ →</Link></p>
             )}
           </div>
           <div className="card">
