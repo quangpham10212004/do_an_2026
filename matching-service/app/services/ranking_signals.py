@@ -73,7 +73,9 @@ def mentor_free_intervals(local_day: date, availability: list[tuple], exceptions
 
 
 def mentee_slots(now: datetime, preferred_days, time_of_day: str | None, mentee_tz: str | None) -> list[Interval]:
-    """Các khung giờ mong muốn (UTC) của mentee trong HORIZON_DAYS ngày tới; khung đã qua bị bỏ, khung đang diễn ra cắt từ now."""
+    """Các khung giờ mong muốn (UTC) của mentee trong HORIZON_DAYS ngày tới. Chỉ tính khung CHƯA BẮT ĐẦU: khung đã qua
+    hoặc đang diễn ra bị bỏ nguyên. Nếu cắt khung đang diễn ra từ now, phần còn lại (vd. 21:30–23:00 khi mentor rảnh tới
+    22:00) không đủ MIN_OVERLAP nên mọi mentor bị trừ điểm khớp lịch tuỳ theo giờ gọi API."""
     tz = _zone(mentee_tz)
     today = now.astimezone(tz).date()
     days = {int(d) for d in (preferred_days or [])}
@@ -84,9 +86,9 @@ def mentee_slots(now: datetime, preferred_days, time_of_day: str | None, mentee_
         if days and d.isoweekday() not in days:
             continue
         start, end = _at(d, window[0], tz), _at(d, window[1], tz)
-        if end <= now:
+        if start <= now:
             continue
-        slots.append((max(start, now), end))
+        slots.append((start, end))
     return slots
 
 
