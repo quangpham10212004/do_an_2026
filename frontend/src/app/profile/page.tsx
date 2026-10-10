@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
+import { Eye, Plus, Trash2, Upload } from "lucide-react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, StatusBadge, Flash } from "@/components/ui";
+import {
+  Alert, Button, Card, CardBody, CardFooter, CardHeader, DescriptionList, Field, FlashAlerts, Input, Loading, PageHeader, Select,
+  StatusBadge, Tabs, Textarea, type Flash,
+} from "@/components/ui";
 import { DOMAINS, profileApi } from "@/features/profile/api";
 import { matchingApi } from "@/features/matching/api";
 import { aiApi } from "@/features/ai/api";
@@ -19,15 +23,25 @@ import type { AvailabilitySlot, CvSummary, IndexStatus, MenteeProfile, MenteePro
 
 const splitList = (s: string) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
 
-function DomainSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function DomainSelect({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
   const known = DOMAINS.some(([v]) => v === value);
   return (
-    <select value={known || !value ? value : "__other"} onChange={(e) => onChange(e.target.value === "__other" ? value : e.target.value)} required>
-      <option value="">— Chọn lĩnh vực —</option>
+    <Select id={id} value={known || !value ? value : "__other"} onChange={(e) => onChange(e.target.value === "__other" ? value : e.target.value)} required>
+      <option value="">Chọn lĩnh vực</option>
       {DOMAINS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       {!known && value && <option value="__other">{value}</option>}
-    </select>
+    </Select>
   );
+}
+
+/** Tab đang mở, đọc từ #hash (vd. /profile#availability từ trang tổng quan). */
+function useHashTab<T extends string>(map: Record<string, T>, fallback: T): [T, (t: T) => void] {
+  const [tab, setTab] = useState<T>(fallback);
+  useEffect(() => {
+    const fromHash = map[window.location.hash.slice(1)];
+    if (fromHash) setTab(fromHash);
+  }, [map]);
+  return [tab, setTab];
 }
 
 /**
@@ -61,11 +75,10 @@ function EmbeddingInfo({ profile }: { profile: { userId: string } | null }) {
   }, [profile]);
 
   if (!profile || index === undefined) return null;
-  if (index === null) return <p className="muted small">Vector embedding: chưa lấy được trạng thái.</p>;
   return (
-    <p className="muted small">
-      Vector embedding: {index.status === "PENDING" ? "đang chờ lập chỉ mục (hệ thống sẽ tự thử lại)" : `cập nhật lúc ${formatDateTime(index.indexedAt)}`}
-    </p>
+    <span className="text-small text-ink-subtle">
+      Chỉ mục gợi ý: {index === null ? "chưa lấy được trạng thái" : index.status === "PENDING" ? "đang cập nhật…" : `cập nhật lúc ${formatDateTime(index.indexedAt)}`}
+    </span>
   );
 }
 
@@ -87,7 +100,11 @@ type SlotForm = Omit<AvailabilitySlot, "dayOfWeek"> & { dayOfWeek: number | stri
 
 const trimSlot = (s: AvailabilitySlot): SlotForm => ({ ...s, startTime: s.startTime.slice(0, 5), endTime: s.endTime.slice(0, 5) });
 
+const MENTOR_TABS = { availability: "schedule", "booking-settings": "schedule", status: "status", "my-cvs": "cv" } as const;
+const MENTEE_TABS = { preferences: "preferences", "my-cvs": "cv" } as const;
+
 function MentorProfileForm({ user }: { user: SessionUser }) {
+  const [tab, setTab] = useHashTab<"info" | "schedule" | "status" | "cv">(MENTOR_TABS, "info");
   const [profile, setProfile] = useState<MentorProfile | null | undefined>(undefined);
   const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", headline: "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, portfolioLinks: "" });
   const [slots, setSlots] = useState<SlotForm[]>([]);
@@ -177,100 +194,147 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
   }
 
   if (profile === undefined) return <Loading />;
+  const slotField = (i: number, patch: Partial<SlotForm>) => setSlots(slots.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   return (
     <>
-      <PageHead title="Hồ sơ mentor" subtitle="Hồ sơ càng chi tiết, AI càng gợi ý bạn tới đúng mentee.">
-        {profile && <StatusBadge status={profile.verificationStatus} />}
-      </PageHead>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="grid grid-2" style={{ alignItems: "start" }}>
-        <form className="card" onSubmit={save}>
-          <h2>Thông tin chuyên môn</h2>
-          <EmbeddingInfo profile={profile} />
-          <div className="field">
-            <label>Điền nhanh từ CV (PDF)</label>
-            <CvConsent checked={cvConsent} onChange={setCvConsent} audience="MENTOR" disabled={parsing} />
-            <input type="file" accept="application/pdf" disabled={parsing} onChange={(e) => prefillFromCv(e.target.files?.[0])} />
-            <div className="hint">{parsing ? "Đang phân tích CV..." : "Hệ thống trích xuất kỹ năng và số năm kinh nghiệm."}</div>
-            {form.cvFileUrl && (
-              <div className="hint">
-                CV gắn với hồ sơ:{" "}
-                <button type="button" className="btn ghost sm" onClick={() => form.cvFileUrl && viewCv(form.cvFileUrl)}>Xem</button>
-              </div>
+      <PageHeader
+        title="Hồ sơ mentor"
+        description="Hồ sơ càng chi tiết, AI càng gợi ý bạn tới đúng mentee."
+        actions={profile && <StatusBadge status={profile.verificationStatus} />}
+      />
+      <Tabs className="mb-6" value={tab} onChange={setTab} tabs={[
+        { id: "info", label: "Thông tin chuyên môn" },
+        { id: "schedule", label: "Lịch và đặt lịch" },
+        { id: "status", label: "Trạng thái" },
+        { id: "cv", label: "CV" },
+      ]} />
+      <FlashAlerts flash={msg} className="mb-6" />
+
+      {tab === "info" && (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <form onSubmit={save}>
+            <Card>
+              <CardHeader title="Thông tin chuyên môn" actions={<EmbeddingInfo profile={profile} />} />
+              <CardBody className="flex flex-col gap-5">
+                <div className="flex flex-col gap-3 rounded-md border border-dashed border-border-strong p-4">
+                  <div>
+                    <div className="font-semibold">Điền nhanh từ CV (PDF)</div>
+                    <div className="text-small text-ink-muted">Hệ thống trích xuất kỹ năng và số năm kinh nghiệm, bạn kiểm tra lại rồi lưu.</div>
+                  </div>
+                  <CvConsent checked={cvConsent} onChange={setCvConsent} audience="MENTOR" disabled={parsing} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor="mentor-cv" className={`btn ${parsing ? "pointer-events-none opacity-50" : ""}`}>
+                      {parsing ? <span className="spinner" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+                      {parsing ? "Đang phân tích CV…" : "Chọn file CV"}
+                    </label>
+                    <input id="mentor-cv" type="file" accept="application/pdf" className="sr-only" disabled={parsing}
+                      onChange={(e) => { prefillFromCv(e.target.files?.[0]); e.target.value = ""; }} />
+                    {form.cvFileUrl && (
+                      <Button variant="ghost" icon={Eye} onClick={() => form.cvFileUrl && viewCv(form.cvFileUrl)}>Xem CV gắn với hồ sơ</Button>
+                    )}
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <Field label="Tên hiển thị" id="m-name" required className="span-2">
+                    <Input id="m-name" required value={form.displayName} onChange={set("displayName")} />
+                  </Field>
+                  <Field label="Tiêu đề ngắn" id="m-headline" className="span-2" hint={`Hiện trên thẻ mentor (${form.headline.length}/80 ký tự).`}>
+                    <Input id="m-headline" value={form.headline} maxLength={80} onChange={set("headline")} placeholder="Senior Backend Engineer · 8 năm Java/Spring" />
+                  </Field>
+                  <Field label="Lĩnh vực" id="m-domain" required>
+                    <DomainSelect id="m-domain" value={form.domain} onChange={(v) => setForm({ ...form, domain: v })} />
+                  </Field>
+                  <Field label="Số năm kinh nghiệm" id="m-years">
+                    <Input id="m-years" type="number" min={0} max={60} value={form.yearsExperience} onChange={set("yearsExperience")} />
+                  </Field>
+                  <Field label="Kỹ năng" id="m-skills" required className="span-2" hint="Phân tách bằng dấu phẩy.">
+                    <Input id="m-skills" required value={form.skills} onChange={set("skills")} placeholder="Java, Spring Boot, PostgreSQL" />
+                  </Field>
+                  <Field label="Giới thiệu bản thân" id="m-bio" required className="span-2">
+                    <Textarea id="m-bio" required value={form.bio} onChange={set("bio")} className="min-h-[140px]" />
+                  </Field>
+                  <Field label="Mức phí (đ/giờ)" id="m-rate" hint="Để 0 nếu bạn mentor miễn phí.">
+                    <Input id="m-rate" type="number" min={0} step={10000} value={form.hourlyRate} onChange={set("hourlyRate")} />
+                  </Field>
+                  <Field label="Sức chứa (số mentee tối đa)" id="m-capacity">
+                    <Input id="m-capacity" type="number" min={1} max={50} value={form.capacity} onChange={set("capacity")} />
+                  </Field>
+                  <Field label="Portfolio và liên kết" id="m-links" className="span-2" hint="Mỗi dòng một liên kết.">
+                    <Textarea id="m-links" className="min-h-[72px] font-mono text-small" value={form.portfolioLinks} onChange={set("portfolioLinks")} />
+                  </Field>
+                </div>
+              </CardBody>
+              <CardFooter><Button type="submit" variant="primary">Lưu hồ sơ</Button></CardFooter>
+            </Card>
+          </form>
+          <div className="flex min-w-0 flex-col gap-6">
+            {profile?.completeness && <CompletenessCard completeness={profile.completeness} />}
+            {profile && (
+              <AvatarAndTimezone userId={user.userId} name={profile.displayName} avatarUrl={profile.avatarUrl} timezone={profile.timezone} showTimezone={false}
+                onChange={() => profileApi.getMentor(user.userId).then(setProfile).catch(() => {})} />
+            )}
+            {profile && (
+              <Card>
+                <CardHeader title="Tóm tắt" />
+                <CardBody>
+                  <DescriptionList items={[
+                    ["Xác thực", STATUS_LABELS[profile.verificationStatus]],
+                    ["Mentee đang hướng dẫn", <span key="c" className="tabular">{profile.activeMenteeCount}/{profile.capacity}</span>],
+                    ["Đánh giá", profile.ratingCount >= 3 ? `${profile.rating.toFixed(1)}/5 (${profile.ratingCount})` : profile.ratingCount ? `${profile.ratingCount} đánh giá, điểm hiện khi đủ 3` : "Chưa có"],
+                  ]} />
+                </CardBody>
+              </Card>
             )}
           </div>
-          <div className="field"><label>Tên hiển thị</label><input required value={form.displayName} onChange={set("displayName")} /></div>
-          <div className="field">
-            <label>Tiêu đề ngắn</label>
-            <input value={form.headline} maxLength={80} onChange={set("headline")} placeholder="Ví dụ: Senior Backend Engineer · 8 năm Java/Spring" />
-            <div className="hint">Hiện trên thẻ mentor, tối đa 80 ký tự ({form.headline.length}/80).</div>
-          </div>
-          <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div className="field"><label>Lĩnh vực</label><DomainSelect value={form.domain} onChange={(v) => setForm({ ...form, domain: v })} /></div>
-            <div className="field"><label>Số năm kinh nghiệm</label><input type="number" min={0} max={60} value={form.yearsExperience} onChange={set("yearsExperience")} /></div>
-          </div>
-          <div className="field"><label>Kỹ năng</label><input required value={form.skills} onChange={set("skills")} placeholder="Java, Spring Boot, PostgreSQL" /><div className="hint">Phân tách bằng dấu phẩy.</div></div>
-          <div className="field"><label>Giới thiệu bản thân</label><textarea required value={form.bio} onChange={set("bio")} /></div>
-          <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div className="field"><label>Mức phí (VNĐ/giờ)</label><input type="number" min={0} step={10000} value={form.hourlyRate} onChange={set("hourlyRate")} /><div className="hint">0 = miễn phí</div></div>
-            <div className="field"><label>Sức chứa (số mentee tối đa)</label><input type="number" min={1} max={50} value={form.capacity} onChange={set("capacity")} /></div>
-          </div>
-          <div className="field"><label>Portfolio / liên kết</label><textarea style={{ minHeight: 60 }} value={form.portfolioLinks} onChange={set("portfolioLinks")} placeholder="Mỗi dòng một liên kết" /></div>
-          <button className="btn">Lưu hồ sơ</button>
-        </form>
+        </div>
+      )}
 
-        <div className="stack">
-        {profile?.completeness && <CompletenessCard completeness={profile.completeness} />}
-        {profile && (
-          <AvatarAndTimezone userId={user.userId} avatarUrl={profile.avatarUrl} timezone={profile.timezone} showTimezone={false}
-            onChange={() => profileApi.getMentor(user.userId).then(setProfile).catch(() => {})} />
-        )}
-        {profile && (
-          <div className="card" id="status">
-            <MentorStatusControl profile={profile} onChange={setProfile} />
-          </div>
-        )}
-        {profile && (
-          <div className="card" id="booking-settings">
-            <BookingSettings key={profile.userId} profile={profile} onChange={(p) => { setProfile(p); setDisplayTimeZone(p.timezone); }} />
-          </div>
-        )}
-        <div className="card" id="availability">
-          <h2>Lịch rảnh hằng tuần</h2>
-          {!profile && <Alert type="info">Hãy lưu hồ sơ trước khi khai báo lịch rảnh.</Alert>}
-          {profile && (
-            <>
-              <p className="muted small">Theo múi giờ {profile.timezone}. Mentee chỉ đặt được phiên nằm trọn trong các khung giờ này.</p>
-              {slots.map((s, i) => (
-                <div className="slot-row" key={i}>
-                  <select value={s.dayOfWeek} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, dayOfWeek: e.target.value } : x)))}>
-                    {DAY_NAMES.slice(1).map((d, idx) => <option key={d} value={idx + 1}>{d}</option>)}
-                  </select>
-                  <input type="time" value={s.startTime} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, startTime: e.target.value } : x)))} />
-                  <input type="time" value={s.endTime} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, endTime: e.target.value } : x)))} />
-                  <button type="button" className="btn ghost sm" onClick={() => setSlots(slots.filter((_, j) => j !== i))}>Xoá</button>
-                </div>
-              ))}
-              <div className="row">
-                <button type="button" className="btn secondary sm" onClick={() => setSlots([...slots, { dayOfWeek: 1, startTime: "19:00", endTime: "21:00" }])}>+ Thêm khung giờ</button>
-                <span className="spacer" />
-                <button type="button" className="btn" onClick={saveSlots}>Lưu lịch rảnh</button>
-              </div>
-              <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
+      {tab === "schedule" && (
+        !profile ? <Alert tone="info">Lưu hồ sơ ở tab “Thông tin chuyên môn” trước khi khai báo lịch rảnh.</Alert> : (
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-6">
+              <Card>
+                <div id="availability" />
+                <CardHeader title="Lịch rảnh hằng tuần" description={`Theo múi giờ ${profile.timezone}. Mentee chỉ đặt được phiên nằm trọn trong các khung giờ này.`} />
+                <CardBody className="flex flex-col gap-3">
+                  {slots.length === 0 && <p className="text-ink-muted">Chưa có khung giờ nào. Thêm ít nhất một khung để nhận lịch.</p>}
+                  {slots.map((s, i) => (
+                    <div className="flex flex-wrap items-center gap-2" key={i}>
+                      <Select aria-label="Ngày" className="w-auto min-w-[130px] flex-1" value={s.dayOfWeek} onChange={(e) => slotField(i, { dayOfWeek: e.target.value })}>
+                        {DAY_NAMES.slice(1).map((d, idx) => <option key={d} value={idx + 1}>{d}</option>)}
+                      </Select>
+                      <Input aria-label="Từ giờ" type="time" className="w-auto" value={s.startTime} onChange={(e) => slotField(i, { startTime: e.target.value })} />
+                      <span className="text-ink-muted">đến</span>
+                      <Input aria-label="Đến giờ" type="time" className="w-auto" value={s.endTime} onChange={(e) => slotField(i, { endTime: e.target.value })} />
+                      <Button variant="ghost" iconOnly icon={Trash2} label="Xoá khung giờ" onClick={() => setSlots(slots.filter((_, j) => j !== i))} />
+                    </div>
+                  ))}
+                </CardBody>
+                <CardFooter>
+                  <Button variant="ghost" icon={Plus} className="mr-auto" onClick={() => setSlots([...slots, { dayOfWeek: 1, startTime: "19:00", endTime: "21:00" }])}>Thêm khung giờ</Button>
+                  <Button variant="primary" onClick={saveSlots}>Lưu lịch rảnh</Button>
+                </CardFooter>
+              </Card>
               <AvailabilityExceptions mentorId={user.userId} />
-              <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "1.25rem 0" }} />
-              <div className="row between small">
-                <span>Mentee đang hướng dẫn: <strong>{profile.activeMenteeCount}/{profile.capacity}</strong></span>
-                <span>Đánh giá: <strong>{profile.ratingCount >= 3 ? `${profile.rating.toFixed(1)}/5 (${profile.ratingCount})` : profile.ratingCount ? `${profile.ratingCount} đánh giá — điểm hiện khi đủ 3` : "chưa có"}</strong></span>
-              </div>
-              <p className="muted small" style={{ marginTop: 8 }}>Trạng thái xác thực: {STATUS_LABELS[profile.verificationStatus]}</p>
-            </>
-          )}
+            </div>
+            <div id="booking-settings" className="min-w-0">
+              <BookingSettings key={profile.userId} profile={profile} onChange={(p) => { setProfile(p); setDisplayTimeZone(p.timezone); }} />
+            </div>
+          </div>
+        )
+      )}
+
+      {tab === "status" && (
+        <div className="max-w-[720px]" id="status">
+          {profile ? <MentorStatusControl profile={profile} onChange={setProfile} /> : <Alert tone="info">Lưu hồ sơ trước khi đổi trạng thái.</Alert>}
         </div>
-        <MyCvs refreshKey={cvListKey} onDeleted={afterCvDeleted} />
+      )}
+
+      {tab === "cv" && (
+        <div className="max-w-[860px]">
+          <MyCvs refreshKey={cvListKey} onDeleted={afterCvDeleted} />
         </div>
-      </div>
+      )}
     </>
   );
 }
@@ -278,6 +342,7 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
 type MenteeForm = Required<Omit<MenteeProfileInput, "skills" | "portfolioLinks" | "cvFileUrl">> & { skills: string; portfolioLinks: string };
 
 function MenteeProfileForm({ user }: { user: SessionUser }) {
+  const [tab, setTab] = useHashTab<"info" | "preferences" | "cv">(MENTEE_TABS, "info");
   const [profile, setProfile] = useState<MenteeProfile | null | undefined>(undefined);
   const [form, setForm] = useState<MenteeForm>({ displayName: user.fullName || "", goal: "", domain: "", currentLevel: "BEGINNER", skills: "", portfolioLinks: "" });
   const [msg, setMsg] = useState<Flash>({});
@@ -315,47 +380,76 @@ function MenteeProfileForm({ user }: { user: SessionUser }) {
   if (profile === undefined) return <Loading />;
   return (
     <>
-      <PageHead title="Hồ sơ nghề nghiệp" subtitle="Thông tin này được AI dùng để gợi ý mentor phù hợp với bạn." />
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      {profile && (
-        <div className="grid grid-2" style={{ maxWidth: 760, alignItems: "start", marginBottom: "var(--spacing-16)" }}>
-          <CompletenessCard completeness={profile.completeness} matchingMin={50} />
-          <AvatarAndTimezone userId={user.userId} avatarUrl={profile.avatarUrl} timezone={profile.timezone}
-            onChange={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
+      <PageHeader title="Hồ sơ nghề nghiệp" description="AI dùng thông tin này để gợi ý mentor phù hợp với bạn." />
+      <Tabs className="mb-6" value={tab} onChange={setTab} tabs={[
+        { id: "info", label: "Hồ sơ" },
+        { id: "preferences", label: "Sở thích tìm mentor" },
+        { id: "cv", label: "CV" },
+      ]} />
+      <FlashAlerts flash={msg} className="mb-6" />
+
+      {tab === "info" && (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <form onSubmit={save}>
+            <Card>
+              <CardHeader title="Thông tin học tập" actions={<EmbeddingInfo profile={profile} />} />
+              <CardBody>
+                <div className="form-grid">
+                  <Field label="Tên hiển thị" id="e-name" required className="span-2">
+                    <Input id="e-name" required value={form.displayName} onChange={set("displayName")} />
+                  </Field>
+                  <Field label="Lĩnh vực muốn học" id="e-domain" required>
+                    <DomainSelect id="e-domain" value={form.domain} onChange={(v) => setForm({ ...form, domain: v })} />
+                  </Field>
+                  <Field label="Trình độ hiện tại" id="e-level">
+                    <Select id="e-level" value={form.currentLevel} onChange={set("currentLevel")}>
+                      <option value="BEGINNER">Mới bắt đầu</option>
+                      <option value="INTERMEDIATE">Trung cấp</option>
+                      <option value="ADVANCED">Nâng cao</option>
+                    </Select>
+                  </Field>
+                  <Field label="Kỹ năng hiện có" id="e-skills" className="span-2" hint="Phân tách bằng dấu phẩy.">
+                    <Input id="e-skills" value={form.skills} onChange={set("skills")} placeholder="Java, SQL, Git" />
+                  </Field>
+                  <Field label="Mục tiêu học tập" id="e-goal" required className="span-2">
+                    <Textarea id="e-goal" required value={form.goal} onChange={set("goal")} className="min-h-[120px]"
+                      placeholder="Chuẩn bị phỏng vấn backend Java trong 3 tháng, muốn học system design" />
+                  </Field>
+                  <Field label="Portfolio và dự án" id="e-links" className="span-2" hint="Mỗi dòng một liên kết.">
+                    <Textarea id="e-links" className="min-h-[72px] font-mono text-small" value={form.portfolioLinks} onChange={set("portfolioLinks")} />
+                  </Field>
+                </div>
+              </CardBody>
+              <CardFooter>
+                {profile?.cvFileUrl && (
+                  <Button variant="ghost" icon={Eye} className="mr-auto" onClick={() => profile.cvFileUrl && viewCv(profile.cvFileUrl)}>Xem CV đang gắn với hồ sơ</Button>
+                )}
+                <Button type="submit" variant="primary">Lưu hồ sơ</Button>
+              </CardFooter>
+            </Card>
+          </form>
+          {profile && (
+            <div className="flex min-w-0 flex-col gap-6">
+              <CompletenessCard completeness={profile.completeness} matchingMin={50} />
+              <AvatarAndTimezone userId={user.userId} name={profile.displayName} avatarUrl={profile.avatarUrl} timezone={profile.timezone}
+                onChange={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
+            </div>
+          )}
         </div>
       )}
-      <form className="card" onSubmit={save} style={{ maxWidth: 760 }}>
-        <EmbeddingInfo profile={profile} />
-        <div className="field"><label>Tên hiển thị</label><input required value={form.displayName} onChange={set("displayName")} /></div>
-        <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <div className="field"><label>Lĩnh vực muốn học</label><DomainSelect value={form.domain} onChange={(v) => setForm({ ...form, domain: v })} /></div>
-          <div className="field">
-            <label>Trình độ hiện tại</label>
-            <select value={form.currentLevel} onChange={set("currentLevel")}>
-              <option value="BEGINNER">Mới bắt đầu</option>
-              <option value="INTERMEDIATE">Trung cấp</option>
-              <option value="ADVANCED">Nâng cao</option>
-            </select>
-          </div>
+
+      {tab === "preferences" && (
+        <div className="max-w-[760px]">
+          {profile ? <MenteePreferences key={profile.userId} profile={profile} onChange={setProfile} />
+            : <Alert tone="info">Lưu hồ sơ ở tab “Hồ sơ” trước khi đặt sở thích tìm mentor.</Alert>}
         </div>
-        <div className="field"><label>Kỹ năng hiện có</label><input value={form.skills} onChange={set("skills")} placeholder="Java, SQL, Git" /></div>
-        <div className="field">
-          <label>Mục tiêu học tập</label>
-          <textarea required value={form.goal} onChange={set("goal")} placeholder="Ví dụ: chuẩn bị phỏng vấn backend Java trong 3 tháng, muốn học system design" />
+      )}
+
+      {tab === "cv" && (
+        <div className="max-w-[860px]">
+          <MyCvs onDeleted={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
         </div>
-        <div className="field"><label>Portfolio / dự án</label><textarea style={{ minHeight: 60 }} value={form.portfolioLinks} onChange={set("portfolioLinks")} placeholder="Mỗi dòng một liên kết" /></div>
-        {profile?.cvFileUrl && (
-          <p className="small">
-            <button type="button" className="btn ghost sm" onClick={() => profile.cvFileUrl && viewCv(profile.cvFileUrl)}>Xem CV đang gắn với hồ sơ</button>
-          </p>
-        )}
-        <button className="btn">Lưu hồ sơ</button>
-      </form>
-      {profile && <MenteePreferences key={profile.userId} profile={profile} onChange={setProfile} />}
-      <div style={{ maxWidth: 760, marginTop: "var(--spacing-16)" }}>
-        <MyCvs onDeleted={() => profileApi.getMentee(user.userId).then(setProfile).catch(() => {})} />
-      </div>
+      )}
     </>
   );
 }

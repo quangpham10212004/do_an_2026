@@ -176,14 +176,14 @@ frontend/src/
                                       mentoring/*, payment/[sessionId], learning/*, referral,
                                       notifications, account, admin/*
   features/<auth|profile|matching|learning|mentoring|payment|ai>/api   hàm gọi API theo ownership
-  lib/api (fetch + tự refresh token) · lib/auth (AuthContext) · components/ (Nav, Footer, RequireAuth, ui)
-  app/globals.css                     giao diện theo design tokens (Tailwind CSS v4 + tailwind/theme.css)
+  lib/api (fetch + tự refresh token) · lib/auth (AuthContext) · components/ui (design system) · components/shell (AppShell, PublicShell)
+  styles/tokens.css, components.css   token + CSS component, sinh từ design-system/tokens.json (Tailwind CSS v4 cho bố cục)
 ```
 
-Font Nunito / Nunito Sans được **tự host** qua gói npm `@fontsource` (file woff2 đóng gói lúc build) —
+Font Be Vietnam Pro / JetBrains Mono được **tự host** qua gói npm `@fontsource` (file woff2 đóng gói lúc build) —
 không tải từ Google Fonts, nên `next build` không cần mạng ngoài bước `npm install`.
 
-Giao diện theo design system trong `frontend/DESIGN.md`, `tokens.json`, `tailwind/theme.css` — chi tiết:
+Giao diện theo design system MentorHub trong `frontend/design-system/` (đồng bộ với Claude Design) — chi tiết:
 [ui-design.md](ui-design.md).
 
 ## 3. Bảo mật

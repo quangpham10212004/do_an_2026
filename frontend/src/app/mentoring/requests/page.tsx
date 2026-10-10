@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead, Flash } from "@/components/ui";
+import { CalendarPlus, Check, Inbox, MessageSquare, X } from "lucide-react";
+import { Alert, Avatar, Badge, Button, ButtonLink, Card, EmptyState, Field, FlashAlerts, Loading, PageHeader, Select, Tabs, Textarea, type Flash } from "@/components/ui";
 import EndMentorshipDialog from "@/features/mentoring/EndMentorshipDialog";
 import { mentoringApi } from "@/features/mentoring/api";
 import {
@@ -29,69 +30,65 @@ function RejectForm({ request, onSubmit, onCancel }: {
   const [reason, setReason] = useState<RejectReason | "">("");
   const [note, setNote] = useState("");
   return (
-    <div className="card stack" style={{ background: "var(--surface-2)", boxShadow: "none", marginTop: 8, width: "100%" }}>
-      <strong className="small">Từ chối yêu cầu của {request.menteeName}</strong>
-      <div className="field">
-        <label htmlFor={`reason-${request.id}`}>Lý do <span className="muted small">(bắt buộc)</span></label>
-        <select id={`reason-${request.id}`} value={reason} onChange={(e) => setReason(e.target.value as RejectReason | "")}>
-          <option value="">— Chọn lý do —</option>
+    <div className="well flex flex-col gap-3">
+      <div className="font-semibold">Từ chối yêu cầu của {request.menteeName}</div>
+      <Field label="Lý do" id={`reason-${request.id}`} required>
+        <Select id={`reason-${request.id}`} value={reason} onChange={(e) => setReason(e.target.value as RejectReason | "")}>
+          <option value="">Chọn lý do</option>
           {REJECT_REASONS.map((r) => <option key={r} value={r}>{REJECT_REASON_LABELS[r]}</option>)}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={`note-${request.id}`}>Ghi chú cho mentee <span className="muted small">(tuỳ chọn)</span></label>
-        <textarea id={`note-${request.id}`} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)}
-          placeholder="Ví dụ: gợi ý mentee tìm mentor chuyên về frontend" />
-      </div>
-      <div className="row">
-        <button className="btn danger sm" disabled={!reason} onClick={() => reason && onSubmit(reason, note.trim())}>Từ chối</button>
-        <button className="btn secondary sm" onClick={onCancel}>Thôi</button>
+        </Select>
+      </Field>
+      <Field label="Ghi chú cho mentee" id={`note-${request.id}`} hint="Không bắt buộc.">
+        <Textarea id={`note-${request.id}`} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} className="min-h-[72px]"
+          placeholder="Gợi ý mentee tìm mentor chuyên về frontend" />
+      </Field>
+      <div className="form-actions">
+        <Button size="sm" variant="danger" disabled={!reason} onClick={() => reason && onSubmit(reason, note.trim())}>Từ chối yêu cầu</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Huỷ</Button>
       </div>
     </div>
   );
 }
 
 function RequestDetails({ r, isMentor }: { r: MentoringRequest; isMentor: boolean }) {
+  const note = (text: ReactNode) => <div className="text-small text-ink-muted">{text}</div>;
   return (
-    <>
-      <div className="small" style={{ whiteSpace: "pre-wrap" }}><strong>Mục tiêu:</strong> {r.goal}</div>
-      <div className="small muted">
-        {r.sessionType && `${SESSION_TYPE_LABELS[r.sessionType]} · `}
-        {FREQUENCY_LABELS[r.frequency] || r.frequency} · {r.expectedDurationMonths} tháng
+    <div className="flex flex-col gap-2">
+      <p className="whitespace-pre-wrap">{r.goal}</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-small text-ink-muted">
+        {r.sessionType && <span>{SESSION_TYPE_LABELS[r.sessionType]}</span>}
+        <span>{FREQUENCY_LABELS[r.frequency] || r.frequency}</span>
+        <span>{r.expectedDurationMonths} tháng</span>
       </div>
-      {r.message && <div className="small">“{r.message}”</div>}
-      {isMentor && r.menteeProfile && (
-        <div className="small muted">
-          Hồ sơ: {r.menteeProfile.domain}
-          {r.menteeProfile.currentLevel && ` · ${LEVEL_LABELS[r.menteeProfile.currentLevel] || r.menteeProfile.currentLevel}`}
-          {r.menteeProfile.skills.length > 0 && ` · Kỹ năng: ${r.menteeProfile.skills.join(", ")}`}
-        </div>
-      )}
-      {r.status === "REJECTED" && r.rejectReason && (
-        <div className="small muted">Lý do từ chối: {REJECT_REASON_LABELS[r.rejectReason]}</div>
-      )}
-      {r.responseNote && <div className="small muted">Phản hồi: {r.responseNote}</div>}
+      {r.message && <blockquote className="well text-small">“{r.message}”</blockquote>}
+      {isMentor && r.menteeProfile && note(<>
+        Hồ sơ: {r.menteeProfile.domain}
+        {r.menteeProfile.currentLevel && ` · ${LEVEL_LABELS[r.menteeProfile.currentLevel] || r.menteeProfile.currentLevel}`}
+        {r.menteeProfile.skills.length > 0 && ` · Kỹ năng: ${r.menteeProfile.skills.join(", ")}`}
+      </>)}
+      {r.status === "REJECTED" && r.rejectReason && note(`Lý do từ chối: ${REJECT_REASON_LABELS[r.rejectReason]}`)}
+      {r.responseNote && note(`Phản hồi: ${r.responseNote}`)}
       {r.status === "ACCEPTED" && r.inactivityWarnedAt && (
-        <div className="small"><strong>Chưa có phiên mới từ lâu — bạn có muốn tiếp tục?</strong> Hãy đặt một phiên trước{" "}
-          {formatDateTime(new Date(new Date(r.inactivityWarnedAt).getTime() + 7 * 24 * 3600 * 1000).toISOString())}, nếu không mentoring sẽ tự kết thúc.</div>
+        <Alert tone="warning" title="Chưa có phiên mới từ lâu">
+          Đặt một phiên trước {formatDateTime(new Date(new Date(r.inactivityWarnedAt).getTime() + 7 * 24 * 3600 * 1000).toISOString())}, nếu không mentoring sẽ tự kết thúc.
+        </Alert>
       )}
-      {(r.status === "ENDED" || r.status === "COMPLETED") && (
-        <div className="small muted">
-          Đã kết thúc{r.endedAt && ` lúc ${formatDateTime(r.endedAt)}`}
-          {r.endedBy && ` bởi ${r.endedBy === "MENTEE" ? "mentee" : r.endedBy === "MENTOR" ? "mentor" : r.endedBy === "ADMIN" ? "quản trị viên" : "hệ thống"}`}
-          {r.endReason && ` · ${END_REASON_LABELS[r.endReason]}`}
-          {r.endNote && ` · “${r.endNote}”`}
-        </div>
-      )}
-      {r.status === "EXPIRED" && (
-        <div className="small muted">
-          {isMentor ? "Yêu cầu đã hết hạn vì bạn không phản hồi trong 72 giờ" : "Mentor không phản hồi trong 72 giờ nên yêu cầu đã hết hạn"}
-          {r.expiredAt && ` (${formatDateTime(r.expiredAt)})`}.
-        </div>
-      )}
-    </>
+      {(r.status === "ENDED" || r.status === "COMPLETED") && note(<>
+        Đã kết thúc{r.endedAt && ` lúc ${formatDateTime(r.endedAt)}`}
+        {r.endedBy && ` bởi ${r.endedBy === "MENTEE" ? "mentee" : r.endedBy === "MENTOR" ? "mentor" : r.endedBy === "ADMIN" ? "quản trị viên" : "hệ thống"}`}
+        {r.endReason && ` · ${END_REASON_LABELS[r.endReason]}`}
+        {r.endNote && ` · “${r.endNote}”`}
+      </>)}
+      {r.status === "EXPIRED" && note(<>
+        {isMentor ? "Yêu cầu đã hết hạn vì bạn không phản hồi trong 72 giờ" : "Mentor không phản hồi trong 72 giờ nên yêu cầu đã hết hạn"}
+        {r.expiredAt && ` (${formatDateTime(r.expiredAt)})`}.
+      </>)}
+    </div>
   );
 }
+
+type RequestTab = "pending" | "active" | "closed";
+const tabOf = (r: MentoringRequest): RequestTab => (r.status === "PENDING" ? "pending" : r.status === "ACCEPTED" ? "active" : "closed");
 
 function Requests({ user }: { user: SessionUser }) {
   const params = useSearchParams();
@@ -99,6 +96,7 @@ function Requests({ user }: { user: SessionUser }) {
   const [msg, setMsg] = useState<Flash>(params.get("sent") ? { ok: "Đã gửi yêu cầu mentoring. Mentor sẽ được thông báo." } : {});
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [ending, setEnding] = useState<MentoringRequest | null>(null);
+  const [tab, setTab] = useState<RequestTab>("pending");
   const isMentor = user.role === "MENTOR";
   const load = useCallback(
     () => mentoringApi.requests().then(setItems).catch((e) => { setItems((cur) => cur ?? []); setMsg({ error: errorMessage(e) }); }),
@@ -131,63 +129,81 @@ function Requests({ user }: { user: SessionUser }) {
   }
 
   if (items === undefined) return <Loading />;
+  const count = (t: RequestTab) => items.filter((r) => tabOf(r) === t).length;
+  const shown = items.filter((r) => tabOf(r) === tab);
+  const emptyText: Record<RequestTab, string> = {
+    pending: isMentor ? "Không có yêu cầu nào đang chờ bạn phản hồi." : "Bạn không có yêu cầu nào đang chờ mentor phản hồi.",
+    active: "Chưa có mentoring nào đang diễn ra.",
+    closed: "Chưa có yêu cầu nào đã kết thúc, bị từ chối hoặc hết hạn.",
+  };
   return (
     <>
-      <PageHead title="Yêu cầu mentoring" subtitle={isMentor ? "Mentee gửi yêu cầu được bạn hướng dẫn." : "Các yêu cầu bạn đã gửi tới mentor."}>
-        {!isMentor && <Link className="btn" href="/mentors">Tìm mentor</Link>}
-      </PageHead>
+      <PageHeader
+        title="Yêu cầu mentoring"
+        description={isMentor ? "Mentee muốn được bạn hướng dẫn. Phản hồi trong 72 giờ, quá hạn yêu cầu tự hết hạn." : "Các yêu cầu bạn đã gửi tới mentor."}
+        actions={!isMentor && <ButtonLink href="/matching" variant="primary">Tìm mentor</ButtonLink>}
+      />
       {ending && (
         <EndMentorshipDialog request={ending} isMentor={isMentor} onClose={() => setEnding(null)}
           onEnded={() => { setEnding(null); setMsg({ ok: "Đã kết thúc mentoring. Các phiên sắp tới đã được huỷ theo chính sách huỷ." }); load(); }} />
       )}
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="card">
-        {items.length === 0 && (
-          <Empty>
-            Chưa có yêu cầu nào.
-            {!isMentor && <> <Link href="/mentors">Duyệt danh sách mentor</Link> hoặc dùng <Link href="/matching">AI Matching</Link> để bắt đầu.</>}
-          </Empty>
-        )}
-        {items.map((r) => (
-          <div className="list-item" key={r.id} style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <div className="row" style={{ width: "100%" }}>
-              <div style={{ flex: 1 }}>
-                <div className="row">
-                  <strong>{isMentor ? r.menteeName : <Link href={`/mentors/${r.mentorId}`}>{r.mentorName}</Link>}</strong>
-                  {isMentor && reliable[r.menteeId] && <span className="badge good" title="Các mentor trước đánh giá chuẩn bị và tham gia tốt">Mentee đáng tin cậy</span>}
-                  <MentoringStatusBadge status={r.status} />
-                  <span className="muted small">{formatDateTime(r.createdAt)}</span>
+      <FlashAlerts flash={msg} className="mb-6" />
+      <Tabs className="mb-4" value={tab} onChange={setTab} tabs={[
+        { id: "pending", label: "Đang chờ", count: count("pending") },
+        { id: "active", label: "Đang hoạt động", count: count("active") },
+        { id: "closed", label: "Đã đóng", count: count("closed") },
+      ]} />
+      {shown.length === 0 ? (
+        <Card>
+          <EmptyState icon={Inbox} title={emptyText[tab]}
+            action={!isMentor && tab === "pending" && <ButtonLink href="/matching" size="sm">Tìm mentor bằng AI</ButtonLink>} />
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {shown.map((r) => {
+            const name = isMentor ? r.menteeName : r.mentorName;
+            return (
+              <Card as="article" key={r.id}>
+                <div className="flex flex-col gap-4 p-5 max-sm:p-4">
+                  <div className="flex flex-wrap items-start gap-3">
+                    <Avatar name={name} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isMentor ? <strong>{name}</strong> : <Link href={`/mentors/${r.mentorId}`} className="font-semibold">{name}</Link>}
+                        <MentoringStatusBadge status={r.status} />
+                        {isMentor && reliable[r.menteeId] && <Badge tone="accent" title="Các mentor trước đánh giá chuẩn bị và tham gia tốt">Mentee đáng tin cậy</Badge>}
+                      </div>
+                      <div className="text-small text-ink-subtle">Gửi lúc {formatDateTime(r.createdAt)}</div>
+                    </div>
+                  </div>
+                  <RequestDetails r={r} isMentor={isMentor} />
+                  {rejecting === r.id && (
+                    <RejectForm request={r} onCancel={() => setRejecting(null)}
+                      onSubmit={(reason, note) => act(() => mentoringApi.respond(r.id, "REJECT", note, reason), "Đã từ chối yêu cầu.")} />
+                  )}
                 </div>
-                <RequestDetails r={r} isMentor={isMentor} />
-              </div>
-              <div className="row">
-                {isMentor && r.status === "PENDING" && (
-                  <>
-                    <button className="btn good sm" onClick={() => act(() => mentoringApi.respond(r.id, "ACCEPT", ""), "Đã chấp nhận yêu cầu")}>Chấp nhận</button>
-                    <button className="btn danger sm" onClick={() => setRejecting(rejecting === r.id ? null : r.id)}>Từ chối</button>
-                  </>
-                )}
-                {!isMentor && r.status === "PENDING" && (
-                  <button className="btn secondary sm" onClick={() => act(() => mentoringApi.cancelRequest(r.id), "Đã huỷ yêu cầu")}>Huỷ</button>
-                )}
-                {!isMentor && (r.status === "REJECTED" || r.status === "EXPIRED") && (
-                  <Link className="btn secondary sm" href="/matching">Tìm mentor khác</Link>
-                )}
-                {!isMentor && r.status === "ACCEPTED" && <Link className="btn sm" href={`/mentoring/book/${r.mentorId}`}>Đặt lịch</Link>}
-                {r.status !== "CANCELLED" && <Link className="btn secondary sm" href={`/messages/${r.id}`}>Nhắn tin</Link>}
-                {r.status === "ACCEPTED" && (
-                  <button className="btn secondary sm" onClick={() => setEnding(r)}>Kết thúc mentoring</button>
-                )}
-              </div>
-            </div>
-            {rejecting === r.id && (
-              <RejectForm request={r} onCancel={() => setRejecting(null)}
-                onSubmit={(reason, note) => act(() => mentoringApi.respond(r.id, "REJECT", note, reason), "Đã từ chối yêu cầu")} />
-            )}
-          </div>
-        ))}
-      </div>
+                <div className="card-foot">
+                  {r.status === "ACCEPTED" && <Button variant="danger-quiet" className="mr-auto" onClick={() => setEnding(r)}>Kết thúc mentoring</Button>}
+                  {r.status !== "CANCELLED" && <ButtonLink href={`/messages/${r.id}`} icon={MessageSquare}>Nhắn tin</ButtonLink>}
+                  {isMentor && r.status === "PENDING" && rejecting !== r.id && (
+                    <>
+                      <Button icon={X} onClick={() => setRejecting(r.id)}>Từ chối</Button>
+                      <Button variant="primary" icon={Check} onClick={() => act(() => mentoringApi.respond(r.id, "ACCEPT", ""), "Đã chấp nhận yêu cầu.")}>Chấp nhận</Button>
+                    </>
+                  )}
+                  {!isMentor && r.status === "PENDING" && (
+                    <Button onClick={() => act(() => mentoringApi.cancelRequest(r.id), "Đã huỷ yêu cầu.")}>Huỷ yêu cầu</Button>
+                  )}
+                  {!isMentor && (r.status === "REJECTED" || r.status === "EXPIRED") && (
+                    <ButtonLink href="/matching" variant="primary">Tìm mentor khác</ButtonLink>
+                  )}
+                  {!isMentor && r.status === "ACCEPTED" && <ButtonLink href={`/mentoring/book/${r.mentorId}`} variant="primary" icon={CalendarPlus}>Đặt lịch</ButtonLink>}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }

@@ -1,0 +1,29 @@
+<!-- @dsCard height=288 -->
+<div style="position:relative;width:960px;height:288px;background:var(--bg);overflow:hidden;font-family:var(--font-sans)">
+<style>.tile{rx:var(--radius-lg)}.b-accent{fill:var(--accent)}.b-ink{fill:var(--ink)}.b-soft{fill:var(--accent-soft)}.b-amber{fill:var(--amber)}.b-line{fill:var(--border)}</style>
+<svg width="960" height="288" viewBox="0 0 960 288" style="position:absolute;inset:0" aria-hidden="true">
+<!-- blocks: accent 2x3 tiles, ink 2x2, accent-soft 2x1 + 1x3, amber 1x1 (star colour, kept small)
+     arrangement: modular grid right of x=480, merged tiles like cards spanning columns, a few cells left empty
+     pattern: geometric, modular, dense UI -> tiles cut by radius-lg, neutral cells in border; chosen because the README describes a card-based work tool on a 4px grid
+     scales: tile 56px with space-2 (8px) gutter = 64px pitch, corners radius-lg (12px) -->
+<rect class="b-accent tile" x="496" y="16" width="120" height="184"/>
+<rect class="b-ink tile" x="752" y="144" width="120" height="120"/>
+<rect class="b-soft tile" x="624" y="16" width="120" height="56"/>
+<rect class="b-soft tile" x="880" y="80" width="56" height="184"/>
+<rect class="b-amber tile" x="688" y="144" width="56" height="56"/>
+<rect class="b-line tile" x="624" y="80" width="56" height="56"/>
+<rect class="b-line tile" x="688" y="80" width="56" height="56"/>
+<rect class="b-line tile" x="752" y="16" width="56" height="56"/>
+<rect class="b-line tile" x="816" y="16" width="56" height="56"/>
+<rect class="b-line tile" x="752" y="80" width="56" height="56"/>
+<rect class="b-line tile" x="816" y="80" width="56" height="56"/>
+<rect class="b-line tile" x="624" y="144" width="56" height="56"/>
+<rect class="b-line tile" x="496" y="208" width="56" height="56"/>
+<rect class="b-line tile" x="560" y="208" width="56" height="56"/>
+<rect class="b-line tile" x="688" y="208" width="56" height="56"/>
+</svg>
+<div style="position:absolute;left:40px;bottom:40px;max-width:440px">
+<div style="font-size:80px;line-height:.95;font-weight:700;letter-spacing:-0.03em;color:var(--ink)">MentorHub</div>
+<div style="margin-top:16px;font-size:14px;line-height:20px;color:var(--ink-muted)">Kết nối mentee với mentor lập trình đã được xác thực.</div>
+</div>
+</div>

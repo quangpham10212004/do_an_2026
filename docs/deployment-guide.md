@@ -9,7 +9,7 @@
 | Dung lượng đĩa | ≥ 8 GB | Image Maven/PyTorch CPU/Node |
 | Python | ≥ 3.9 | Chỉ để chạy script seed / e2e / benchmark (chỉ dùng thư viện chuẩn) |
 | Cổng trống | 3000, 5433–5439, 6379, 8081–8085, 8090, 8091 | 5439 = `matching-db` (pgvector) |
-| Internet | Lần build đầu; khi bật DeepSeek | Tải dependency (kể cả font Nunito/Nunito Sans qua gói npm `@fontsource` — không gọi Google Fonts lúc build) và model embedding; engine rule-based chạy offline được |
+| Internet | Lần build đầu; khi bật DeepSeek | Tải dependency (kể cả font Be Vietnam Pro/JetBrains Mono qua gói npm `@fontsource` — không gọi Google Fonts lúc build) và model embedding; engine rule-based chạy offline được |
 
 Phát triển từng service (không bắt buộc): JDK 21 + Maven 3.9, Python 3.11, Node.js 20.
 

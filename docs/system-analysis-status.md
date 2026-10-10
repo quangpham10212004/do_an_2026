@@ -136,7 +136,7 @@ Endpoint matching-service trong mã nguồn hiện tại:
 
 - API client tách theo miền: `src/features/{auth,profile,matching,mentoring,learning,payment,ai}/api.js`.
 - Một proxy duy nhất `src/app/api/[service]/[...path]/route.ts` — trình duyệt không gọi thẳng service.
-- Design system: `frontend/DESIGN.md` + `tokens.json` + Tailwind v4.
+- Design system: MentorHub trên Claude Design, nguồn trong `frontend/design-system/` (tokens.json → tokens.css) + Tailwind v4.
 - Dependency tối giản: chỉ `next`, `react`, `react-dom`.
 
 ## A.5 Ba tính năng AI

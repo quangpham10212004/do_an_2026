@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardHeader, DescriptionList, Field, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
@@ -71,66 +70,85 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
   }
 
   if (mentor === undefined || request === undefined) return <Loading />;
-  if (!mentor) return <Alert>Không tìm thấy mentor. <Link href="/mentors">Xem danh sách mentor</Link></Alert>;
+  if (!mentor) return <Alert action={<ButtonLink href="/mentors" size="sm">Danh sách mentor</ButtonLink>}>Không tìm thấy mentor này.</Alert>;
   if (!request) {
     return (
-      <Alert type="info">
-        Bạn cần được {mentor.displayName} chấp nhận yêu cầu mentoring trước khi đặt lịch.{" "}
-        <Link href={`/mentoring/request/${mentorId}`}>Gửi yêu cầu</Link>
+      <Alert tone="info" action={<ButtonLink href={`/mentoring/request/${mentorId}`} size="sm" variant="primary">Gửi yêu cầu</ButtonLink>}>
+        Bạn cần được {mentor.displayName} chấp nhận yêu cầu mentoring trước khi đặt lịch.
       </Alert>
     );
   }
   const price = Math.round((Number(mentor.hourlyRate) * form.durationMinutes) / 60 / 1000) * 1000;
+  const ready = !!form.scheduledAt && agendaValid && linkValid;
 
   return (
     <>
-      <PageHead title={`Đặt lịch với ${mentor.displayName}`} subtitle={`${mentor.domain} · ${formatRate(mentor.hourlyRate)}`} />
-      <Alert>{error}</Alert>
-      <form className="card stack" onSubmit={submit}>
-        <div className="grid grid-2">
-          <div className="field">
-            <label htmlFor="duration">Thời lượng</label>
-            <select id="duration" value={form.durationMinutes}
-              onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) as SessionDuration })}>
-              {SESSION_DURATIONS.map((d) => <option key={d} value={d}>{d} phút</option>)}
-            </select>
+      <PageHeader title="Đặt lịch phiên mentoring" back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
+      <form onSubmit={submit} className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Alert>{error}</Alert>
+          <Card>
+            <CardHeader title="Chọn thời gian" />
+            <CardBody className="flex flex-col gap-5">
+              <div className="form-grid">
+                <Field label="Thời lượng" id="duration">
+                  <Select id="duration" value={form.durationMinutes}
+                    onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) as SessionDuration })}>
+                    {SESSION_DURATIONS.map((d) => <option key={d} value={d}>{d} phút</option>)}
+                  </Select>
+                </Field>
+                <Field label="Loại phiên" id="sessionType">
+                  <Select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
+                    {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              <SlotPicker mentorId={mentorId} durationMinutes={form.durationMinutes} value={form.scheduledAt} onChange={pickSlot} refreshKey={slotsVersion} />
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader title="Nội dung phiên" />
+            <CardBody className="flex flex-col gap-5">
+              <Field label="Agenda" id="agenda" required
+                error={agenda.length > 0 && agenda.length < AGENDA_MIN ? `Cần thêm ${AGENDA_MIN - agenda.length} ký tự (tối thiểu ${AGENDA_MIN}).` : undefined}
+                hint={`${agenda.length}/${AGENDA_MAX} ký tự, tối thiểu ${AGENDA_MIN}.`}>
+                <Textarea id="agenda" value={form.agenda} maxLength={AGENDA_MAX} required
+                  placeholder="Bạn muốn trao đổi gì trong phiên này? Ví dụ: review kiến trúc REST API của dự án quản lý kho"
+                  onChange={(e) => setForm({ ...form, agenda: e.target.value })} />
+              </Field>
+              <Field label="Tài liệu đọc trước" id="preRead" hint="Không bắt buộc."
+                error={linkValid ? undefined : "Link phải bắt đầu bằng http:// hoặc https://"}>
+                <Input id="preRead" type="url" value={form.preReadLink} maxLength={500} placeholder="https://github.com/…"
+                  onChange={(e) => setForm({ ...form, preReadLink: e.target.value })} />
+              </Field>
+            </CardBody>
+          </Card>
+        </div>
+        <Card className="lg:sticky lg:top-20">
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+            <Avatar name={mentor.displayName} src={mentor.avatarUrl} />
+            <div className="min-w-0">
+              <div className="font-semibold">{mentor.displayName}</div>
+              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}</div>
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="sessionType">Loại phiên</label>
-            <select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
-              {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="field">
-          <label>Thời gian bắt đầu <span className="muted small">(giờ Việt Nam)</span></label>
-          <SlotPicker mentorId={mentorId} durationMinutes={form.durationMinutes} value={form.scheduledAt} onChange={pickSlot} refreshKey={slotsVersion} />
-        </div>
-        <div className="field">
-          <label htmlFor="agenda">Agenda <span className="muted small">(bắt buộc, {AGENDA_MIN}–{AGENDA_MAX} ký tự)</span></label>
-          <textarea id="agenda" value={form.agenda} maxLength={AGENDA_MAX} required
-            placeholder="Bạn muốn trao đổi gì trong phiên này? Ví dụ: review kiến trúc REST API của dự án quản lý kho"
-            onChange={(e) => setForm({ ...form, agenda: e.target.value })} />
-          <span className={`small ${agendaValid || !agenda ? "muted" : ""}`} style={agendaValid || !agenda ? undefined : { color: "var(--danger, #c92a2a)" }}>
-            {agenda.length}/{AGENDA_MAX}{agenda.length > 0 && agenda.length < AGENDA_MIN ? ` — cần thêm ${AGENDA_MIN - agenda.length} ký tự` : ""}
-          </span>
-        </div>
-        <div className="field">
-          <label htmlFor="preRead">Tài liệu đọc trước <span className="muted small">(tuỳ chọn)</span></label>
-          <input id="preRead" type="url" value={form.preReadLink} maxLength={500} placeholder="https://github.com/..."
-            onChange={(e) => setForm({ ...form, preReadLink: e.target.value })} />
-          {!linkValid && <span className="small" style={{ color: "var(--danger, #c92a2a)" }}>Link phải bắt đầu bằng http:// hoặc https://</span>}
-        </div>
-        <p>
-          <span className="small">{form.scheduledAt ? `${formatDateTime(form.scheduledAt)} · ${form.durationMinutes} phút · ${SESSION_TYPE_LABELS[form.sessionType]}` : <span className="muted">Chọn một khung giờ để tiếp tục</span>}<br /></span>
-          <strong>Chi phí: {formatMoney(price)}</strong>
-        </p>
-        <div className="row">
-          <button className="btn" disabled={busy || !form.scheduledAt || !agendaValid || !linkValid}>
-            {busy ? "Đang kiểm tra lịch..." : price > 0 ? "Xác nhận & thanh toán" : "Xác nhận đặt lịch"}
-          </button>
-          <Link href={`/mentors/${mentorId}`} className="btn secondary">Xem hồ sơ mentor</Link>
-        </div>
+          <CardBody className="flex flex-col gap-4">
+            <DescriptionList items={[
+              ["Thời gian", form.scheduledAt ? formatDateTime(form.scheduledAt) : <span key="t" className="text-ink-subtle">Chưa chọn</span>],
+              ["Thời lượng", `${form.durationMinutes} phút`],
+              ["Loại phiên", SESSION_TYPE_LABELS[form.sessionType]],
+            ]} />
+            <hr className="divider" />
+            <div className="flex items-baseline justify-between">
+              <span className="text-ink-muted">Chi phí</span>
+              <span className="font-mono text-title-2 font-medium tabular">{formatMoney(price)}</span>
+            </div>
+            <Button type="submit" variant="primary" size="lg" block loading={busy} disabled={!ready}>
+              {busy ? "Đang kiểm tra lịch…" : price > 0 ? "Xác nhận và thanh toán" : "Xác nhận đặt lịch"}
+            </Button>
+            {!form.scheduledAt && <p className="text-center text-small text-ink-muted">Chọn một khung giờ để tiếp tục.</p>}
+          </CardBody>
+        </Card>
       </form>
     </>
   );

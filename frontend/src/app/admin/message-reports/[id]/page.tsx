@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead } from "@/components/ui";
+import { Alert, Button, Card, CardBody, CardFooter, CardHeader, DescriptionList, Field, Loading, PageHeader, Textarea } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import { MESSAGE_REPORT_OUTCOME_LABELS, MESSAGE_REPORT_REASON_LABELS } from "@/features/mentoring/labels";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
@@ -38,52 +37,70 @@ function ReportDetail({ id }: { id: string }) {
 
   return (
     <>
-      <PageHead title="Hồ sơ kiểm duyệt tin nhắn" subtitle={<>Mở lúc {formatDateTime(report.createdAt)} <MentoringStatusBadge status={report.status} /></>}>
-        <Link className="btn secondary sm" href="/admin/message-reports">← Danh sách</Link>
-      </PageHead>
-      <Alert>{error}</Alert>
-      <div className="card stack">
-        <div><strong>Lý do:</strong> {MESSAGE_REPORT_REASON_LABELS[report.reason]}</div>
-        <div className="small"><strong>Người báo cáo:</strong> {report.reporterName || report.reporterId}</div>
-        {report.note && <div className="small" style={{ whiteSpace: "pre-wrap" }}><strong>Mô tả:</strong> {report.note}</div>}
-        {report.reportedMessage && (
-          <div className="bubble bot">
-            <div className="meta">{report.senderName || "Người gửi"} · {formatDateTime(report.reportedMessage.createdAt)}</div>
-            {report.reportedMessage.body}
-          </div>
+      <PageHeader
+        back={{ href: "/admin/message-reports", label: "Báo cáo tin nhắn" }}
+        title="Hồ sơ kiểm duyệt tin nhắn"
+        description={`Mở lúc ${formatDateTime(report.createdAt)}`}
+        actions={<MentoringStatusBadge status={report.status} />}
+      />
+      <Alert className="mb-6">{error}</Alert>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Card>
+            <CardHeader title="Tin nhắn bị báo cáo" />
+            <CardBody className="flex flex-col gap-4">
+              <DescriptionList items={[
+                ["Lý do", MESSAGE_REPORT_REASON_LABELS[report.reason]],
+                ["Người báo cáo", report.reporterName || report.reporterId],
+                ...(report.note ? [["Mô tả", <span key="n" className="whitespace-pre-wrap">{report.note}</span>] as [string, ReactNode]] : []),
+              ]} />
+              {report.reportedMessage && (
+                <div className="chat">
+                  <div className="bubble border border-danger">{report.reportedMessage.body}</div>
+                  <div className="bubble-meta">{report.senderName || "Người gửi"} · {formatDateTime(report.reportedMessage.createdAt)}</div>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+          {report.thread ? (
+            <Card>
+              <CardHeader title="Toàn bộ cuộc trò chuyện" description="Tin nhắn bị báo cáo được viền đỏ." />
+              <div className="chat max-h-[50vh] overflow-y-auto p-5">
+                {report.thread.map((m) => (
+                  <div key={m.id} className="flex flex-col gap-1">
+                    <div className={`bubble ${m.senderRole === "MENTOR" ? "" : "bubble-me"} ${m.id === report.reportedMessage?.id ? "outline-2 outline-danger outline-offset-2" : ""}`}>{m.body}</div>
+                    <div className={`bubble-meta ${m.senderRole === "MENTOR" ? "" : "bubble-meta-me"}`}>{m.senderRole === "MENTOR" ? "Mentor" : "Mentee"} · {formatDateTime(m.createdAt)}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : (
+            <Alert tone="info">Hồ sơ đã đóng, nội dung cuộc trò chuyện không còn hiển thị cho người kiểm duyệt.</Alert>
+          )}
+        </div>
+        {report.status === "OPEN" ? (
+          <Card>
+            <CardHeader title="Kết luận" />
+            <CardBody>
+              <Field label="Ghi chú" id="report-note" hint="Gửi kèm cảnh cáo cho người gửi nếu chọn Cảnh cáo.">
+                <Textarea id="report-note" value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} />
+              </Field>
+            </CardBody>
+            <CardFooter>
+              <Button disabled={busy} onClick={() => resolve("DISMISSED")}>Không vi phạm</Button>
+              <Button variant="danger" loading={busy} onClick={() => resolve("WARNED")}>Cảnh cáo người gửi</Button>
+            </CardFooter>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader title="Kết luận" />
+            <CardBody className="flex flex-col gap-2">
+              <div><strong>{report.outcome ? MESSAGE_REPORT_OUTCOME_LABELS[report.outcome] : "—"}</strong> <span className="text-ink-muted">· {formatDateTime(report.resolvedAt)}</span></div>
+              {report.resolutionNote && <p className="whitespace-pre-wrap text-ink-muted">{report.resolutionNote}</p>}
+            </CardBody>
+          </Card>
         )}
       </div>
-      {report.thread ? (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3>Toàn bộ cuộc trò chuyện</h3>
-          <div className="chat" style={{ maxHeight: "50vh", overflowY: "auto" }}>
-            {report.thread.map((m) => (
-              <div key={m.id} className={`bubble ${m.id === report.reportedMessage?.id ? "me" : "bot"}`}>
-                <div className="meta">{m.senderRole === "MENTOR" ? "Mentor" : "Mentee"} · {formatDateTime(m.createdAt)}</div>
-                {m.body}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <Alert type="info">Hồ sơ đã đóng — nội dung cuộc trò chuyện không còn hiển thị cho người kiểm duyệt.</Alert>
-      )}
-      {report.status === "OPEN" ? (
-        <div className="card stack" style={{ marginTop: 12 }}>
-          <h3>Kết luận</h3>
-          <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)}
-            placeholder="Ghi chú (gửi kèm cảnh cáo cho người gửi nếu chọn Cảnh cáo)" />
-          <div className="row">
-            <button className="btn danger sm" disabled={busy} onClick={() => resolve("WARNED")}>Cảnh cáo người gửi</button>
-            <button className="btn secondary sm" disabled={busy} onClick={() => resolve("DISMISSED")}>Không vi phạm</button>
-          </div>
-        </div>
-      ) : (
-        <div className="card stack" style={{ marginTop: 12 }}>
-          <div><strong>Kết luận:</strong> {report.outcome ? MESSAGE_REPORT_OUTCOME_LABELS[report.outcome] : "—"} · {formatDateTime(report.resolvedAt)}</div>
-          {report.resolutionNote && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{report.resolutionNote}</div>}
-        </div>
-      )}
     </>
   );
 }

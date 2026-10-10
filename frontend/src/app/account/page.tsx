@@ -3,7 +3,7 @@
 import NotificationPreferencesCard from "@/features/auth/NotificationPreferencesCard";
 import { useEffect, useState, type FormEvent } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Loading, PageHead, StatusBadge, Flash } from "@/components/ui";
+import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, StatusBadge, type Flash } from "@/components/ui";
 import { authApi } from "@/features/auth/api";
 import { useAuth } from "@/lib/auth";
 import { ROLE_LABELS, formatDate } from "@/lib/format";
@@ -30,7 +30,7 @@ function Account() {
       const u = await authApi.updateMe(fullName);
       setMe(u);
       updateUser({ fullName: u.fullName });
-      setMsg({ info: "Đã cập nhật thông tin" });
+      setMsg({ ok: "Đã cập nhật họ và tên." });
     } catch (err) {
       setMsg({ error: errorMessage(err) });
     }
@@ -41,7 +41,7 @@ function Account() {
     try {
       await authApi.changePassword(pw.currentPassword, pw.newPassword);
       setPw({ currentPassword: "", newPassword: "" });
-      setMsg({ info: "Đã đổi mật khẩu. Các phiên đăng nhập khác đã bị đăng xuất." });
+      setMsg({ ok: "Đã đổi mật khẩu. Các phiên đăng nhập khác đã bị đăng xuất." });
     } catch (err) {
       setMsg({ error: errorMessage(err) });
     }
@@ -49,37 +49,47 @@ function Account() {
 
   if (!me) return msg.error ? <Alert>{msg.error}</Alert> : <Loading />;
   return (
-    <>
-      <PageHead title="Tài khoản" subtitle={`${me.email} · ${ROLE_LABELS[me.role]} · tham gia ${formatDate(me.createdAt)}`}>
-        {me.emailVerified ? <span className="badge good">Email đã xác thực</span> : <span className="badge warn">Email chưa xác thực</span>}
-        <StatusBadge status={me.status} />
-      </PageHead>
-      <Alert type="success">{msg.info}</Alert>
-      <Alert>{msg.error}</Alert>
-      <div className="grid grid-2">
-        <form className="card" onSubmit={saveName}>
-          <h2>Thông tin cá nhân</h2>
-          <div className="field">
-            <label>Họ và tên</label>
-            <input required value={fullName} onChange={(e) => setFullName(e.target.value)} />
-          </div>
-          <button className="btn">Lưu</button>
+    <div className="max-w-[860px]">
+      <PageHeader
+        title="Tài khoản và bảo mật"
+        description={`${me.email} · ${ROLE_LABELS[me.role]} · tham gia ${formatDate(me.createdAt)}`}
+        actions={<>
+          {me.emailVerified ? <Badge tone="success">Email đã xác thực</Badge> : <Badge tone="warning">Email chưa xác thực</Badge>}
+          <StatusBadge status={me.status} />
+        </>}
+      />
+      <FlashAlerts flash={msg} className="mb-6" />
+      <div className="flex flex-col gap-6">
+        <form onSubmit={saveName}>
+          <Card>
+            <CardHeader title="Thông tin cá nhân" />
+            <CardBody>
+              <Field label="Họ và tên" id="acc-name" required>
+                <Input id="acc-name" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} className="max-w-[420px]" />
+              </Field>
+            </CardBody>
+            <CardFooter><Button type="submit" variant="primary">Lưu</Button></CardFooter>
+          </Card>
         </form>
-        <form className="card" onSubmit={changePassword}>
-          <h2>Đổi mật khẩu</h2>
-          <div className="field">
-            <label>Mật khẩu hiện tại</label>
-            <input type="password" required value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} />
-          </div>
-          <div className="field">
-            <label>Mật khẩu mới</label>
-            <input type="password" required minLength={8} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
-          </div>
-          <button className="btn">Đổi mật khẩu</button>
+        <form onSubmit={changePassword}>
+          <Card>
+            <CardHeader title="Đổi mật khẩu" description="Sau khi đổi, các phiên đăng nhập trên thiết bị khác sẽ bị đăng xuất." />
+            <CardBody>
+              <div className="form-grid">
+                <Field label="Mật khẩu hiện tại" id="acc-current">
+                  <Input id="acc-current" type="password" autoComplete="current-password" required value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} />
+                </Field>
+                <Field label="Mật khẩu mới" id="acc-new" hint="Tối thiểu 8 ký tự.">
+                  <Input id="acc-new" type="password" autoComplete="new-password" required minLength={8} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
+                </Field>
+              </div>
+            </CardBody>
+            <CardFooter><Button type="submit">Đổi mật khẩu</Button></CardFooter>
+          </Card>
         </form>
+        {me.role !== "ADMIN" && <NotificationPreferencesCard />}
       </div>
-      {me.role !== "ADMIN" && <div style={{ marginTop: "var(--spacing-16)", maxWidth: 640 }}><NotificationPreferencesCard /></div>}
-    </>
+    </div>
   );
 }
 

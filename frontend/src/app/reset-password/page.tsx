@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { Suspense, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Alert } from "@/components/ui";
+import { Alert, Button, ButtonLink, Field, Input } from "@/components/ui";
+import AuthCard from "@/components/shell/AuthCard";
 import { authApi } from "@/features/auth/api";
 import { ApiError, errorMessage } from "@/lib/api";
 
@@ -42,46 +43,39 @@ function ResetForm() {
   if (!token) {
     return (
       <>
-        <Alert>Thiếu mã đặt lại mật khẩu trong liên kết.</Alert>
-        <Link href="/forgot-password" className="btn">Yêu cầu liên kết mới</Link>
+        <Alert>Liên kết thiếu mã đặt lại mật khẩu. Mở lại liên kết trong email hoặc yêu cầu liên kết mới.</Alert>
+        <ButtonLink href="/forgot-password" variant="primary" block>Yêu cầu liên kết mới</ButtonLink>
       </>
     );
   }
   if (done) {
     return (
       <>
-        <Alert type="success">Đã đặt mật khẩu mới. Mọi phiên đăng nhập cũ đã bị đăng xuất.</Alert>
-        <Link href="/login" className="btn">Đăng nhập</Link>
+        <Alert tone="success">Đã đặt mật khẩu mới. Mọi phiên đăng nhập cũ đã bị đăng xuất.</Alert>
+        <ButtonLink href="/login" variant="primary" block>Đăng nhập</ButtonLink>
       </>
     );
   }
   return (
-    <form onSubmit={submit}>
-      <Alert>{error}</Alert>
-      <div className="field">
-        <label htmlFor="password">Mật khẩu mới</label>
-        <input id="password" type="password" required minLength={8} maxLength={72} value={password} onChange={(e) => setPassword(e.target.value)} />
-        <div className="hint">8-72 ký tự.</div>
-      </div>
-      <div className="field">
-        <label htmlFor="confirm">Nhập lại mật khẩu mới</label>
-        <input id="confirm" type="password" required maxLength={72} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-      </div>
-      <button className="btn block" disabled={loading}>{loading ? "Đang lưu..." : "Đặt mật khẩu mới"}</button>
-      {error && <p className="small" style={{ marginTop: "0.75rem" }}><Link href="/forgot-password">Yêu cầu liên kết mới</Link></p>}
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <Alert action={error ? <Link href="/forgot-password" className="whitespace-nowrap text-small">Liên kết mới</Link> : undefined}>{error}</Alert>
+      <Field label="Mật khẩu mới" id="password" hint="8-72 ký tự.">
+        <Input id="password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <Field label="Nhập lại mật khẩu mới" id="confirm">
+        <Input id="confirm" type="password" autoComplete="new-password" required maxLength={72} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      </Field>
+      <Button type="submit" variant="primary" size="lg" block loading={loading}>{loading ? "Đang lưu…" : "Đặt mật khẩu mới"}</Button>
     </form>
   );
 }
 
 export default function ResetPasswordPage() {
   return (
-    <div style={{ maxWidth: 420, margin: "2rem auto" }}>
-      <div className="card">
-        <h1>Đặt lại mật khẩu</h1>
-        <Suspense>
-          <ResetForm />
-        </Suspense>
-      </div>
-    </div>
+    <AuthCard title="Đặt lại mật khẩu" footer={<Link href="/login">Quay lại đăng nhập</Link>}>
+      <Suspense>
+        <ResetForm />
+      </Suspense>
+    </AuthCard>
   );
 }

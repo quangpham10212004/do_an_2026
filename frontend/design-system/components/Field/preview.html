@@ -1,0 +1,10 @@
+<!-- @dsCard group="Forms" height=330 subtitle="Input, select, textarea, checkbox, hint and error" -->
+<div style="background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-size:14px;line-height:22px;padding:20px;display:flex;flex-direction:column;gap:16px">
+<div class="form-grid" style="max-width:560px">
+<div class="field"><label class="field-label" for="f1">Họ và tên<span class="req">*</span></label><input class="input" id="f1" value="Nguyễn Minh Anh"></div>
+<div class="field"><label class="field-label" for="f2">Múi giờ</label><select class="select" id="f2"><option>Asia/Ho_Chi_Minh</option></select></div>
+<div class="field" data-invalid><label class="field-label" for="f3">Email</label><input class="input" id="f3" value="anh@"><div class="field-error">Email chưa đúng định dạng, ví dụ ten@gmail.com.</div></div>
+<div class="field"><label class="field-label" for="f4">Đơn giá (đ/giờ)</label><input class="input" id="f4" placeholder="300000"><div class="field-hint">Để 0 nếu bạn mentor miễn phí.</div></div>
+<div class="field span-2"><label class="field-label" for="f5">Giới thiệu</label><textarea class="textarea" id="f5" placeholder="Bạn muốn mentor biết gì về bạn?"></textarea></div>
+<label class="check span-2"><input type="checkbox" checked><span>Nhận email nhắc lịch trước 24 giờ</span></label></div>
+</div>

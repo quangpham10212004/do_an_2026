@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Stars } from "@/components/ui";
+import { Alert, Badge, Button, Card, CardHeader, Chip, Chips, EmptyState, Stars, Textarea } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import ReviewForm from "@/features/mentoring/ReviewForm";
 import { REVIEW_SUBSCORES, REVIEW_TAG_LABELS } from "@/features/mentoring/labels";
@@ -13,17 +13,20 @@ function ReplyForm({ review, onDone }: { review: Review; onDone: () => void }) {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   return (
-    <div className="stack" style={{ marginTop: 6 }}>
+    <div className="mt-2 flex flex-col gap-2">
       <Alert>{error}</Alert>
-      <textarea value={text} maxLength={500} onChange={(e) => setText(e.target.value)} placeholder="Phản hồi công khai (một lần, tối đa 500 ký tự)" />
-      <button className="btn secondary sm" disabled={!text.trim()} onClick={async () => {
-        try {
-          await mentoringApi.replyReview(review.id, text.trim());
-          onDone();
-        } catch (e) {
-          setError(errorMessage(e));
-        }
-      }}>Gửi phản hồi</button>
+      <Textarea value={text} maxLength={500} onChange={(e) => setText(e.target.value)} className="min-h-[64px]"
+        aria-label="Phản hồi đánh giá" placeholder="Phản hồi công khai (một lần, tối đa 500 ký tự)" />
+      <div>
+        <Button size="sm" disabled={!text.trim()} onClick={async () => {
+          try {
+            await mentoringApi.replyReview(review.id, text.trim());
+            onDone();
+          } catch (e) {
+            setError(errorMessage(e));
+          }
+        }}>Gửi phản hồi</Button>
+      </div>
     </div>
   );
 }
@@ -43,43 +46,62 @@ export default function MentorReviews({ mentorId }: { mentorId: Uuid }) {
   }, [load]);
   if (!data) return null;
   const topTags = Object.entries(data.tags).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const subscores = REVIEW_SUBSCORES.filter(([k]) => data[k] !== null);
   return (
-    <div className="card" id="reviews">
-      <h2>Đánh giá ({data.reviewCount})</h2>
-      <p className="small muted">{data.sessionsCompleted} phiên đã hoàn thành</p>
-      {data.newMentor
-        ? <p><span className="badge new">Mentor mới</span> <span className="small muted">Điểm hiển thị khi có từ 3 đánh giá.</span></p>
-        : <p><Stars value={data.rating} /> {data.rating?.toFixed(1)}/5</p>}
-      {!data.newMentor && (
-        <p className="small muted">
-          {REVIEW_SUBSCORES.map(([k, l]) => data[k] !== null && `${l} ${data[k]?.toFixed(1)}`).filter(Boolean).join(" · ")}
-        </p>
-      )}
-      {topTags.length > 0 && (
-        <div className="chips" style={{ marginBottom: 8 }}>
-          {topTags.map(([t, n]) => <span key={t} className="chip">{REVIEW_TAG_LABELS[t] || t} ({n})</span>)}
-        </div>
-      )}
-      {data.reviews.length === 0 && <p className="muted">Chưa có đánh giá.</p>}
-      {(showAll ? data.reviews : data.reviews.slice(0, 5)).map((r) => (
-        <div key={r.id} className="list-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
-          <div className="row"><Stars value={r.rating} /><strong className="small">{r.menteeName}</strong>
-            <span className="muted small">{formatDate(r.createdAt)}{r.updatedAt ? " · đã sửa" : ""}</span></div>
-          {(r.tags?.length ?? 0) > 0 && <div className="small muted">{r.tags?.map((t) => REVIEW_TAG_LABELS[t] || t).join(" · ")}</div>}
-          {r.comment && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{r.comment}</div>}
-          {r.mentorReply && (
-            <div className="small" style={{ borderLeft: "3px solid var(--color-faded-gray)", paddingLeft: 8, marginTop: 4 }}>
-              <strong>Mentor phản hồi:</strong> {r.mentorReply}
+    <Card>
+      <div id="reviews" />
+      <CardHeader title={`Đánh giá (${data.reviewCount})`} description={`${data.sessionsCompleted} phiên đã hoàn thành`} />
+      <div className="flex flex-col gap-4 border-b border-border px-5 py-4">
+        {data.newMentor ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="accent">Mentor mới</Badge>
+            <span className="text-small text-ink-muted">Điểm hiển thị khi có từ 3 đánh giá.</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[28px] leading-[34px] font-medium tabular">{data.rating?.toFixed(1)}</span>
+              <Stars value={data.rating} />
             </div>
-          )}
-          {r.canReply && <ReplyForm review={r} onDone={load} />}
-          {r.canEdit && editing !== r.id && <button className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setEditing(r.id)}>Sửa đánh giá</button>}
-          {editing === r.id && <ReviewForm sessionId={r.sessionId} existing={r} onDone={() => { setEditing(null); load(); }} />}
-        </div>
-      ))}
+            {subscores.map(([k, l]) => (
+              <div key={k} className="flex flex-col">
+                <span className="text-small text-ink-muted">{l}</span>
+                <span className="font-mono tabular">{data[k]?.toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {topTags.length > 0 && (
+          <Chips>{topTags.map(([t, n]) => <Chip key={t}>{REVIEW_TAG_LABELS[t] || t} <span className="text-ink-subtle tabular">{n}</span></Chip>)}</Chips>
+        )}
+      </div>
+      {data.reviews.length === 0 && <EmptyState title="Chưa có đánh giá">Đánh giá xuất hiện sau khi mentee hoàn thành phiên học.</EmptyState>}
+      <div className="flex flex-col divide-y divide-border">
+        {(showAll ? data.reviews : data.reviews.slice(0, 5)).map((r) => (
+          <article key={r.id} className="flex flex-col gap-1.5 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Stars value={r.rating} />
+              <strong>{r.menteeName}</strong>
+              <span className="text-small text-ink-subtle">{formatDate(r.createdAt)}{r.updatedAt ? " · đã sửa" : ""}</span>
+            </div>
+            {(r.tags?.length ?? 0) > 0 && <div className="text-small text-ink-muted">{r.tags?.map((t) => REVIEW_TAG_LABELS[t] || t).join(" · ")}</div>}
+            {r.comment && <p className="whitespace-pre-wrap">{r.comment}</p>}
+            {r.mentorReply && (
+              <div className="well mt-1 text-small">
+                <span className="font-semibold">Mentor phản hồi:</span> {r.mentorReply}
+              </div>
+            )}
+            {r.canReply && <ReplyForm review={r} onDone={load} />}
+            {r.canEdit && editing !== r.id && <div><Button size="sm" variant="ghost" onClick={() => setEditing(r.id)}>Sửa đánh giá</Button></div>}
+            {editing === r.id && <ReviewForm sessionId={r.sessionId} existing={r} onDone={() => { setEditing(null); load(); }} />}
+          </article>
+        ))}
+      </div>
       {data.reviews.length > 5 && (
-        <button className="btn ghost sm" onClick={() => setShowAll(!showAll)}>{showAll ? "Thu gọn" : `Xem tất cả ${data.reviews.length} đánh giá`}</button>
+        <div className="border-t border-border px-5 py-3">
+          <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>{showAll ? "Thu gọn" : `Xem tất cả ${data.reviews.length} đánh giá`}</Button>
+        </div>
       )}
-    </div>
+    </Card>
   );
 }

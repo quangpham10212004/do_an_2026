@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Alert, type Flash } from "@/components/ui";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Button, Card, CardBody, CardHeader, Checkbox, EmptyState, FlashAlerts, Input, List, ListRow, Loading, type Flash } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { exceptionTimeLabel, formatLocalDate, profileApi } from "@/features/profile/api";
 import type { AvailabilityException, AvailabilityExceptionInput, Uuid } from "@/types";
@@ -87,47 +88,47 @@ export default function AvailabilityExceptions({ mentorId }: { mentorId: Uuid })
   }
 
   return (
-    <div>
-      <h3>Ngày nghỉ / bận đột xuất</h3>
-      <p className="muted small">Mentee sẽ không đặt được phiên mới vào các khoảng này. Phiên đã xác nhận không tự huỷ.</p>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert type="warn">{msg.info}</Alert>
-      <Alert>{msg.error}</Alert>
-      {items === null && <p className="muted small">Đang tải...</p>}
-      {items?.length === 0 && <p className="muted small">Chưa có ngoại lệ nào sắp tới.</p>}
-      {items?.map((x) => (
-        <div key={x.id} className="row between small list-item">
-          <span>
-            <strong>{formatLocalDate(x.date)}</strong> · {exceptionTimeLabel(x)}
-            {x.reason && <span className="muted"> — {x.reason}</span>}
-          </span>
-          <span className="row" style={{ gap: 4 }}>
-            <button type="button" className="btn ghost sm" onClick={() => edit(x)}>Sửa</button>
-            <button type="button" className="btn ghost sm" onClick={() => remove(x)}>Xoá</button>
-          </span>
-        </div>
-      ))}
-      <form onSubmit={submit} style={{ marginTop: "0.75rem" }}>
-        <div className="slot-row">
-          <input type="date" required min={todayIso()} value={form.date} aria-label="Ngày" onChange={(e) => setForm({ ...form, date: e.target.value })} />
-          <label className="small row" style={{ gap: 4 }}>
-            <input type="checkbox" checked={form.wholeDay} onChange={(e) => setForm({ ...form, wholeDay: e.target.checked })} /> Cả ngày
-          </label>
-          {!form.wholeDay && (
-            <>
-              <input type="time" required value={form.startTime} aria-label="Từ giờ" onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
-              <input type="time" required value={form.endTime} aria-label="Đến giờ" onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
-            </>
-          )}
-        </div>
-        <div className="field">
-          <input value={form.reason} maxLength={300} placeholder="Lý do (tuỳ chọn)" onChange={(e) => setForm({ ...form, reason: e.target.value })} />
-        </div>
-        <div className="row">
-          <button className="btn secondary sm" disabled={busy}>{form.id ? "Lưu thay đổi" : "+ Thêm ngoại lệ"}</button>
-          {form.id && <button type="button" className="btn ghost sm" onClick={() => setForm(EMPTY_FORM)}>Huỷ sửa</button>}
-        </div>
-      </form>
-    </div>
+    <Card>
+      <CardHeader title="Ngày nghỉ và giờ bận đột xuất" description="Mentee không đặt được phiên mới vào các khoảng này. Phiên đã xác nhận không tự huỷ." />
+      {items === null && <Loading />}
+      {items?.length === 0 && <EmptyState title="Chưa có ngày nghỉ nào sắp tới">Thêm ngày nghỉ bên dưới khi bạn bận.</EmptyState>}
+      {!!items?.length && (
+        <List>
+          {items.map((x) => (
+            <ListRow
+              key={x.id}
+              title={<span className="tabular">{formatLocalDate(x.date)} · {exceptionTimeLabel(x)}</span>}
+              meta={x.reason || undefined}
+              trailing={<>
+                <Button size="sm" variant="ghost" iconOnly icon={Pencil} label="Sửa" onClick={() => edit(x)} />
+                <Button size="sm" variant="ghost" iconOnly icon={Trash2} label="Xoá" onClick={() => remove(x)} />
+              </>}
+            />
+          ))}
+        </List>
+      )}
+      <CardBody className="flex flex-col gap-3 border-t border-border">
+        <FlashAlerts flash={{ ok: msg.ok, error: msg.error }} />
+        {msg.info && <FlashAlerts flash={{ info: msg.info }} />}
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Input type="date" required min={todayIso()} value={form.date} aria-label="Ngày" className="w-auto" onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <Checkbox label="Cả ngày" checked={form.wholeDay} onChange={(e) => setForm({ ...form, wholeDay: e.target.checked })} />
+            {!form.wholeDay && (
+              <>
+                <Input type="time" required value={form.startTime} aria-label="Từ giờ" className="w-auto" onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
+                <span className="text-ink-muted">đến</span>
+                <Input type="time" required value={form.endTime} aria-label="Đến giờ" className="w-auto" onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
+              </>
+            )}
+          </div>
+          <Input value={form.reason} maxLength={300} placeholder="Lý do (không bắt buộc)" aria-label="Lý do" onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+          <div className="form-actions">
+            <Button type="submit" icon={form.id ? undefined : Plus} loading={busy}>{form.id ? "Lưu thay đổi" : "Thêm ngày nghỉ"}</Button>
+            {form.id && <Button variant="ghost" onClick={() => setForm(EMPTY_FORM)}>Huỷ sửa</Button>}
+          </div>
+        </form>
+      </CardBody>
+    </Card>
   );
 }

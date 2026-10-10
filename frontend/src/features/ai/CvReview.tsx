@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { Alert } from "@/components/ui";
+import { Plus, X } from "lucide-react";
+import { Alert, Button, Card, CardBody, CardFooter, CardHeader, Chips, Field, Input, Textarea } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import type { ConfirmedCvFields, Cv, CvProject } from "@/types";
 
@@ -82,74 +83,80 @@ export default function CvReview({ cv, busy, onConfirm }: CvReviewProps) {
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h2>Xem lại thông tin trích xuất từ CV</h2>
-      <p className="muted small">
-        {cv.fileName} · engine {cv.engine}. Sửa hoặc bỏ những gì chưa đúng. Chưa có gì được lưu vào hồ sơ của bạn — chatbot chỉ dùng
-        thông tin bạn xác nhận ở đây, và kỹ năng chỉ được thêm vào hồ sơ khi bạn chọn dùng mục tiêu cuối cùng.
-      </p>
-      <Alert>{error}</Alert>
-      <div className="grid grid-2" style={{ gridTemplateColumns: "2fr 1fr" }}>
-        <div className="field">
-          <label>Vai trò hiện tại</label>
-          <input value={role} maxLength={120} onChange={(e) => setRole(e.target.value)} placeholder="Ví dụ: Junior Backend Developer" />
-        </div>
-        <div className="field">
-          <label>Số năm kinh nghiệm</label>
-          <input type="number" min={0} max={45} value={years} onChange={(e) => setYears(e.target.value)} placeholder="Chưa xác định" />
-        </div>
-      </div>
-
-      <div className="field">
-        <label>Kỹ năng ({skills.length}/30)</label>
-        <div className="chips" style={{ marginBottom: 6 }}>
-          {skills.length === 0 && <span className="muted small">Không có kỹ năng nào</span>}
-          {skills.map((s, i) => (
-            <span className="chip" key={s}>
-              {s}{" "}
-              <button type="button" aria-label={`Bỏ ${s}`} title="Bỏ kỹ năng này" onClick={() => setSkills(removeAt(skills, i))}
-                style={{ border: "none", background: "none", cursor: "pointer", padding: 0, fontWeight: 700 }}>×</button>
-            </span>
-          ))}
-        </div>
-        {skills.length < 30 && (
-          <div className="row" style={{ gap: 8 }}>
-            <input value={newSkill} maxLength={60} onChange={(e) => setNewSkill(e.target.value)} onKeyDown={onSkillKey} placeholder="Thêm kỹ năng rồi nhấn Enter" />
-            <button type="button" className="btn secondary sm" onClick={addSkill} disabled={!newSkill.trim()}>Thêm</button>
+    <form onSubmit={submit}>
+      <Card>
+        <CardHeader
+          title="Xem lại thông tin trích xuất từ CV"
+          description={<>{cv.fileName} · engine {cv.engine}. Sửa hoặc bỏ những gì chưa đúng. Chưa có gì được lưu vào hồ sơ: chatbot chỉ dùng
+            thông tin bạn xác nhận ở đây, và kỹ năng chỉ được thêm vào hồ sơ khi bạn chọn dùng mục tiêu cuối cùng.</>}
+        />
+        <CardBody className="flex flex-col gap-5">
+          <Alert>{error}</Alert>
+          <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+            <Field label="Vai trò hiện tại" id="cvr-role">
+              <Input id="cvr-role" value={role} maxLength={120} onChange={(e) => setRole(e.target.value)} placeholder="Ví dụ: Junior Backend Developer" />
+            </Field>
+            <Field label="Số năm kinh nghiệm" id="cvr-years">
+              <Input id="cvr-years" type="number" min={0} max={45} value={years} onChange={(e) => setYears(e.target.value)} placeholder="Chưa xác định" />
+            </Field>
           </div>
-        )}
-      </div>
 
-      <div className="field">
-        <label>Dự án ({projects.length}/8)</label>
-        {projects.length === 0 && <p className="muted small">Không có dự án nào — chatbot sẽ hỏi thêm về kinh nghiệm thực hành.</p>}
-        {projects.map((p, i) => (
-          <div key={i} className="list-item" style={{ alignItems: "start", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <input value={p.name} maxLength={120} onChange={(e) => setProject(i, { name: e.target.value })} placeholder="Tên dự án" />
-              <textarea value={p.description} maxLength={400} onChange={(e) => setProject(i, { description: e.target.value })} placeholder="Mô tả ngắn" style={{ minHeight: 50, marginTop: 4 }} />
-              {p.technologies.length > 0 && <div className="muted small">Công nghệ: {p.technologies.join(", ")}</div>}
+          <Field label={`Kỹ năng (${skills.length}/30)`} id="cvr-skill">
+            <Chips className="mb-1">
+              {skills.length === 0 && <span className="text-small text-ink-muted">Chưa có kỹ năng nào</span>}
+              {skills.map((s, i) => (
+                <span className="chip" key={s}>
+                  {s}
+                  <button type="button" aria-label={`Bỏ ${s}`} title="Bỏ kỹ năng này" onClick={() => setSkills(removeAt(skills, i))}
+                    className="-mr-1 grid size-4 cursor-pointer place-items-center rounded-sm text-ink-muted hover:text-danger">
+                    <X aria-hidden="true" className="size-3.5" />
+                  </button>
+                </span>
+              ))}
+            </Chips>
+            {skills.length < 30 && (
+              <div className="input-group">
+                <Input id="cvr-skill" value={newSkill} maxLength={60} onChange={(e) => setNewSkill(e.target.value)} onKeyDown={onSkillKey} placeholder="Thêm kỹ năng rồi nhấn Enter" />
+                <Button onClick={addSkill} disabled={!newSkill.trim()}>Thêm</Button>
+              </div>
+            )}
+          </Field>
+
+          <Field label={`Dự án (${projects.length}/8)`}>
+            {projects.length === 0 && <p className="text-small text-ink-muted">Chưa có dự án nào. Chatbot sẽ hỏi thêm về kinh nghiệm thực hành.</p>}
+            <div className="flex flex-col gap-3">
+              {projects.map((p, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-md border border-border p-3">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <Input value={p.name} maxLength={120} onChange={(e) => setProject(i, { name: e.target.value })} placeholder="Tên dự án" aria-label={`Tên dự án ${i + 1}`} />
+                    <Textarea value={p.description} maxLength={400} onChange={(e) => setProject(i, { description: e.target.value })} placeholder="Mô tả ngắn" aria-label={`Mô tả dự án ${i + 1}`} className="min-h-[64px]" />
+                    {p.technologies.length > 0 && <div className="text-small text-ink-muted">Công nghệ: {p.technologies.join(", ")}</div>}
+                  </div>
+                  <Button size="sm" variant="ghost" iconOnly icon={X} label="Bỏ dự án" onClick={() => setProjects(removeAt(projects, i))} />
+                </div>
+              ))}
             </div>
-            <button type="button" className="btn ghost sm" onClick={() => setProjects(removeAt(projects, i))}>Bỏ</button>
-          </div>
-        ))}
-        {projects.length < 8 && (
-          <button type="button" className="btn ghost sm" onClick={() => setProjects([...projects, { name: "", description: "", technologies: [] }])}>+ Thêm dự án</button>
-        )}
-      </div>
+            {projects.length < 8 && (
+              <div><Button size="sm" variant="ghost" icon={Plus} onClick={() => setProjects([...projects, { name: "", description: "", technologies: [] }])}>Thêm dự án</Button></div>
+            )}
+          </Field>
 
-      <div className="field">
-        <label>Học vấn ({education.length}/6)</label>
-        {education.map((ed, i) => (
-          <div key={i} className="row" style={{ gap: 8, marginBottom: 4 }}>
-            <input value={ed} maxLength={200} onChange={(e) => setEducation(education.map((x, j) => (j === i ? e.target.value : x)))} />
-            <button type="button" className="btn ghost sm" onClick={() => setEducation(removeAt(education, i))}>Bỏ</button>
-          </div>
-        ))}
-        {education.length < 6 && <button type="button" className="btn ghost sm" onClick={() => setEducation([...education, ""])}>+ Thêm học vấn</button>}
-      </div>
-
-      <button className="btn" disabled={busy}>{busy ? "Đang lưu..." : "Xác nhận thông tin & bắt đầu trò chuyện"}</button>
+          <Field label={`Học vấn (${education.length}/6)`}>
+            <div className="flex flex-col gap-2">
+              {education.map((ed, i) => (
+                <div key={i} className="input-group">
+                  <Input value={ed} maxLength={200} aria-label={`Học vấn ${i + 1}`} onChange={(e) => setEducation(education.map((x, j) => (j === i ? e.target.value : x)))} />
+                  <Button variant="ghost" iconOnly icon={X} label="Bỏ" onClick={() => setEducation(removeAt(education, i))} />
+                </div>
+              ))}
+            </div>
+            {education.length < 6 && <div><Button size="sm" variant="ghost" icon={Plus} onClick={() => setEducation([...education, ""])}>Thêm học vấn</Button></div>}
+          </Field>
+        </CardBody>
+        <CardFooter>
+          <Button type="submit" variant="primary" loading={busy}>{busy ? "Đang lưu…" : "Xác nhận và bắt đầu trò chuyện"}</Button>
+        </CardFooter>
+      </Card>
     </form>
   );
 }

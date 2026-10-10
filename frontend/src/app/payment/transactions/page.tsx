@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead } from "@/components/ui";
+import { Receipt } from "lucide-react";
+import { Alert, Card, EmptyState, Loading, PageHeader, Stat, Stats } from "@/components/ui";
 import { feePercent, paymentApi, paymentReasonLabel } from "@/features/payment/api";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -28,43 +29,47 @@ function Transactions({ user }: { user: SessionUser }) {
 
   return (
     <>
-      <PageHead title="Giao dịch" subtitle={isMentor ? "Thu nhập từ các phiên mentoring (đã trừ phí nền tảng)." : "Các khoản thanh toán và hoàn tiền của bạn."} />
-      <Alert>{error}</Alert>
+      <PageHeader title="Giao dịch" description={isMentor ? "Thu nhập từ các phiên mentoring, đã trừ phí nền tảng." : "Các khoản thanh toán và hoàn tiền của bạn."} />
+      <Alert className="mb-6">{error}</Alert>
       {isMentor && items.length > 0 && (
-        <div className="grid grid-2" style={{ marginBottom: 16 }}>
-          <div className="card"><div className="muted small">Thu nhập (sau phí)</div><div className="stat">{formatMoney(earned)}</div></div>
-          <div className="card"><div className="muted small">Đang tạm giữ (tranh chấp)</div><div className="stat">{formatMoney(onHold)}</div></div>
+        <div className="mb-6">
+          <Stats>
+            <Stat label="Thu nhập (sau phí)" value={formatMoney(earned)} />
+            <Stat label="Đang tạm giữ (tranh chấp)" value={formatMoney(onHold)} />
+          </Stats>
         </div>
       )}
-      <div className="card">
-        {items.length === 0 && <Empty>Chưa có giao dịch nào.</Empty>}
-        {items.map((t) => (
-          <div key={t.id} className="list-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <div className="row between">
-              <span>
-                <strong>{formatMoney(t.amount)}</strong> <span className="muted small">· {formatDateTime(t.createdAt)}</span>
-              </span>
-              <MentoringStatusBadge status={t.status} />
-            </div>
-            {t.status === "FAILED" ? (
-              <div className="small muted">{paymentReasonLabel(t.failureReason)}</div>
-            ) : (
-              <div className="small muted">
-                Phí nền tảng {feePercent(t.feeRate)}: {formatMoney(t.fee)} · Mentor nhận: {formatMoney(t.mentorEarning)}
-                {t.holdReason && t.status === "ON_HOLD" && ` · Tạm giữ: ${paymentReasonLabel(t.holdReason)}`}
-              </div>
-            )}
-            {t.status !== "FAILED" && t.status !== "PENDING" && (
-              <Link className="small" href={`/payment/receipts/${t.id}`}>Biên lai</Link>
-            )}
-            {t.refunds.map((r) => (
-              <div key={r.id} className="small">
-                Hoàn {formatMoney(r.amount)} · {formatDateTime(r.createdAt)}{r.reason && ` · ${paymentReasonLabel(r.reason)}`}
+      <Card>
+        {items.length === 0 ? <EmptyState icon={Receipt} title="Chưa có giao dịch nào">Giao dịch xuất hiện sau khi phiên có phí được thanh toán.</EmptyState> : (
+          <div className="flex flex-col divide-y divide-border">
+            {items.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-start gap-3 px-5 py-4 max-sm:px-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-title-3 font-medium tabular">{formatMoney(t.amount)}</span>
+                    <MentoringStatusBadge status={t.status} />
+                  </div>
+                  <div className="text-small text-ink-subtle tabular">{formatDateTime(t.createdAt)}</div>
+                  <div className="mt-1 text-small text-ink-muted">
+                    {t.status === "FAILED" ? paymentReasonLabel(t.failureReason) : <>
+                      Phí nền tảng {feePercent(t.feeRate)}: {formatMoney(t.fee)} · Mentor nhận: {formatMoney(t.mentorEarning)}
+                      {t.holdReason && t.status === "ON_HOLD" && ` · Tạm giữ: ${paymentReasonLabel(t.holdReason)}`}
+                    </>}
+                  </div>
+                  {t.refunds.map((r) => (
+                    <div key={r.id} className="text-small text-ink-muted">
+                      Hoàn {formatMoney(r.amount)} · {formatDateTime(r.createdAt)}{r.reason && ` · ${paymentReasonLabel(r.reason)}`}
+                    </div>
+                  ))}
+                </div>
+                {t.status !== "FAILED" && t.status !== "PENDING" && (
+                  <Link className="btn btn-sm btn-ghost" href={`/payment/receipts/${t.id}`}>Biên lai</Link>
+                )}
               </div>
             ))}
           </div>
-        ))}
-      </div>
+        )}
+      </Card>
     </>
   );
 }

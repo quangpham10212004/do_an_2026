@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Alert, Loading } from "@/components/ui";
+import { Alert, Card, CardBody, CardHeader, FlashAlerts, Loading } from "@/components/ui";
 import { authApi, type NotificationPreferences } from "@/features/auth/api";
 import { errorMessage } from "@/lib/api";
 
@@ -35,25 +35,34 @@ export default function NotificationPreferencesCard() {
     }
   };
 
+  const Toggle = ({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) => (
+    <label className="flex cursor-pointer items-start gap-3 py-3">
+      <input type="checkbox" className="mt-1 size-4 flex-none accent-[var(--accent)]" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        <span className="block font-medium">{label}</span>
+        <span className="text-small text-ink-muted">{hint}</span>
+      </span>
+    </label>
+  );
+
   return (
-    <div className="card stack" id="notifications">
-      <h2>Email thông báo</h2>
-      <Alert type="success">{msg.ok}</Alert>
-      <Alert>{msg.error}</Alert>
-      {CATEGORIES.map(([key, label, hint]) => (
-        <label key={key} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
-          <input type="checkbox" checked={Boolean(prefs[key])} onChange={(e) => save({ ...prefs, [key]: e.target.checked })} />
-          <span><strong>{label}</strong><br /><span className="small muted">{hint}</span></span>
-        </label>
-      ))}
-      <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
-        <input type="checkbox" checked={prefs.quietHours} onChange={(e) => save({ ...prefs, quietHours: e.target.checked })} />
-        <span>
-          <strong>Giờ yên tĩnh {prefs.quietStart || "22:00"}–{prefs.quietEnd || "07:00"}</strong><br />
-          <span className="small muted">Email trong khung này được gửi lúc 07:00 (theo múi giờ trong hồ sơ), trừ nhắc lịch của phiên bắt đầu trong khung giờ đó.</span>
-        </span>
-      </label>
-      <div className="small muted">Email bảo mật (xác thực, đặt lại mật khẩu) và kết quả xét duyệt mentor luôn được gửi.</div>
-    </div>
+    <Card>
+      <div id="notifications" />
+      <CardHeader title="Email thông báo" description="Email bảo mật (xác thực, đặt lại mật khẩu) và kết quả xét duyệt mentor luôn được gửi." />
+      <CardBody className="flex flex-col">
+        <FlashAlerts flash={msg} className="mb-2" />
+        <div className="flex flex-col divide-y divide-border">
+          {CATEGORIES.map(([key, label, hint]) => (
+            <Toggle key={key} label={label} hint={hint} checked={Boolean(prefs[key])} onChange={(v) => save({ ...prefs, [key]: v })} />
+          ))}
+          <Toggle
+            label={`Giờ yên tĩnh ${prefs.quietStart || "22:00"}–${prefs.quietEnd || "07:00"}`}
+            hint="Email trong khung này được gửi lúc 07:00 (theo múi giờ trong hồ sơ), trừ nhắc lịch của phiên bắt đầu trong khung giờ đó."
+            checked={prefs.quietHours}
+            onChange={(v) => save({ ...prefs, quietHours: v })}
+          />
+        </div>
+      </CardBody>
+    </Card>
   );
 }

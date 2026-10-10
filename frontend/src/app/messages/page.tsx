@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Empty, Loading, PageHead } from "@/components/ui";
+import { MessageSquare } from "lucide-react";
+import { Alert, Avatar, Card, Count, EmptyState, List, ListRow, Loading, PageHeader } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import { errorMessage } from "@/lib/api";
@@ -31,34 +31,38 @@ function Inbox() {
 
   return (
     <>
-      <PageHead title="Tin nhắn" subtitle="Trao đổi với mentor / mentee ngay trong từng yêu cầu mentoring." />
-      <Alert>{error}</Alert>
-      {!items ? <Loading /> : items.length === 0 ? (
-        <Empty>Chưa có cuộc trò chuyện nào. Cuộc trò chuyện mở khi một yêu cầu mentoring được gửi.</Empty>
-      ) : (
-        <div className="stack">
-          {items.map((c) => (
-            <Link key={c.id} href={`/messages/${c.id}`} className="card list-item" style={{ textDecoration: "none" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <strong>
-                    {c.counterpartName || "Người dùng"}{" "}
-                    <span className="muted small">· {c.counterpartRole === "MENTOR" ? "mentor" : "mentee"}</span>
-                  </strong>
-                  <span className="row">
+      <PageHeader title="Tin nhắn" description="Mỗi yêu cầu mentoring là một cuộc trò chuyện với mentor hoặc mentee." />
+      <Alert className="mb-6">{error}</Alert>
+      {!items ? <Loading /> : (
+        <Card>
+          {items.length === 0 ? (
+            <EmptyState icon={MessageSquare} title="Chưa có cuộc trò chuyện nào">Cuộc trò chuyện mở khi một yêu cầu mentoring được gửi.</EmptyState>
+          ) : (
+            <List>
+              {items.map((c) => (
+                <ListRow
+                  key={c.id}
+                  href={`/messages/${c.id}`}
+                  unread={c.unread > 0}
+                  leading={<Avatar name={c.counterpartName} />}
+                  title={<span className="inline-flex flex-wrap items-center gap-2">
+                    {c.counterpartName || "Người dùng"}
+                    <span className="text-small font-normal text-ink-muted">{c.counterpartRole === "MENTOR" ? "Mentor" : "Mentee"}</span>
                     <MentoringStatusBadge status={c.requestStatus} />
-                    {c.unread > 0 && <span className="badge bad">{c.unread} chưa đọc</span>}
-                  </span>
-                </div>
-                <div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {c.lastMessage ? `${c.lastFromMe ? "Bạn: " : ""}${c.lastMessage}` : "Chưa có tin nhắn"}
-                  {c.lastMessageAt && ` · ${formatDateTime(c.lastMessageAt)}`}
-                  {!c.writable && " · chỉ xem"}
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+                  </span>}
+                  meta={<span className="block truncate">
+                    {c.lastMessage ? `${c.lastFromMe ? "Bạn: " : ""}${c.lastMessage}` : "Chưa có tin nhắn"}
+                    {!c.writable && " · chỉ xem"}
+                  </span>}
+                  trailing={<>
+                    {c.lastMessageAt && <span className="text-small text-ink-subtle tabular">{formatDateTime(c.lastMessageAt)}</span>}
+                    <Count value={c.unread} />
+                  </>}
+                />
+              ))}
+            </List>
+          )}
+        </Card>
       )}
     </>
   );
