@@ -34,8 +34,8 @@ và font đều trỏ về token.
 - Trạng thái luôn có chữ đi kèm màu (`StatusBadge`); success và danger khác nhau cả về độ sáng.
 - Số liệu (tiền, mã giao dịch, điểm phù hợp) dùng **JetBrains Mono** với chữ số đều cột; chữ giao diện dùng
   **Be Vietnam Pro** (thiết kế cho dấu tiếng Việt). Cả hai tự host qua `@fontsource`.
-- Theme sáng và tối đầy đủ: mặc định theo hệ điều hành, người dùng chọn Sáng / Tối / Theo hệ thống trong menu tài khoản
-  (`data-theme` trên `<html>`, lưu trong `localStorage`).
+- Theme sáng và tối đầy đủ: **mặc định sáng**; nút mặt trăng/mặt trời trên thanh trên (cả trang công khai) chuyển nhanh
+  sáng ↔ tối, menu tài khoản có thêm "Theo hệ thống" (`data-theme` trên `<html>`, lưu trong `localStorage`).
 - Mọi cặp chữ / nền đạt WCAG AA (≥ 4.5:1) ở cả hai theme; viền điều khiển (`border-strong`) và vòng focus ≥ 3:1.
 
 ## 3. Bố cục và điều hướng

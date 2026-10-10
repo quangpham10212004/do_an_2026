@@ -11,6 +11,7 @@ import type { NotificationList, SessionUser } from "@/types";
 import { Avatar, Button, Count } from "@/components/ui";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 import { ACCOUNT_LINKS, NAV, activeItem } from "./nav";
+import ThemeToggle from "./ThemeToggle";
 import { useTheme, type ThemeChoice } from "./theme";
 
 export function Brand({ href }: { href: string }) {
@@ -167,6 +168,7 @@ export default function AppShell({ user, children }: { user: SessionUser; childr
         <header className="topbar">
           <Button variant="ghost" iconOnly icon={Menu} label="Mở menu" className="topbar-menu" onClick={() => setDrawer(true)} />
           <div className="topbar-title">{current?.label ?? ""}</div>
+          <ThemeToggle />
           <Link href="/notifications" className="btn btn-ghost btn-icon bell" aria-label={`Thông báo${unread.notifications ? ` (${unread.notifications} chưa đọc)` : ""}`}>
             <Bell aria-hidden="true" />
             <Count value={unread.notifications} />
