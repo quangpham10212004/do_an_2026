@@ -25,6 +25,10 @@ spring:
     ignore-migration-patterns: "*:missing"
 
 management:
+  # US-46: nhãn service trên mọi metric của GET /metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
@@ -35,6 +39,9 @@ app:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
     public-paths: ""
+  # US-46 (NFR-10)
+  rate-limit:
+    messages-per-minute: ${MESSAGE_RATE_LIMIT_PER_MINUTE:30}
   # US-34 — link tuyệt đối trong file .ics / nhắc lịch.
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   services:

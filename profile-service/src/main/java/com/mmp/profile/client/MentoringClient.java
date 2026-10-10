@@ -1,5 +1,6 @@
 package com.mmp.profile.client;
 
+import com.mmp.profile.observability.RequestIds;
 import com.mmp.profile.security.JwtAuthenticationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ public class MentoringClient {
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(30));
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(mentoringUrl)
                 .requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)

@@ -1,13 +1,15 @@
 class AiError(Exception):
     """Lỗi nghiệp vụ trả về client với mã lỗi ổn định (format chung { error: { code, message } })."""
 
-    def __init__(self, code: str, message: str, status: int = 400, extra: dict | None = None):
+    def __init__(self, code: str, message: str, status: int = 400, extra: dict | None = None,
+                 headers: dict[str, str] | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
         self.status = status
         # Trường bổ sung đặt cạnh code/message trong "error" (vd. retryAfter của INTERVIEW_COOLDOWN).
         self.extra = extra or {}
+        self.headers = headers or {}  # vd. Retry-After của RATE_LIMITED (US-46)
 
 
 def bad_request(code: str, message: str) -> AiError:

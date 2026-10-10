@@ -72,4 +72,30 @@ class ProfileCvFileTest {
         verify(menteeRepo, never()).save(any());
         assertThat(service.clearCvFileUrl(UUID.randomUUID(), URL)).isFalse();
     }
+
+    // ---- US-45 (PRD-CV-6): xoá CV kèm "gỡ cả kỹ năng đã thêm từ CV này" ----
+
+    @Test
+    void removesSkillsCaseInsensitivelyAndReindexes() {
+        MenteeProfile mentee = new MenteeProfile();
+        mentee.setSkills(new String[]{"Java", "Docker", "React"});
+        when(menteeRepo.findById(userId)).thenReturn(Optional.of(mentee));
+
+        service.removeMenteeSkills(userId, java.util.List.of("java", " DOCKER "));
+        assertThat(mentee.getSkills()).containsExactly("React");
+        verify(menteeRepo).save(mentee);
+        verify(matching).reindexAsync(any(), eq(userId));
+    }
+
+    @Test
+    void skillsNotOnProfileChangeNothing() {
+        MenteeProfile mentee = new MenteeProfile();
+        mentee.setSkills(new String[]{"React"});
+        when(menteeRepo.findById(userId)).thenReturn(Optional.of(mentee));
+
+        service.removeMenteeSkills(userId, java.util.List.of("Java"));
+        assertThat(mentee.getSkills()).containsExactly("React");
+        verify(menteeRepo, never()).save(any());
+        verifyNoInteractions(matching);
+    }
 }

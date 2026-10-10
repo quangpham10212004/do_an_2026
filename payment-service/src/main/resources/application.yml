@@ -21,6 +21,10 @@ spring:
     baseline-version: 1
 
 management:
+  # US-46: nhãn service trên mọi metric của GET /metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:

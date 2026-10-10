@@ -1,5 +1,6 @@
 package com.mmp.mentoring.client;
 
+import com.mmp.mentoring.observability.RequestIds;
 import com.mmp.mentoring.security.JwtAuthenticationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +63,8 @@ public class EmailClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(5000);
-        this.restClient = RestClient.builder().baseUrl(authUrl).requestFactory(factory)
+        this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor()).baseUrl(authUrl).requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey).build();
     }
 
@@ -83,7 +85,7 @@ public class EmailClient {
         body.put("sessionStartAt", sessionStart == null ? null : sessionStart.toString());
         body.put("dedupeKey", dedupeKey(userId, type, title, message, link));
         try {
-            executor.execute(() -> send(body));
+            executor.execute(RequestIds.wrap(() -> send(body)));
         } catch (RuntimeException e) {
             log.debug("Email {} dropped: {}", type, e.getMessage());
         }

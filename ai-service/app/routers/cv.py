@@ -9,9 +9,23 @@ from app import config, errors
 from app.cv.models import ConfirmedFields
 from app.enrichment import service
 from app.enrichment.views import CvSummaryView, CvUploadResult, CvView
+from app.ratelimit import RateLimiter
 from app.security import AuthUser, require_role, require_user
 
 router = APIRouter(prefix="/api/ai")
+
+# US-46 (NFR-10) — tối đa 5 CV / giờ / người dùng (upload cho chatbot + parse của mentor), đếm sau khi form hợp lệ.
+upload_limiter = RateLimiter(config.CV_UPLOADS_PER_HOUR, 3600)
+
+
+def _limit_uploads(user: AuthUser) -> None:
+    if user.user_id is None:  # service nội bộ
+        return
+    wait = upload_limiter.hit(str(user.user_id))
+    if wait:
+        raise errors.AiError("RATE_LIMITED", f"Bạn đã tải lên {config.CV_UPLOADS_PER_HOUR} CV trong 1 giờ qua. "
+                             f"Vui lòng thử lại sau {wait // 60 + 1} phút.", status=429,
+                             headers={"Retry-After": str(wait)})
 
 
 async def _read(file: UploadFile) -> tuple[str, bytes]:
@@ -35,6 +49,7 @@ async def upload(mentee_id: UUID, file: UploadFile = File(...), consent_external
                  user: AuthUser = Depends(require_role("MENTEE", "ADMIN"))) -> CvUploadResult:
     consent = _consent(consent_external_ai)
     file_name, content = await _read(file)
+    _limit_uploads(user)
     return await service.upload_for_mentee(user, mentee_id, file_name, content, consent)
 
 
@@ -44,6 +59,7 @@ async def parse(file: UploadFile = File(...), consent_external_ai: bool | None =
     """Parse CV không kèm chatbot — mentor dùng để điền nhanh hồ sơ (không ghi gì vào hồ sơ)."""
     consent = _consent(consent_external_ai)
     file_name, content = await _read(file)
+    _limit_uploads(user)
     return await service.parse_and_store(user.user_id, file_name, content, consent)
 
 
@@ -76,7 +92,7 @@ async def mine(user: AuthUser = Depends(require_user)) -> list[CvSummaryView]:
 
 
 @router.delete("/cv/{cv_id}", status_code=204)
-async def delete(cv_id: UUID, user: AuthUser = Depends(require_user)) -> Response:
-    """Xoá CV (chủ CV hoặc ADMIN) — chính sách dữ liệu CV."""
-    await service.delete_cv(user, cv_id)
+async def delete(cv_id: UUID, removeSkills: bool = False, user: AuthUser = Depends(require_user)) -> Response:
+    """Xoá CV (chủ CV hoặc ADMIN) — chính sách dữ liệu CV. removeSkills=true (US-45): gỡ cả kỹ năng đã thêm từ CV này."""
+    await service.delete_cv(user, cv_id, removeSkills)
     return Response(status_code=204)

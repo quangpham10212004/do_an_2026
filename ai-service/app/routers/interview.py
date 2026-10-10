@@ -82,3 +82,16 @@ async def dev_age(interview_id: UUID, hours: float = 73, _: AuthUser = Depends(r
     if config.is_prod():
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Not found"})
     return await service.dev_age(interview_id, hours)
+
+
+@dev_router.post("/internal/dev/cvs/{cv_id}/age", include_in_schema=False)
+async def dev_age_cv(cv_id: UUID, days: float = 366, _: AuthUser = Depends(require_internal)) -> dict:
+    """Chỉ dev/e2e — US-45: lùi ngày tải CV `days` ngày rồi chạy ngay job lưu giữ 12 tháng."""
+    if config.is_prod():
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Not found"})
+    from app.db import get_pool
+    from app.enrichment import service as enrichment_service
+    pool = await get_pool()
+    await pool.execute("UPDATE cv_documents SET created_at = created_at - make_interval(secs => $2) WHERE id = $1",
+                       cv_id, days * 86400)
+    return {"purged": await enrichment_service.purge_expired_cvs()}

@@ -72,3 +72,6 @@ def dev_secret_warnings() -> list[str]:
         warnings.append("!!! INTERNAL_API_KEY chưa được đặt — đang dùng khoá DEV mặc định cho /internal/**. "
                         "KHÔNG dùng cấu hình này khi triển khai thật !!!")
     return warnings
+
+# US-46 (NFR-10): số lần gọi GET /api/matching/mentors tối đa mỗi phút cho một người dùng
+MATCHING_PER_MINUTE = int(os.getenv("MATCHING_RATE_LIMIT_PER_MINUTE", "20"))

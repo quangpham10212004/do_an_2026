@@ -270,6 +270,15 @@ components:
 security:
   - bearerAuth: []
 paths:
+  /metrics:
+    get:
+      summary: US-46 (NFR-17) — số liệu Prometheus (text/plain; version=0.0.4), không cần xác thực
+      description: >-
+        Micrometer: http_server_requests_seconds, JVM, Hikari.... Mọi response của service có header X-Request-Id (nhận từ request nếu hợp lệ [A-Za-z0-9._:-]{1,64}, ngược
+        lại sinh UUID); id được ghi trong mọi dòng log JSON ("requestId") và chuyển tiếp sang các service được gọi.
+      security: []
+      responses:
+        "200": { description: OK }
   /health:
     get:
       security: []
@@ -812,6 +821,27 @@ paths:
                 activeMenteeCount: { type: integer, minimum: 0 }
       responses:
         "204": { description: OK }
+  /internal/mentee/{menteeId}/skills/remove:
+    post:
+      summary: Nội bộ — US-45 (PRD-CV-6) gỡ kỹ năng đã thêm từ một CV bị xoá (ai-service gọi khi removeSkills=true)
+      description: >-
+        So khớp không phân biệt hoa thường; kỹ năng không có trên hồ sơ bị bỏ qua. Có thay đổi => báo matching-service
+        lập lại chỉ mục mentee.
+      security: [{ internalToken: [] }]
+      parameters:
+        - { name: menteeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [skills]
+              properties:
+                skills: { type: array, maxItems: 30, items: { type: string, maxLength: 50 } }
+      responses:
+        "200": { description: Hồ sơ mentee sau khi gỡ }
+        "404": { description: PROFILE_NOT_FOUND }
   /internal/profile/{userId}/cv-file:
     delete:
       summary: Nội bộ — gỡ tham chiếu CV đã bị xoá khỏi hồ sơ (ai-service gọi sau DELETE /api/ai/cv/{id})

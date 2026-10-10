@@ -1,5 +1,6 @@
 package com.mmp.payment.client;
 
+import com.mmp.payment.observability.RequestIds;
 import com.mmp.payment.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -23,7 +24,8 @@ public class ProfileClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(3000);
-        this.restClient = RestClient.builder().baseUrl(profileUrl).requestFactory(factory)
+        this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor()).baseUrl(profileUrl).requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey).build();
     }
 

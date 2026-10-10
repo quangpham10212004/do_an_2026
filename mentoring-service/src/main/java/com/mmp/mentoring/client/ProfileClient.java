@@ -1,6 +1,7 @@
 package com.mmp.mentoring.client;
 
 import com.mmp.mentoring.exception.ApiException;
+import com.mmp.mentoring.observability.RequestIds;
 import com.mmp.mentoring.security.JwtAuthenticationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ public class ProfileClient {
     public ProfileClient(@Value("${app.services.profile-url}") String profileUrl,
                          @Value("${app.security.internal-api-key}") String internalApiKey) {
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(profileUrl)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)
                 .build();

@@ -14,12 +14,15 @@ from app.schemas.matching import (
     SimilarMentor,
     SimilarMentorsResponse,
 )
+from app import config
+from app.ratelimit import RateLimiter
 from app.security import Caller, require_admin, require_internal, require_user
 from app.services import feedback_service
 from app.services import match_filters
 from app.services import matching_pipeline as pipeline
 
 router = APIRouter()
+match_limiter = RateLimiter(config.MATCHING_PER_MINUTE, 60)  # US-46 (NFR-10)
 
 TimeOfDay = Literal["MORNING", "AFTERNOON", "EVENING"]
 SessionType = Literal["CAREER_ADVICE", "CODE_REVIEW", "MOCK_INTERVIEW", "PROJECT_GUIDANCE"]
@@ -87,6 +90,15 @@ async def get_matches(
             status_code=403,
             detail={"code": "FORBIDDEN", "message": "Bạn chỉ được xem gợi ý mentor cho chính mình"},
         )
+    if caller.user_id is not None:
+        # US-46 (NFR-10): 20 lần / phút / người dùng — mỗi lần là một truy vấn vector + xếp hạng
+        wait = match_limiter.hit(caller.user_id)
+        if wait:
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "RATE_LIMITED", "message": f"Bạn tìm mentor quá nhanh. Vui lòng thử lại sau {wait} giây."},
+                headers={"Retry-After": str(wait)},
+            )
     requested = {
         match_filters.MAX_RATE: maxRate,
         match_filters.DAYS: parse_days(days),

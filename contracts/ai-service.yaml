@@ -202,6 +202,9 @@ components:
         uploadedAt: { type: string, format: date-time }
         fileUrl: { type: string, description: "Đường dẫn tải file, dạng /api/ai/cv/{id}/file" }
         consentExternalAi: { type: boolean }
+        purgedAt: { type: string, format: date-time, nullable: true, description: "US-45 (PRD-CV-6) — file + văn bản gốc đã bị xoá theo chính sách lưu giữ 12 tháng" }
+        deleteAfter: { type: string, format: date-time, description: "US-45 — uploadedAt + 365 ngày" }
+        addedSkills: { type: array, items: { type: string }, description: "US-45 — kỹ năng đã thêm vào hồ sơ từ CV này" }
     EnrichmentMessage:
       type: object
       properties:
@@ -209,7 +212,8 @@ components:
         slot: { type: string, enum: [TARGET_ROLE, FOCUS_AREAS, PROJECT_EXPERIENCE, CURRENT_GAPS, TIMELINE, MENTORING_PREFERENCE, FREE_FORM] }
         slotLabel: { type: string }
         question: { type: string }
-        answer: { type: string, nullable: true }
+        answer: { type: string, nullable: true, description: "Chuỗi rỗng khi skipped" }
+        skipped: { type: boolean, description: "US-45 (PRD-CV-3) — mentee bấm “Bỏ qua”" }
     Conversation:
       type: object
       properties:
@@ -235,6 +239,8 @@ components:
         profileSynced: { type: boolean }
         createdAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time, nullable: true }
+        suggestedSkills: { type: array, items: { type: string }, description: "US-45 (PRD-CV-5) — kỹ năng đã duyệt từ CV, hiển thị dạng chip để chọn" }
+        addedSkills: { type: array, items: { type: string }, description: "US-45 — kỹ năng mentee đã chọn thêm vào hồ sơ khi xác nhận mục tiêu" }
     CvUploadResult:
       type: object
       properties:
@@ -259,6 +265,19 @@ components:
       required: [goal]
       properties:
         goal: { type: string, minLength: 10, maxLength: 3000, description: "Cắt khoảng trắng hai đầu trước khi kiểm tra độ dài" }
+        skills:
+          type: array
+          nullable: true
+          maxItems: 30
+          items: { type: string }
+          description: >-
+            US-45 (PRD-CV-5) — kỹ năng gợi ý (suggestedSkills) mentee chọn thêm vào hồ sơ; không phân biệt hoa thường,
+            ngoài danh sách gợi ý => 400 INVALID_SKILLS. null/không gửi = mọi kỹ năng gợi ý; [] = không thêm kỹ năng nào.
+    EnrichmentAnswerInput:
+      type: object
+      properties:
+        answer: { type: string, maxLength: 5000, description: "Bắt buộc (không rỗng) trừ khi skipped = true — 400 ANSWER_REQUIRED" }
+        skipped: { type: boolean, default: false, description: "US-45 (PRD-CV-3) — “Bỏ qua”: câu được lưu answer rỗng, skipped = true; vẫn sinh goal khi hết câu" }
     AnswerInput:
       type: object
       required: [answer]
@@ -271,6 +290,15 @@ components:
 security:
   - bearerAuth: []
 paths:
+  /metrics:
+    get:
+      summary: US-46 (NFR-17) — số liệu Prometheus (text/plain; version=0.0.4), không cần xác thực
+      description: >-
+        http_requests_total, http_request_duration_seconds (method, route, status). Mọi response của service có header X-Request-Id (nhận từ request nếu hợp lệ [A-Za-z0-9._:-]{1,64}, ngược
+        lại sinh UUID); id được ghi trong mọi dòng log JSON ("requestId") và chuyển tiếp sang các service được gọi.
+      security: []
+      responses:
+        "200": { description: OK }
   /health:
     get:
       security: []
@@ -437,6 +465,7 @@ paths:
               schema: { $ref: "#/components/schemas/CvUploadResult" }
         "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | PROFILE_REQUIRED | FILE_REQUIRED | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
+        "429": { description: "RATE_LIMITED — US-46 (NFR-10) quá 5 CV / giờ / người dùng (cv-upload + cv/parse cộng chung; form thiếu consent không bị đếm); header Retry-After (giây)" }
   /api/ai/mentee/{id}/enrichment/latest:
     get:
       summary: CV mới nhất của mentee + hội thoại của CV đó (`conversation` null nếu chưa duyệt / chưa bắt đầu)
@@ -461,7 +490,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AnswerInput" }
+            schema: { $ref: "#/components/schemas/EnrichmentAnswerInput" }
       responses:
         "200": { description: Conversation sau lượt trả lời }
         "409": { description: CONVERSATION_COMPLETED | NO_OPEN_QUESTION | ALREADY_ANSWERED }
@@ -511,6 +540,7 @@ paths:
               schema: { $ref: "#/components/schemas/Cv" }
         "400": { description: CONSENT_REQUIRED | VALIDATION_ERROR | INVALID_FILE_TYPE | CV_NO_TEXT }
         "413": { description: FILE_TOO_LARGE }
+        "429": { description: "RATE_LIMITED — US-46 (NFR-10) quá 5 CV / giờ / người dùng; header Retry-After (giây)" }
   /api/ai/cv/{id}/confirmed-fields:
     put:
       summary: >
@@ -566,8 +596,11 @@ paths:
         Hội thoại enrichment (kèm tin nhắn, ON DELETE CASCADE) và dòng cv_documents bị xoá trong một
         transaction; sau đó xoá file trên đĩa (file đã mất thì bỏ qua). Nếu hồ sơ của chủ CV đang trỏ tới
         file này (cvFileUrl), ai-service gỡ tham chiếu qua DELETE /internal/profile/{userId}/cv-file của
-        profile-service — best-effort, lỗi chỉ ghi log.
-      parameters: [{ $ref: "#/components/parameters/Id" }]
+        profile-service — best-effort, lỗi chỉ ghi log. US-45 (PRD-CV-6): removeSkills=true gỡ thêm các kỹ năng đã
+        thêm vào hồ sơ từ CV này (addedSkills) qua POST /internal/mentee/{menteeId}/skills/remove — best-effort.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: removeSkills, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         "204": { description: Đã xoá }
         "403": { description: FORBIDDEN — không phải chủ CV và không phải ADMIN (kể cả mentor) }
@@ -583,3 +616,4 @@ paths:
             application/pdf: {}
         "403": { description: "FORBIDDEN — không phải chủ CV/admin, hoặc mentor không có yêu cầu mentoring đang mở với mentee (kể cả khi mentoring-service không phản hồi)" }
         "404": { description: CV_NOT_FOUND | CV_FILE_NOT_FOUND }
+        "410": { description: "CV_PURGED — US-45: file đã bị xoá sau 12 tháng (job chạy mỗi 6 giờ; kết quả parse chỉ giữ nếu đã được người dùng xác nhận)" }

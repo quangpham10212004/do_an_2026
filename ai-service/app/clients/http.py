@@ -2,6 +2,7 @@
 import httpx
 
 from app import config
+from app.observability import propagate_request_id
 
 _clients: dict[str, httpx.AsyncClient] = {}
 
@@ -12,6 +13,7 @@ def client_for(base_url: str) -> httpx.AsyncClient:
             base_url=base_url,
             timeout=config.SERVICE_TIMEOUT_SECONDS,
             headers={"X-Internal-Token": config.INTERNAL_API_KEY},
+            event_hooks={"request": [propagate_request_id]},  # US-46: X-Request-Id xuyên service
         )
     return _clients[base_url]
 

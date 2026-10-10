@@ -6,14 +6,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app import config
+from app import config, observability
 from app import migrations
 from app.db import close_pools, get_matching_pool
 from app.jobs import index_sync
 from app.routers import index, matching
 from app.services import embedding_service
 
-logging.basicConfig(level=logging.INFO)
+observability.setup_logging("matching-service")  # US-46: log JSON có requestId
 log = logging.getLogger(__name__)
 
 
@@ -56,13 +56,16 @@ async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse
         body = exc.detail
     else:
         body = {"code": "HTTP_" + str(exc.status_code), "message": str(exc.detail)}
-    return JSONResponse(status_code=exc.status_code, content={"error": body})
+    return JSONResponse(status_code=exc.status_code, content={"error": body}, headers=getattr(exc, "headers", None))
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     message = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
     return JSONResponse(status_code=400, content={"error": {"code": "VALIDATION_ERROR", "message": message}})
+
+
+observability.install(app, "matching-service")  # US-46: X-Request-Id, access log, GET /metrics
 
 
 @app.get("/health")

@@ -123,6 +123,15 @@ components:
           items: { type: string, enum: [maxRate, days, timeOfDay, language] }
           description: Các bộ lọc có giá trị lấy từ sở thích hồ sơ mentee (US-16) vì request không truyền
 paths:
+  /metrics:
+    get:
+      summary: US-46 (NFR-17) — số liệu Prometheus (text/plain; version=0.0.4), không cần xác thực
+      description: >-
+        http_requests_total, http_request_duration_seconds (method, route, status). Mọi response của service có header X-Request-Id (nhận từ request nếu hợp lệ [A-Za-z0-9._:-]{1,64}, ngược
+        lại sinh UUID); id được ghi trong mọi dòng log JSON ("requestId") và chuyển tiếp sang các service được gọi.
+      security: []
+      responses:
+        "200": { description: OK }
   /health:
     get:
       summary: Health check
@@ -297,6 +306,7 @@ paths:
                       scoreParts, bộ lọc, trọng số); gửi id này kèm POST /api/matching/feedback. null khi rỗng / ghi lỗi.
         "400": { description: "BAD_REQUEST / VALIDATION_ERROR — menteeId, days, language, timeOfDay, sessionType, minRating, maxRate không hợp lệ" }
         "401": { description: UNAUTHORIZED }
+        "429": { description: "RATE_LIMITED — US-46 (NFR-10) quá 20 lần gọi / phút / người dùng; header Retry-After (giây)" }
         "403": { description: FORBIDDEN — truy vấn cho mentee khác }
         "404":
           description: >

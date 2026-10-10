@@ -13,6 +13,8 @@ AI_DB_URL = os.getenv("AI_DB_URL", "postgresql://postgres:postgres@localhost:543
 # Service khác mà ai-service gọi tới (header X-Internal-Token).
 PROFILE_SERVICE_URL = os.getenv("PROFILE_SERVICE_URL", "http://localhost:8082")
 MENTORING_SERVICE_URL = os.getenv("MENTORING_SERVICE_URL", "http://localhost:8083")
+# US-46 (NFR-10): số CV tải lên (upload + parse) tối đa mỗi giờ cho một người dùng
+CV_UPLOADS_PER_HOUR = int(os.getenv("CV_UPLOAD_RATE_LIMIT_PER_HOUR", "5"))
 # auth-service giữ nhật ký kiểm toán (US-30): POST /internal/audit, gọi kiểu bắn-rồi-quên.
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8081")
 AUDIT_TIMEOUT_SECONDS = float(os.getenv("AUDIT_TIMEOUT_SECONDS", "3"))

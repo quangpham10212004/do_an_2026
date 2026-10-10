@@ -36,6 +36,7 @@ class FakeProfile:
         self.enrichment_error: Exception | None = None
         self.cleared_cv_files: list[tuple[UUID, str]] = []
         self.clear_error: Exception | None = None
+        self.removed_skills: list[tuple[UUID, list[str]]] = []
 
     async def find_mentor(self, mentor_id):
         return None if self.mentor is None else {**self.mentor, "userId": str(mentor_id)}
@@ -60,6 +61,9 @@ class FakeProfile:
             raise self.clear_error
         self.cleared_cv_files.append((user_id, cv_file_url))
 
+    async def remove_skills(self, user_id, skills):
+        self.removed_skills.append((user_id, list(skills)))
+
 
 class FakeMentoring:
     def __init__(self) -> None:
@@ -83,7 +87,7 @@ class FakeMentoring:
 def fake_profile(monkeypatch) -> FakeProfile:
     fake = FakeProfile()
     for name in ("find_mentor", "find_mentee", "display_name", "update_verification", "apply_enrichment",
-                 "clear_cv_file"):
+                 "clear_cv_file", "remove_skills"):
         monkeypatch.setattr(profile, name, getattr(fake, name))
     return fake
 

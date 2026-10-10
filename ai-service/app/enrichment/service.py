@@ -12,6 +12,7 @@ Lời gọi engine luôn thực hiện NGOÀI transaction.
 """
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import httpx
@@ -93,7 +94,7 @@ async def start_conversation(user: AuthUser, cv_id: UUID) -> CvUploadResult:
     existing = await repo.find_for_cv(pool, cv_id)
     if existing is not None:
         messages = await repo.messages_of(pool, existing["id"])
-        return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(existing, messages))
+        return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(existing, messages, cv))
     confirmed = cv_repo.confirmed_of(cv)
     if confirmed is None:
         raise errors.conflict("CV_NOT_REVIEWED",
@@ -112,12 +113,18 @@ async def start_conversation(user: AuthUser, cv_id: UUID) -> CvUploadResult:
             await repo.insert_message(conn, conversation["id"], 1, first.question.slot, first.question.question)
     conversation = conversation or await repo.find_for_cv(pool, cv_id)  # bấm hai lần cùng lúc: lấy bản đã có
     messages = await repo.messages_of(pool, conversation["id"])
-    return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(conversation, messages))
+    return CvUploadResult(cv=cv_view(cv), conversation=conversation_view(conversation, messages, cv))
 
 
-async def answer(user: AuthUser, conversation_id: UUID, text: str) -> ConversationView:
-    """FR-8.3 → FR-8.4 — mentee trả lời; sau lượt cuối tổng hợp goal NHÁP (không đổi hồ sơ — US-21)."""
-    text = text.strip()
+# US-45 (PRD-CV-3) — câu bị bỏ qua được đưa cho engine như câu "không biết" (không có thông tin mới).
+SKIPPED_ANSWER_FOR_ENGINE = "Tôi không biết / bỏ qua câu này."
+
+
+async def answer(user: AuthUser, conversation_id: UUID, text: str, skipped: bool = False) -> ConversationView:
+    """FR-8.3 → FR-8.4 — mentee trả lời (hoặc bỏ qua — US-45); sau lượt cuối tổng hợp goal NHÁP (không đổi hồ sơ — US-21)."""
+    text = "" if skipped else text.strip()
+    if not skipped and not text:
+        raise errors.bad_request("ANSWER_REQUIRED", "Hãy nhập câu trả lời, hoặc bấm “Bỏ qua”")
     pool = await get_pool()
     conversation = await _find(pool, conversation_id)
     if conversation["mentee_id"] != user.user_id:
@@ -139,7 +146,7 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
 
     history = [repo.to_exchange(m) for m in messages if m["answer"] is not None]
     history.append(Exchange(turn_no=current["turn_no"], slot=current["slot"], question=current["question"],
-                            answer=text))
+                            answer=SKIPPED_ANSWER_FOR_ENGINE if skipped else text))
     is_last = current["turn_no"] >= conversation["max_turns"]
 
     # Gọi engine TRƯỚC khi mở transaction.
@@ -149,7 +156,7 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
             ).enriched_goal if is_last else None
 
     async with pool.acquire() as conn, conn.transaction():
-        written = await repo.answer_message(conn, current["id"], text)
+        written = await repo.answer_message(conn, current["id"], text, skipped)
         if not written:
             raise errors.conflict("ALREADY_ANSWERED", "Câu hỏi này đã được trả lời")
         if is_last:
@@ -163,7 +170,7 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str) -> Conversati
     return await _view(pool, conversation_id)
 
 
-async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str) -> ConversationView:
+async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str, skills: list[str] | None = None) -> ConversationView:
     """
     US-21 — "Dùng mục tiêu này": goal (bản nháp hoặc bản người dùng sửa) được ghi nhận rồi đồng bộ sang hồ sơ
     cùng các kỹ năng đã duyệt. Idempotent: goal đã xác nhận thì trả về trạng thái hiện tại, không gửi lại.
@@ -172,9 +179,12 @@ async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str) -> Conv
     conversation = await _owned_completed(pool, user, conversation_id)
     if conversation["goal_status"] == "DISCARDED":
         raise errors.conflict("GOAL_DISCARDED", "Mục tiêu này đã bị bỏ qua — hãy tải CV mới để làm lại")
-    if conversation["goal_status"] == "DRAFT" and \
-            await repo.decide_goal(pool, conversation_id, "CONFIRMED", goal) is not None:
-        await sync_profile(conversation_id)  # chỉ request chuyển DRAFT → CONFIRMED mới gửi
+    if conversation["goal_status"] == "DRAFT":
+        # US-45 (PRD-CV-5) — chỉ thêm các kỹ năng gợi ý mentee đã chọn (None = mọi kỹ năng đã duyệt, như trước).
+        cv = await cv_repo.find(pool, conversation["cv_id"])
+        chosen = pick_skills(_confirmed_skills(cv), skills)
+        if await repo.decide_goal(pool, conversation_id, "CONFIRMED", goal, chosen) is not None:
+            await sync_profile(conversation_id)  # chỉ request chuyển DRAFT → CONFIRMED mới gửi
     return await _view(pool, conversation_id)
 
 
@@ -202,7 +212,7 @@ async def sync_profile(conversation_id: UUID) -> None:
     cv = await cv_repo.find(pool, conversation["cv_id"])
     try:
         await profile.apply_enrichment(conversation["mentee_id"], conversation["confirmed_goal"],
-                                       _confirmed_skills(cv), cv_file_url(cv["id"]))
+                                       list(conversation["added_skills"] or []), cv_file_url(cv["id"]))
     except (httpx.HTTPError, errors.AiError) as e:
         log.warning("Could not sync enrichment %s to profile-service: %s", conversation_id, e)
         return
@@ -243,7 +253,7 @@ async def latest(user: AuthUser, mentee_id: UUID) -> CvUploadResult | None:
         return None
     conversation = await repo.find_for_cv(pool, cv["id"])
     view = None if conversation is None else conversation_view(conversation,
-                                                               await repo.messages_of(pool, conversation["id"]))
+                                                               await repo.messages_of(pool, conversation["id"]), cv)
     return CvUploadResult(cv=cv_view(cv), conversation=view)
 
 
@@ -257,6 +267,8 @@ async def cv_file(user: AuthUser, cv_id: UUID) -> tuple[str, bytes]:
     if not user.is_admin and not user.is_internal and cv["user_id"] != user.user_id:
         if user.role != "MENTOR" or not await mentoring.is_related(user.user_id, cv["user_id"]):
             raise errors.forbidden("Bạn không có quyền tải CV này")
+    if cv["purged_at"] is not None:
+        raise errors.AiError("CV_PURGED", "File CV đã bị xoá theo chính sách lưu giữ 12 tháng", status=410)
     return cv["file_name"], storage.read(cv["storage_path"])
 
 
@@ -265,11 +277,13 @@ async def my_cvs(user: AuthUser) -> list[CvSummaryView]:
         return []
     pool = await get_pool()
     return [CvSummaryView(id=r["id"], file_name=r["file_name"], uploaded_at=r["created_at"],
-                          file_url=cv_file_url(r["id"]), consent_external_ai=r["consent_external_ai"])
+                          file_url=cv_file_url(r["id"]), consent_external_ai=r["consent_external_ai"],
+                          purged_at=r["purged_at"], delete_after=r["created_at"] + CV_RETENTION,
+                          added_skills=list(r["added_skills"] or []))
             for r in await cv_repo.list_for_user(pool, user.user_id)]
 
 
-async def delete_cv(user: AuthUser, cv_id: UUID) -> None:
+async def delete_cv(user: AuthUser, cv_id: UUID, remove_skills: bool = False) -> None:
     """
     Xoá CV theo yêu cầu của chủ CV hoặc ADMIN (chính sách dữ liệu CV): hội thoại enrichment
     → dòng cv_documents trong 1 transaction (đúng thứ tự FK), sau đó mới xoá file và gỡ
@@ -282,9 +296,19 @@ async def delete_cv(user: AuthUser, cv_id: UUID) -> None:
     if not user.is_admin and cv["user_id"] != user.user_id:
         raise errors.forbidden("Chỉ chủ CV hoặc quản trị viên được xoá CV")
 
+    # US-45 (PRD-CV-6) — "Gỡ cả kỹ năng đã thêm từ CV này": đọc trước khi xoá hội thoại.
+    conversation = await repo.find_for_cv(pool, cv_id)
+    added = list(conversation["added_skills"] or []) if conversation is not None else []
+
     async with pool.acquire() as conn, conn.transaction():
         await repo.delete_for_cv(conn, cv_id)
         await cv_repo.delete(conn, cv_id)
+
+    if remove_skills and added:
+        try:
+            await profile.remove_skills(cv["user_id"], added)
+        except httpx.HTTPError as e:
+            log.warning("Could not remove CV skills of %s in profile-service: %s", cv["user_id"], e)
 
     try:
         if not storage.delete(cv["storage_path"]):
@@ -296,6 +320,41 @@ async def delete_cv(user: AuthUser, cv_id: UUID) -> None:
         await profile.clear_cv_file(cv["user_id"], cv_file_url(cv_id))
     except httpx.HTTPError as e:
         log.warning("Could not clear cvFileUrl of %s in profile-service: %s", cv["user_id"], e)
+
+
+# US-45 (PRD-CV-6) — file CV + văn bản gốc giữ 12 tháng sau khi tải lên.
+CV_RETENTION = timedelta(days=365)
+
+
+async def purge_expired_cvs(now: datetime | None = None) -> int:
+    """
+    Xoá file + văn bản gốc của CV quá 12 tháng; kết quả parse chỉ giữ khi người dùng đã xác nhận (confirmed_fields).
+    Ghi DB trước (purged_at), xoá file sau — không gọi đĩa/mạng trong transaction. Trả số CV đã xử lý.
+    """
+    now = now or datetime.now(timezone.utc)
+    pool = await get_pool()
+    rows = await cv_repo.purge_before(pool, now - CV_RETENTION)
+    for r in rows:
+        try:
+            storage.delete(r["storage_path"])
+        except (OSError, errors.AiError) as e:
+            log.warning("Could not delete expired CV file %s: %s", r["storage_path"], e)
+        try:
+            await profile.clear_cv_file(r["user_id"], cv_file_url(r["id"]))
+        except httpx.HTTPError as e:
+            log.warning("Could not clear cvFileUrl of %s: %s", r["user_id"], e)
+    if rows:
+        log.info("Purged %d CVs older than 12 months", len(rows))
+    return len(rows)
+
+
+async def purge_expired_cvs_forever(interval_seconds: float = 6 * 3600) -> None:
+    while True:
+        try:
+            await purge_expired_cvs()
+        except Exception as e:  # noqa: BLE001 — job nền không được chết
+            log.warning("CV retention sweep failed: %s", e)
+        await asyncio.sleep(interval_seconds)
 
 
 async def _owned_completed(db, user: AuthUser, conversation_id: UUID):
@@ -314,6 +373,24 @@ async def _own_cv(db, user: AuthUser, cv_id: UUID):
     if cv["user_id"] != user.user_id:
         raise errors.forbidden("Chỉ chủ CV được duyệt thông tin và trò chuyện với chatbot")
     return cv
+
+
+def pick_skills(suggested: list[str], chosen: list[str] | None) -> list[str]:
+    """
+    US-45 (PRD-CV-5) — kỹ năng thêm vào hồ sơ: None = mọi kỹ năng gợi ý (tương thích client cũ); ngược lại phải là tập
+    con của kỹ năng gợi ý (không phân biệt hoa thường, giữ cách viết trong CV, bỏ trùng).
+    """
+    if chosen is None:
+        return list(suggested)
+    by_key = {s.lower(): s for s in suggested}
+    out: list[str] = []
+    for c in chosen:
+        key = (c or "").strip().lower()
+        if key not in by_key:
+            raise errors.bad_request("INVALID_SKILLS", f"Kỹ năng không có trong gợi ý từ CV: {c}")
+        if by_key[key] not in out:
+            out.append(by_key[key])
+    return out
 
 
 def _confirmed_skills(cv) -> list[str]:
@@ -336,4 +413,5 @@ async def _find(db, conversation_id: UUID):
 
 async def _view(db, conversation_id: UUID) -> ConversationView:
     conversation = await _find(db, conversation_id)
-    return conversation_view(conversation, await repo.messages_of(db, conversation_id))
+    return conversation_view(conversation, await repo.messages_of(db, conversation_id),
+                             await cv_repo.find(db, conversation["cv_id"]))

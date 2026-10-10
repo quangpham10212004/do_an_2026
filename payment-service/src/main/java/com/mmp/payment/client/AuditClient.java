@@ -1,5 +1,6 @@
 package com.mmp.payment.client;
 
+import com.mmp.payment.observability.RequestIds;
 import com.mmp.payment.security.JwtAuthenticationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +41,7 @@ public class AuditClient {
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(3000);
         this.restClient = RestClient.builder()
+                .requestInterceptor(RequestIds.interceptor())
                 .baseUrl(authUrl)
                 .requestFactory(factory)
                 .defaultHeader(JwtAuthenticationFilter.INTERNAL_HEADER, internalApiKey)
@@ -58,7 +60,7 @@ public class AuditClient {
         body.put("before", before);
         body.put("after", after);
         try {
-            executor.execute(() -> send(body));
+            executor.execute(RequestIds.wrap(() -> send(body)));
         } catch (RuntimeException e) {
             log.debug("Audit {} dropped: {}", action, e.getMessage());
         }
