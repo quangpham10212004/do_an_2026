@@ -115,6 +115,7 @@ export const STATUS_LABELS: Record<string, string> = {
   TODO: "Chưa bắt đầu",
   DONE: "Đã xong",
   RETAKE_REQUESTED: "Yêu cầu phỏng vấn lại",
+  ABANDONED: "Bỏ dở (quá 72 giờ)",
   REQUEST_RETAKE: "Yêu cầu làm lại",
   PROMPT_INJECTION: "Nghi chèn lệnh cho AI",
   COPIED_ANSWER: "Dán nội dung dài",

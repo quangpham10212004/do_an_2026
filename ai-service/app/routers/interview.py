@@ -1,12 +1,13 @@
 """AI Interview (FR-7.x) — phía mentor và phía admin."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.interview import service
 from app.interview.views import (AnswerInput, EligibilityView, InterviewStats, InterviewView, ReviewInterviewInput,
                                  StartInterviewInput, UnlockInput)
-from app.security import AuthUser, require_role, require_user
+from app import config
+from app.security import AuthUser, require_internal, require_role, require_user
 
 router = APIRouter(prefix="/api/ai")
 
@@ -68,3 +69,16 @@ async def admin_unlock(mentor_id: UUID, body: UnlockInput | None = None,
 @router.get("/admin/stats", response_model=InterviewStats, response_model_by_alias=True)
 async def admin_stats(_: AuthUser = Depends(require_role("ADMIN"))) -> InterviewStats:
     return await service.stats()
+
+
+# Router không có tiền tố /api/ai: /internal/** không bao giờ đi qua proxy của frontend.
+dev_router = APIRouter()
+
+
+@dev_router.post("/internal/dev/interviews/{interview_id}/age", include_in_schema=False, response_model=InterviewView,
+             response_model_by_alias=True)
+async def dev_age(interview_id: UUID, hours: float = 73, _: AuthUser = Depends(require_internal)) -> InterviewView:
+    """Chỉ dev/e2e — không tồn tại ở APP_ENV=prod. US-43: lùi buổi phỏng vấn `hours` giờ để kiểm thử hạn 72 giờ."""
+    if config.is_prod():
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Not found"})
+    return await service.dev_age(interview_id, hours)

@@ -69,7 +69,7 @@ components:
         mentorName: { type: string, nullable: true, description: Chỉ trả về cho admin }
         domain: { type: string }
         skills: { type: array, items: { type: string } }
-        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED] }
+        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED, ABANDONED] }
         engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
         maxTurns: { type: integer }
         currentTurn: { type: integer }
@@ -90,6 +90,17 @@ components:
         createdAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time, nullable: true }
         reviewedAt: { type: string, format: date-time, nullable: true }
+        resumeDeadline:
+          type: string
+          format: date-time
+          nullable: true
+          description: "US-43 (PRD-AIV-3) — IN_PROGRESS tiếp tục được tới hoạt động gần nhất + 72 giờ; quá hạn → ABANDONED (tính là 1 lần)"
+        feedbackVisible:
+          type: boolean
+          description: "US-43 (PRD-AIV-5) — mentor chỉ thấy score / feedback / rubric từng câu khi APPROVED / REJECTED / RETAKE_REQUESTED; admin luôn thấy"
+        answerMinChars: { type: integer, example: 50 }
+        answerMaxChars: { type: integer, example: 3000 }
+        softTimerSeconds: { type: integer, example: 360, description: "US-43 (PRD-AIV-2) — đồng hồ gợi ý mỗi câu, không bắt buộc" }
     RubricScores:
       type: object
       description: "US-23 (PRD 6.1) — mỗi tiêu chí 0-10. Trọng số 40/30/15/15."
@@ -329,13 +340,14 @@ paths:
             schema: { $ref: "#/components/schemas/AnswerInput" }
       responses:
         "200": { description: Interview sau lượt trả lời }
-        "409": { description: INTERVIEW_NOT_IN_PROGRESS | NO_OPEN_QUESTION | ALREADY_ANSWERED }
+        "400": { description: "US-43 (PRD-AIV-2) — ANSWER_TOO_SHORT (< 50 ký tự sau khi trim) | ANSWER_TOO_LONG (> 3000)" }
+        "409": { description: INTERVIEW_NOT_IN_PROGRESS | INTERVIEW_ABANDONED (quá 72 giờ không hoạt động) | NO_OPEN_QUESTION | ALREADY_ANSWERED }
         "502": { description: AI_ENGINE_UNAVAILABLE }
   /api/ai/admin/interviews:
     get:
       summary: (ADMIN) Danh sách buổi phỏng vấn
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED] } }
+        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED, ABANDONED] } }
       responses:
         "200": { description: "Interview[]" }
   /api/ai/admin/interviews/{id}/review:

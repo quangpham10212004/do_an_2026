@@ -31,6 +31,25 @@ MIN_OVERRULE_NOTE = 10
 _SESSION_REVIEW = re.compile(r"/api/mentoring/sessions/[^/]+/review/?$")
 
 
+_AI_ANSWER = re.compile(r"/api/ai/interviews/[^/]+/answers/?$")
+AI_ANSWER_MIN = 50
+
+
+def _answer_compat(method, url, body):
+    """
+    Tương thích US-43 (Sprint 5): câu trả lời AI Interview cần 50–3000 ký tự. Script cũ cố tình trả lời rất ngắn
+    ("Khong biet...") để có buổi bị đánh giá thấp → lặp lại chính câu đó cho đủ 50 ký tự (nội dung vẫn yếu).
+    """
+    if method == "POST" and isinstance(body, dict) and _AI_ANSWER.search(url):
+        text = (body.get("answer") or "").strip()
+        if 0 < len(text) < AI_ANSWER_MIN:
+            padded = text
+            while len(padded) < AI_ANSWER_MIN:
+                padded += " " + text
+            return {**body, "answer": padded}
+    return body
+
+
 def _review_compat(method, url, body):
     """
     Tương thích US-41 (Sprint 5): đánh giá mới bắt buộc 3 điểm thành phần (kiến thức, truyền đạt, chuẩn bị). Script
@@ -82,7 +101,8 @@ def _auto_verify(url, res):
 
 
 def call(method, url, body=None, token=None, internal=False, raw_body=None, content_type=None, headers=None):
-    body = _review_compat(method, url, _ai_interview_compat(method, url, body)) if raw_body is None else body
+    body = (_answer_compat(method, url, _review_compat(method, url, _ai_interview_compat(method, url, body)))
+            if raw_body is None else body)
     headers = dict(headers or {})
     keep_unverified = headers.pop(KEEP_UNVERIFIED, None) is not None
     headers = {"Accept": "application/json", **headers}
