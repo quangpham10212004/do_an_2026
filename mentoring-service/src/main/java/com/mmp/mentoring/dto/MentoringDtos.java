@@ -64,7 +64,9 @@ public final class MentoringDtos {
             @NotNull SessionType sessionType,
             @NotBlank @Size(max = 500) String agenda,
             @Size(max = 500) String preReadLink,
-            @Size(max = 300) String topic) {
+            @Size(max = 300) String topic,
+            /** US-58 — bắt buộc khi sessionType = MOCK_INTERVIEW, bỏ qua với loại khác. */
+            @jakarta.validation.Valid MockInterviewDtos.MockIntakeInput mockIntake) {
     }
 
     public record SlotView(OffsetDateTime startAt, OffsetDateTime endAt) {
