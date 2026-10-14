@@ -35,6 +35,9 @@ import type {
   SessionStatus,
   SharedNote,
   Uuid,
+  MockHistoryItem,
+  MockInterviewView,
+  ScorecardInput,
 } from "@/types";
 
 // mentoring-service (Thắng) — các tính năng AI nằm ở ai-service, xem features/ai/api.ts
@@ -64,6 +67,11 @@ export const mentoringApi = {
   bookSession: (body: BookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
   /** @deprecated thiếu sessionType/agenda (US-03) — dùng bookSession hoặc chuyển tới /mentoring/book/{mentorId}. */
   book: (body: LegacyBookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
+  // US-58 — phỏng vấn thử: intake + phiếu đánh giá của 1 phiên, mentor nộp/sửa phiếu, lịch sử của mentee
+  mockInterview: (id: Uuid) => api<MockInterviewView>(`/api/mentoring/sessions/${id}/mock`),
+  submitScorecard: (id: Uuid, body: ScorecardInput) =>
+    api<MockInterviewView>(`/api/mentoring/sessions/${id}/scorecard`, { method: "PUT", body }),
+  mockHistory: () => api<MockHistoryItem[]>("/api/mentoring/mock-interviews/history"),
   cancelPreview: (id: Uuid) => api<CancelPreview>(`/api/mentoring/sessions/${id}/cancel-preview`),
   cancelSession: (id: Uuid, reason: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
