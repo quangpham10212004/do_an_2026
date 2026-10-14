@@ -73,6 +73,14 @@ public class Transaction {
     @Column(name = "provider_reference")
     private String providerReference;
 
+    /** US-56 — vnp_TxnRef gửi sang VNPay (id bỏ dấu "-"); null với giao dịch sandbox. */
+    @Column(name = "provider_txn_ref")
+    private String providerTxnRef;
+
+    /** US-56 — vnp_CreateDate (yyyyMMddHHmmss, GMT+7); querydr/refund gửi lại làm vnp_TransactionDate. */
+    @Column(name = "provider_created_at")
+    private String providerCreatedAt;
+
     @Column(name = "failure_reason")
     private String failureReason;
 
@@ -134,6 +142,11 @@ public class Transaction {
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public String getProvider() { return provider; }
+    public void setProvider(String provider) { this.provider = provider; }
+    public String getProviderTxnRef() { return providerTxnRef; }
+    public void setProviderTxnRef(String providerTxnRef) { this.providerTxnRef = providerTxnRef; }
+    public String getProviderCreatedAt() { return providerCreatedAt; }
+    public void setProviderCreatedAt(String providerCreatedAt) { this.providerCreatedAt = providerCreatedAt; }
     public String getProviderReference() { return providerReference; }
     public void setProviderReference(String providerReference) { this.providerReference = providerReference; }
     public String getFailureReason() { return failureReason; }

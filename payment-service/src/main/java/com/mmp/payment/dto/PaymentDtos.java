@@ -33,6 +33,17 @@ public final class PaymentDtos {
     public record ChargeRequest(@NotNull UUID sessionId, BigDecimal amount, @NotNull @Valid CardInput card) {
     }
 
+    /** US-56 — bắt đầu thanh toán qua cổng chuyển hướng đang bật (MoMo / VNPay); trả link để trình duyệt chuyển sang. */
+    public record CheckoutRequest(@NotNull UUID sessionId, BigDecimal amount) {
+    }
+
+    public record CheckoutResponse(UUID transactionId, String provider, String paymentUrl) {
+    }
+
+    /** US-56 — redirect = cổng chuyển hướng đang bật ("MOMO" / "VNPAY") hoặc null → frontend hiện form thẻ sandbox. */
+    public record PaymentMethods(String redirect, boolean sandboxCard) {
+    }
+
     /**
      * US-13 — fee / mentorEarning / feeRate chốt lúc charge; refundedAmount = tổng các lần hoàn; refunds = chi tiết
      * (bảng refunds, không ghi đè giao dịch).

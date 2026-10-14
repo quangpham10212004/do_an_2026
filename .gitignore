@@ -21,3 +21,6 @@ uploads/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Playwright MCP screenshots / snapshots
+.playwright-mcp/

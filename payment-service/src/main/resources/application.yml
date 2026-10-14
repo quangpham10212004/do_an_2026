@@ -34,7 +34,7 @@ app:
   security:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
-    public-paths: ""
+    public-paths: "/api/payment/momo/ipn,/api/payment/vnpay/ipn"   # US-56 — cổng gọi server → server, không có JWT (bảo vệ bằng chữ ký)
   services:
     mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
     profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}   # US-42 — tên trên biên lai
@@ -43,6 +43,22 @@ app:
   payment:                         # US-13
     platform-fee-rate: ${PLATFORM_FEE_RATE:0.15}   # phí nền tảng chốt vào giao dịch lúc charge (fee, mentor_earning)
     idempotency-ttl: PT24H         # Idempotency-Key của /charge có hiệu lực 24 giờ / người gọi
+    gateway: ${PAYMENT_GATEWAY:sandbox}   # US-56 — sandbox (form thẻ test trong tiến trình) | momo | vnpay
+    reconcile-after: ${PAYMENT_RECONCILE_AFTER:PT2M}   # PENDING quá mốc này → truy vấn cổng (local không nhận được IPN)
+  momo:                            # US-56 — https://developers.momo.vn/v3/docs/payment/api/wallet/onetime/
+    partner-code: ${MOMO_PARTNER_CODE:}
+    access-key: ${MOMO_ACCESS_KEY:}
+    secret-key: ${MOMO_SECRET_KEY:}
+    api-url: ${MOMO_API_URL:https://test-payment.momo.vn}
+    request-type: ${MOMO_REQUEST_TYPE:payWithMethod}   # trang chọn ví MoMo / thẻ ATM / Visa-Master
+    ipn-url: ${MOMO_IPN_URL:}       # trống = FRONTEND_URL/api/payment/momo/ipn (cần URL công khai để MoMo gọi được)
+    link-ttl: PT100M               # MoMo giữ link 100 phút (bỏ qua orderExpireTime)
+  vnpay:                           # US-56 — https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html
+    tmn-code: ${VNPAY_TMN_CODE:}
+    hash-secret: ${VNPAY_HASH_SECRET:}
+    pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+    api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+    link-ttl: PT15M                # vnp_ExpireDate; ngắn hơn thời gian giữ chỗ 30 phút của phiên để kịp thử lại
   earnings:                        # US-25 — sổ thu nhập mentor
     release-delay: ${EARNING_RELEASE_DELAY:PT48H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE
     release-interval: PT5M           # chu kỳ job giải phóng

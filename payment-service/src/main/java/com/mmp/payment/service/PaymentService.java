@@ -10,6 +10,7 @@ import com.mmp.payment.entity.Refund;
 import com.mmp.payment.entity.Transaction;
 import com.mmp.payment.exception.ApiException;
 import com.mmp.payment.gateway.PaymentGateway;
+import com.mmp.payment.gateway.RedirectGateway;
 import com.mmp.payment.repository.ChargeIdempotencyKeyRepository;
 import com.mmp.payment.repository.RefundRepository;
 import com.mmp.payment.repository.TransactionRepository;
@@ -50,6 +51,7 @@ public class PaymentService {
     private final RefundRepository refundRepository;
     private final ChargeIdempotencyKeyRepository idemRepository;
     private final PaymentGateway gateway;
+    private final List<RedirectGateway> redirectGateways;
     private final MentoringClient mentoringClient;
     private final ReferralService referralService;
     private final EarningService earnings;
@@ -59,7 +61,7 @@ public class PaymentService {
     private final Duration idempotencyTtl;
 
     public PaymentService(TransactionRepository transactionRepository, RefundRepository refundRepository,
-                          ChargeIdempotencyKeyRepository idemRepository, PaymentGateway gateway,
+                          ChargeIdempotencyKeyRepository idemRepository, PaymentGateway gateway, List<RedirectGateway> redirectGateways,
                           MentoringClient mentoringClient, ReferralService referralService, EarningService earnings,
                           AuditClient audit, TransactionTemplate tx,
                           @Value("${app.payment.platform-fee-rate:0.15}") BigDecimal feeRate,
@@ -68,6 +70,7 @@ public class PaymentService {
         this.refundRepository = refundRepository;
         this.idemRepository = idemRepository;
         this.gateway = gateway;
+        this.redirectGateways = redirectGateways;
         this.mentoringClient = mentoringClient;
         this.referralService = referralService;
         this.earnings = earnings;
@@ -138,8 +141,9 @@ public class PaymentService {
         return view(transactionRepository.findById(k.getTransactionId()).orElseThrow());
     }
 
-    private TransactionResponse doCharge(AuthUser payer, String key, ChargeRequest req) {
-        SessionInfo session = mentoringClient.getSession(req.sessionId());
+    /** Phiên của người trả, đang chờ thanh toán, có giá và chưa có giao dịch đã thu tiền (dùng chung charge + VNPay). */
+    SessionInfo payableSession(AuthUser payer, UUID sessionId, BigDecimal amount) {
+        SessionInfo session = mentoringClient.getSession(sessionId);
         if (!payer.isAdmin() && !session.menteeId().equals(payer.userId())) {
             throw ApiException.forbidden("Bạn chỉ có thể thanh toán cho phiên của chính mình");
         }
@@ -149,13 +153,22 @@ public class PaymentService {
         if (session.price() == null || session.price().signum() <= 0) {
             throw ApiException.badRequest("FREE_SESSION", "Phiên miễn phí, không cần thanh toán");
         }
-        if (req.amount() != null && req.amount().compareTo(session.price()) != 0) {
+        if (amount != null && amount.compareTo(session.price()) != 0) {
             throw ApiException.badRequest("AMOUNT_MISMATCH", "Số tiền không khớp với giá của phiên");
         }
         if (transactionRepository.existsBySessionIdAndStatusIn(session.id(), Transaction.PAID_STATUSES)) {
             throw ApiException.conflict("ALREADY_PAID", "Phiên này đã được thanh toán");
         }
-        PaymentRules.FeeSplit split = PaymentRules.split(session.price(), feeRate);
+        return session;
+    }
+
+    PaymentRules.FeeSplit feeSplit(BigDecimal price) {
+        return PaymentRules.split(price, feeRate);
+    }
+
+    private TransactionResponse doCharge(AuthUser payer, String key, ChargeRequest req) {
+        SessionInfo session = payableSession(payer, req.sessionId(), req.amount());
+        PaymentRules.FeeSplit split = feeSplit(session.price());
 
         Transaction pending = tx.execute(s -> {
             Transaction t = new Transaction();
@@ -241,7 +254,13 @@ public class PaymentService {
                         + refunded.toPlainString() + "/" + t.getAmount().toPlainString() + ")")
                         : ApiException.badRequest("INVALID_REFUND_AMOUNT", "Số tiền / phần trăm hoàn không hợp lệ (chỉ gửi amount > 0 hoặc percent 1–100)");
             }
-            PaymentGateway.ChargeResult result = gateway.refund(t.getProviderReference(), calc.amount());
+            // US-56 — giao dịch MoMo / VNPay hoàn qua API hoàn tiền của chính cổng đó (toàn phần hoặc một phần)
+            boolean full = refunded.signum() == 0 && calc.amount().compareTo(t.getAmount()) == 0;
+            PaymentGateway.ChargeResult result = redirectGateways.stream()
+                    .filter(g -> g.provider().equals(t.getProvider()))
+                    .findFirst()
+                    .map(g -> g.refund(t, calc.amount(), full, actorId == null ? null : actorId.toString()))
+                    .orElseGet(() -> gateway.refund(t.getProviderReference(), calc.amount()));
             if (!result.success()) {
                 throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Cổng thanh toán từ chối hoàn tiền");
             }

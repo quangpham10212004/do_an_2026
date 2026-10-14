@@ -1,21 +1,35 @@
 package com.mmp.payment.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import java.time.Duration;
 
 /** Đối soát: gửi lại xác nhận phiên cho các giao dịch thành công chưa đồng bộ được. */
 @Component
 public class PaymentReconciliationJob {
 
     private final PaymentService paymentService;
+    private final RedirectPaymentService redirect;
+    private final Duration reconcileAfter;
 
-    public PaymentReconciliationJob(PaymentService paymentService) {
+    public PaymentReconciliationJob(PaymentService paymentService, RedirectPaymentService redirect,
+                                    @Value("${app.payment.reconcile-after:PT2M}") Duration reconcileAfter) {
         this.paymentService = paymentService;
+        this.redirect = redirect;
+        this.reconcileAfter = reconcileAfter;
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 30_000)
     public void reconcile() {
         paymentService.unsyncedSuccessTransactions().forEach(t -> paymentService.syncSession(t.getId()));
+    }
+
+    /** US-56 (PRD-PAY-14) — giao dịch MoMo / VNPay chưa có IPN → truy vấn trạng thái ở cổng. */
+    @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
+    public void reconcileRedirectPayments() {
+        redirect.reconcilePending(reconcileAfter);
     }
 
     /** US-13 — xoá Idempotency-Key quá 24 giờ. */

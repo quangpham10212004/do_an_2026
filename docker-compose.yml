@@ -188,6 +188,16 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       PROFILE_SERVICE_URL: http://profile-service:8082
+      # US-56 — PAYMENT_GATEWAY=momo | vnpay | sandbox (mặc định, chạy offline). Khoá cổng đặt trong .env.
+      PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-sandbox}
+      MOMO_PARTNER_CODE: ${MOMO_PARTNER_CODE:-}
+      MOMO_ACCESS_KEY: ${MOMO_ACCESS_KEY:-}
+      MOMO_SECRET_KEY: ${MOMO_SECRET_KEY:-}
+      MOMO_IPN_URL: ${MOMO_IPN_URL:-}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+      VNPAY_PAY_URL: ${VNPAY_PAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      VNPAY_API_URL: ${VNPAY_API_URL:-https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
     depends_on:
       payment-db: { condition: service_healthy }
     healthcheck:

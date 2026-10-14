@@ -4,10 +4,10 @@ import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import Link from "next/link";
-import { CreditCard, Lock } from "lucide-react";
+import { CreditCard, ExternalLink, Lock } from "lucide-react";
 import { Alert, Avatar, Button, Card, CardBody, CardHeader, DescriptionList, Field, Input, Loading, PageHeader } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
-import { TEST_CARDS, feePercent, newIdempotencyKey, paymentApi, paymentReasonLabel } from "@/features/payment/api";
+import { PROVIDER_LABELS, TEST_CARDS, feePercent, newIdempotencyKey, paymentApi, paymentReasonLabel, type RedirectProvider } from "@/features/payment/api";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import { SESSION_STATUS_LABELS } from "@/features/mentoring/labels";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -26,12 +26,15 @@ function Payment({ sessionId }: { sessionId: string }) {
   const [result, setResult] = useState<Transaction | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // US-56 — undefined = đang tải; "MOMO" / "VNPAY" → chuyển sang trang của cổng; null → form thẻ sandbox
+  const [gateway, setGateway] = useState<RedirectProvider | null | undefined>(undefined);
   // US-13 — 1 Idempotency-Key cho mỗi lần checkout: giữ nguyên khi gửi lại (mạng lỗi / bấm 2 lần), đổi sau khi có kết quả.
   const [idemKey, setIdemKey] = useState<string>(() => newIdempotencyKey());
 
   useEffect(() => {
     mentoringApi.session(sessionId).then(setSession).catch((e) => { setError(errorMessage(e)); setSession(null); });
     paymentApi.sessionTransactions(sessionId).then(setHistory).catch(() => {});
+    paymentApi.methods().then((m) => setGateway(m.redirect)).catch(() => setGateway(null));
   }, [sessionId]);
 
   async function pay(e: FormEvent) {
@@ -54,18 +57,32 @@ function Payment({ sessionId }: { sessionId: string }) {
     }
   }
 
-  if (session === undefined) return <Loading />;
+  async function payWithGateway() {
+    if (!session) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { paymentUrl } = await paymentApi.checkout(sessionId, session.price);
+      window.location.assign(paymentUrl);
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  if (session === undefined || gateway === undefined) return <Loading />;
   if (!session) return <Alert>{error}</Alert>;
   const set = (k: keyof CardInput) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setCard({ ...card, [k]: e.target.value });
 
   return (
     <>
-      <PageHeader title="Thanh toán phiên mentoring" description="Cổng thanh toán sandbox, không phát sinh giao dịch thật."
+      <PageHeader title="Thanh toán phiên mentoring"
+        description={gateway ? `Thanh toán qua ${PROVIDER_LABELS[gateway]} (môi trường thử nghiệm), không phát sinh giao dịch thật.` : "Cổng thanh toán sandbox, không phát sinh giao dịch thật."}
         back={{ href: "/mentoring/sessions", label: "Phiên học" }} />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <form onSubmit={pay}>
           <Card>
-            <CardHeader title={<span className="inline-flex items-center gap-2"><CreditCard aria-hidden="true" className="size-4 text-ink-muted" />Thẻ thanh toán</span>} />
+            <CardHeader title={<span className="inline-flex items-center gap-2"><CreditCard aria-hidden="true" className="size-4 text-ink-muted" />{gateway ? "Phương thức thanh toán" : "Thẻ thanh toán"}</span>} />
             <CardBody className="flex flex-col gap-4">
               {result?.status === "SUCCESS" && (
                 <Alert tone="success" title="Thanh toán thành công">
@@ -77,6 +94,28 @@ function Payment({ sessionId }: { sessionId: string }) {
               <Alert>{error}</Alert>
               {session.status !== "PENDING" ? (
                 <Alert tone="info">Phiên không ở trạng thái chờ thanh toán.</Alert>
+              ) : gateway ? (
+                <>
+                  <p className="text-ink-muted">Bạn sẽ được chuyển sang trang {PROVIDER_LABELS[gateway]} để thanh toán, sau đó quay lại đây.</p>
+                  <Button type="button" variant="primary" size="lg" block icon={ExternalLink} loading={busy} onClick={payWithGateway}>
+                    {busy ? `Đang chuyển sang ${PROVIDER_LABELS[gateway]}…` : `Thanh toán ${formatMoney(session.price)} qua ${PROVIDER_LABELS[gateway]}`}
+                  </Button>
+                  <div className="well flex flex-col gap-1.5 text-small">
+                    <div className="eyebrow">Thông tin test {PROVIDER_LABELS[gateway]}</div>
+                    {gateway === "MOMO" ? (
+                      <>
+                        <div>Chọn &ldquo;Thanh toán bằng VISA/Master/JCB&rdquo;: số thẻ <span className="font-mono">4111 1111 1111 1111</span> (không cần OTP)</div>
+                        <div>Chủ thẻ NGUYEN VAN A · Hết hạn 05/26 · CVC <span className="font-mono">111</span></div>
+                        <div>Hoặc thẻ ATM: <span className="font-mono">9704 0000 0000 0018</span>, chủ thẻ NGUYEN VAN A, ngày phát hành 03/07</div>
+                      </>
+                    ) : (
+                      <>
+                        <div>Ngân hàng NCB · Số thẻ <span className="font-mono">9704198526191432198</span></div>
+                        <div>Chủ thẻ NGUYEN VAN A · Ngày phát hành 07/15 · OTP <span className="font-mono">123456</span></div>
+                      </>
+                    )}
+                  </div>
+                </>
               ) : (
                 <>
                   <Field label="Số thẻ" id="pay-number">
