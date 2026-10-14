@@ -17,6 +17,11 @@ import type {
   Uuid,
 } from "@/types";
 
+/** US-56 — cổng thanh toán chuyển hướng. */
+export type RedirectProvider = "MOMO" | "VNPAY";
+
+export const PROVIDER_LABELS: Record<RedirectProvider, string> = { MOMO: "MoMo", VNPAY: "VNPay" };
+
 // payment-service (Thắng)
 export const paymentApi = {
   /**
@@ -29,6 +34,15 @@ export const paymentApi = {
       body: { sessionId, amount, card },
       headers: { "Idempotency-Key": idempotencyKey },
     }),
+  /** US-56 — redirect = cổng chuyển hướng đang bật ("MOMO" / "VNPAY") hoặc null → dùng form thẻ sandbox. */
+  methods: () => api<{ redirect: RedirectProvider | null; sandboxCard: boolean }>("/api/payment/methods"),
+  /** US-56 — tạo giao dịch PENDING + link của cổng; trình duyệt chuyển sang paymentUrl. */
+  checkout: (sessionId: Uuid, amount: number) =>
+    api<{ transactionId: Uuid; provider: RedirectProvider; paymentUrl: string }>("/api/payment/checkout", { method: "POST", body: { sessionId, amount } }),
+  /** US-56 — trang return gửi lại nguyên query string cổng trả về; server kiểm chữ ký rồi hỏi cổng trạng thái thật. */
+  confirmReturn: (provider: string, search: string) =>
+    api<Transaction>(`/api/payment/${encodeURIComponent(provider)}/return${search.startsWith("?") ? search : `?${search}`}`),
+  transaction: (id: Uuid) => api<Transaction>(`/api/payment/transactions/${id}`),
   transactions: () => api<Transaction[]>("/api/payment/transactions"),
   sessionTransactions: (sessionId: Uuid) => api<Transaction[]>(`/api/payment/sessions/${sessionId}/transactions`),
   myReferral: () => api<MyReferral>("/api/payment/referrals/me"),
@@ -89,6 +103,14 @@ export const PAYMENT_REASON_LABELS: Record<string, string> = {
   INVALID_CVV: "CVV không hợp lệ",
   CARD_EXPIRED: "Thẻ hết hạn",
   DUPLICATE_PAYMENT: "Thanh toán trùng",
+  PAYMENT_CANCELLED: "Bạn đã huỷ thanh toán",
+  PAYMENT_EXPIRED: "Hết thời gian thanh toán",
+  PAYMENT_FAILED: "Cổng thanh toán báo không thành công",
+  MOMO_UNAVAILABLE: "Không kết nối được MoMo",
+  MOMO_1002: "Ngân hàng phát hành từ chối giao dịch",
+  MOMO_1004: "Vượt hạn mức thanh toán",
+  MOMO_1017: "Giao dịch đã bị huỷ",
+  VNPAY_UNAVAILABLE: "Không kết nối được VNPay",
   SESSION_DISPUTED: "Phiên đang tranh chấp",
   SESSION_CANCELLED_BY_MENTEE: "Mentee huỷ phiên",
   SESSION_CANCELLED_BY_MENTOR: "Mentor huỷ phiên",

@@ -101,7 +101,7 @@ class PaymentServiceTest {
                 new PaymentGateway.ChargeResult(true, "sbx_ch_" + inv.getArgument(0), null));
         when(gateway.refund(any(), any())).thenReturn(new PaymentGateway.ChargeResult(true, "sbx_re_1", null));
 
-        service = new PaymentService(txRepo, refundRepo, idemRepo, gateway, mentoring, referrals, earnings, audit, tx,
+        service = new PaymentService(txRepo, refundRepo, idemRepo, gateway, List.of(), mentoring, referrals, earnings, audit, tx,
                 new BigDecimal("0.15"), Duration.ofHours(24));
     }
 
@@ -165,7 +165,7 @@ class PaymentServiceTest {
     @Test
     void laterRateChangeDoesNotAlterExistingTransactions() {
         TransactionResponse first = service.charge(payer, "key-1", request);
-        PaymentService raised = new PaymentService(txRepo, refundRepo, idemRepo, gateway, mentoring, referrals, earnings, audit, tx,
+        PaymentService raised = new PaymentService(txRepo, refundRepo, idemRepo, gateway, List.of(), mentoring, referrals, earnings, audit, tx,
                 new BigDecimal("0.20"), Duration.ofHours(24));
 
         TransactionResponse reread = raised.get(payer, first.id());

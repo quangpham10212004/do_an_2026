@@ -11,6 +11,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -58,4 +59,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     BigDecimal sumByStatus(@Param("status") Transaction.Status status);
 
     long countByStatus(Transaction.Status status);
+
+    /** US-56 — vnp_TxnRef → giao dịch. */
+    Optional<Transaction> findByProviderTxnRef(String providerTxnRef);
+
+    /** US-56 — giao dịch VNPay còn PENDING quá lâu → hỏi VNPay (querydr). */
+    List<Transaction> findByProviderAndStatusAndCreatedAtBefore(String provider, Transaction.Status status, OffsetDateTime before);
 }
