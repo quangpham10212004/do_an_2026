@@ -1,18 +1,21 @@
 """
 Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6, US-17 PRD-MATCH-1/2):
 
-    1. Hard filter       : profile_db (read-only) cho biết mentor nào thoả MỌI ràng buộc cứng —
-                           5 ràng buộc hệ thống (APPROVED, trạng thái hiệu lực ACCEPTING, có lịch rảnh,
-                           còn chỗ, cùng lĩnh vực) + bộ lọc người dùng (giá, ngày, buổi, ngôn ngữ,
-                           loại phiên, rating, miễn phí — match_filters.py)
-    2. Top-K retrieval   : CHỈ trong các mentor đó, lấy K mentor có vector gần mentee nhất
-                           (cosine, pgvector <=>) trong matching_db
+    1. Top-K retrieval   : trong matching_db, lấy K mentor có vector gần mentee nhất (cosine, pgvector
+                           <=>, chỉ mục HNSW). Truy vấn ANN KHÔNG kèm điều kiện lọc nào
+    2. Hard filter       : ở tầng ứng dụng — đọc dữ kiện của đúng K mentor đó từ profile_db (read-only)
+                           rồi loại ai không thoả MỌI ràng buộc cứng: 5 ràng buộc hệ thống (APPROVED,
+                           trạng thái hiệu lực ACCEPTING, có lịch rảnh, còn chỗ, cùng lĩnh vực) + bộ lọc
+                           người dùng (giá, ngày, buổi, ngôn ngữ, loại phiên, rating, miễn phí —
+                           match_filters.py)
     3. Re-rank           : điểm cuối = kết hợp similarity + rating + kinh nghiệm
     4. Explain           : sinh lý do đề xuất để kết quả không phải "hộp đen" (NFR-6)
 
-Lọc TRƯỚC khi xếp hạng (US-17): trước đây lấy top-K theo vector rồi mới lọc, nên khi bộ lọc chặt thì
-mentor hợp lệ nằm ngoài top-K bị bỏ sót và kết quả bị hụt. Giờ có ≥ limit mentor hợp lệ (đã lập chỉ
-mục) thì luôn trả đủ limit kết quả.
+Over-fetch chống "đói ứng viên" (candidate starvation): lọc BÊN TRONG truy vấn ANN (WHERE cạnh ORDER BY
+<=>) làm HNSW chỉ trả vài chục ứng viên gần nhất rồi mới lọc, nên bộ lọc chặt có thể để lại 0–2 kết quả
+dù còn nhiều mentor hợp lệ. Vì vậy ANN lấy dư (K = max(50, 5×limit)) và lọc ở ứng dụng sau đó; nếu sau khi
+lọc vẫn chưa đủ `limit` mà chỉ mục còn mentor chưa xét thì nhân đôi K và lặp lại (tối đa MAX_K), nên có
+≥ limit mentor hợp lệ (đã lập chỉ mục) thì vẫn trả đủ limit kết quả.
 
 Dữ liệu nằm ở hai DB vì mỗi service sở hữu phần việc của mình: dữ kiện hồ sơ ở profile_db (của
 profile-service, đọc read-only), vector ở matching_db. Giữa hai DB chỉ truyền danh sách ID — không
@@ -27,9 +30,11 @@ from app.services import index_service
 from app.services import match_filters
 from app.services.match_filters import MatchFilters
 
-# K mặc định: số mentor hợp lệ gần nhất về vector được đưa vào re-rank (re-rank cộng thêm rating và
-# kinh nghiệm nên lấy dư so với limit).
+# K mặc định: số mentor gần nhất về vector được lấy về TRƯỚC khi lọc (over-fetch: một phần sẽ bị hard
+# filter loại, và re-rank cộng thêm rating/kinh nghiệm nên cũng cần lấy dư so với limit).
 DEFAULT_K = 50
+# Trần khi tự nhân đôi K để bù cho bộ lọc chặt; chạm trần mà chưa đủ limit thì trả những gì đã có.
+MAX_K = 2000
 
 # Trọng số re-rank — lý do lựa chọn được trình bày trong docs/ai-features.md:
 # độ tương đồng nội dung là tín hiệu chính (0.7); rating (0.2) và kinh nghiệm
@@ -64,11 +69,11 @@ async def get_mentee(mentee_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-# Một dòng cho MỖI mentor: `reason` = lý do bị ràng buộc hệ thống loại (NULL = qua), kèm cờ đúng/sai
+# Một dòng cho MỖI mentor trong danh sách ID đưa vào ($9): `reason` = lý do bị ràng buộc hệ thống loại (NULL = qua), kèm cờ đúng/sai
 # cho từng bộ lọc người dùng (bộ lọc không bật => tham số NULL/rỗng => cờ true). Thứ tự CASE là thứ tự
 # kiểm tra ràng buộc (docs/ai-features.md §1.5). Giờ lịch rảnh so theo giờ địa phương của mentor.
 #   $1 lĩnh vực mentee   $2 maxRate    $3 days int[]   $4/$5 cửa sổ giờ (bắt đầu/kết thúc)
-#   $6 ngôn ngữ text[]   $7 sessionType $8 minRating   $9 ID mentor bỏ qua hoàn toàn (similar-mentors)
+#   $6 ngôn ngữ text[]   $7 sessionType $8 minRating   $9 ID mentor cần đọc dữ kiện (K ứng viên từ ANN)
 _CANDIDATES_CTE = """
 WITH c AS (
     SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.capacity, m.active_mentee_count,
@@ -95,12 +100,12 @@ WITH c AS (
                    AND (cardinality($3::int[]) = 0 OR a.day_of_week = ANY ($3::int[]))
                    AND ($4::time IS NULL OR (a.start_time < $5::time AND a.end_time > $4::time))) AS days_time_ok
     FROM mentor_profiles m
-    WHERE NOT (m.user_id = ANY ($9::uuid[]))
+    WHERE m.user_id = ANY ($9::uuid[])
 )
 """
 
 
-def _filter_params(mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str]) -> list:
+def _filter_params(mentee_domain: str | None, filters: MatchFilters, mentor_ids: list) -> list:
     window_start, window_end = filters.time_window()
     return [
         mentee_domain,
@@ -111,51 +116,53 @@ def _filter_params(mentee_domain: str | None, filters: MatchFilters, exclude_ids
         list(filters.language),
         filters.session_type,
         filters.min_rating,
-        exclude_ids,
+        mentor_ids,
     ]
 
 
-async def eligible_candidates(
-    mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str] | None = None
-) -> tuple[list[dict], dict[str, int]]:
+async def nearest_mentors(mentee_id: str, k: int) -> list[dict]:
     """
-    Bước 1 — trên profile_db: (mentor đã qua 5 ràng buộc hệ thống, kèm cờ của từng bộ lọc người dùng;
-    số mentor bị loại theo từng lý do hệ thống). Bộ lọc người dùng được áp ở match_filters.apply.
+    Bước 1 — trên matching_db: K mentor có vector gần mentee nhất theo cosine distance (pgvector <=>,
+    chỉ mục HNSW). KHÔNG có điều kiện lọc: lọc nằm ở tầng ứng dụng (xem docstring module). Vector của
+    mentee lấy bằng subquery ngay trong DB. Mentee chưa có vector => rỗng.
     """
-    params = _filter_params(mentee_domain, filters, exclude_ids or [])
-    pool = await get_profile_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(_CANDIDATES_CTE + "SELECT * FROM c WHERE reason IS NULL", *params)
-        counts = await conn.fetch(
-            _CANDIDATES_CTE + "SELECT reason, count(*) AS n FROM c WHERE reason IS NOT NULL GROUP BY reason",
-            *params,
-        )
-    return [dict(r) for r in rows], {r["reason"]: r["n"] for r in counts}
-
-
-async def rank_by_similarity(mentee_id: str, mentor_ids: list, k: int) -> list[dict]:
-    """
-    Bước 2 — trên matching_db: K mentor (chỉ trong mentor_ids) có vector gần mentee nhất theo cosine
-    distance (pgvector <=>). Vector của mentee lấy bằng subquery ngay trong DB. Mentor hợp lệ nhưng
-    chưa có vector (hồ sơ vừa tạo, chờ IndexSyncJob) thì chưa xếp hạng được.
-    """
-    if not mentor_ids:
-        return []
     pool = await get_matching_pool()
     rows = await pool.fetch(
         """
         WITH q AS (SELECT embedding FROM mentee_embeddings WHERE user_id = $1::uuid AND embedding IS NOT NULL)
         SELECT e.user_id AS mentor_id, e.embedding <=> q.embedding AS distance
         FROM mentor_embeddings e, q
-        WHERE e.embedding IS NOT NULL AND e.user_id = ANY ($2::uuid[])
+        WHERE e.embedding IS NOT NULL
         ORDER BY e.embedding <=> q.embedding ASC
-        LIMIT $3
+        LIMIT $2
         """,
         mentee_id,
-        mentor_ids,
         k,
     )
     return [dict(r) for r in rows]
+
+
+async def mentor_facts(mentor_ids: list, mentee_domain: str | None, filters: MatchFilters) -> list[dict]:
+    """
+    Bước 2a — trên profile_db: dữ kiện của đúng các mentor đã lấy từ ANN, kèm `reason` (lý do bị ràng
+    buộc hệ thống loại, NULL = qua) và cờ đúng/sai cho từng bộ lọc người dùng. SQL chỉ TÍNH cờ; việc
+    quyết định ai bị loại do `split_by_system_constraints` và `match_filters.apply` làm ở tầng ứng dụng.
+    """
+    if not mentor_ids:
+        return []
+    pool = await get_profile_pool()
+    rows = await pool.fetch(_CANDIDATES_CTE + "SELECT * FROM c", *_filter_params(mentee_domain, filters, mentor_ids))
+    return [dict(r) for r in rows]
+
+
+def split_by_system_constraints(rows: list[dict]) -> tuple[list[dict], dict[str, int]]:
+    """Bước 2b — (mentor qua cả 5 ràng buộc hệ thống, số mentor bị loại theo từng lý do)."""
+    passed = [r for r in rows if r["reason"] is None]
+    excluded: dict[str, int] = {}
+    for r in rows:
+        if r["reason"] is not None:
+            excluded[r["reason"]] = excluded.get(r["reason"], 0) + 1
+    return passed, excluded
 
 
 def re_rank(candidates: list[dict]) -> list[dict]:
@@ -237,17 +244,26 @@ async def match_mentors_for_mentee(
 
 
 async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: list[str]) -> dict:
-    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids)
-    eligible, excluded_by = match_filters.apply(base, filters)
-
+    skip = {str(i) for i in exclude_ids}
     k = max(DEFAULT_K, limit * 5)
+    while True:
+        raw = await nearest_mentors(str(mentee["user_id"]), k)
+        exhausted = len(raw) < k  # ANN trả ít hơn K => đã xét hết chỉ mục, tăng K cũng vô ích
+        nearest = [r for r in raw if str(r["mentor_id"]) not in skip]
+        facts = await mentor_facts([r["mentor_id"] for r in nearest], mentee["domain"], filters)
+        base, excluded = split_by_system_constraints(facts)
+        eligible, excluded_by = match_filters.apply(base, filters)
+        if len(eligible) >= limit or exhausted or k >= MAX_K:
+            break
+        k = min(k * 2, MAX_K)
+
     by_id = {c["mentor_id"]: c for c in eligible}
-    nearest = await rank_by_similarity(str(mentee["user_id"]), list(by_id), k)
     candidates = []
     for r in nearest:
-        c = dict(by_id[r["mentor_id"]])
-        c["distance"] = r["distance"]
-        candidates.append(c)
+        if r["mentor_id"] in by_id:
+            c = dict(by_id[r["mentor_id"]])
+            c["distance"] = r["distance"]
+            candidates.append(c)
     ranked = re_rank(candidates)[:limit]
     for c in ranked:
         c["reasons"], c["matched_skills"] = explain(c, mentee)
@@ -257,7 +273,7 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
         "filters": filters,
         "excluded_by": excluded_by,
         "stats": {
-            "considered": len(base) + sum(excluded.values()),
+            "considered": len(facts),
             "excluded": excluded,
             "eligible": len(eligible),
             "retrieved": len(candidates),

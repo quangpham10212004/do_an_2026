@@ -1,7 +1,7 @@
 """
 US-17 / US-18 — pipeline AI Matching có bộ lọc, chạy trên PostgreSQL THẬT (schema dựng từ chính các
-migration của repo, giống test_index_db.py): SQL hard filter trên profile_db qua role matching_reader,
-xếp hạng pgvector trong matching_db.
+migration của repo, giống test_index_db.py): ANN pgvector trong matching_db lấy dư K ứng viên, dữ kiện
+lọc đọc từ profile_db qua role matching_reader, hard filter áp ở tầng ứng dụng.
 
 Cần MATCHING_DB_URL, PROFILE_DB_URL (role matching_reader), PROFILE_DB_ADMIN_URL trỏ tới DB DÙNG MỘT
 LẦN. Thiếu biến => skip khi local, FAIL trên CI.
@@ -108,8 +108,8 @@ def ids(result) -> set[str]:
 async def test_filters_apply_before_vector_ranking(conn):
     """
     AC US-17: maxRate=150000 => không kết quả nào có hourlyRate > 150.000; 30 mentor hợp lệ, limit=10 =>
-    đúng 10 kết quả. 60 mentor đắt nằm SÁT mentee hơn trong không gian vector: nếu lọc sau top-K (K=50)
-    như trước thì sẽ hụt sạch kết quả.
+    đúng 10 kết quả. 60 mentor đắt nằm SÁT mentee hơn trong không gian vector: K=50 đầu tiên toàn mentor
+    đắt (lọc xong còn 0), pipeline phải tự nhân đôi K (50 → 100) để với tới 30 mentor hợp lệ.
     """
     expensive = [await add_mentor(conn, rate=500000, bio="Chuyên gia Kafka") for _ in range(60)]
     cheap = [await add_mentor(conn, rate=100000 if i % 2 else 150000) for i in range(30)]

@@ -1,10 +1,10 @@
 """
 US-17 / US-18 (PRD-MATCH-1, 2, 5) — bộ lọc người dùng của AI Matching.
 
-Bộ lọc là HARD FILTER áp dụng TRƯỚC khi xếp hạng bằng vector (xem matching_pipeline.py):
-profile_db trả về, cho mỗi mentor đã qua 5 ràng buộc hệ thống (APPROVED, ACCEPTING, có lịch, còn
-chỗ, cùng lĩnh vực), một cờ đúng/sai cho từng điều kiện người dùng; module này (thuần, không I/O)
-quyết định mentor nào còn lại và đếm `excludedBy`.
+Bộ lọc là HARD FILTER áp dụng ở tầng ứng dụng SAU khi lấy dư K ứng viên từ ANN (xem
+matching_pipeline.py): profile_db trả về, cho mỗi ứng viên đã qua 5 ràng buộc hệ thống (APPROVED,
+ACCEPTING, có lịch, còn chỗ, cùng lĩnh vực), một cờ đúng/sai cho từng điều kiện người dùng; module
+này (thuần, không I/O) quyết định mentor nào còn lại và đếm `excludedBy` (trong tập ứng viên đã xét).
 
 Tên bộ lọc = tên query param của GET /api/matching/mentors (để frontend "Nới điều kiện" bỏ đúng
 param đó): maxRate, days, timeOfDay, language, sessionType, minRating, freeOnly.

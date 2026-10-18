@@ -74,10 +74,10 @@ flowchart LR
     H -- có --> E[all-MiniLM-L6-v2]
     E --> V[(matching_db<br/>VECTOR 384 + HNSW)]
 
-    Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R2[1. Hard filter trên profile_db<br/>5 ràng buộc + bộ lọc người dùng]
-    R2 --> R1[2. Top-K retrieval<br/>cosine, chỉ trong mentor hợp lệ]
+    Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R1[1. Top-K retrieval, lấy dư<br/>cosine, không kèm điều kiện lọc]
     V --> R1
-    R1 --> R3[3. Re-rank<br/>0.7·sim + 0.2·rating + 0.1·exp]
+    R1 --> R2[2. Hard filter ở tầng ứng dụng<br/>5 ràng buộc + bộ lọc người dùng<br/>chưa đủ limit thì K ×2]
+    R2 --> R3[3. Re-rank<br/>0.7·sim + 0.2·rating + 0.1·exp]
     R3 --> R4[4. Explain<br/>lý do + thống kê]
     R4 --> OUT[Danh sách mentor]
 ```
@@ -118,16 +118,24 @@ lại phần lệch và xoá dòng chỉ mục của hồ sơ đã bị xoá. V�
 cả khi thông báo bị mất hay matching-service vừa khởi động lại. Nếu mentee tìm mentor trước khi chỉ mục
 kịp cập nhật, `/api/matching/mentors` lập chỉ mục ngay trong request thay vì trả 404.
 
-### 1.4 Bước 2 — Top-K retrieval (chỉ trong mentor hợp lệ)
+### 1.4 Bước 1 — Top-K retrieval (over-fetch, chưa lọc)
 
-> **US-17 (Sprint 2)**: thứ tự đã đổi thành **lọc trước, xếp hạng sau**. Bước 1 (mục 1.5) chạy một truy
-> vấn trên `profile_db` trả về ID mọi mentor thoả ràng buộc hệ thống + bộ lọc người dùng; bước này chỉ
-> xếp hạng cosine **trong các ID đó** (`WHERE e.user_id = ANY($ids)`), nên có ≥ `limit` mentor hợp lệ đã
-> lập chỉ mục thì luôn trả đủ `limit` kết quả. Truy vấn hồ sơ (2) bên dưới được gộp vào bước 1. Mã:
-> `matching_pipeline.py` (`eligible_candidates`, `rank_by_similarity`), `match_filters.py`.
+> **Lịch sử thiết kế**: bản đầu lấy top-K rồi lọc ở ứng dụng, nhưng K cố định nên bộ lọc chặt có thể làm
+> kết quả hụt (US-17 đã chuyển sang lọc trước bằng danh sách ID). Hiện tại pipeline dùng lại mô hình
+> **over-fetch + lọc ở ứng dụng** nhưng bổ sung vòng **tự nhân đôi K** để không còn hụt: ANN luôn chạy
+> trên toàn bộ chỉ mục (không `WHERE` cạnh `ORDER BY <=>`, để HNSW hoạt động đúng nghĩa), K khởi đầu
+> `max(50, 5×limit)`; nếu sau khi lọc chưa đủ `limit` mà chỉ mục còn mentor chưa xét thì K ×2 (trần
+> `MAX_K` = 2000). Có ≥ `limit` mentor hợp lệ đã lập chỉ mục thì vẫn trả đủ `limit`. Mã:
+> `matching_pipeline.py` (`nearest_mentors`, `mentor_facts`, `split_by_system_constraints`, `_run`),
+> `match_filters.py`.
+
+**Vì sao không lọc ngay trong truy vấn ANN?** HNSW là chỉ mục xấp xỉ: nó duyệt đồ thị lấy khoảng
+`ef_search` (mặc định 40) ứng viên gần nhất rồi Postgres mới áp `WHERE`. Nếu phần lớn ứng viên đó không
+qua bộ lọc thì chỉ còn vài dòng dù còn nhiều mentor hợp lệ ở xa hơn (**candidate starvation**). Lấy dư
+rồi lọc ở ứng dụng giữ nguyên chỉ mục, và vòng nhân đôi K bù cho trường hợp bộ lọc rất chặt.
 
 Vector nằm ở `matching_db`, dữ kiện hồ sơ nằm ở `profile_db` (mỗi service sở hữu phần việc của mình),
-nên pipeline chạy **hai truy vấn** và giữa hai DB chỉ truyền danh sách ID (bản trước US-17 như sau):
+nên pipeline chạy **hai truy vấn** và giữa hai DB chỉ truyền danh sách ID:
 
 ```sql
 -- (1) matching_db — xếp hạng theo khoảng cách vector
@@ -136,12 +144,13 @@ SELECT e.user_id AS mentor_id, e.embedding <=> q.embedding AS distance
 FROM mentor_embeddings e, q
 WHERE e.embedding IS NOT NULL
 ORDER BY e.embedding <=> q.embedding
-LIMIT $2      -- K = max(50, 5 × limit)
+LIMIT $2      -- K = max(50, 5 × limit), nhân đôi nếu lọc xong chưa đủ limit
 
--- (2) profile_db (read-only) — dữ kiện lọc & xếp hạng của đúng K ứng viên đó
-SELECT m.*, EXISTS(SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) AS has_schedule
+-- (2) profile_db (read-only) — dữ kiện & cờ lọc của đúng K ứng viên đó (SQL chỉ TÍNH cờ,
+--     việc loại mentor làm ở Python: split_by_system_constraints + match_filters.apply)
+SELECT m.*, CASE WHEN ... END AS reason, (m.hourly_rate <= $2) AS rate_ok, ...
 FROM mentor_profiles m
-WHERE m.user_id = ANY($1::uuid[])
+WHERE m.user_id = ANY($9::uuid[])
 ```
 
 - Toán tử `<=>` của pgvector = **cosine distance** = `1 − cos(θ)`; chỉ mục HNSW `vector_cosine_ops`.
@@ -150,11 +159,11 @@ WHERE m.user_id = ANY($1::uuid[])
   khi ghép, mentor có vector nhưng không còn hồ sơ thì bị bỏ qua (lý do của ngoại lệ kiến trúc
   read-only: lọc/xếp hạng ngay trong CSDL thay vì gọi HTTP cho từng ứng viên).
 - **Vì sao K lớn hơn limit?** Một phần ứng viên sẽ bị hard filter loại; lấy dư (×5, tối thiểu 50) để
-  sau khi lọc vẫn đủ kết quả.
+  sau khi lọc thường đã đủ kết quả, còn nếu chưa đủ thì K tự nhân đôi.
 
-### 1.5 Bước 1 — Hard filter (FR-4.4, US-17)
+### 1.5 Bước 2 — Hard filter (FR-4.4, US-17)
 
-Chạy bằng SQL trên `profile_db` cho **toàn bộ** mentor, trước bước vector. Ứng viên bị loại nếu vi phạm
+Áp ở tầng ứng dụng lên K ứng viên của bước 1 (cờ do SQL trên `profile_db` tính). Ứng viên bị loại nếu vi phạm
 **bất kỳ** ràng buộc hệ thống nào (kiểm tra theo thứ tự):
 
 | Mã lý do | Điều kiện loại | Ý nghĩa nghiệp vụ |
@@ -235,9 +244,10 @@ Thống kê pipeline: `retrieved = 7`, loại `notVerified: 1` (mentor Java chư
 | ~5.007 | 4,8 ms | 4,7 ms | 5,7 ms | 6,8 ms | < 2.000 ms ✅ |
 
 ### 1.10 Hạn chế & hướng phát triển
-- (Đã xử lý ở US-17) Trước đây hard filter áp dụng **sau** top-K nên kết quả có thể hụt; nay lọc trước
-  rồi xếp hạng trong tập hợp lệ. Đánh đổi: bước lọc quét toàn bộ `mentor_profiles` mỗi lượt tìm (ổn với
-  vài nghìn mentor) và danh sách ID truyền sang `matching_db` có thể dài.
+- Hard filter áp dụng **sau** top-K (over-fetch). Chống hụt kết quả bằng cách tự nhân đôi K tới khi đủ
+  `limit` hoặc hết chỉ mục (trần `MAX_K` = 2000). Đánh đổi: bộ lọc cực chặt (chỉ vài mentor hợp lệ trong
+  hàng nghìn) khiến K tăng nhiều vòng; `excludedBy` và `considered` chỉ đếm trong tập ứng viên đã xét
+  (đầy đủ khi vòng lặp đã duyệt hết chỉ mục), và mentor chưa được lập chỉ mục không được xét.
 - Bộ lọc giờ so theo giờ địa phương của mentor, chưa quy đổi múi giờ giữa mentee và mentor.
 - Trọng số chọn theo lập luận nghiệp vụ; khi có dữ liệu thật (tỷ lệ chấp nhận yêu cầu, rating sau
   phiên) có thể học trọng số (learning-to-rank) và đánh giá bằng NDCG/Precision@K.

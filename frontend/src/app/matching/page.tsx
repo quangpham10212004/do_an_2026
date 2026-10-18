@@ -145,9 +145,9 @@ function Matching({ user }: { user: SessionUser }) {
             </Alert>
           )}
           <p className="muted small">
-            Pipeline: xét {data.pipeline.considered} mentor → loại {excludedTotal} không đủ điều kiện
+            Pipeline: lấy {data.pipeline.considered} mentor gần nhất về nội dung (top-K = {data.pipeline.k}) → loại {excludedTotal} không đủ điều kiện
             {excludedTotal > 0 && ` (${excludedEntries.map(([k, v]) => `${v} ${EXCLUSION_LABELS[k] || k}`).join(", ")})`} → còn {data.pipeline.eligible} mentor
-            thoả bộ lọc → lấy {data.pipeline.retrieved} mentor gần nhất về nội dung (top-K = {data.pipeline.k}) → xếp hạng lại với
+            thoả bộ lọc → xếp hạng lại với
             trọng số tương đồng {data.pipeline.weights.similarity}, đánh giá {data.pipeline.weights.rating}, kinh nghiệm {data.pipeline.weights.experience}.
           </p>
           {data.mentors.length === 0 ? (
