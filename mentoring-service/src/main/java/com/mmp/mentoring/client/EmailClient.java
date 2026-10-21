@@ -42,6 +42,10 @@ public class EmailClient {
             Map.entry("SESSION_REMINDER_24H", "SESSIONS"),
             Map.entry("SESSION_REMINDER_1H", "SESSIONS"),
             Map.entry("ATTENDANCE_REQUIRED", "SESSIONS"),
+            // US-58 — phỏng vấn thử: kết quả cho mentee, nhắc / cảnh báo thiếu phiếu cho mentor
+            Map.entry("MOCK_SCORECARD_READY", "SESSIONS"),
+            Map.entry("MOCK_SCORECARD_REMINDER", "SESSIONS"),
+            Map.entry("MOCK_SCORECARD_MISSING", "SESSIONS"),
             Map.entry("MESSAGE_DIGEST", "MESSAGES"),
             // Kết quả AI Interview (ai-service gửi qua /internal/notifications) — luôn gửi
             Map.entry("MENTOR_APPROVED", "ACCOUNT"),

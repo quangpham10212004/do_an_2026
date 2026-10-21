@@ -319,6 +319,76 @@ components:
         menteeId: { type: string, format: uuid }
         feedbackCount: { type: integer }
         badge: { type: string, nullable: true, enum: [RELIABLE] }
+    MockIntake:
+      type: object
+      description: US-58 (PRD-PREP-7) — thông tin mentee điền khi đặt phiên phỏng vấn thử
+      required: [interviewType, level, targetRole]
+      properties:
+        interviewType: { type: string, enum: [BACKEND, FRONTEND, SYSTEM_DESIGN, BEHAVIORAL] }
+        level: { type: string, enum: [INTERN, FRESHER, JUNIOR] }
+        targetRole: { type: string, minLength: 2, maxLength: 120 }
+        targetCompany: { type: string, maxLength: 120, nullable: true }
+        interviewDate: { type: string, format: date, nullable: true, description: Ngày phỏng vấn thật, không ở quá khứ }
+        jdUrl: { type: string, maxLength: 500, nullable: true, description: URL http(s) }
+    ScorecardInput:
+      type: object
+      description: >
+        US-58 (PRD-PREP-2, §6.5) — 4 tiêu chí chung 0–10; liveCoding 0–10 chỉ khi có bài code trực tiếp (không tính vào
+        điểm tổng); đúng 3 điểm cần sửa khác nhau, mỗi điểm 5–300 ký tự; privateNote ≤ 2000 ký tự, chỉ mentee thấy.
+      required: [technical, problemSolving, depth, communication, verdict, fixes]
+      properties:
+        technical: { type: integer, minimum: 0, maximum: 10 }
+        problemSolving: { type: integer, minimum: 0, maximum: 10 }
+        depth: { type: integer, minimum: 0, maximum: 10 }
+        communication: { type: integer, minimum: 0, maximum: 10 }
+        liveCoding: { type: integer, minimum: 0, maximum: 10, nullable: true }
+        verdict: { type: string, enum: [STRONG_HIRE, HIRE, LEAN_NO, NO_HIRE] }
+        fixes: { type: array, minItems: 3, maxItems: 3, items: { type: string, minLength: 5, maxLength: 300 } }
+        privateNote: { type: string, maxLength: 2000, nullable: true }
+    Scorecard:
+      type: object
+      properties:
+        sessionId: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string, nullable: true }
+        interviewType: { type: string, enum: [BACKEND, FRONTEND, SYSTEM_DESIGN, BEHAVIORAL] }
+        technical: { type: integer }
+        problemSolving: { type: integer }
+        depth: { type: integer }
+        communication: { type: integer }
+        liveCoding: { type: integer, nullable: true }
+        overall:
+          type: number
+          description: >
+            Trung bình có trọng số (kỹ thuật/giải quyết vấn đề/chiều sâu/giao tiếp, %): BACKEND & FRONTEND 35/25/25/15,
+            SYSTEM_DESIGN 25/40/15/20, BEHAVIORAL 0/20/45/35; làm tròn 2 chữ số
+        verdict: { type: string, enum: [STRONG_HIRE, HIRE, LEAN_NO, NO_HIRE] }
+        fixes: { type: array, items: { type: string } }
+        privateNote: { type: string, nullable: true, description: null với ADMIN }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    MockInterview:
+      type: object
+      properties:
+        sessionId: { type: string, format: uuid }
+        viewerRole: { type: string, enum: [MENTOR, MENTEE, ADMIN] }
+        sessionStatus: { type: string }
+        scheduledAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        intake: { allOf: [{ $ref: "#/components/schemas/MockIntake" }], nullable: true }
+        scorecard: { allOf: [{ $ref: "#/components/schemas/Scorecard" }], nullable: true }
+        canScore: { type: boolean, description: Người xem là mentor và phiếu đang mở (sau giờ kết thúc, ≤ 7 ngày, phiên đã diễn ra) }
+        scorecardDueAt: { type: string, format: date-time, description: Giờ kết thúc + 48 giờ }
+        scorecardMissing: { type: boolean, description: Quá 48 giờ chưa có phiếu (gỡ khi mentor nộp muộn) }
+        weights:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              technical: { type: integer }
+              problemSolving: { type: integer }
+              depth: { type: integer }
+              communication: { type: integer }
 security:
   - bearerAuth: []
 paths:
@@ -485,6 +555,12 @@ paths:
                 agenda: { type: string, minLength: 20, maxLength: 500, description: "Bắt buộc, 20–500 ký tự sau khi trim" }
                 preReadLink: { type: string, maxLength: 500, nullable: true, description: "Tuỳ chọn, URL http(s)" }
                 topic: { type: string, maxLength: 300 }
+                mockIntake:
+                  allOf: [{ $ref: "#/components/schemas/MockIntake" }]
+                  description: >
+                    US-58 — bắt buộc khi sessionType = MOCK_INTERVIEW (thiếu → 400 MOCK_INTAKE_REQUIRED; vị trí 2–120 ký tự →
+                    INVALID_TARGET_ROLE; JD không phải http(s) → INVALID_JD_URL; ngày phỏng vấn ở quá khứ → INVALID_INTERVIEW_DATE).
+                    Bỏ qua với loại phiên khác.
       responses:
         "201":
           description: Session đã tạo
@@ -1596,3 +1672,69 @@ paths:
         "403": { description: FORBIDDEN }
         "404": { description: SESSION_NOT_FOUND }
         "409": { description: SESSION_NOT_CONFIRMED (phiên PENDING chờ thanh toán) }
+  /api/mentoring/sessions/{id}/mock:
+    get:
+      summary: >
+        US-58 — phỏng vấn thử của một phiên (session_type = MOCK_INTERVIEW): intake, phiếu đánh giá, trọng số chấm điểm.
+        Chỉ mentee/mentor của phiên và ADMIN (ADMIN không thấy privateNote).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MockInterview" }
+        "403": { description: FORBIDDEN }
+        "404": { description: SESSION_NOT_FOUND | NOT_MOCK_INTERVIEW }
+  /api/mentoring/sessions/{id}/scorecard:
+    put:
+      summary: >
+        US-58 (PRD-PREP-2) — mentor của phiên nộp / sửa phiếu đánh giá. Mở sau giờ kết thúc với phiên AWAITING_ATTENDANCE /
+        COMPLETED / DISPUTED, sửa được tới 7 ngày sau phiên. Lần nộp đầu: 3 điểm cần sửa → 3 action item của mentee, báo
+        mentee (MOCK_SCORECARD_READY), gỡ dấu thiếu phiếu. Job mỗi 5 phút: nhắc mentor 12 giờ và 36 giờ sau phiên
+        (MOCK_SCORECARD_REMINDER); 48 giờ chưa có phiếu → đánh dấu thiếu phiếu (MOCK_SCORECARD_MISSING). Thu nhập vẫn
+        giải phóng 48 giờ như mọi phiên.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScorecardInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MockInterview" }
+        "400": { description: INVALID_SCORE | FIXES_REQUIRED | INVALID_FIX | DUPLICATE_FIX | INVALID_NOTE }
+        "403": { description: FORBIDDEN (không phải mentor của phiên) }
+        "404": { description: SESSION_NOT_FOUND | NOT_MOCK_INTERVIEW }
+        "409": { description: SESSION_NOT_ENDED | SESSION_NOT_SCORABLE | SCORECARD_LOCKED | MOCK_INTAKE_MISSING }
+  /api/mentoring/mock-interviews/history:
+    get:
+      summary: US-58 (PRD-PREP-4) — các phiếu phỏng vấn thử của mentee đang đăng nhập, theo ngày phỏng vấn cũ → mới
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sessionId: { type: string, format: uuid }
+                    scheduledAt: { type: string, format: date-time }
+                    mentorId: { type: string, format: uuid }
+                    mentorName: { type: string, nullable: true }
+                    interviewType: { type: string, enum: [BACKEND, FRONTEND, SYSTEM_DESIGN, BEHAVIORAL] }
+                    technical: { type: integer }
+                    problemSolving: { type: integer }
+                    depth: { type: integer }
+                    communication: { type: integer }
+                    liveCoding: { type: integer, nullable: true }
+                    overall: { type: number }
+                    verdict: { type: string, enum: [STRONG_HIRE, HIRE, LEAN_NO, NO_HIRE] }
+        "403": { description: FORBIDDEN (chỉ MENTEE) }

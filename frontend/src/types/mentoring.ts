@@ -207,6 +207,97 @@ export interface BookSessionInput {
   kind?: "REGULAR" | "TRIAL";
   /** Bản chốt v2.0 §11 — mã giới thiệu của mentor, chỉ ở buổi thường đầu tiên. */
   referralCode?: string;
+  /** US-58 — bắt buộc khi sessionType = MOCK_INTERVIEW. */
+  mockIntake?: MockIntakeInput;
+}
+
+// ---- US-58 — phỏng vấn thử với mentor (PRD-PREP-1..5, 7) ----
+
+export type MockInterviewType = "BACKEND" | "FRONTEND" | "SYSTEM_DESIGN" | "BEHAVIORAL";
+export type MockLevel = "INTERN" | "FRESHER" | "JUNIOR";
+export type MockVerdict = "STRONG_HIRE" | "HIRE" | "LEAN_NO" | "NO_HIRE";
+
+export interface MockIntakeInput {
+  interviewType: MockInterviewType;
+  level: MockLevel;
+  targetRole: string;
+  targetCompany?: string;
+  interviewDate?: string;
+  jdUrl?: string;
+}
+
+export interface MockIntakeView {
+  interviewType: MockInterviewType;
+  level: MockLevel;
+  targetRole: string;
+  targetCompany: string | null;
+  interviewDate: string | null;
+  jdUrl: string | null;
+}
+
+export interface ScorecardInput {
+  technical: number;
+  problemSolving: number;
+  depth: number;
+  communication: number;
+  liveCoding?: number | null;
+  verdict: MockVerdict;
+  fixes: string[];
+  privateNote?: string;
+}
+
+export interface ScorecardView {
+  sessionId: Uuid;
+  mentorId: Uuid;
+  mentorName: string | null;
+  interviewType: MockInterviewType;
+  technical: number;
+  problemSolving: number;
+  depth: number;
+  communication: number;
+  liveCoding: number | null;
+  overall: number;
+  verdict: MockVerdict;
+  fixes: string[];
+  privateNote: string | null;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+
+export interface MockWeights {
+  technical: number;
+  problemSolving: number;
+  depth: number;
+  communication: number;
+}
+
+export interface MockInterviewView {
+  sessionId: Uuid;
+  viewerRole: "MENTOR" | "MENTEE" | "ADMIN";
+  sessionStatus: SessionStatus;
+  scheduledAt: IsoDateTime;
+  endsAt: IsoDateTime;
+  intake: MockIntakeView | null;
+  scorecard: ScorecardView | null;
+  canScore: boolean;
+  scorecardDueAt: IsoDateTime;
+  scorecardMissing: boolean;
+  weights: Record<MockInterviewType, MockWeights>;
+}
+
+export interface MockHistoryItem {
+  sessionId: Uuid;
+  scheduledAt: IsoDateTime;
+  mentorId: Uuid;
+  mentorName: string | null;
+  interviewType: MockInterviewType;
+  technical: number;
+  problemSolving: number;
+  depth: number;
+  communication: number;
+  liveCoding: number | null;
+  overall: number;
+  verdict: MockVerdict;
 }
 
 /**

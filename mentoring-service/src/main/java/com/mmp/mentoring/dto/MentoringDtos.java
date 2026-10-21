@@ -68,12 +68,28 @@ public final class MentoringDtos {
             /** Bản chốt v2.0 §10 — REGULAR (mặc định) | TRIAL (buổi trải nghiệm 15 phút, phí cố định). */
             @jakarta.validation.constraints.Pattern(regexp = "REGULAR|TRIAL") String kind,
             /** Bản chốt v2.0 §11 — mã giới thiệu của mentor này, chỉ ở yêu cầu đặt buổi thường đầu tiên (không giảm giá). */
-            @Size(max = 20) String referralCode) {
+            @Size(max = 20) String referralCode,
+            /** US-58 — bắt buộc khi sessionType = MOCK_INTERVIEW, bỏ qua với loại khác. */
+            @jakarta.validation.Valid MockInterviewDtos.MockIntakeInput mockIntake) {
 
         /** Tương thích lời gọi cũ (buổi thường). */
         public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
                                 SessionType sessionType, String agenda, String preReadLink, String topic) {
-            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null, null);
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null, null, null);
+        }
+
+        /** Buổi thường kèm intake phỏng vấn thử (US-58). */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic,
+                                MockInterviewDtos.MockIntakeInput mockIntake) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null, null, mockIntake);
+        }
+
+        /** Buổi trải nghiệm / mã giới thiệu (v2.0), không có intake. */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic,
+                                String kind, String referralCode) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, kind, referralCode, null);
         }
 
         public boolean trial() {

@@ -10,6 +10,7 @@ import {
   Handshake,
   Inbox,
   LayoutDashboard,
+  Mic,
   Library,
   MessageSquare,
   Receipt,
@@ -63,6 +64,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       items: [
         { href: "/profile", label: "Hồ sơ", icon: UserRound },
         { href: "/cv-enrichment", label: "CV & mục tiêu", icon: FileText },
+        { href: "/mock-interviews", label: "Phỏng vấn thử", icon: Mic },
         { href: "/learning", label: "Learning Hub", icon: BookOpen },
       ],
     },
