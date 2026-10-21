@@ -116,6 +116,43 @@ public final class PaymentDtos {
             List<ReferralResponse> referrals, List<RewardResponse> rewards) {
     }
 
+    // ---------- Bản chốt v2.0 §8: ví ----------
+
+    /** cash = tiền nạp khả dụng; promo = khuyến mãi còn hạn; held = học phí đang tạm giữ (chưa có trạng thái cuối). */
+    public record WalletView(String status, BigDecimal cash, BigDecimal promo, BigDecimal held, OffsetDateTime nextPromoExpiry,
+                             BigDecimal topupMin, BigDecimal topupMax, BigDecimal cashCap, RefundEligibility refund) {
+    }
+
+    public record RefundEligibility(boolean windowOpen, OffsetDateTime windowEndsAt, BigDecimal maxAmount, int remainingRequests) {
+    }
+
+    /** provider trống / "SANDBOX" → cần card; "MOMO" / "VNPAY" → trả link chuyển hướng. */
+    public record TopupRequest(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount, @Size(max = 20) String provider,
+                               @Valid CardInput card) {
+    }
+
+    public record PayFromWalletRequest(@NotNull UUID sessionId, BigDecimal amount) {
+    }
+
+    public record TopupRefundBody(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount,
+                                  @Size(max = 1000) String exceptionReason) {
+    }
+
+    public record TopupRefundView(UUID id, UUID userId, BigDecimal amount, String status, String kind, String userReason,
+                                  String adminReason, OffsetDateTime createdAt, OffsetDateTime decidedAt) {
+    }
+
+    public record TopupRefundDecision(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "APPROVE|REJECT") String decision,
+                                      @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    public record PromoGrantRequest(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount,
+                                    @NotBlank @Size(max = 200) String reason) {
+    }
+
+    public record FreezeRequest(@NotNull UUID userId, boolean frozen) {
+    }
+
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {
     }
 

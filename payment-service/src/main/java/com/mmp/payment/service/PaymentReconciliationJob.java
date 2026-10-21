@@ -13,9 +13,12 @@ public class PaymentReconciliationJob {
     private final PaymentService paymentService;
     private final RedirectPaymentService redirect;
     private final Duration reconcileAfter;
+    private final WalletService wallet;
 
     public PaymentReconciliationJob(PaymentService paymentService, RedirectPaymentService redirect,
-                                    @Value("${app.payment.reconcile-after:PT2M}") Duration reconcileAfter) {
+                                    @Value("${app.payment.reconcile-after:PT2M}") Duration reconcileAfter,
+                                    WalletService wallet) {
+        this.wallet = wallet;
         this.paymentService = paymentService;
         this.redirect = redirect;
         this.reconcileAfter = reconcileAfter;
@@ -30,6 +33,14 @@ public class PaymentReconciliationJob {
     @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
     public void reconcileRedirectPayments() {
         redirect.reconcilePending(reconcileAfter);
+    }
+
+    /** Bản chốt v2.0 §8.5 — hết hạn khuyến mãi, ví "ngủ", nhắc trước 30 / 7 ngày. */
+    @Scheduled(fixedDelay = 3_600_000, initialDelay = 150_000)
+    public void walletMaintenance() {
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        wallet.runExpiry(now);
+        wallet.sendReminders(now);
     }
 
     /** US-13 — xoá Idempotency-Key quá 24 giờ. */

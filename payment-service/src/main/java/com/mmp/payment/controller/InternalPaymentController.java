@@ -4,10 +4,14 @@ import com.mmp.payment.dto.PaymentDtos.*;
 import com.mmp.payment.service.EarningService;
 import com.mmp.payment.service.PaymentService;
 import com.mmp.payment.service.ReferralService;
+import com.mmp.payment.service.WalletService;
+import com.mmp.payment.service.WalletService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -17,8 +21,11 @@ public class InternalPaymentController {
     private final PaymentService paymentService;
     private final ReferralService referralService;
     private final EarningService earningService;
+    private final WalletService walletService;
 
-    public InternalPaymentController(PaymentService paymentService, ReferralService referralService, EarningService earningService) {
+    public InternalPaymentController(PaymentService paymentService, ReferralService referralService, EarningService earningService,
+                                     WalletService walletService) {
+        this.walletService = walletService;
         this.paymentService = paymentService;
         this.referralService = referralService;
         this.earningService = earningService;
@@ -56,6 +63,13 @@ public class InternalPaymentController {
     @PostMapping("/payments/release")
     public TransactionResponse release(@Valid @RequestBody HoldRequest req) {
         return paymentService.release(req.sessionId());
+    }
+
+    /** Bản chốt v2.0 §2.1 — admin khoá / mở khoá tài khoản: đóng băng / mở ví. Idempotent. */
+    @PostMapping("/wallet/freeze")
+    public Map<String, Object> freeze(@Valid @RequestBody FreezeRequest req) {
+        walletService.setFrozen(req.userId(), req.frozen());
+        return Map.of("userId", req.userId(), "frozen", req.frozen());
     }
 
     /** US-01 — mentoring-service cộng điểm xin lỗi khi mentor huỷ phiên. Gửi lại cùng nội dung → trả bản ghi cũ. */

@@ -55,17 +55,20 @@ public class PaymentService {
     private final MentoringClient mentoringClient;
     private final ReferralService referralService;
     private final EarningService earnings;
+    private final WalletLedger walletLedger;
     private final AuditClient audit;
     private final TransactionTemplate tx;
     private final BigDecimal feeRate;
     private final Duration idempotencyTtl;
+    private final boolean directSessionPayment;
 
     public PaymentService(TransactionRepository transactionRepository, RefundRepository refundRepository,
                           ChargeIdempotencyKeyRepository idemRepository, PaymentGateway gateway, List<RedirectGateway> redirectGateways,
                           MentoringClient mentoringClient, ReferralService referralService, EarningService earnings,
-                          AuditClient audit, TransactionTemplate tx,
+                          WalletLedger walletLedger, AuditClient audit, TransactionTemplate tx,
                           @Value("${app.payment.platform-fee-rate:0.15}") BigDecimal feeRate,
-                          @Value("${app.payment.idempotency-ttl:PT24H}") Duration idempotencyTtl) {
+                          @Value("${app.payment.idempotency-ttl:PT24H}") Duration idempotencyTtl,
+                          @Value("${app.payment.direct-session-payment:false}") boolean directSessionPayment) {
         this.transactionRepository = transactionRepository;
         this.refundRepository = refundRepository;
         this.idemRepository = idemRepository;
@@ -74,11 +77,20 @@ public class PaymentService {
         this.mentoringClient = mentoringClient;
         this.referralService = referralService;
         this.earnings = earnings;
+        this.walletLedger = walletLedger;
         this.audit = audit;
         this.tx = tx;
         PaymentRules.split(BigDecimal.ZERO, feeRate); // kiểm tra cấu hình ngay khi khởi động
         this.feeRate = feeRate;
         this.idempotencyTtl = idempotencyTtl;
+        this.directSessionPayment = directSessionPayment;
+    }
+
+    /** Bản chốt v2.0 §1: ví là kênh duy nhất trả học phí — thẻ / cổng trả thẳng từng phiên bị tắt (cờ cấu hình chỉ để dev/test cũ). */
+    void requireDirectPaymentEnabled() {
+        if (!directSessionPayment) {
+            throw ApiException.conflict("USE_WALLET", "Học phí được trả từ ví — hãy nạp ví rồi thanh toán bằng ví");
+        }
     }
 
     /**
@@ -87,6 +99,7 @@ public class PaymentService {
      * IDEMPOTENCY_IN_PROGRESS. Lỗi kiểm tra trước khi tạo giao dịch (phiên không hợp lệ...) không "tiêu" key.
      */
     public TransactionResponse charge(AuthUser payer, String idempotencyKey, ChargeRequest req) {
+        requireDirectPaymentEnabled();
         payer.requireVerifiedEmail(); // US-39
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw ApiException.badRequest("IDEMPOTENCY_KEY_REQUIRED", "Thiếu header Idempotency-Key");
@@ -256,7 +269,9 @@ public class PaymentService {
             }
             // US-56 — giao dịch MoMo / VNPay hoàn qua API hoàn tiền của chính cổng đó (toàn phần hoặc một phần)
             boolean full = refunded.signum() == 0 && calc.amount().compareTo(t.getAmount()) == 0;
-            PaymentGateway.ChargeResult result = redirectGateways.stream()
+            // Bản chốt v2.0 — giao dịch trả bằng ví hoàn về ví (đúng nguồn khuyến mãi / tiền nạp), không qua cổng
+            boolean toWallet = Transaction.PROVIDER_WALLET.equals(t.getProvider());
+            PaymentGateway.ChargeResult result = toWallet ? new PaymentGateway.ChargeResult(true, null, null) : redirectGateways.stream()
                     .filter(g -> g.provider().equals(t.getProvider()))
                     .findFirst()
                     .map(g -> g.refund(t, calc.amount(), full, actorId == null ? null : actorId.toString()))
@@ -267,6 +282,7 @@ public class PaymentService {
             Refund saved = refundRepository.save(new Refund(t.getId(), calc.amount(), reason == null ? "SESSION_CANCELLED" : reason, actorId,
                     result.providerReference()));
             moved.add(saved);
+            if (toWallet) walletLedger.refundSession(t, saved, refunded, OffsetDateTime.now());
             moved.add(earnings.recordReversal(t, saved, refunded)); // US-25 — REVERSAL theo tỉ lệ phần hoàn
             moved.add(t.getStatus().name());
             t.setStatus(PaymentRules.statusAfterRefund(t.getAmount(), refunded.add(calc.amount())));

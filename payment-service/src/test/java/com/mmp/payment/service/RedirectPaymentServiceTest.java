@@ -81,7 +81,8 @@ class RedirectPaymentServiceTest {
         rows.put(pending.getId(), pending);
 
         service = new RedirectPaymentService(payments, List.of(gateway), "momo", txRepo, mock(ReferralService.class), earnings,
-                mock(AuditClient.class), tx, mock(JdbcTemplate.class));
+                mock(AuditClient.class), tx, mock(JdbcTemplate.class),
+                mock(WalletLedger.class), mock(WalletService.class));
     }
 
     private void callback(String amount, boolean paid, String reason) {
@@ -92,7 +93,8 @@ class RedirectPaymentServiceTest {
     void activeGatewayFollowsConfig() {
         assertThat(service.active()).contains(gateway);
         RedirectPaymentService sandbox = new RedirectPaymentService(payments, List.of(gateway), "sandbox", txRepo,
-                mock(ReferralService.class), earnings, mock(AuditClient.class), tx, mock(JdbcTemplate.class));
+                mock(ReferralService.class), earnings, mock(AuditClient.class), tx, mock(JdbcTemplate.class),
+                mock(WalletLedger.class), mock(WalletService.class));
         assertThat(sandbox.active()).isEmpty();
     }
 

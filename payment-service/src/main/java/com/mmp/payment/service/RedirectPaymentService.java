@@ -62,11 +62,14 @@ public class RedirectPaymentService {
     private final AuditClient audit;
     private final TransactionTemplate tx;
     private final JdbcTemplate jdbc;
+    private final WalletLedger walletLedger;
+    private final WalletService wallet;
 
     public RedirectPaymentService(PaymentService payments, List<RedirectGateway> gateways,
                                   @Value("${app.payment.gateway:sandbox}") String selected,
                                   TransactionRepository transactions, ReferralService referralService, EarningService earnings,
-                                  AuditClient audit, TransactionTemplate tx, JdbcTemplate jdbc) {
+                                  AuditClient audit, TransactionTemplate tx, JdbcTemplate jdbc,
+                                  WalletLedger walletLedger, @org.springframework.context.annotation.Lazy WalletService wallet) {
         this.payments = payments;
         this.gateways = gateways.stream().collect(Collectors.toMap(RedirectGateway::provider, Function.identity()));
         this.selected = selected.trim().toUpperCase(Locale.ROOT);
@@ -76,6 +79,8 @@ public class RedirectPaymentService {
         this.audit = audit;
         this.tx = tx;
         this.jdbc = jdbc;
+        this.walletLedger = walletLedger;
+        this.wallet = wallet;
         if (!"SANDBOX".equals(this.selected) && active().isEmpty()) {
             log.warn("PAYMENT_GATEWAY={} is not configured (missing keys) — only the in-process sandbox card form is available", selected);
         }
@@ -88,6 +93,7 @@ public class RedirectPaymentService {
 
     /** PRD-PAY-10, 13 — mỗi lần bấm "Thanh toán" là 1 giao dịch PENDING mới (mã đơn mới phía cổng). */
     public CheckoutResponse checkout(AuthUser payer, UUID sessionId, BigDecimal amount, String clientIp) {
+        payments.requireDirectPaymentEnabled();
         RedirectGateway gw = active().orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
                 "GATEWAY_DISABLED", "Cổng thanh toán chưa được bật"));
         payer.requireVerifiedEmail(); // US-39
@@ -115,6 +121,35 @@ public class RedirectPaymentService {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "GATEWAY_UNAVAILABLE", "Không tạo được link thanh toán, vui lòng thử lại");
         }
         log.info("{} checkout: transaction {} for session {} ({} VND)", gw.provider(), saved.getId(), sessionId, saved.getAmount());
+        return new CheckoutResponse(saved.getId(), gw.provider(), url);
+    }
+
+    /**
+     * Bản chốt v2.0 §8.2 — nạp ví qua cổng chuyển hướng: giao dịch kind = TOPUP (PENDING) + link; ví được cộng khi cổng xác nhận
+     * (IPN / return / đối soát) — dùng lại toàn bộ luồng settle của cổng.
+     */
+    public CheckoutResponse checkoutTopup(AuthUser payer, String provider, BigDecimal amount, String clientIp) {
+        RedirectGateway gw = Optional.ofNullable(gateways.get(provider)).filter(RedirectGateway::configured)
+                .orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "GATEWAY_DISABLED", "Cổng thanh toán chưa được bật"));
+        payer.requireVerifiedEmail();
+        BigDecimal a = amount.setScale(0, java.math.RoundingMode.HALF_UP);
+        wallet.requireTopupAllowed(payer.userId(), a);
+        Transaction saved = tx.execute(s -> {
+            Transaction t = Transaction.topup(payer.userId(), a, gw.provider());
+            t.setProviderCreatedAt(VnpayClient.now());
+            Transaction first = transactions.saveAndFlush(t);
+            first.setProviderTxnRef(gw.txnRef(first.getId()));
+            return first;
+        });
+        String url;
+        try {
+            url = gw.createPaymentUrl(saved, clientIp);
+        } catch (RuntimeException e) {
+            settle(saved.getId(), false, null, gw.provider() + "_UNAVAILABLE");
+            log.warn("{} topup checkout failed: {}", gw.provider(), e.getMessage());
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "GATEWAY_UNAVAILABLE", "Không tạo được link thanh toán, vui lòng thử lại");
+        }
+        log.info("{} topup checkout: transaction {} ({} VND)", gw.provider(), saved.getId(), a);
         return new CheckoutResponse(saved.getId(), gw.provider(), url);
     }
 
@@ -225,8 +260,12 @@ public class RedirectPaymentService {
                 if (paid) {
                     t.setStatus(Transaction.Status.SUCCESS);
                     Transaction flushed = transactions.saveAndFlush(t);
-                    referralService.onSuccessfulTransaction(flushed);
-                    earnings.recordPending(flushed);
+                    if (flushed.isTopup()) {
+                        walletLedger.creditTopup(flushed);   // V7 — nạp ví: cộng tiền nạp, không có referral / thu nhập mentor
+                    } else {
+                        referralService.onSuccessfulTransaction(flushed);
+                        earnings.recordPending(flushed);
+                    }
                 } else {
                     t.setStatus(Transaction.Status.FAILED);
                     t.setFailureReason(failureReason == null ? "PAYMENT_FAILED" : failureReason);
@@ -254,6 +293,14 @@ public class RedirectPaymentService {
         }
         if (result == Settle.APPLIED) {
             Transaction t = transactions.findById(id).orElseThrow();
+            if (t.isTopup()) {
+                if (t.getStatus() == Transaction.Status.SUCCESS) {
+                    audit.record(t.getPayerId(), "MENTEE", "WALLET_TOPUP", "TRANSACTION", t.getId().toString(), null,
+                            AuditClient.fields("amount", t.getAmount(), "provider", t.getProvider()));
+                }
+                log.info("{} topup {} → {}", t.getProvider(), id, t.getStatus());
+                return result;
+            }
             if (t.getStatus() == Transaction.Status.SUCCESS) {
                 audit.record(t.getPayerId(), "MENTEE", "CHARGE_SUCCEEDED", "TRANSACTION", t.getId().toString(), null,
                         AuditClient.fields("sessionId", t.getSessionId(), "amount", t.getAmount(), "fee", t.getFee(),

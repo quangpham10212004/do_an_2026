@@ -2,6 +2,7 @@ package com.mmp.payment.controller;
 
 import com.mmp.payment.exception.ApiException;
 import com.mmp.payment.service.EarningService;
+import com.mmp.payment.service.WalletService;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,9 +21,13 @@ import java.util.UUID;
 public class InternalDevController {
 
     private final EarningService earnings;
+    private final WalletService wallet;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    public InternalDevController(EarningService earnings) {
+    public InternalDevController(EarningService earnings, WalletService wallet, org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.earnings = earnings;
+        this.wallet = wallet;
+        this.jdbc = jdbc;
     }
 
     /** Đưa lịch giải phóng thu nhập của phiên tới hạn ngay (release_at = now − 1 phút). */
@@ -36,8 +41,31 @@ public class InternalDevController {
     /** Chạy ngay job nền: earning-release. */
     @PostMapping("/jobs/{job}")
     public Map<String, Object> runJob(@PathVariable String job) {
+        if ("wallet-maintenance".equals(job)) {
+            OffsetDateTime now = OffsetDateTime.now();
+            int[] r = wallet.runExpiry(now);
+            return Map.of("job", job, "status", "DONE", "expiredLots", r[0], "dormantWallets", r[1], "reminders", wallet.sendReminders(now));
+        }
         if (!"earning-release".equals(job)) throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);
         int released = earnings.releaseDue(OffsetDateTime.now());
         return Map.of("job", job, "status", "DONE", "released", released);
+    }
+
+    /** Lùi mốc thời gian của ví để e2e kiểm tra hết hạn khuyến mãi / ví ngủ / cửa sổ hoàn tiền nạp mà không phải chờ thật. */
+    @PostMapping("/wallet/{userId}/shift")
+    public Map<String, Object> shiftWallet(@PathVariable UUID userId, @RequestBody Map<String, Integer> body) {
+        int promoDays = body.getOrDefault("promoDaysBack", 0);
+        int idleMonths = body.getOrDefault("idleMonths", 0);
+        int topupDays = body.getOrDefault("topupDaysBack", 0);
+        if (promoDays > 0) {
+            jdbc.update("UPDATE wallet_promo_lots SET expires_at = expires_at - make_interval(days => ?) WHERE user_id = ?", promoDays, userId);
+        }
+        if (idleMonths > 0) {
+            jdbc.update("UPDATE wallets SET last_activity_at = last_activity_at - make_interval(months => ?) WHERE user_id = ?", idleMonths, userId);
+        }
+        if (topupDays > 0) {
+            jdbc.update("UPDATE transactions SET created_at = created_at - make_interval(days => ?) WHERE payer_id = ? AND kind = 'TOPUP'", topupDays, userId);
+        }
+        return Map.of("userId", userId, "promoDaysBack", promoDays, "idleMonths", idleMonths, "topupDaysBack", topupDays);
     }
 }
