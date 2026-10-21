@@ -176,7 +176,10 @@ def main():
     call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "LOCKED"}, token=admin)
     call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "ACTIVE"}, token=admin)
     actions = [r["action"] for r in audit(admin, targetType="USER", targetId=victim["userId"])["items"]]
-    check("Khoá / mở khoá tài khoản được ghi nhật ký (mới nhất trước)", actions == ["USER_UNLOCKED", "USER_LOCKED"], actions)
+    # v2.0: khoá còn huỷ buổi chưa diễn ra + đóng băng ví (ACCOUNT_SESSIONS_CANCELLED), mở khoá gỡ đóng băng (ACCOUNT_UNLOCKED)
+    check("Khoá / mở khoá tài khoản được ghi nhật ký (mới nhất trước)",
+          sorted(actions) == ["ACCOUNT_SESSIONS_CANCELLED", "ACCOUNT_UNLOCKED", "USER_LOCKED", "USER_UNLOCKED"]
+          and actions.index("USER_UNLOCKED") < actions.index("USER_LOCKED"), actions)
 
     try:
         out = subprocess.run(["docker", "exec", "do_an_2026-auth-db-1", "psql", "-U", "postgres", "-d", "auth_db", "-c",

@@ -178,13 +178,15 @@ def main():
     p = call("GET", f"{MENTORING}/api/mentoring/sessions/{by_mentor['id']}/cancel-preview", token=mentor["accessToken"])
     check("US-01", "Preview mentor huỷ: 100%, không còn điểm xin lỗi (v2.0)", p["cancelledBy"] == "MENTOR" and p["refundPercent"] == 100
           and p["rewardPoints"] == 0, p)
-    before_points = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=mentee["accessToken"])["pointsBalance"]
+    before = call("GET", f"{PAYMENT}/api/payment/wallet", token=mentee["accessToken"])
     c = call("POST", f"{MENTORING}/api/mentoring/sessions/{by_mentor['id']}/cancel", {"reason": "Ban dot xuat"}, token=mentor["accessToken"])
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{by_mentor['id']}/transactions", token=mentee["accessToken"])
     check("US-01", "Mentor huỷ: cancelledBy=MENTOR, hoàn 100% (REFUNDED)",
           c["cancelledBy"] == "MENTOR" and c["refundPercent"] == 100 and any(t["status"] == "REFUNDED" for t in txs), (c, txs))
-    ov = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=mentee["accessToken"])
-    check("US-01", "Mentor huỷ không còn cộng điểm xin lỗi (bản chốt v2.0 bỏ điểm)", ov["pointsBalance"] == before_points and not any(r["reason"] == "MENTOR_CANCEL_APOLOGY" for r in ov["rewards"]), (before_points, ov["pointsBalance"]))
+    after = call("GET", f"{PAYMENT}/api/payment/wallet", token=mentee["accessToken"])
+    # Bản chốt v2.0 bỏ điểm xin lỗi: mentor huỷ chỉ hoàn 100% học phí về ví, không cộng tiền khuyến mãi
+    check("US-01", "Mentor huỷ không cộng thưởng (bản chốt v2.0 bỏ điểm xin lỗi): khuyến mãi không đổi",
+          float(after["promo"]) == float(before["promo"]), (before["promo"], after["promo"]))
 
     # ---------------- US-02 ----------------
     print("\nUS-02 — Strike mentor")

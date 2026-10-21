@@ -63,7 +63,7 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 | PUT | `/internal/mentor/{userId}/active-mentees` | Internal | `{activeMenteeCount}` | 4.4 |
 | DELETE | `/internal/profile/{userId}/cv-file?cvFileUrl=` | Internal | ai-service gọi sau khi xoá CV: gỡ `cv_file_url` của hồ sơ mentor/mentee **chỉ khi khớp chính xác** `cvFileUrl`; luôn 204; không lập lại chỉ mục embedding | 8.6 |
 
-### 2.1 Bổ sung v2.0 ⚒ (profile-service)
+### 2.1 Bổ sung v2.0 (profile-service)
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
@@ -71,6 +71,7 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 | PUT | `/api/profile/mentor/{userId}/rate` | Mentor (chủ hồ sơ) | `{hourlyRate}` — 400 `RATE_OUT_OF_TIER` nếu ngoài khung hoặc không chia hết bước 10.000; 409 `TIER_NOT_ASSIGNED` khi chưa có cấp | 9.3 |
 | PUT | `/internal/mentor/{id}/verification` | Internal (ai-service) | `{status, tier?}` — tier gán lúc admin APPROVE (thiếu thì giữ cấp cũ / suy ra từ giá); giá được kẹp về khung | 9.1, 9.4 |
 | PUT | `/internal/mentor/{id}/tier` | Internal | `{tier}` — đổi cấp, kẹp lại giá nếu ngoài khung | 9.4 |
+| PUT | `/api/profile/mentor/{userId}/trial` | Mentor (chủ hồ sơ) | `{enabled}` — bật/tắt nhận buổi trải nghiệm (mặc định bật) | 5.8 |
 
 AI Interview v2.0: `GET /api/ai/interviews/{id}` (admin) thêm `suggestedTier`; `POST /api/ai/admin/interviews/{id}/review` nhận `{decision, note, tier?}` (khác cấp đề xuất hoặc điểm dưới ngưỡng đạt thì bắt buộc `note` ≥ 10 ký tự; dưới ngưỡng bắt buộc `tier`). *Xin nâng cấp sau 90 ngày: ⚒ chưa hiện thực.*
 
@@ -153,19 +154,20 @@ Ví dụ response:
 | POST | `/api/mentoring/notifications/read-all` | Auth | Đánh dấu tất cả đã đọc | 5.5 |
 | GET | `/api/mentoring/admin/stats` | Admin | `{pendingSessions, confirmedSessions, completedSessions, cancelledSessions}` | — |
 
-### 5.1.1 Bổ sung v2.0 ⚒
+### 5.1.1 Bổ sung v2.0
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
-| POST | `/api/mentoring/sessions` | Mentee | v2.0: thời lượng cố định 60 phút (`INVALID_DURATION`), mentor chưa có giá → 409 `PRICE_NOT_SET`; tạo phiên PENDING rồi tạm giữ học phí từ ví → `AWAITING_MENTOR` (ví thiếu → giữ PENDING 15 phút). *`kind: TRIAL`, `referralCode`: ⚒* | 5.4 |
+| POST | `/api/mentoring/sessions` | Mentee | v2.0: thời lượng cố định 60 phút (`INVALID_DURATION`), mentor chưa có giá → 409 `PRICE_NOT_SET`; tạo phiên PENDING rồi tạm giữ học phí từ ví → `AWAITING_MENTOR` (ví thiếu → giữ PENDING 15 phút). `kind: TRIAL` (15 phút, 30.000đ, không cần quan hệ mentoring; 409 `TRIAL_ALREADY_USED` / `TRIAL_LIMIT` / `TRIAL_DISABLED`); `referralCode` chỉ ở buổi thường đầu tiên với mentor (400 `REFERRAL_NOT_FIRST_BOOKING`, `REFERRAL_CODE_NOT_FOUND`, `REFERRAL_CODE_WRONG_MENTOR`); `mockIntake` bắt buộc khi `sessionType = MOCK_INTERVIEW` (US-58) | 5.4, 5.8, 6.5 |
 | POST | `/api/mentoring/sessions/{id}/confirm` | Mentor | AWAITING_MENTOR → CONFIRMED; 409 `NOT_AWAITING_MENTOR` / `CONFIRM_WINDOW_CLOSED` | 5.4 |
 | POST | `/api/mentoring/sessions/{id}/decline` | Mentor | `{reason?}` — từ chối buổi chờ xác nhận: hoàn 100%, không tính lỗi vi phạm | 5.4 |
-| GET | `/api/mentoring/sessions/{id}/room` | Người tham gia | `{provider:"jitsi", roomName, domain, jwt, opensAt, closesAt}`; 403 ngoài giờ mở phòng | 5.9 |
-| POST | `/api/mentoring/sessions/{id}/room/joined` | Người tham gia | Ghi nhật ký vào phòng | 5.10 |
-| POST | `/api/mentoring/sessions/{id}/report-absent` | Người tham gia | Báo bên kia vắng mặt sau thời gian chờ | 5.10 |
+| GET | `/api/mentoring/sessions/{id}/room` | Người tham gia | `{provider:"jitsi", roomName, domain, jwt, opensAt, closesAt}` (JWT HS256, chỉ buổi CONFIRMED, từ 10 phút trước giờ bắt đầu tới 30 phút sau giờ kết thúc). Lần gọi đầu của mỗi bên **ghi nhật ký vào phòng** | 5.9, 5.10 |
+| POST | `/api/mentoring/sessions/{id}/report-absent` | Người tham gia | Báo bên kia vắng mặt: chỉ khi mình đã vào phòng, bên kia chưa vào và đã hết thời gian chờ (10 phút; trải nghiệm 5 phút) — 409 `GRACE_NOT_ELAPSED` / `YOU_NOT_JOINED` / `OTHER_SIDE_JOINED` | 5.10 |
+| POST | `/api/mentoring/sessions/{id}/attendance` | Người tham gia | v2.0: báo vắng người đã có trong nhật ký phòng → 409 `ABSENCE_CONTRADICTS_LOG` | 5.10 |
 | POST | `/api/mentoring/sessions/{id}/cancel` | Người tham gia | v2.0: trả `refundPercent` theo 3 bậc (24h/4h) | 5.11 |
-| PUT | `/api/mentoring/mentor/trial` | Mentor | `{enabled}` bật/tắt buổi trải nghiệm | 5.8 |
-| GET | `/api/mentoring/admin/contact-violations` | Admin | Vi phạm chia sẻ liên hệ | 5.12 |
+| GET | `/api/mentoring/sessions/{id}/mock` · PUT `/sessions/{id}/scorecard` · GET `/mock-interviews/history` | Người tham gia | Phỏng vấn thử với mentor (US-58): intake, phiếu đánh giá, lịch sử | — |
+
+Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội (`contactsMasked = true`); mỗi lần che ghi vào `contact_violations`, ≥ 3 lần / 30 ngày → thông báo admin (FR-5.12). *Chưa có trang/endpoint admin xem danh sách vi phạm.*
 
 ### 5.2 Nội bộ
 
@@ -174,6 +176,7 @@ Ví dụ response:
 | GET | `/internal/sessions/{id}` | Internal | `{id, menteeId, mentorId, scheduledAt, durationMinutes, price, status}` |
 | POST | `/internal/sessions/{id}/payment-succeeded` | Internal | `{transactionId}` → xác nhận phiên (FR-6.2) |
 | POST | `/internal/notifications` | Internal | `{recipientId? , recipientRole?, type, title, message, link?}` → tạo thông báo (ai-service gọi) |
+| POST | `/internal/accounts/{userId}/lock` | Internal (auth-service) | `{locked, actorId?}` — khoá: huỷ buổi chưa diễn ra (hoàn 100%) + đóng băng ví; mở khoá: mở ví. Idempotent (FR-6.10) |
 | GET | `/internal/relationships?mentorId=&menteeId=` | Internal | `{mentorId, menteeId, related}` — `related = true` khi có yêu cầu mentoring của mentee gửi mentor ở trạng thái `PENDING` hoặc `ACCEPTED` (ai-service dùng để quyết định mentor có được tải CV) |
 
 ## 6. payment-service (8084) — Thắng
@@ -185,20 +188,25 @@ Ví dụ response:
 | GET | `/api/payment/transactions` | Auth | Giao dịch của tôi | 6.3 |
 | GET | `/api/payment/transactions/{id}` | Người trả / mentor / Admin | Chi tiết | 6.3 |
 | GET | `/api/payment/sessions/{sessionId}/transactions` | Người trả / mentor / Admin | Lịch sử giao dịch của phiên | 6.3 |
-| GET | `/api/payment/referrals/me` | Auth | Mã giới thiệu, danh sách, điểm | 6.4–6.6 |
+| GET | `/api/payment/referrals/me` | Auth | v2.0: các mã **theo mentor** của tôi + danh sách lượt giới thiệu (`REGISTERED` / `QUALIFIED` / `UNDER_REVIEW` / `REJECTED`, `rewardAmount`) | 6.4–6.6 |
+| POST | `/api/payment/referrals/codes` | Mentee | `{mentorId}` → `{code, mentorId}` (mỗi cặp một mã, gọi lại trả cùng mã); 409 `REFERRAL_NOT_ELIGIBLE` khi chưa hoàn thành buổi thường đã trả nào với mentor | 6.4 |
 | GET | `/api/payment/admin/transactions?status=&page=&size=` | Admin | Giám sát giao dịch | 6.3 |
 | GET | `/api/payment/admin/stats` | Admin | `{successCount, failedCount, refundedCount, totalRevenue}` | 6.3 |
-| GET | `/api/payment/admin/referrals` | Admin | Giám sát referral | 6.6 |
-| POST | `/internal/referrals` | Internal | `{code, refereeId}` (auth-service gọi) | 6.5 |
+| GET | `/api/payment/admin/referrals` | Admin | Giám sát referral (v1.x) | 6.6 |
+| GET | `/api/payment/admin/mentor-referrals?status=` | Admin | Lượt giới thiệu theo mentor (lọc `UNDER_REVIEW`) | 6.6 |
+| POST | `/api/payment/admin/mentor-referrals/{id}/decide` | Admin | `{decision: APPROVE\|REJECT, reason}` | 6.6 |
+| POST | `/internal/referrals/validate` | Internal (mentoring) | `{code, refereeId, mentorId}` — kiểm mã trước khi tạo buổi; 400 kèm mã lỗi cụ thể | 6.5 |
+| POST | `/internal/referrals/apply` | Internal (mentoring) | `{code, refereeId, mentorId, sessionId}` — ghi nhận lượt `REGISTERED` | 6.5 |
+| POST | `/internal/referrals` | Internal | v1.x: `{code, refereeId}` lúc đăng ký (auth-service) — mã theo người dùng cũ không còn được cấp | 6.5 |
 | POST | `/internal/payments/refund` | Internal | `{sessionId, reason?}` (mentoring-service gọi) | 6.3 |
 
-### 6.1 Ví *(v2.0 ⚒ — đề xuất, chốt trong `contracts/payment-service.yaml`)*
+### 6.1 Ví *(v2.0 — chi tiết trong `contracts/payment-service.yaml`)*
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
 | GET | `/api/payment/wallet` | Auth | `{status, cash, promo, held, frozen, nextPromoExpiry}` | 6.1 |
 | GET | `/api/payment/wallet/entries?kind=&page=` | Auth | Lịch sử bút toán | 6.1 |
-| POST | `/api/payment/wallet/topups` | Mentee | `{amount, provider}` (50.000–5.000.000; 409 `CASH_CAP_EXCEEDED`) → redirect/thông tin cổng; header `Idempotency-Key` | 6.1 |
+| POST | `/api/payment/wallet/topups` | Mentee | `{amount, provider, card?}` (50.000–5.000.000; 409 `CASH_CAP_EXCEEDED`) — `SANDBOX` + `card` trả kết quả ngay, `MOMO`/`VNPAY` trả URL chuyển hướng (IPN/đối soát như US-56); 403 `EMAIL_NOT_VERIFIED` | 6.1 |
 | POST | `/api/payment/wallet/reactivate` | Mentee | Kích hoạt lại ví `DORMANT` | 6.8 |
 | GET | `/api/payment/wallet/topup-refund/eligibility` | Mentee | `{maxAmount, windowEndsAt, remainingRequests}` | 6.7 |
 | POST | `/api/payment/wallet/topup-refund` | Mentee | `{amount}` — 409 `REFUND_WINDOW_CLOSED`, `REFUND_AMOUNT_EXCEEDED`, `REFUND_LIMIT_REACHED` | 6.7 |
@@ -210,8 +218,8 @@ Ví dụ response:
 | POST | `/internal/payments/refund` | Internal | `{sessionId, percent?, amount?, reason?}` — giao dịch WALLET hoàn về ví đúng nguồn (khuyến mãi / tiền nạp) | 6.3 |
 | POST | `/internal/wallet/freeze` | Internal | `{userId, frozen}` (admin khoá/mở khoá) | 6.10 |
 
-`POST /api/payment/charge` (trả trực tiếp từng phiên) bị thay bằng `topups` + `hold`.
-Referral v2.0: `GET /api/payment/referrals/me` trả danh sách mã **theo mentor**; `POST /api/payment/referrals/apply` `{code, mentorId}` gọi lúc gửi yêu cầu đặt buổi thường đầu tiên.
+`POST /api/payment/charge` (trả trực tiếp từng phiên) bị tắt mặc định (409 `USE_WALLET`): học phí chỉ trả từ ví (`/wallet/pay`, hoặc mentoring tự gọi `/internal/wallet/pay` ngay sau khi đặt lịch).
+Mã giới thiệu được dùng qua trường `referralCode` của `POST /api/mentoring/sessions` (mentoring gọi `/internal/referrals/validate` rồi `/apply`).
 
 **Thẻ test của cổng sandbox**
 

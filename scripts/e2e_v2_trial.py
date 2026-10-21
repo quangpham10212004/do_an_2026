@@ -152,6 +152,7 @@ def main():
     s4 = book_trial(me3, mentor, at(7, 11))
     check("Đặt lại được sau khi bị từ chối", s4["status"] == "AWAITING_MENTOR")
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s4['id']}/confirm", token=mentor["accessToken"])
+    dev(f"sessions/{s4['id']}/joined", {"mentor": True, "mentee": True})   # cả hai vào phòng (nhật ký §6)
     dev(f"sessions/{s4['id']}/shift", {"endedMinutesAgo": 30})
     dev("jobs/attendance")
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s4['id']}/attendance", {"answer": "HELD"}, token=me3["accessToken"])

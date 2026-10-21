@@ -231,11 +231,13 @@ def main():
 
     # ---------------- DoD 10 (phần 1): referral registration ----------------
     print("\nDoD 10 — Referral")
-    ref = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=referrer["accessToken"])
-    referred = register("MENTEE", "referred", referral=ref["code"])
-    check(10, "Đăng ký bằng mã giới thiệu được ghi nhận", referred.get("referralApplied") is True)
-    bad = register("MENTEE", "badref", referral="ZZZZZZZZ")
-    check(10, "Mã giới thiệu không tồn tại không được ghi nhận", bad.get("referralApplied") is False)
+    # Bản chốt v2.0 §11: mã giới thiệu theo cặp (người giới thiệu, mentor), chỉ cấp khi đã học xong ≥ 1 buổi thường đã trả
+    # với mentor đó; dùng ở yêu cầu đặt buổi thường đầu tiên của người được giới thiệu (phần 2 bên dưới).
+    referred = register("MENTEE", "referred")
+    bad = register("MENTEE", "badref")
+    ok, err = expect_error(lambda: call("POST", f"{PAYMENT}/api/payment/referrals/codes", {"mentorId": mentor["userId"]},
+                                        token=referrer["accessToken"]), 409)
+    check(10, "Chưa học với mentor thì chưa có mã giới thiệu (409 REFERRAL_NOT_ELIGIBLE)", ok, err)
     referred_token = referred["accessToken"]
     call("PUT", f"{PROFILE}/api/profile/mentee/{referred['userId']}", {
         "displayName": "E2E Referred", "domain": "backend", "goal": "Hoc Java backend", "skills": ["Java"], "portfolioLinks": []},
@@ -288,14 +290,9 @@ def main():
     check(8, "Nạp ví + trả từ ví → giao dịch học phí SUCCESS", paid["status"] == "SUCCESS" and paid["provider"] == "WALLET")
     confirmed = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
     check(8, "Booking được xác nhận sau khi mentor xác nhận (dev) — học phí đã tạm giữ", confirmed["status"] == "CONFIRMED")
-    ok, _ = expect_error(lambda: charge(session["id"], {
-        "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token), 409)
-    check(8, "Không thanh toán trùng 1 phiên (409)", ok)
-
-    # ---------------- DoD 10 (phần 2): points ----------------
-    ref = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=referrer["accessToken"])
-    check(10, "Giao dịch hợp lệ đầu tiên → referral QUALIFIED, người giới thiệu +100 điểm",
-          ref["qualifiedReferrals"] == 1 and ref["pointsBalance"] == 100, ref)
+    ok, err = expect_error(lambda: call("POST", f"{PAYMENT}/api/payment/wallet/pay", {"sessionId": session["id"]},
+                                        token=referred_token), 409)
+    check(8, "Không trả học phí trùng 1 phiên từ ví (409)", ok, err)
 
     # ---------------- DoD 9: complete & review ----------------
     print("\nDoD 9 — Hoàn thành phiên & đánh giá")
@@ -339,6 +336,29 @@ def main():
     ok, _ = expect_error(lambda: call("POST", f"{MENTORING}/api/mentoring/requests/{r3['id']}/respond",
                                       {"decision": "ACCEPT"}, token=mentor_token), 409)
     check(7, "Mentor đủ sức chứa không nhận thêm mentee (CAPACITY_FULL)", ok)
+
+    # ---------------- DoD 10 (phần 2): referral theo mentor ----------------
+    # `referred` đã học xong 1 buổi thường đã trả với mentor → có mã cho mentor; `mentee` (vừa được nhận) dùng mã ở buổi đầu.
+    code = call("POST", f"{PAYMENT}/api/payment/referrals/codes", {"mentorId": mentor["userId"]}, token=referred_token)
+    check(10, "Học xong 1 buổi đã trả → có mã giới thiệu riêng cho mentor", code["mentorId"] == mentor["userId"] and len(code["code"]) == 8, code)
+    rs = call("POST", f"{MENTORING}/api/mentoring/sessions", {
+        "menteeId": mentee["userId"], "mentorId": mentor["userId"], "scheduledAt": (slot + timedelta(days=5)).isoformat(),
+        "durationMinutes": 60, "referralCode": code["code"], **BOOKING_FORM}, token=mentee_token)
+    check(10, "Người được giới thiệu dùng mã ở buổi đầu, không giảm giá", float(rs["price"]) == 200000, rs["price"])
+    charge(rs["id"], {"cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, mentee_token)
+    call("POST", f"{MENTORING}/internal/dev/sessions/{rs['id']}/joined", {"mentor": True, "mentee": True}, internal=True)
+    call("POST", f"{MENTORING}/internal/dev/sessions/{rs['id']}/shift", {"endedMinutesAgo": 5}, internal=True)
+    call("POST", f"{MENTORING}/api/mentoring/sessions/{rs['id']}/complete", token=mentor_token)
+    call("POST", f"{MENTORING}/api/mentoring/sessions/{rs['id']}/attendance", {"answer": "HELD"}, token=mentee_token)
+    time.sleep(3)   # final-state COMPLETED tới payment-service qua outbox
+    promo_before = float(call("GET", f"{PAYMENT}/api/payment/wallet", token=referred_token)["promo"])
+    call("POST", f"{PAYMENT}/internal/dev/earnings/{rs['id']}/age", {"days": 8}, internal=True)
+    call("POST", f"{PAYMENT}/internal/dev/jobs/referral-eval", {}, internal=True)
+    ov = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=referred_token)
+    row = next((r for r in ov["referrals"] if r["sessionId"] == rs["id"]), None)
+    promo_after = float(call("GET", f"{PAYMENT}/api/payment/wallet", token=referred_token)["promo"])
+    check(10, "Buổi hợp lệ qua 7 ngày không hoàn tiền → referral QUALIFIED, người giới thiệu +30.000đ khuyến mãi",
+          row is not None and row["status"] == "QUALIFIED" and promo_after == promo_before + 30000, (row, promo_before, promo_after))
     call("PUT", f"{PROFILE}/api/profile/mentee/{referrer['userId']}", {
         "displayName": "E2E Referrer", "domain": "backend", "goal": "Hoc Java Spring Boot backend", "skills": ["Java"], "portfolioLinks": []},
         token=referrer["accessToken"])

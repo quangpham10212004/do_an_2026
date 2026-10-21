@@ -200,7 +200,8 @@ def us12(ctx):
     ended(s["id"], 5)
     check("US-12", "Tới giờ kết thúc: CONFIRMED → AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
     status, code = error_code(lambda: attend(mentee, s["id"], "MENTEE_NO_SHOW"))
-    check("US-12", "Mentee tự báo mình vắng → 400 INVALID_ATTENDANCE_ANSWER", status == 400 and code == "INVALID_ATTENDANCE_ANSWER",
+    # v2.0: mentee đã vào phòng nên nhật ký chặn trước (409 ABSENCE_CONTRADICTS_LOG); không có log thì 400 INVALID_ATTENDANCE_ANSWER
+    check("US-12", "Mentee tự báo mình vắng bị từ chối (409 ABSENCE_CONTRADICTS_LOG)", status == 409 and code == "ABSENCE_CONTRADICTS_LOG",
           (status, code))
     status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/review", {"rating": 5},
                                            token=mentee["accessToken"]))
@@ -227,11 +228,14 @@ def us12(ctx):
     check("US-12", "Không ai trả lời → COMPLETED 24 giờ sau giờ kết thúc, mentor được trả (giao dịch SUCCESS) (AC)",
           v["status"] == "COMPLETED" and v["attendanceResolution"] == "NO_ANSWER" and t["status"] == "SUCCESS", (v["status"], t["status"]))
 
-    # AC: trả lời mâu thuẫn → DISPUTED ngay, giao dịch ON_HOLD, không hoàn/không trả
+    # AC: trả lời mâu thuẫn → DISPUTED ngay, giao dịch ON_HOLD, không hoàn/không trả.
+    # v2.0: cả hai đã vào phòng nên không báo vắng được nữa — mâu thuẫn còn lại là "đã diễn ra" vs "huỷ trong buổi gọi"
     s = paid_session(ctx, 22)
-    ended(s["id"], 5, mentee=False)
+    ended(s["id"], 5)
     attend(mentee, s["id"], "HELD")
-    v = attend(mentor, s["id"], "MENTEE_NO_SHOW")
+    status, code = error_code(lambda: attend(mentor, s["id"], "MENTEE_NO_SHOW"))
+    check("US-12", "Mentor báo mentee vắng khi nhật ký có mentee → 409 ABSENCE_CONTRADICTS_LOG", code == "ABSENCE_CONTRADICTS_LOG", (status, code))
+    v = attend(mentor, s["id"], "CANCELLED_ON_CALL")
     t = txs(mentee, s["id"])[0]
     if t["status"] != "ON_HOLD":   # outbox gửi ngay sau commit; lỗi tạm thời → job gửi lại
         dev("jobs/payment-outbox")
@@ -245,11 +249,9 @@ def us12(ctx):
     check("US-12", "Admin nhận thông báo SESSION_DISPUTED (hook US-32)",
           any(n["type"] == "SESSION_DISPUTED" and s["id"] in n["message"] for n in admin_notes))
 
-    # Mentee báo mentor vắng, mentor im lặng 24 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
+    # v2.0 §6: chỉ mentee vào phòng → job kết luận NO_SHOW_MENTOR ngay khi buổi kết thúc, hoàn 100% + strike
     s = paid_session(ctx, 23)
     ended(s["id"], 5, mentor=False)
-    attend(mentee, s["id"], "MENTOR_NO_SHOW")
-    ended(s["id"], 24 * 60 + 1, mentor=False)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     if t["status"] != "REFUNDED":
@@ -257,18 +259,16 @@ def us12(ctx):
         t = txs(mentee, s["id"])[0]
     strikes = [n for n in call("GET", f"{MENTORING}/api/mentoring/notifications?limit=50", token=mentor["accessToken"])["items"]
                if n["type"] == "MENTOR_STRIKE" and "vắng mặt" in n["message"]]
-    check("US-12", "Mentee báo mentor vắng + mentor im lặng → NO_SHOW_MENTOR, giao dịch REFUNDED 100%, mentor bị strike",
+    check("US-12", "Nhật ký: chỉ mentee vào phòng → NO_SHOW_MENTOR, giao dịch REFUNDED 100%, mentor bị strike",
           v["status"] == "NO_SHOW_MENTOR" and v["refundPercent"] == 100 and t["status"] == "REFUNDED"
           and float(t["refundedAmount"]) == float(t["amount"]) and len(strikes) >= 1, (v["status"], t["status"], len(strikes)))
 
-    # Mentor báo mentee vắng, mentee im lặng → NO_SHOW_MENTEE, không hoàn
+    # v2.0 §6: chỉ mentor vào phòng → NO_SHOW_MENTEE, không hoàn
     s = paid_session(ctx, 24)
     ended(s["id"], 5, mentee=False)
-    attend(mentor, s["id"], "MENTEE_NO_SHOW")
-    ended(s["id"], 24 * 60 + 1, mentee=False)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
-    check("US-12", "Mentor báo mentee vắng + mentee im lặng → NO_SHOW_MENTEE, không hoàn (SUCCESS)",
+    check("US-12", "Nhật ký: chỉ mentor vào phòng → NO_SHOW_MENTEE, không hoàn (SUCCESS)",
           v["status"] == "NO_SHOW_MENTEE" and t["status"] == "SUCCESS" and t["refunds"] == [], (v["status"], t["status"]))
 
     # Cả hai báo huỷ trong buổi gọi → CANCELLED, hoàn 100%, không strike

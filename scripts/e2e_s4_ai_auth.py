@@ -88,10 +88,13 @@ def us39(ctx):
         "durationMinutes": 60, "sessionType": "CODE_REVIEW", "agenda": "Review kien truc REST API va service layer"},
         token=me["accessToken"]))
     check("US-39", "Đặt lịch khi chưa xác thực → 403 EMAIL_NOT_VERIFIED", status == 403 and code == "EMAIL_NOT_VERIFIED", (status, code))
-    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": str(uuid.uuid4()),
-        "card": {"cardNumber": "4242 4242 4242 4242", "expiry": "12/30", "cvv": "123"}}, token=me["accessToken"],
-        headers={"Idempotency-Key": str(uuid.uuid4())}))
-    check("US-39", "Thanh toán khi chưa xác thực → 403 EMAIL_NOT_VERIFIED", status == 403 and code == "EMAIL_NOT_VERIFIED", (status, code))
+    # Bản chốt v2.0: học phí chỉ trả từ ví — chặn cả nạp ví lẫn trả từ ví
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/wallet/topups", {"amount": 100000, "provider": "SANDBOX",
+        "card": {"cardNumber": "4242 4242 4242 4242", "expiry": "12/30", "cvv": "123"}}, token=me["accessToken"]))
+    check("US-39", "Nạp ví khi chưa xác thực → 403 EMAIL_NOT_VERIFIED", status == 403 and code == "EMAIL_NOT_VERIFIED", (status, code))
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/wallet/pay", {"sessionId": str(uuid.uuid4())},
+                                           token=me["accessToken"]))
+    check("US-39", "Trả học phí từ ví khi chưa xác thực → 403 EMAIL_NOT_VERIFIED", status == 403 and code == "EMAIL_NOT_VERIFIED", (status, code))
 
     tokens = []
     for _ in range(3):
