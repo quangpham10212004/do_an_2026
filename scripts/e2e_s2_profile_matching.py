@@ -180,9 +180,10 @@ def main():
     # ---------------- US-18 ----------------
     print("\nUS-18 — excludedBy để nới điều kiện")
     res = search(limit=10, useProfileDefaults=False, maxRate=0, language="vi")
-    # Chỉ mentor tiếng Anh miễn phí qua giá nhưng trượt ngôn ngữ; 35 mentor tiếng Việt chỉ trượt giá.
-    check("Kết quả ít: excludedBy chỉ ra bộ lọc giá loại nhiều nhất (35), ngôn ngữ 1",
-          res["mentors"] == [] and res["excludedBy"] == {"maxRate": 35, "language": 1}, res["excludedBy"])
+    # v2.0 không còn mentor miễn phí: mentor tiếng Anh trượt cả giá lẫn ngôn ngữ (không tính riêng cho bộ lọc nào);
+    # 35 mentor tiếng Việt chỉ trượt giá.
+    check("Kết quả ít: excludedBy chỉ ra bộ lọc giá loại nhiều nhất (35), ngôn ngữ 0",
+          res["mentors"] == [] and res["excludedBy"] == {"maxRate": 35, "language": 0}, res["excludedBy"])
     res = search(limit=10, useProfileDefaults=False, language="vi")
     check("Nới bộ lọc giá (bỏ maxRate) => đủ 10 kết quả", len(res["mentors"]) == 10, len(res["mentors"]))
 
@@ -197,10 +198,10 @@ def main():
           and cheap[0]["id"] not in {m["mentorId"] for m in sim}, sim)
     check("Áp sở thích hồ sơ: giá ≤ 150.000đ", all(rate_of[m["mentorId"]] <= 150000 for m in sim), sim)
     call("PUT", f"{PROFILE}/api/profile/mentee/{mentee_id}/preferences",
-         {"preferredDays": [], "preferredTimeOfDay": None, "budgetMaxPerHour": 0, "languages": ["en"]}, token=me)
+         {"preferredDays": [], "preferredTimeOfDay": None, "budgetMaxPerHour": None, "languages": ["en"]}, token=me)
     sim = call("GET", f"{MATCHING}/internal/matching/similar-mentors?menteeId={mentee_id}"
                       f"&excludeMentorId={cheap[0]['id']}&limit=3", internal=True)["mentors"]
-    check("Sở thích quá chặt (miễn phí + tiếng Anh) => mentor khớp đứng đầu, phần còn lại được nới để đủ 3",
+    check("Sở thích quá chặt (chỉ tiếng Anh) => mentor khớp đứng đầu, phần còn lại được nới để đủ 3",
           len(sim) == 3 and sim[0]["mentorId"] == english["id"], sim)
     unknown = call("GET", f"{MATCHING}/internal/matching/similar-mentors?menteeId={uuid.uuid4()}"
                           f"&excludeMentorId={cheap[0]['id']}", internal=True)

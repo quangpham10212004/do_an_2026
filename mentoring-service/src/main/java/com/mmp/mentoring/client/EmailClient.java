@@ -40,7 +40,7 @@ public class EmailClient {
             Map.entry("SESSION_CANCELLED", "SESSIONS"),
             Map.entry("RESCHEDULE_PROPOSED", "SESSIONS"),
             Map.entry("SESSION_REMINDER_24H", "SESSIONS"),
-            Map.entry("SESSION_REMINDER_1H", "SESSIONS"),
+            Map.entry("SESSION_REMINDER_15M", "SESSIONS"),   // bản chốt v2.0: nhắc 15 phút (trước đây 1 giờ)
             Map.entry("ATTENDANCE_REQUIRED", "SESSIONS"),
             // US-58 — phỏng vấn thử: kết quả cho mentee, nhắc / cảnh báo thiếu phiếu cho mentor
             Map.entry("MOCK_SCORECARD_READY", "SESSIONS"),

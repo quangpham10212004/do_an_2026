@@ -1659,7 +1659,7 @@ paths:
         US-34 (PRD-SES-13) — "Thêm vào lịch": file .ics (RFC 5545) cho mentor/mentee của phiên. UID cố định theo id phiên,
         SEQUENCE = số lần dời lịch (tải lại sau khi dời lịch sẽ cập nhật đúng sự kiện cũ); phiên CANCELLED/EXPIRED →
         METHOD:CANCEL. Mô tả gồm agenda, link tham gia (nếu đã có) và link trang ghi chú phiên. Nhắc lịch trong ứng dụng:
-        job mỗi phút gửi SESSION_REMINDER_24H (còn ≤ 24 giờ) và SESSION_REMINDER_1H (còn ≤ 1 giờ) cho cả hai bên, theo
+        job mỗi phút gửi SESSION_REMINDER_24H (còn ≤ 24 giờ) và SESSION_REMINDER_15M (còn ≤ 15 phút) cho cả hai bên, theo
         múi giờ của từng người, kèm link tham gia và agenda; dời lịch thì nhắc lại từ đầu.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

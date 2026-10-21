@@ -35,7 +35,7 @@ public class InternalPaymentController {
 
     /**
      * US-25 — mentoring-service báo trạng thái cuối của phiên (COMPLETED / NO_SHOW_MENTEE / CANCELLED khi mentee huỷ muộn,
-     * hoặc sau khi giải quyết tranh chấp với releaseNow=true). payment-service giữ đồng hồ 48 giờ. Idempotent (ghi đè lịch).
+     * hoặc sau khi giải quyết tranh chấp với releaseNow=true). payment-service giữ đồng hồ 72 giờ (bản chốt v2.0). Idempotent (ghi đè lịch).
      */
     @PostMapping("/payments/sessions/{sessionId}/final-state")
     public FinalStateResponse finalState(@PathVariable UUID sessionId, @Valid @RequestBody FinalStateRequest req) {

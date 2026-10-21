@@ -214,8 +214,9 @@ def us25(ctx):
           row4 and float(row4["reversed"]) == 255000 and float(row4["pending"]) == 0 and float(row4["available"]) == 0
           and "EARNING_AVAILABLE" not in types(row4), row4)
 
-    # Mentee huỷ muộn (< 72h, hoàn 0%) → mentor được trả: final-state CANCELLED, giải phóng sau 72 giờ
+    # Mentee huỷ muộn (< 4 giờ, hoàn 0% — bản chốt v2.0 §7) → mentor được trả: final-state CANCELLED, giải phóng sau 72 giờ
     s5 = paid(mentee, mentor, at(2, 15))
+    dev(f"sessions/{s5['id']}/shift", {"startsInMinutes": 200})
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s5['id']}/cancel", {"reason": "Ban"}, token=mentee["accessToken"])
     dev("jobs/payment-outbox")
     row5 = earning_row(mentor, s5["id"])
@@ -230,7 +231,7 @@ def us25(ctx):
     # pending: s3 127.500; available: s 255.000 + s2 255.000 + s5 255.000; reversed: s3 127.500 + s4 255.000
     check("US-25", "Summary = tổng các phiên: pending 127.500 / available 765.000 / paidOut 0 / reversed 382.500",
           float(sm["pending"]) == 127500 and float(sm["available"]) == 765000 and float(sm["paidOut"]) == 0
-          and float(sm["reversed"]) == 382500 and sm["releaseDelayHours"] == 48, sm)
+          and float(sm["reversed"]) == 382500 and sm["releaseDelayHours"] == 72, sm)
 
 
 # ------------------------------------------------------------------ US-32
@@ -323,9 +324,10 @@ def us32(ctx):
 
     # Phiên DISPUTED (US-12) → tranh chấp NO_SHOW tự tạo; NO_REFUND → COMPLETED, trả mentor
     s3 = paid(mentee, mentor, at(8, 10))
-    ended(s3["id"], 5, mentee=False)
+    # v2.0 §6: cả hai vào phòng → không báo vắng được; mâu thuẫn "đã diễn ra" vs "huỷ trong buổi gọi" → DISPUTED
+    ended(s3["id"], 5)
     attend(mentee, s3["id"], "HELD")
-    attend(mentor, s3["id"], "MENTEE_NO_SHOW")
+    attend(mentor, s3["id"], "CANCELLED_ON_CALL")
     dev("jobs/payment-outbox")
     auto = admin_call(ctx, "GET", "?status=OPEN")
     a = next((x for x in auto if x["sessionId"] == s3["id"]), None)
@@ -357,8 +359,9 @@ def us31(ctx):
     mentor = approved_mentor(admin, "end")
     mentee = accepted_mentee(mentor, "end")
 
-    late = paid(mentee, mentor, at(2, 15))          # < 72h → mentee kết thúc: hoàn 0%
-    early = paid(mentee, mentor, at(6, 9))          # ≥ 72h → hoàn 100%
+    late = paid(mentee, mentor, at(2, 15))          # < 4h (bản chốt v2.0 §7) → mentee kết thúc: hoàn 0%
+    dev(f"sessions/{late['id']}/shift", {"startsInMinutes": 200})
+    early = paid(mentee, mentor, at(6, 9))          # ≥ 24h → hoàn 100%
     unpaid = book(mentee, mentor, at(8, 9))         # PENDING chưa thanh toán
     status, code = error_code(lambda: end_request(mentee, mentee["requestId"], reason="INACTIVE"))
     check("US-31", "reason INACTIVE (chỉ hệ thống) → 400 INVALID_END_REASON", status == 400 and code == "INVALID_END_REASON", (status, code))
@@ -372,10 +375,10 @@ def us31(ctx):
           and r["endNote"] == "Da dat muc tieu, cam on anh" and r["endedAt"], r)
     v_late, v_early, v_unpaid = (get_session(mentee, x["id"]) for x in (late, early, unpaid))
     t_late, t_early = txs(mentee, late["id"])[0], txs(mentee, early["id"])[0]
-    check("US-31", "Phiên < 72h bị huỷ như mentee huỷ: hoàn 0%, giao dịch vẫn SUCCESS",
+    check("US-31", "Phiên < 4h bị huỷ như mentee huỷ: hoàn 0%, giao dịch vẫn SUCCESS",
           v_late["status"] == "CANCELLED" and v_late["cancelledBy"] == "MENTEE" and v_late["refundPercent"] == 0
           and t_late["status"] == "SUCCESS" and t_late["refunds"] == [], (v_late["status"], v_late["refundPercent"], t_late["status"]))
-    check("US-31", "Phiên ≥ 72h bị huỷ: hoàn 100% (REFUNDED)",
+    check("US-31", "Phiên ≥ 24h bị huỷ: hoàn 100% (REFUNDED)",
           v_early["status"] == "CANCELLED" and v_early["refundPercent"] == 100 and t_early["status"] == "REFUNDED",
           (v_early["status"], v_early["refundPercent"], t_early["status"]))
     check("US-31", "Phiên chờ thanh toán cũng bị huỷ", v_unpaid["status"] == "CANCELLED", v_unpaid["status"])
@@ -427,7 +430,7 @@ def us27(ctx):
     mentor = approved_mentor(admin["accessToken"], "suspend")
     a = accepted_mentee(mentor, "suspend-a")
     b = accepted_mentee(mentor, "suspend-b")
-    s1 = paid(a, mentor, at(2, 15))      # < 72h — hệ thống huỷ vẫn hoàn 100%
+    s1 = paid(a, mentor, at(2, 15))      # < 72h trước giờ học — hệ thống huỷ vẫn hoàn 100%
     s2 = paid(b, mentor, at(6, 9))
     s3 = book(a, mentor, at(8, 9))       # chưa thanh toán
     status, code = error_code(lambda: call("POST", f"{MENTORING}/internal/mentors/{mentor['userId']}/suspend", {"reason": "x"}))
