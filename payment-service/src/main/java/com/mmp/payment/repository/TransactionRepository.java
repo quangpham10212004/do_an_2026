@@ -62,7 +62,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     @Query("SELECT COALESCE(SUM(t.fee), 0) FROM Transaction t WHERE t.kind = 'SESSION' AND t.status IN :statuses")
     BigDecimal sumFeeByStatusIn(@Param("statuses") Collection<Transaction.Status> statuses);
 
-    long countByPayerIdAndStatus(UUID payerId, Transaction.Status status);
+    /** Số giao dịch học phí (không gồm nạp ví) của người trả ở trạng thái `status`. */
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.payerId = :payerId AND t.kind = 'SESSION' AND t.status = :status")
+    long countByPayerIdAndStatus(@Param("payerId") UUID payerId, @Param("status") Transaction.Status status);
 
     List<Transaction> findByStatusInAndSessionSyncedFalse(List<Transaction.Status> statuses);
 

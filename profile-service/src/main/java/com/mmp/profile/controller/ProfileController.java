@@ -62,6 +62,13 @@ public class ProfileController {
         return profileService.pricingTiers();
     }
 
+    /** Bản chốt v2.0 §10 — mentor bật / tắt nhận buổi trải nghiệm 15 phút. */
+    @PutMapping("/mentor/{userId}/trial")
+    public MentorProfileResponse updateTrial(@PathVariable UUID userId, @Valid @RequestBody TrialInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.setTrialEnabled(userId, input.enabled());
+    }
+
     /** Bản chốt v2.0 — mentor chọn giá trong khung cấp độ; chỉ áp cho yêu cầu đặt mới. */
     @PutMapping("/mentor/{userId}/rate")
     public MentorProfileResponse updateRate(@PathVariable UUID userId, @Valid @RequestBody RateInput input) {

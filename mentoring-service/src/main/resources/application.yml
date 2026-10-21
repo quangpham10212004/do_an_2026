@@ -61,6 +61,9 @@ app:
     full-refund-before: ${CANCEL_FULL_REFUND_BEFORE:PT24H}
     half-refund-before: ${CANCEL_HALF_REFUND_BEFORE:PT4H}
     trial-full-refund-before: ${CANCEL_TRIAL_FULL_REFUND_BEFORE:PT2H}   # buổi trải nghiệm: ≥ 2h hoàn 100%, muộn hơn 0%
+  trial:                           # Bản chốt v2.0 §10 — buổi trải nghiệm 15 phút
+    fee: ${TRIAL_FEE:30000}                 # phí cố định toàn nền tảng
+    max-open-per-mentee: ${TRIAL_MAX_OPEN:3}   # tối đa 3 buổi chưa diễn ra
   strikes:                         # US-02 — strike thứ 3 trong 30 ngày → PAUSED (profile-service) + báo admin
     threshold: 3
     window: P30D

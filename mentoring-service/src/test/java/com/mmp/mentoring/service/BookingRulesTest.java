@@ -96,8 +96,8 @@ class BookingRulesTest {
     @Test
     void onlyStandardDurationsAreAllowed() {
         // Bản chốt v2.0 §4: buổi thường cố định 60 phút
-        assertThat(List.of(60)).allMatch(BookingRules::isAllowedDuration);
-        assertThat(List.of(15, 30, 45, 90, 120)).noneMatch(BookingRules::isAllowedDuration);
+        assertThat(List.of(60, 15)).allMatch(BookingRules::isAllowedDuration);   // 15 = buổi trải nghiệm
+        assertThat(List.of(30, 45, 90, 120)).noneMatch(BookingRules::isAllowedDuration);
         assertThat(BookingRules.isAllowedDuration(null)).isFalse();
     }
 

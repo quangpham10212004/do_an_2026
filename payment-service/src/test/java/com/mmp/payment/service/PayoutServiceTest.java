@@ -41,6 +41,7 @@ class PayoutServiceTest {
     private final UUID mentorId = UUID.randomUUID();
     private final AuthUser mentor = new AuthUser(mentorId, "m@x", "MENTOR");
     private final AuthUser admin = new AuthUser(UUID.randomUUID(), "a@x", "ADMIN");
+    private final WalletLedger wallets = mock(WalletLedger.class);
     private final PayoutService service;
 
     @SuppressWarnings("unchecked")
@@ -76,7 +77,8 @@ class PayoutServiceTest {
         when(profiles.displayName(any())).thenReturn("Mentor A");
         EarningService earnings = new EarningService(ledgerRepo, mock(EarningScheduleRepository.class), txRepo, tx, audit,
                 Duration.ofHours(48));
-        service = new PayoutService(banks, payouts, ledgerRepo, txRepo, earnings, mentoring, profiles, audit, tx);
+        when(wallets.find(any())).thenReturn(new WalletLedger.WalletRow(null, "ACTIVE", null));
+        service = new PayoutService(banks, payouts, ledgerRepo, txRepo, earnings, mentoring, profiles, audit, tx, wallets);
     }
 
     /** Một giao dịch đã giải phóng {@code available}đ thu nhập. */
@@ -164,5 +166,13 @@ class PayoutServiceTest {
                 .hasFieldOrPropertyWithValue("code", "PAYOUT_EXCEEDS_AVAILABLE");
         PayoutView rejected = service.reject(admin, p.id(), new RejectInput("Số dư bị thu hồi do tranh chấp"));
         assertThat(rejected.status()).isEqualTo("REJECTED");
+    }
+
+    @Test
+    void frozenAccountCannotRequestPayout() {
+        when(wallets.find(any())).thenReturn(new WalletLedger.WalletRow(null, "FROZEN", null));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(mentor))
+                .isInstanceOf(com.mmp.payment.exception.ApiException.class)
+                .satisfies(e -> org.assertj.core.api.Assertions.assertThat(((com.mmp.payment.exception.ApiException) e).getCode()).isEqualTo("ACCOUNT_FROZEN"));
     }
 }

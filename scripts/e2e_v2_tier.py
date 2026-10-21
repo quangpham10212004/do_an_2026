@@ -61,7 +61,9 @@ def main():
     while iv["status"] == "IN_PROGRESS":
         iv = call("POST", f"{AI}/api/ai/interviews/{iv['id']}/answers", {"answer": STRONG}, token=mt)
     detail = call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=at)
-    check("Admin thấy cấp đề xuất từ điểm", detail["suggestedTier"] in ("JUNIOR", "SENIOR", "EXPERT"), detail["suggestedTier"])
+    score = detail["overallScore"]
+    expected = None if score < 60 else "JUNIOR" if score < 75 else "SENIOR" if score < 88 else "EXPERT"
+    check("Admin thấy cấp đề xuất đúng ngưỡng 60/75/88 từ điểm AI", detail["suggestedTier"] == expected, (score, detail["suggestedTier"]))
     check("Mentor không thấy cấp đề xuất", call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=mt)["suggestedTier"] is None)
 
     call("POST", f"{AI}/api/ai/admin/interviews/{iv['id']}/review",

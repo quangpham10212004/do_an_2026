@@ -29,6 +29,7 @@ class TestFixtures {
     final com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo = mock(com.mmp.mentoring.repository.RescheduleProposalRepository.class);
     final com.mmp.mentoring.repository.DisputeRepository disputeRepo = mock(com.mmp.mentoring.repository.DisputeRepository.class);
     final com.mmp.mentoring.client.MatchingClient matchingClient = mock(com.mmp.mentoring.client.MatchingClient.class);
+    final TrialService trials = mock(TrialService.class);
     com.mmp.mentoring.entity.MentoringSession lastSaved;
     CancellationPolicy policy = CancellationPolicy.defaults();
 
@@ -42,6 +43,7 @@ class TestFixtures {
             lastSaved = inv.getArgument(0);
             return lastSaved;
         });
+        when(trials.fee()).thenReturn(new java.math.BigDecimal("30000"));
         when(sessionRepo.findById(any())).thenAnswer(inv -> java.util.Optional.ofNullable(lastSaved));
         when(paymentClient.payFromWallet(any(), any()))
                 .thenReturn(new com.mmp.mentoring.client.PaymentClient.WalletPayResult(false, true, "INSUFFICIENT_FUNDS"));
@@ -51,7 +53,7 @@ class TestFixtures {
 
     SessionService service() {
         return new SessionService(sessionRepo, requestRepo, reviewRepo, policy, outbox, strikes, proposalRepo, disputeRepo,
-                profileClient, paymentClient, notifications, tx, matchingClient,
+                profileClient, paymentClient, notifications, tx, matchingClient, trials,
                 "Asia/Ho_Chi_Minh", Duration.ofHours(3), Duration.ofDays(60), Duration.ofHours(24),
                 Duration.ofHours(24), Duration.ofHours(1));
     }

@@ -32,7 +32,7 @@ export type AttendanceResolution =
   | "DISPUTE_RESOLVED";
 /** US-03 — thời lượng phiên được phép (phút). */
 /** Bản chốt v2.0 §4: buổi thường cố định 60 phút. */
-export type SessionDuration = 60;
+export type SessionDuration = 60 | 15;
 
 /** US-14 — tần suất mong muốn của quan hệ mentoring. */
 export type RequestFrequency = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "ONE_OFF";
@@ -203,6 +203,8 @@ export interface BookSessionInput {
   agenda: string;
   preReadLink?: string;
   topic?: string;
+  /** Bản chốt v2.0 §10 — REGULAR (mặc định) | TRIAL (15 phút, phí cố định). */
+  kind?: "REGULAR" | "TRIAL";
 }
 
 /**

@@ -327,6 +327,12 @@ public class ProfileService {
         }
     }
 
+    /** Bản chốt v2.0 §10 — mentor bật / tắt nhận buổi trải nghiệm. */
+    public MentorProfileResponse setTrialEnabled(UUID mentorId, boolean enabled) {
+        tx.executeWithoutResult(s -> findMentor(mentorId).setTrialEnabled(enabled));
+        return getMentor(mentorId);
+    }
+
     /** Mentor tự chọn giá trong khung của cấp (chỉ áp cho yêu cầu đặt mới). */
     public MentorProfileResponse updateRate(UUID mentorId, BigDecimal rate) {
         tx.executeWithoutResult(s -> {

@@ -70,6 +70,7 @@ app:
     password: ${ADMIN_PASSWORD:Admin@123}
   services:
     payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+    mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}   # Bản chốt v2.0 §2.1 — khoá tài khoản → huỷ buổi + đóng băng ví
     # US-38 — múi giờ người nhận (giờ yên tĩnh của email).
     profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}
   # US-38 (PRD-AUTH-2) — log (mặc định: ghi log + hộp thư giả /internal/dev/emails) | smtp (Mailpit ở demo).

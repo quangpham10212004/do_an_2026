@@ -63,6 +63,9 @@ public class ReviewService {
             if (session.getStatus() != MentoringSession.Status.COMPLETED) {
                 throw ApiException.conflict("SESSION_NOT_COMPLETED", "Chỉ đánh giá được sau khi phiên kết thúc");
             }
+            if (session.isTrial()) {
+                throw ApiException.conflict("TRIAL_NOT_REVIEWABLE", "Buổi trải nghiệm không chấm sao — hãy đặt buổi học thường nếu bạn muốn học tiếp");
+            }
             ReviewRules.requireInWindow(session.getResolvedAt(), session.endsAt(), now);
             if (reviewRepo.existsBySessionId(sessionId)) {
                 throw ApiException.conflict("ALREADY_REVIEWED", "Bạn đã đánh giá phiên này");

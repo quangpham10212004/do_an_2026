@@ -113,6 +113,7 @@ services:
       DB_NAME: auth_db
       REDIS_HOST: redis
       PAYMENT_SERVICE_URL: http://payment-service:8084
+      MENTORING_SERVICE_URL: http://mentoring-service:8083
       # US-38 — múi giờ người nhận (giờ yên tĩnh); EMAIL_MODE=smtp + `docker compose --profile mail up` để gửi qua Mailpit.
       PROFILE_SERVICE_URL: http://profile-service:8082
       EMAIL_MODE: ${EMAIL_MODE:-log}

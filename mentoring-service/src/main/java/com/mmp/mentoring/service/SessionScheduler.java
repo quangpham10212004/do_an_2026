@@ -36,11 +36,13 @@ public class SessionScheduler {
     private final TransactionTemplate tx;
     private final Duration paymentHold;
     private final SessionService sessions;
+    private final TrialService trials;
 
     public SessionScheduler(SessionRepository sessionRepo, NotificationService notifications, AttendanceService attendance,
                             ProfileClient profileClient, TransactionTemplate tx,
-                            @Value("${app.booking.payment-hold}") Duration paymentHold, SessionService sessions) {
+                            @Value("${app.booking.payment-hold}") Duration paymentHold, SessionService sessions, TrialService trials) {
         this.sessions = sessions;
+        this.trials = trials;
         this.sessionRepo = sessionRepo;
         this.notifications = notifications;
         this.attendance = attendance;
@@ -95,6 +97,7 @@ public class SessionScheduler {
     public void expireUnpaidSessions() {
         for (MentoringSession s : sessionRepo.findExpiredPending(OffsetDateTime.now().minus(paymentHold))) {
             s.setStatus(MentoringSession.Status.EXPIRED);
+            if (s.isTrial()) trials.restore(s.getId());   // chưa tạm giữ được học phí → hoàn lại lượt trải nghiệm
             s.setCancelledBy("SYSTEM");
             s.setCancelReason("PAYMENT_TIMEOUT");
             s.setRefundPercent(0);

@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { CalendarDays, CalendarPlus, FileText, Flag, Link2, MessageSquareText, Repeat, Star, Video, X } from "lucide-react";
-import { Alert, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import DisputeForm, { canReportIssue } from "@/features/mentoring/DisputeForm";
 import {
@@ -241,6 +241,7 @@ function Sessions({ user }: { user: SessionUser }) {
                       <div className="flex flex-wrap items-center gap-2">
                         {isMentor ? <strong className="text-title-3">{other}</strong> : <Link href={`/mentors/${s.mentorId}`} className="text-title-3 font-semibold">{other}</Link>}
                         <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
+                        {s.kind === "TRIAL" && <Badge tone="info">Trải nghiệm</Badge>}
                         {s.reviewed && <Stars value={s.reviewRating} />}
                       </div>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-small text-ink-muted">
@@ -344,7 +345,10 @@ function Sessions({ user }: { user: SessionUser }) {
                     && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
                     <Button icon={Repeat} onClick={toggle(rescheduling, setRescheduling)}>Dời lịch</Button>
                   )}
-                  {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
+                  {!isMentor && s.status === "COMPLETED" && s.kind === "TRIAL" && (
+                    <ButtonLink href={`/mentoring/request/${s.mentorId}`} variant="primary">Muốn học tiếp? Gửi yêu cầu mentoring</ButtonLink>
+                  )}
+                  {!isMentor && s.status === "COMPLETED" && s.kind !== "TRIAL" && !s.reviewed && (
                     <Button variant="primary" icon={Star} onClick={toggle(reviewing, setReviewing)}>Đánh giá</Button>
                   )}
                   {isMentor && s.status === "COMPLETED" && (

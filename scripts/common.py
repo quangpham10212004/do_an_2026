@@ -146,12 +146,29 @@ def call(method, url, body=None, token=None, internal=False, raw_body=None, cont
 
 
 def charge(session_id, card, token, amount=None, idempotency_key=None):
-    """POST /api/payment/charge — US-13 bắt buộc header Idempotency-Key (mặc định sinh UUID mới cho mỗi lần gọi)."""
-    body = {"sessionId": session_id, "card": card}
+    """
+    Tương thích script cũ (bản chốt v2.0: học phí chỉ trả từ ví): nạp ví đủ giá phiên bằng thẻ sandbox `card` → trả từ ví
+    (POST /api/payment/wallet/pay → phiên AWAITING_MENTOR) → mentor xác nhận qua endpoint dev (script cũ không giữ token mentor)
+    → trả giao dịch học phí như /charge cũ. Thẻ bị từ chối → trả giao dịch NẠP VÍ thất bại (status FAILED, failureReason) và
+    không trả học phí. Script kiểm tra chính luồng ví/xác nhận (e2e_v2_*.py) gọi thẳng API, không qua helper này.
+    """
+    session = call("GET", f"{MENTORING}/internal/sessions/{session_id}", internal=True)
+    price = int(float(session["price"]))
+    wallet = call("GET", f"{PAYMENT}/api/payment/wallet", token=token)
+    short = price - int(float(wallet["cash"])) - int(float(wallet["promo"]))
+    if short > 0:
+        topup = max(-(-short // 10000) * 10000, 50000)
+        t = call("POST", f"{PAYMENT}/api/payment/wallet/topups", {"amount": topup, "provider": "SANDBOX", "card": card}, token=token)
+        if t["status"] != "SUCCESS":
+            return t
+    body = {"sessionId": session_id}
     if amount is not None:
         body["amount"] = amount
-    return call("POST", f"{PAYMENT}/api/payment/charge", body, token=token,
-                headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())})
+    tx = call("POST", f"{PAYMENT}/api/payment/wallet/pay", body, token=token)
+    after = call("GET", f"{MENTORING}/internal/sessions/{session_id}", internal=True)
+    if after["status"] == "AWAITING_MENTOR":
+        call("POST", f"{MENTORING}/internal/dev/sessions/{session_id}/mentor-confirm", {}, internal=True)
+    return tx
 
 
 def register_or_login(email, password, role, full_name, referral_code=None):

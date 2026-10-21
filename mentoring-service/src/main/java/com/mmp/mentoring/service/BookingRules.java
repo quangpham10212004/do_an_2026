@@ -27,7 +27,7 @@ public final class BookingRules {
     /** Bản chốt v2.0 §4: buổi thường cố định 60 phút (giá niêm yết theo buổi 60 phút), buổi trải nghiệm 15 phút. */
     public static final int REGULAR_DURATION_MINUTES = 60;
     public static final int TRIAL_DURATION_MINUTES = 15;
-    public static final Set<Integer> ALLOWED_DURATIONS = Set.of(REGULAR_DURATION_MINUTES);
+    public static final Set<Integer> ALLOWED_DURATIONS = Set.of(REGULAR_DURATION_MINUTES, TRIAL_DURATION_MINUTES);
     public static final int MAX_DURATION_MINUTES = 120;
     /** Phiên cũ (trước US-03) có thể dài tới 240 phút (CHECK của bảng sessions) — dùng khi quét trùng lịch. */
     public static final int MAX_STORED_DURATION_MINUTES = 240;

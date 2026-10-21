@@ -64,7 +64,19 @@ public final class MentoringDtos {
             @NotNull SessionType sessionType,
             @NotBlank @Size(max = 500) String agenda,
             @Size(max = 500) String preReadLink,
-            @Size(max = 300) String topic) {
+            @Size(max = 300) String topic,
+            /** Bản chốt v2.0 §10 — REGULAR (mặc định) | TRIAL (buổi trải nghiệm 15 phút, phí cố định). */
+            @jakarta.validation.constraints.Pattern(regexp = "REGULAR|TRIAL") String kind) {
+
+        /** Tương thích lời gọi cũ (buổi thường). */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null);
+        }
+
+        public boolean trial() {
+            return "TRIAL".equalsIgnoreCase(kind);
+        }
     }
 
     public record SlotView(OffsetDateTime startAt, OffsetDateTime endAt) {

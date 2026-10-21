@@ -42,7 +42,7 @@ class SessionSchedulerTest {
         when(tx.execute(any())).thenAnswer(inv -> ((TransactionCallback<Object>) inv.getArgument(0)).doInTransaction(null));
         when(profileClient.timezone(any())).thenReturn(ZoneId.of("Asia/Ho_Chi_Minh"));
         when(profileClient.displayNames(any())).thenReturn(Map.of());
-        scheduler = new SessionScheduler(repo, notifications, attendance, profileClient, tx, Duration.ofMinutes(15), mock(SessionService.class));
+        scheduler = new SessionScheduler(repo, notifications, attendance, profileClient, tx, Duration.ofMinutes(15), mock(SessionService.class), mock(TrialService.class));
     }
 
     private static MentoringSession session(MentoringSession.Status status, OffsetDateTime start) {

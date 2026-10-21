@@ -58,6 +58,7 @@ public class SessionService {
     private final Duration maxAdvance;
     private final Duration attendanceWindow;
     private final MatchingClient matchingClient;
+    private final TrialService trials;
     private final Duration confirmWithin;
     private final Duration confirmBeforeStart;
 
@@ -65,7 +66,7 @@ public class SessionService {
                           CancellationPolicy policy, PaymentOutboxService outbox,
                           StrikeService strikes, RescheduleProposalRepository proposalRepo, DisputeRepository disputeRepo,
                           ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
-                          TransactionTemplate tx, MatchingClient matchingClient,
+                          TransactionTemplate tx, MatchingClient matchingClient, TrialService trials,
                           @Value("${app.timezone}") String timezone,
                           @Value("${app.booking.min-lead-time}") Duration minLeadTime,
                           @Value("${app.booking.max-advance}") Duration maxAdvance,
@@ -89,6 +90,7 @@ public class SessionService {
         this.maxAdvance = maxAdvance;
         this.attendanceWindow = attendanceWindow;
         this.matchingClient = matchingClient;
+        this.trials = trials;
         this.confirmWithin = confirmWithin;
         this.confirmBeforeStart = confirmBeforeStart;
     }
@@ -108,9 +110,11 @@ public class SessionService {
         if (!mentee.isAdmin() && !mentee.userId().equals(in.menteeId())) {
             throw ApiException.forbidden("Bạn chỉ có thể đặt lịch cho chính mình");
         }
-        int duration = Optional.ofNullable(in.durationMinutes()).orElse(BookingRules.REGULAR_DURATION_MINUTES);
-        if (!BookingRules.isAllowedDuration(duration)) {
-            throw ApiException.badRequest("INVALID_DURATION", "Buổi học có thời lượng cố định " + BookingRules.REGULAR_DURATION_MINUTES + " phút");
+        boolean trial = in.trial();
+        int expectedDuration = trial ? BookingRules.TRIAL_DURATION_MINUTES : BookingRules.REGULAR_DURATION_MINUTES;
+        int duration = Optional.ofNullable(in.durationMinutes()).orElse(expectedDuration);
+        if (duration != expectedDuration) {
+            throw ApiException.badRequest("INVALID_DURATION", (trial ? "Buổi trải nghiệm" : "Buổi học") + " có thời lượng cố định " + expectedDuration + " phút");
         }
         String agenda = MentoringRequestService.trimToNull(in.agenda());
         if (agenda == null || agenda.length() < BookingRules.AGENDA_MIN || agenda.length() > BookingRules.AGENDA_MAX) {
@@ -129,13 +133,29 @@ public class SessionService {
         if (start.isAfter(now.plus(maxAdvance))) {
             throw ApiException.badRequest("TOO_FAR", "Chỉ được đặt lịch trong vòng " + maxAdvance.toDays() + " ngày tới");
         }
-        MentoringRequest request = requestRepo.findFirstByMenteeIdAndMentorIdAndStatus(
-                        in.menteeId(), in.mentorId(), MentoringRequest.Status.ACCEPTED)
-                .orElseThrow(() -> ApiException.badRequest("NOT_ACCEPTED", "Bạn cần được mentor chấp nhận trước khi đặt lịch"));
+        Optional<MentoringRequest> accepted = requestRepo.findFirstByMenteeIdAndMentorIdAndStatus(
+                in.menteeId(), in.mentorId(), MentoringRequest.Status.ACCEPTED);
+        if (trial) {
+            if (accepted.isPresent()) {
+                throw ApiException.conflict("TRIAL_NOT_ALLOWED", "Bạn đã được mentor này nhận hướng dẫn — hãy đặt buổi học thường");
+            }
+        } else if (accepted.isEmpty()) {
+            throw ApiException.badRequest("NOT_ACCEPTED", "Bạn cần được mentor chấp nhận trước khi đặt lịch");
+        }
+        MentoringRequest request = accepted.orElse(null);
         ProfileClient.MentorInfo mentor = profileClient.findMentor(in.mentorId())
                 .orElseThrow(() -> ApiException.notFound("MENTOR_NOT_FOUND", "Không tìm thấy mentor"));
+        if (trial) {
+            if (!"APPROVED".equals(mentor.verificationStatus())) {
+                throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor chưa được duyệt");
+            }
+            if (!mentor.effectiveTrialEnabled()) {
+                throw ApiException.conflict("TRIAL_DISABLED", "Mentor không nhận buổi trải nghiệm");
+            }
+            trials.requireBelowOpenLimit(in.menteeId(), now);
+        }
         checkSlot(mentor, start, duration, now);
-        BigDecimal price = BookingRules.price(mentor.hourlyRate(), duration);
+        BigDecimal price = trial ? trials.fee() : BookingRules.price(mentor.hourlyRate(), duration);
         if (price.signum() == 0) {
             throw ApiException.conflict("PRICE_NOT_SET", "Mentor chưa chọn mức học phí nên chưa nhận đặt lịch");
         }
@@ -145,7 +165,8 @@ public class SessionService {
             sessionRepo.lockMentorSchedule(in.mentorId());
             requireFree(in.mentorId(), in.menteeId(), start, duration, buffer, null);
             MentoringSession session = new MentoringSession();
-            session.setRequestId(request.getId());
+            session.setRequestId(request == null ? null : request.getId());
+            session.setKind(trial ? MentoringSession.Kind.TRIAL : MentoringSession.Kind.REGULAR);
             session.setMenteeId(in.menteeId());
             session.setMentorId(in.mentorId());
             session.setScheduledAt(start);
@@ -158,8 +179,10 @@ public class SessionService {
             session.setPrice(price);   // giá chốt tại lúc gửi yêu cầu — mentor đổi giá sau đó không ảnh hưởng buổi này
             // Bản chốt v2.0 §5: giữ khung giờ ở PENDING → tạm giữ học phí từ ví → AWAITING_MENTOR → mentor xác nhận → CONFIRMED
             session.setStatus(MentoringSession.Status.PENDING);
-            requestRepo.clearInactivityWarning(request.getId()); // US-31 — đặt phiên mới = còn hoạt động
-            return sessionRepo.save(session);
+            if (request != null) requestRepo.clearInactivityWarning(request.getId()); // US-31 — đặt phiên mới = còn hoạt động
+            MentoringSession persisted = sessionRepo.save(session);
+            if (trial) trials.claim(in.menteeId(), in.mentorId(), persisted.getId());   // mỗi cặp một lần
+            return persisted;
         });
 
         // Tạm giữ học phí từ ví ngay; ví thiếu tiền → phiên giữ PENDING (khung giờ được giữ paymentHold phút để nạp thêm)
@@ -265,7 +288,7 @@ public class SessionService {
      */
     public AvailableSlotsView availableSlots(AuthUser caller, UUID mentorId, int durationMinutes, int days, UUID excludeSessionId) {
         if (!BookingRules.isAllowedDuration(durationMinutes)) {
-            throw ApiException.badRequest("INVALID_DURATION", "Buổi học có thời lượng cố định " + BookingRules.REGULAR_DURATION_MINUTES + " phút");
+            throw ApiException.badRequest("INVALID_DURATION", "Thời lượng chỉ có thể là " + BookingRules.REGULAR_DURATION_MINUTES + " phút (buổi học) hoặc " + BookingRules.TRIAL_DURATION_MINUTES + " phút (buổi trải nghiệm)");
         }
         if (days < 1 || days > 28) {
             throw ApiException.badRequest("INVALID_RANGE", "Chỉ xem được lịch trong 1–28 ngày tới");
@@ -291,7 +314,9 @@ public class SessionService {
                 .stream()
                 .map(start -> new SlotView(start, start.plusMinutes(durationMinutes)))
                 .toList();
-        return new AvailableSlotsView(zone.getId(), durationMinutes, BookingRules.price(mentor.hourlyRate(), durationMinutes), slots);
+        BigDecimal slotPrice = durationMinutes == BookingRules.TRIAL_DURATION_MINUTES ? trials.fee()
+                : BookingRules.price(mentor.hourlyRate(), durationMinutes);
+        return new AvailableSlotsView(zone.getId(), durationMinutes, slotPrice, slots);
     }
 
     /**
@@ -399,6 +424,7 @@ public class SessionService {
                     .ifPresent(p -> p.close(RescheduleProposal.Status.EXPIRED));
             return ss;
         });
+        if (session.isTrial()) trials.restore(session.getId());
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
         String names = matchingClient.similarMentors(session.getMenteeId(), session.getMentorId(), 3).stream()
                 .map(MatchingClient.SimilarMentor::fullName).filter(x -> x != null && !x.isBlank()).collect(Collectors.joining(", "));
@@ -462,6 +488,8 @@ public class SessionService {
             return ss;
         });
         if (reportFinalState) outbox.flushSession(session.getId());
+        // Buổi trải nghiệm huỷ mà mentee không mất tiền → hoàn lại lượt dùng
+        if (session.isTrial() && d.refundPercent() == 100) trials.restore(session.getId());
         afterCancel(session, d);
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
         String suffix = (reason != null ? " Lý do: " + reason + "." : "")

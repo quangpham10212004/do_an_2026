@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardHeader, DescriptionList, Field, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
@@ -25,9 +25,10 @@ const INITIAL: BookingForm = { scheduledAt: null, durationMinutes: 60, sessionTy
 /** US-03 / US-05 — form đặt lịch phiên mentoring (PRD-SES-1, PRD-SES-2). */
 function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }) {
   const router = useRouter();
+  const trial = useSearchParams().get("trial") === "1";   // Bản chốt v2.0 §10 — buổi trải nghiệm 15 phút, không cần quan hệ mentoring
   const [mentor, setMentor] = useState<MentorProfile | null | undefined>(undefined);
   const [request, setRequest] = useState<MentoringRequest | null | undefined>(undefined);
-  const [form, setForm] = useState<BookingForm>(INITIAL);
+  const [form, setForm] = useState<BookingForm>({ ...INITIAL, durationMinutes: trial ? 15 : 60 });
   const [slotsVersion, setSlotsVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,10 +36,13 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 
   useEffect(() => {
     profileApi.getMentor(mentorId).then(setMentor).catch(() => setMentor(null));
-    mentoringApi.requests()
-      .then((rs) => setRequest(rs.find((r) => r.mentorId === mentorId && r.status === "ACCEPTED") || null))
-      .catch(() => setRequest(null));
-  }, [mentorId]);
+    if (trial) setRequest(null);
+    else {
+      mentoringApi.requests()
+        .then((rs) => setRequest(rs.find((r) => r.mentorId === mentorId && r.status === "ACCEPTED") || null))
+        .catch(() => setRequest(null));
+    }
+  }, [mentorId, trial]);
 
   const agenda = form.agenda.trim();
   const agendaValid = agenda.length >= AGENDA_MIN && agenda.length <= AGENDA_MAX;
@@ -58,6 +62,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
         sessionType: form.sessionType,
         agenda,
         preReadLink: form.preReadLink.trim() || undefined,
+        kind: trial ? "TRIAL" : "REGULAR",
       });
       // Ví đủ tiền → học phí đã được tạm giữ (AWAITING_MENTOR, chờ mentor xác nhận); thiếu tiền → trang nạp ví / thanh toán
       if (session.status === "PENDING") router.push(`/payment/${session.id}`);
@@ -72,19 +77,19 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 
   if (mentor === undefined || request === undefined) return <Loading />;
   if (!mentor) return <Alert action={<ButtonLink href="/mentors" size="sm">Danh sách mentor</ButtonLink>}>Không tìm thấy mentor này.</Alert>;
-  if (!request) {
+  if (!request && !trial) {
     return (
       <Alert tone="info" action={<ButtonLink href={`/mentoring/request/${mentorId}`} size="sm" variant="primary">Gửi yêu cầu</ButtonLink>}>
         Bạn cần được {mentor.displayName} chấp nhận yêu cầu mentoring trước khi đặt lịch.
       </Alert>
     );
   }
-  const price = Number(mentor.hourlyRate);   // Bản chốt v2.0: buổi thường cố định 60 phút, giá niêm yết theo buổi
+  const price = trial ? 30_000 : Number(mentor.hourlyRate);   // Bản chốt v2.0: buổi thường cố định 60 phút (giá theo cấp), trải nghiệm 15 phút 30.000đ
   const ready = !!form.scheduledAt && agendaValid && linkValid;
 
   return (
     <>
-      <PageHeader title="Đặt lịch phiên mentoring" back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
+      <PageHeader title={trial ? "Đặt buổi trải nghiệm 15 phút" : "Đặt lịch phiên mentoring"} back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
       <form onSubmit={submit} className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-6">
           <Alert>{error}</Alert>
@@ -151,5 +156,13 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 }
 
 export default function BookSessionPage({ params }: { params: { mentorId: string } }) {
-  return <RequireAuth roles={["MENTEE"]}>{(user) => <BookSession user={user} mentorId={params.mentorId} />}</RequireAuth>;
+  return (
+    <RequireAuth roles={["MENTEE"]}>
+      {(user) => (
+        <Suspense>
+          <BookSession user={user} mentorId={params.mentorId} />
+        </Suspense>
+      )}
+    </RequireAuth>
+  );
 }

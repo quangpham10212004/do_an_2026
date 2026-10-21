@@ -123,7 +123,7 @@ class AuditServiceTest {
         u.setEmail("mentee@example.com");
         u.setRole(User.Role.MENTEE);
         when(users.findById(u.getId())).thenReturn(Optional.of(u));
-        UserAdminService admin = new UserAdminService(users, mock(RefreshTokenRepository.class), audit);
+        UserAdminService admin = new UserAdminService(users, mock(RefreshTokenRepository.class), audit, mock(com.mmp.auth.client.MentoringClient.class));
         UUID adminId = UUID.randomUUID();
 
         admin.updateStatus(adminId, u.getId(), "LOCKED");
