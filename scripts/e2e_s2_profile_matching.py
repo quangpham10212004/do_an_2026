@@ -168,8 +168,8 @@ def main():
     res = search(limit=50, useProfileDefaults=False, timeOfDay="AFTERNOON")
     check("Buổi chiều (12–18) không ai có lịch => rỗng, excludedBy.timeOfDay = 36",
           res["mentors"] == [] and res["excludedBy"] == {"timeOfDay": 36}, res["excludedBy"])
-    res = search(limit=50, useProfileDefaults=False, language="en", sessionType="MOCK_INTERVIEW", freeOnly=True)
-    check("Ngôn ngữ en + loại phiên + miễn phí => đúng mentor tiếng Anh",
+    res = search(limit=50, useProfileDefaults=False, language="en", sessionType="MOCK_INTERVIEW")
+    check("Ngôn ngữ en + loại phiên => đúng mentor tiếng Anh",
           [m["mentorId"] for m in res["mentors"]] == [english["id"]], res["excludedBy"])
     res = search(limit=50, useProfileDefaults=False, minRating=4)
     check("minRating=4: mentor chưa có đánh giá bị loại", res["mentors"] == [] and res["excludedBy"] == {"minRating": 36},

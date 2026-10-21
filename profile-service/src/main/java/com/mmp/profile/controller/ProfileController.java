@@ -56,6 +56,19 @@ public class ProfileController {
         return profileService.updateBookingSettings(userId, input);
     }
 
+    /** Bản chốt v2.0 — khung giá theo cấp độ (công khai cho người đã đăng nhập). */
+    @GetMapping("/pricing-tiers")
+    public PricingTiersResponse pricingTiers() {
+        return profileService.pricingTiers();
+    }
+
+    /** Bản chốt v2.0 — mentor chọn giá trong khung cấp độ; chỉ áp cho yêu cầu đặt mới. */
+    @PutMapping("/mentor/{userId}/rate")
+    public MentorProfileResponse updateRate(@PathVariable UUID userId, @Valid @RequestBody RateInput input) {
+        requireOwnerWithRole(userId, "MENTOR");
+        return profileService.updateRate(userId, input.hourlyRate());
+    }
+
     @PutMapping("/mentor/{userId}")
     public MentorProfileResponse upsertMentor(@PathVariable UUID userId, @Valid @RequestBody MentorProfileInput input) {
         requireOwnerWithRole(userId, "MENTOR");

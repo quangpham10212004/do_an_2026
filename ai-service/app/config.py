@@ -36,6 +36,11 @@ ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))
 # US-22 (PRD-AIV-4) — số lần phỏng vấn tối đa (lần = buổi đã có kết quả) và thời gian chờ sau khi bị từ chối.
 INTERVIEW_MAX_ATTEMPTS = int(os.getenv("INTERVIEW_MAX_ATTEMPTS", "3"))
 INTERVIEW_COOLDOWN_DAYS = float(os.getenv("INTERVIEW_COOLDOWN_DAYS", "7"))
+# Bản chốt v2.0 §3 — đề xuất cấp độ mentor từ điểm tổng 0–100: < PASS không đạt; PASS..SENIOR-1 JUNIOR;
+# SENIOR..EXPERT-1 SENIOR; ≥ EXPERT là EXPERT. Admin được chọn cấp khác đề xuất (bắt buộc ghi lý do).
+TIER_PASS_FROM = float(os.getenv("TIER_PASS_FROM", "60"))
+TIER_SENIOR_FROM = float(os.getenv("TIER_SENIOR_FROM", "75"))
+TIER_EXPERT_FROM = float(os.getenv("TIER_EXPERT_FROM", "88"))
 MAX_ANSWER_LENGTH = 5000
 
 # Lưu file CV (docker volume). Có thể thay bằng object storage (S3/MinIO) khi triển khai thật.

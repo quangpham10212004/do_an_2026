@@ -126,9 +126,6 @@ async def test_filters_apply_before_vector_ranking(conn):
     assert result["stats"]["eligible"] == 30 and result["stats"]["considered"] == 90
     assert result["stats"]["retrieved"] == 30 and result["stats"]["returned"] == 10
 
-    # freeOnly: không mentor nào miễn phí => rỗng, excludedBy chỉ ra đúng thủ phạm.
-    result = await match(mentee, freeOnly=True)
-    assert result["mentors"] == [] and result["excluded_by"] == {"freeOnly": 90}
 
 
 async def test_system_constraints_are_counted_over_all_mentors(conn):

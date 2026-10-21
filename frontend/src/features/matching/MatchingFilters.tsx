@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Search } from "lucide-react";
-import { Button, Card, CardBody, CardFooter, Checkbox, Chip, Chips, Field, Input, Select } from "@/components/ui";
+import { Button, Card, CardBody, CardFooter, Chip, Chips, Field, Input, Select } from "@/components/ui";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, TIME_OF_DAY_LABELS } from "@/features/profile/api";
 import type { LanguageCode, MatchFilterName, MatchFilterValues, SessionType, TimeOfDay } from "@/types";
 
@@ -10,7 +10,7 @@ const SHORT_DAYS = ["", "T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const RATINGS = [3, 4, 4.5];
 
 export const NO_FILTERS: MatchFilterValues = {
-  maxRate: null, days: [], timeOfDay: null, language: [], sessionType: null, minRating: null, freeOnly: false,
+  maxRate: null, days: [], timeOfDay: null, language: [], sessionType: null, minRating: null,
 };
 
 function toggle<T>(list: T[], value: T): T[] {
@@ -37,8 +37,6 @@ export function describeFilter(name: MatchFilterName, f: MatchFilterValues): str
       return f.sessionType ? `loại phiên ${SESSION_TYPE_LABELS[f.sessionType]}` : "loại phiên";
     case "minRating":
       return `đánh giá ≥ ${f.minRating}`;
-    case "freeOnly":
-      return "chỉ mentor miễn phí";
   }
 }
 
@@ -118,7 +116,6 @@ export default function MatchingFilters({ value, fromProfile, busy, onSearch, on
                 ))}
               </Chips>
             </Field>
-            <Checkbox className="mt-7" label="Chỉ mentor miễn phí" checked={f.freeOnly} onChange={() => setF({ ...f, freeOnly: !f.freeOnly })} />
           </div>
         </CardBody>
         <CardFooter>

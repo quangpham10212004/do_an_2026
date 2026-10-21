@@ -106,16 +106,16 @@ def test_matching_echoes_effective_filters_and_excluded_by(client, fake_pipeline
     assert body["pipeline"]["eligible"] == 3 and body["pipeline"]["considered"] == 20
 
     url = (f"/api/matching/mentors?menteeId={MENTEE_ID}&maxRate=500000&days=1,3&days=5&timeOfDay=EVENING"
-           f"&language=en&sessionType=CODE_REVIEW&minRating=4&freeOnly=true&useProfileDefaults=false&limit=5")
+           f"&language=en&sessionType=CODE_REVIEW&minRating=4&useProfileDefaults=false&limit=5")
     body = client.get(url, headers=headers).json()
     assert fake_pipeline[-1] == {
         "limit": 5,
         "use_profile_defaults": False,
         "requested": {"maxRate": 500000, "days": [1, 3, 5], "timeOfDay": "EVENING", "language": ["en"],
-                      "sessionType": "CODE_REVIEW", "minRating": 4, "freeOnly": True},
+                      "sessionType": "CODE_REVIEW", "minRating": 4},
     }
     assert body["filters"] == {"maxRate": 500000, "days": [1, 3, 5], "timeOfDay": "EVENING", "language": ["en"],
-                               "sessionType": "CODE_REVIEW", "minRating": 4, "freeOnly": True,
+                               "sessionType": "CODE_REVIEW", "minRating": 4,
                                "fromProfileDefaults": []}
 
 

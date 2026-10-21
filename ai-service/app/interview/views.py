@@ -8,6 +8,7 @@ from app.interview import attempts
 from pydantic import Field
 
 from app.interview.models import Recommendation, Strategy
+from app.interview import rubric
 from app.interview.rubric import RubricScores, is_flagged
 from app.schemas import CamelModel
 
@@ -47,6 +48,8 @@ class InterviewView(CamelModel):
     current_question: InterviewTurnView | None = None
     turns: list[InterviewTurnView] = []
     overall_score: float | None = None
+    # Bản chốt v2.0 §3 — cấp độ đề xuất từ điểm (chỉ admin thấy); None = chưa có điểm hoặc dưới ngưỡng đạt
+    suggested_tier: str | None = None
     summary: str | None = None
     strengths: list[str] = []
     weaknesses: list[str] = []
@@ -98,6 +101,8 @@ class AnswerInput(CamelModel):
 class ReviewInterviewInput(CamelModel):
     decision: str = Field(pattern="^(APPROVE|REJECT|REQUEST_RETAKE)$")
     note: str | None = Field(default=None, max_length=2000)
+    # Bản chốt v2.0 §3 — cấp do admin gán khi APPROVE; thiếu => lấy cấp đề xuất
+    tier: str | None = Field(default=None, pattern="^(JUNIOR|SENIOR|EXPERT)$")
 
 
 class InterviewStats(CamelModel):
@@ -161,7 +166,8 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name, domain=interview["domain"],
         skills=list(interview["skills"] or []), status=interview["status"], engine=interview["engine"],
         max_turns=interview["max_turns"], current_turn=interview["current_turn"], current_question=current,
-        turns=turn_views, overall_score=_r1(interview["overall_score"]), summary=interview["summary"],
+        turns=turn_views, overall_score=_r1(interview["overall_score"]),
+        suggested_tier=rubric.suggest_tier(interview["overall_score"]) if for_admin else None, summary=interview["summary"],
         strengths=_split(interview["strengths"]), weaknesses=_split(interview["weaknesses"]),
         recommendation=interview["recommendation"], review_note=interview["review_note"],
         flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),

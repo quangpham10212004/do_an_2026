@@ -32,6 +32,7 @@ class FakeProfile:
         self.mentor: dict | None = dict(MENTOR)
         self.mentee: dict | None = dict(MENTEE)
         self.verifications: list[tuple[UUID, str]] = []
+        self.tiers: list[tuple[UUID, str | None]] = []
         self.enrichments: list[tuple[UUID, str, list[str], str]] = []
         self.enrichment_error: Exception | None = None
         self.cleared_cv_files: list[tuple[UUID, str]] = []
@@ -47,8 +48,9 @@ class FakeProfile:
     async def display_name(self, user_id):
         return "Mentor Test"
 
-    async def update_verification(self, mentor_id, status):
+    async def update_verification(self, mentor_id, status, tier=None):
         self.verifications.append((mentor_id, status))
+        self.tiers.append((mentor_id, tier))
 
     async def apply_enrichment(self, mentee_id, goal, skills, cv_url):
         if self.enrichment_error is not None:

@@ -96,6 +96,8 @@ export interface MentorProfile {
   cvFileUrl: string | null;
   portfolioLinks: string[];
   hourlyRate: number;
+  /** Bản chốt v2.0 — cấp độ do admin gán lúc duyệt phỏng vấn; null = chưa gán */
+  tier: "JUNIOR" | "SENIOR" | "EXPERT" | null;
   capacity: number;
   activeMenteeCount: number;
   /** = status === "ACCEPTING" */

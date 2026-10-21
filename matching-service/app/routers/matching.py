@@ -80,7 +80,6 @@ async def get_matches(
     language: list[str] | None = Query(None),
     sessionType: SessionType | None = Query(None),
     minRating: float | None = Query(None, ge=0, le=5),
-    freeOnly: bool | None = Query(None),
     useProfileDefaults: bool = Query(True),
     caller: Caller = Depends(require_user),
 ) -> MatchingResponse:
@@ -106,7 +105,6 @@ async def get_matches(
         match_filters.LANGUAGE: parse_languages(language),
         match_filters.SESSION_TYPE: sessionType,
         match_filters.MIN_RATING: minRating,
-        match_filters.FREE_ONLY: freeOnly,
     }
 
     result = await pipeline.match_mentors_for_mentee(

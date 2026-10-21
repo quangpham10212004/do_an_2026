@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, charge
+from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, charge, tier_for_rate
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -66,7 +66,8 @@ def approved_mentor(admin_token, name, hourly_rate):
               "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
     while interview["status"] == "IN_PROGRESS":
         interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": answer}, token=t)
-    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok"}, token=admin_token)
+    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok", "tier": tier_for_rate(hourly_rate)},
+         token=admin_token)
     return m
 
 

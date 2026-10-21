@@ -117,7 +117,6 @@ components:
         language: { type: array, items: { type: string, enum: [vi, en] }, description: Mentor nói ít nhất một ngôn ngữ trong danh sách }
         sessionType: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE], nullable: true }
         minRating: { type: number, nullable: true, description: "rating ≥ minRating (mentor chưa có đánh giá có rating 0)" }
-        freeOnly: { type: boolean, description: hourlyRate = 0 }
         fromProfileDefaults:
           type: array
           items: { type: string, enum: [maxRate, days, timeOfDay, language] }
@@ -274,7 +273,6 @@ paths:
           explode: true
         - { name: sessionType, in: query, required: false, schema: { type: string, enum: [CAREER_ADVICE, CODE_REVIEW, MOCK_INTERVIEW, PROJECT_GUIDANCE] } }
         - { name: minRating, in: query, required: false, schema: { type: number, minimum: 0, maximum: 5 } }
-        - { name: freeOnly, in: query, required: false, schema: { type: boolean }, description: Chỉ mentor miễn phí (hourlyRate = 0) }
         - { name: useProfileDefaults, in: query, required: false, schema: { type: boolean, default: true } }
       responses:
         "200":

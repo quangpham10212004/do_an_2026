@@ -236,7 +236,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-7.3 | Giới hạn số lượt | 5 lượt (quyết định D2) | ✅ |
 | FR-7.4 | Tổng hợp đánh giá | Điểm 0–100, tóm tắt, điểm mạnh, điểm yếu, khuyến nghị APPROVE/REJECT/NEEDS_REVIEW | ✅ |
 | FR-7.5 | Admin review | Admin đọc toàn bộ hội thoại, duyệt hoặc từ chối kèm nhận xét; mentor bị từ chối được phỏng vấn lại | ✅ |
-| FR-7.6 | Đề xuất cấp độ | Từ điểm 0–100: <60 không đạt, 60–74 Junior, 75–87 Senior, ≥88 Expert; admin nâng/hạ một bậc hoặc từ chối, bắt buộc ghi lý do; gián đoạn tiếp tục trong 24 giờ; làm lại sau 7 ngày, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày | ⚒ (hiện: duyệt/từ chối, tiếp tục 72 giờ) |
+| FR-7.6 | Đề xuất cấp độ | Từ điểm 0–100: <60 không đạt, 60–74 Junior, 75–87 Senior, ≥88 Expert; admin chọn cấp khác đề xuất hoặc từ chối, bắt buộc ghi lý do; gián đoạn tiếp tục trong 24 giờ; làm lại sau 7 ngày, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày | ⚒ (hiện: duyệt/từ chối, tiếp tục 72 giờ) |
 
 ### 3.8 Module: CV Parsing + Chatbot Enrichment (ai-service `app/cv`, `app/enrichment`)
 

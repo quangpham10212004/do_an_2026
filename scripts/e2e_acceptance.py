@@ -209,7 +209,7 @@ def main():
     pending = call("GET", f"{AI}/api/ai/admin/interviews?status=PENDING_REVIEW", token=admin_token)
     check(4, "Admin thấy buổi phỏng vấn trong danh sách chờ duyệt", any(i["id"] == interview["id"] for i in pending))
     call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review",
-         {"decision": "APPROVE", "note": "Tra loi tot"}, token=admin_token)
+         {"decision": "APPROVE", "note": "Tra loi tot", "tier": "JUNIOR"}, token=admin_token)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
     check(4, "Admin duyệt → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED")
 

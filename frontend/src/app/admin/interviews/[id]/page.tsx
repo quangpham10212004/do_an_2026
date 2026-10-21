@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Check, RotateCcw, X } from "lucide-react";
-import { Alert, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, StatusBadge, Textarea, type Flash } from "@/components/ui";
+import { Alert, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, Select, StatusBadge, Textarea, type Flash } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { Interview, InterviewEligibility, Recommendation, ReviewDecision } from "@/types";
+import type { Interview, InterviewEligibility, MentorTier, Recommendation, ReviewDecision } from "@/types";
 
 const MIN_NOTE = 10;
+const TIERS: MentorTier[] = ["JUNIOR", "SENIOR", "EXPERT"];
+const TIER_LABELS: Record<MentorTier, string> = { JUNIOR: "Junior (100–200 nghìn đ/buổi)", SENIOR: "Senior (200–400 nghìn đ/buổi)", EXPERT: "Expert (400–700 nghìn đ/buổi)" };
 
 /**
  * US-23 — bắt buộc ghi chú (≥ 10 ký tự) khi quyết định ngược khuyến nghị AI (giống rubric.note_required ở ai-service):
@@ -68,10 +70,11 @@ function AttemptsCard({ mentorId }: { mentorId: string }) {
 function InterviewReview({ id }: { id: string }) {
   const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
   const [note, setNote] = useState("");
+  const [tier, setTier] = useState<MentorTier | "">("");
   const [msg, setMsg] = useState<Flash>({});
 
   useEffect(() => {
-    aiApi.interview(id).then(setInterview).catch((e) => { setMsg({ error: errorMessage(e) }); setInterview(null); });
+    aiApi.interview(id).then((i) => { setInterview(i); setTier(i.suggestedTier ?? ""); }).catch((e) => { setMsg({ error: errorMessage(e) }); setInterview(null); });
   }, [id]);
 
   async function decide(decision: ReviewDecision) {
@@ -81,7 +84,18 @@ function InterviewReview({ id }: { id: string }) {
         setMsg({ error: `Quyết định khác khuyến nghị của AI — vui lòng ghi rõ lý do (ít nhất ${MIN_NOTE} ký tự).` });
         return;
       }
-      setInterview(await aiApi.reviewInterview(id, decision, note));
+      if (decision === "APPROVE" && interview) {
+        const suggested = interview.suggestedTier;
+        if (!tier) {
+          setMsg({ error: "Điểm dưới ngưỡng đạt — chọn cấp độ rõ ràng nếu vẫn duyệt." });
+          return;
+        }
+        if ((!suggested || tier !== suggested) && note.trim().length < MIN_NOTE) {
+          setMsg({ error: `Cấp độ khác cấp AI đề xuất — vui lòng ghi rõ lý do (ít nhất ${MIN_NOTE} ký tự).` });
+          return;
+        }
+      }
+      setInterview(await aiApi.reviewInterview(id, decision, note, decision === "APPROVE" ? (tier || null) : null));
       setMsg({ ok: decision === "APPROVE" ? "Đã kích hoạt mentor." : decision === "REJECT" ? "Đã từ chối mentor." : "Đã yêu cầu mentor phỏng vấn lại (không tính vào số lần)." });
     } catch (e) {
       setMsg({ error: errorMessage(e) });
@@ -111,6 +125,15 @@ function InterviewReview({ id }: { id: string }) {
               <CardHeader title="Quyết định của quản trị viên"
                 description="Đọc kỹ câu trả lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được duyệt." />
               <CardBody className="flex flex-col gap-3">
+                <Field label="Cấp độ mentor" id="review-tier"
+                  hint={interview.suggestedTier
+                    ? `AI đề xuất ${interview.suggestedTier} từ điểm ${interview.overallScore}. Chọn cấp khác thì cần ghi lý do.`
+                    : "Điểm dưới ngưỡng đạt (60) nên không có đề xuất — chọn cấp rõ ràng và ghi lý do nếu vẫn duyệt."}>
+                  <Select id="review-tier" value={tier} onChange={(e) => setTier(e.target.value as MentorTier | "")}>
+                    <option value="">— Chọn cấp —</option>
+                    {TIERS.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+                  </Select>
+                </Field>
                 <Field label="Nhận xét gửi mentor" id="review-note"
                   hint={`Bắt buộc (từ ${MIN_NOTE} ký tự) khi quyết định ngược khuyến nghị AI. AI khuyến nghị “Cần xem xét” thì không bắt buộc.`}>
                   <Textarea id="review-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />

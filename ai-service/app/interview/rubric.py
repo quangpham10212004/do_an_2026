@@ -81,6 +81,21 @@ def detect_injection(answer: str | None) -> bool:
     return bool(_INJECTION.search(answer or ""))
 
 
+TIERS = ("JUNIOR", "SENIOR", "EXPERT")
+
+
+def suggest_tier(score: float | None) -> str | None:
+    """Bản chốt v2.0 §3 — cấp độ đề xuất từ điểm tổng; None khi chưa có điểm hoặc dưới ngưỡng đạt."""
+    from app import config
+    if score is None or score < config.TIER_PASS_FROM:
+        return None
+    if score >= config.TIER_EXPERT_FROM:
+        return "EXPERT"
+    if score >= config.TIER_SENIOR_FROM:
+        return "SENIOR"
+    return "JUNIOR"
+
+
 def note_required(decision: str, recommendation: str | None) -> bool:
     """
     Admin phải ghi chú (≥ 10 ký tự) khi quyết định NGƯỢC khuyến nghị AI (PRD-AIV-9):

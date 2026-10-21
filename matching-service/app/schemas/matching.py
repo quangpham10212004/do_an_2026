@@ -76,7 +76,6 @@ class EffectiveFilters(CamelModel):
     language: list[str] = []
     session_type: str | None = None
     min_rating: float | None = None
-    free_only: bool = False
     from_profile_defaults: list[str] = []
 
 

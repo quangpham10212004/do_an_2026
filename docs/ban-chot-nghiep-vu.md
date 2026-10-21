@@ -47,7 +47,7 @@
 |---|---|---|
 | Cấp độ | **Junior / Senior / Expert**, do admin phê duyệt; số năm kinh nghiệm chỉ để hiển thị | ⚒ chưa có cấp độ |
 | Đề xuất cấp độ từ điểm AI (thang 0–100) | < 60 không đạt · 60–74 Junior · 75–87 Senior · ≥ 88 Expert | ⚒ |
-| Admin | được nâng/hạ một cấp so với đề xuất hoặc từ chối; **bắt buộc ghi lý do** | ⚒ một phần (đã có duyệt/từ chối + lý do) |
+| Admin | được chọn cấp khác đề xuất hoặc từ chối; **bắt buộc ghi lý do** (≥ 10 ký tự) | ⚒ một phần (đã có duyệt/từ chối + lý do) |
 | Tiếp tục khi gián đoạn | trong **24 giờ** kể từ lúc bắt đầu; quá hạn → ABANDONED, tính một lượt | ✎ đang 72 giờ |
 | Làm lại khi không đạt | sau **7 ngày** | ✔ |
 | Số lượt | tối đa 3 lượt; hết lượt cần admin mở khoá | ✔ |

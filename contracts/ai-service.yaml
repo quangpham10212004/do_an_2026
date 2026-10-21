@@ -76,6 +76,11 @@ components:
         currentQuestion: { $ref: "#/components/schemas/InterviewTurn" }
         turns: { type: array, items: { $ref: "#/components/schemas/InterviewTurn" } }
         overallScore: { type: number, nullable: true, description: 0-100 }
+        suggestedTier:
+          type: string
+          nullable: true
+          enum: [JUNIOR, SENIOR, EXPERT]
+          description: "Bản chốt v2.0 — cấp đề xuất từ điểm (< 60 không đạt → null; 60–74 JUNIOR; 75–87 SENIOR; ≥ 88 EXPERT). Chỉ admin thấy."
         summary: { type: string, nullable: true }
         strengths: { type: array, items: { type: string } }
         weaknesses: { type: array, items: { type: string } }
@@ -387,6 +392,8 @@ paths:
         REQUEST_RETAKE: buổi chuyển RETAKE_REQUESTED, không tính vào số lần, mentor bắt đầu lại được ngay.
         Bắt buộc note ≥ 10 ký tự khi quyết định ngược khuyến nghị AI: APPROVE khi AI = REJECT, REJECT khi AI = APPROVE,
         REQUEST_RETAKE khi AI = APPROVE/REJECT. AI = NEEDS_REVIEW (hoặc buổi cũ không có khuyến nghị) => không bắt buộc.
+        Bản chốt v2.0: khi APPROVE gán cấp `tier` (mặc định cấp đề xuất `suggestedTier`; chọn cấp khác cần note ≥ 10 ký tự; điểm dưới
+        ngưỡng đạt thì bắt buộc gửi `tier` + note). Cấp được gửi sang profile-service, giá mentor bị kẹp về khung của cấp.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -398,9 +405,10 @@ paths:
               properties:
                 decision: { type: string, enum: [APPROVE, REJECT, REQUEST_RETAKE] }
                 note: { type: string, maxLength: 2000 }
+                tier: { type: string, enum: [JUNIOR, SENIOR, EXPERT], description: Chỉ có nghĩa khi decision = APPROVE }
       responses:
         "200": { description: Interview }
-        "400": { description: REVIEW_NOTE_REQUIRED | VALIDATION_ERROR }
+        "400": { description: REVIEW_NOTE_REQUIRED | TIER_REQUIRED | VALIDATION_ERROR }
         "409": { description: INTERVIEW_NOT_PENDING_REVIEW }
   /api/ai/admin/interviews/mentors/{mentorId}/eligibility:
     get:

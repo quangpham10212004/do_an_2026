@@ -349,7 +349,7 @@ sequenceDiagram
 ### 2.3b Cấp độ mentor và khung giá (v2.0 ⚒ — [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) §3–4)
 
 Điểm tổng 0–100 vẫn là đầu ra của AI; v2.0 thêm **đề xuất cấp độ** để admin duyệt: dưới 60 không đạt · 60–74 **Junior** · 75–87 **Senior** · từ 88 **Expert**
-(ngưỡng cấu hình `interview.tier-thresholds`). Admin được nâng/hạ **một bậc** so với đề xuất hoặc từ chối, bắt buộc ghi lý do; cấp độ quyết định khung giá
+(ngưỡng cấu hình `interview.tier-thresholds`). Admin được chọn cấp khác đề xuất hoặc từ chối, bắt buộc ghi lý do; cấp độ quyết định khung giá
 (Junior 100–200k, Senior 200–400k, Expert 400–700k mỗi buổi 60 phút). Số năm kinh nghiệm chỉ để hiển thị, không tham gia xếp cấp. Tiếp tục khi gián đoạn trong
 **24 giờ** (quá hạn → ABANDONED, tính một lượt); làm lại sau **7 ngày**, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày. Hiện tại: tiếp tục 72 giờ,
 chưa có cấp độ.
