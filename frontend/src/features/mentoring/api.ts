@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   ConversationSummary,
   ConversationView,
+  ContactViolationSummary,
   MessageReport,
   MessageReportOutcome,
   MessageReportReason,
@@ -161,6 +162,8 @@ export const mentoringApi = {
   adminMessageReport: (id: Uuid) => api<MessageReport>(`/api/mentoring/admin/message-reports/${id}`),
   resolveMessageReport: (id: Uuid, outcome: MessageReportOutcome, note?: string) =>
     api<MessageReport>(`/api/mentoring/admin/message-reports/${id}/resolve`, { method: "POST", body: { outcome, note } }),
+  adminContactViolations: (days = 30) =>
+    api<ContactViolationSummary[]>(`/api/mentoring/admin/contact-violations?days=${days}`),
   // Thông báo
   notifications: (limit = 50) => api<NotificationList>(`/api/mentoring/notifications?limit=${limit}`),
   markRead: (id: Uuid) => api<null>(`/api/mentoring/notifications/${id}/read`, { method: "POST" }),

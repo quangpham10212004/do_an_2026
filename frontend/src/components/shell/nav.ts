@@ -13,6 +13,7 @@ import {
   Mic,
   Library,
   MessageSquare,
+  PhoneOff,
   Receipt,
   Scale,
   ShieldCheck,
@@ -111,6 +112,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       items: [
         { href: "/admin/disputes", label: "Tranh chấp", icon: Scale },
         { href: "/admin/message-reports", label: "Báo cáo tin nhắn", icon: Flag },
+        { href: "/admin/contact-violations", label: "Chia sẻ liên hệ", icon: PhoneOff },
         { href: "/admin/learning", label: "Nội dung học", icon: Library },
         { href: "/admin/audit", label: "Nhật ký", icon: ClipboardList },
       ],

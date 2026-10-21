@@ -29,7 +29,7 @@ Kiểm thử:
 ```bash
 python3 scripts/e2e_acceptance.py          # kiểm thử chấp nhận theo Definition of Done (69 kiểm tra)
 for f in scripts/e2e_p0_*.py scripts/e2e_s[0-9]*_*.py scripts/e2e_v2_*.py; do python3 $f || break; done
-                                           # toàn bộ e2e theo sprint + bản chốt v2.0 (20 script, 652 kiểm tra;
+                                           # toàn bộ e2e theo sprint + bản chốt v2.0 (20 script, 657 kiểm tra;
                                            # cần INTERNAL_API_KEY trong môi trường, AI chạy rule-based)
 python3 scripts/benchmark_matching.py      # hiệu năng AI Matching
 (cd mentoring-service && mvn test)         # unit test (tương tự các service Java khác)

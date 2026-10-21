@@ -167,7 +167,7 @@ Ví dụ response:
 | POST | `/api/mentoring/sessions/{id}/cancel` | Người tham gia | v2.0: trả `refundPercent` theo 3 bậc (24h/4h) | 5.11 |
 | GET | `/api/mentoring/sessions/{id}/mock` · PUT `/sessions/{id}/scorecard` · GET `/mock-interviews/history` | Người tham gia | Phỏng vấn thử với mentor (US-58): intake, phiếu đánh giá, lịch sử | — |
 
-Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội (`contactsMasked = true`); mỗi lần che ghi vào `contact_violations`, ≥ 3 lần / 30 ngày → thông báo admin (FR-5.12). *Chưa có trang/endpoint admin xem danh sách vi phạm.*
+Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội (`contactsMasked = true`); mỗi lần che ghi vào `contact_violations`, ≥ 3 lần / 30 ngày → thông báo admin (FR-5.12). Admin xem gộp theo người gửi: `GET /api/mentoring/admin/contact-violations?days=30` → `[{userId, userName, count, kinds, lastAt, flagged}]` (trang `/admin/contact-violations`).
 
 ### 5.2 Nội bộ
 

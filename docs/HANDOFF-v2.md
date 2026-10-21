@@ -20,7 +20,7 @@ Nhánh: `feature/v2-wallet-and-pricing` (từ `main`). Nguồn nghiệp vụ: `d
 ## 2. Việc còn lại (giao cho người làm tiếp)
 
 ### 2.1 Sửa e2e cũ — ✅ xong (22/10/2026)
-Toàn bộ 20 script e2e pass trên stack Docker (AI rule-based như CI): **652/652** — `e2e_acceptance` 69/69.
+Toàn bộ 20 script e2e pass trên stack Docker (AI rule-based như CI): **657/657** — `e2e_acceptance` 69/69.
 Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env | cut -d= -f2) python3 scripts/<file>.py`
 
 - Script cũ dời phiên về quá khứ phải ghi nhật ký vào phòng (`/internal/dev/sessions/{id}/joined`), nếu không job kết luận
@@ -36,10 +36,14 @@ Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env
   đã có trên main. CSDL dev đã chạy nhánh này với V19 cũ → `docker compose down -v` cho mentoring-db (hoặc sửa `flyway_schema_history`).
 
 ### 2.2 Chưa cài đặt
-- Interview: "xin nâng hạng sau 90 ngày" (một phần FR-7.6).
-- Email nhắc số dư sắp hết hạn (hiện chỉ có thông báo trong app).
-- Trang admin xem `contact_violations` (hiện chỉ báo qua notification).
-- Frontend: ghi chú cho người dùng rằng liên hệ luôn bị che.
+- Interview: "xin nâng hạng sau 90 ngày" (một phần FR-7.6) — **chưa làm, cần chốt nghiệp vụ** (đã ghi vào Open questions của PRD):
+  phỏng vấn nâng cấp bị từ chối có giữ mentor ở trạng thái APPROVED + cấp cũ không (luồng REJECT hiện tại hạ `verification` về
+  REJECTED); có tính vào giới hạn 3 lượt không; điểm thấp hơn có được hạ cấp không; mentor vẫn nhận đặt lịch trong lúc chờ duyệt?
+- ✅ Email nhắc khuyến mãi sắp hết hạn / ví sắp ngủ (`WALLET_PROMO_EXPIRING`, `WALLET_DORMANT_SOON` → nhóm ACCOUNT, luôn gửi; số tiền
+  dạng `30.000đ`) — `e2e_v2_booking` mục 8.
+- ✅ Trang admin `/admin/contact-violations` + `GET /api/mentoring/admin/contact-violations?days=` (gộp theo người gửi, số lần,
+  loại liên hệ, đã báo admin chưa); thông báo `CONTACT_VIOLATIONS` trỏ tới trang này — `e2e_s4_mentoring` US-33.
+- ✅ Khung thông báo trong trang tin nhắn ghi đúng quy tắc v2.0 (liên hệ luôn bị che).
 
 ### 2.3 Docs — ✅ xong (22/10/2026)
 SRD (FR-5.8–5.12, 6.4–6.6, 6.10, D13–D20, DoD v2.0), `api-reference.md` (đường dẫn thật), `database-design.md`

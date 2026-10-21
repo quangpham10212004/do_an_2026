@@ -294,12 +294,29 @@ public class MessagingService {
             if (n != null && n >= CONTACT_VIOLATION_THRESHOLD) {
                 jdbc.update("UPDATE contact_violations SET flagged_at = now() WHERE user_id = ? AND created_at > now() - interval '30 days' AND flagged_at IS NULL", userId);
                 notifications.notifyRole("ADMIN", "CONTACT_VIOLATIONS", "Chia sẻ thông tin liên hệ ngoài nền tảng",
-                        "Người dùng " + userId + " đã có " + n + " tin nhắn chứa thông tin liên hệ trong 30 ngày.", "/admin/message-reports");
+                        "Người dùng " + userId + " đã có " + n + " tin nhắn chứa thông tin liên hệ trong 30 ngày.", "/admin/contact-violations");
                 audit.record(null, "SYSTEM", "CONTACT_VIOLATIONS_FLAGGED", "USER", userId.toString(), null, AuditClient.fields("count", n));
             }
         } catch (RuntimeException e) {
             log.warn("Could not record contact violation of {}: {}", userId, e.getMessage());
         }
+    }
+
+    /** GET /admin/contact-violations — người gửi có tin nhắn bị che liên hệ trong {@code days} ngày, nhiều lần nhất trước. */
+    public List<ContactViolationSummary> adminContactViolations(int days) {
+        if (days < 1 || days > 365) throw ApiException.badRequest("INVALID_DAYS", "days phải từ 1 đến 365");
+        List<Map<String, Object>> rows = jdbc.queryForList("SELECT user_id, COUNT(*) AS n, string_agg(kinds, ',') AS kinds, "
+                + "MAX(created_at) AS last_at, bool_or(flagged_at IS NOT NULL) AS flagged FROM contact_violations "
+                + "WHERE created_at > now() - make_interval(days => ?) GROUP BY user_id ORDER BY n DESC, last_at DESC LIMIT 200", days);
+        Map<UUID, String> names = profileClient.displayNames(rows.stream().map(r -> (UUID) r.get("user_id")).toList());
+        return rows.stream().map(r -> {
+            UUID userId = (UUID) r.get("user_id");
+            List<String> kinds = java.util.Arrays.stream(((String) r.get("kinds")).split(","))
+                    .map(String::trim).filter(k -> !k.isEmpty()).distinct().sorted().toList();
+            OffsetDateTime lastAt = ((java.sql.Timestamp) r.get("last_at")).toInstant().atOffset(java.time.ZoneOffset.UTC);
+            return new ContactViolationSummary(userId, names.get(userId), ((Number) r.get("n")).intValue(), kinds,
+                    lastAt, Boolean.TRUE.equals(r.get("flagged")));
+        }).toList();
     }
 
     private boolean contactsVisible(MentoringRequest r) {

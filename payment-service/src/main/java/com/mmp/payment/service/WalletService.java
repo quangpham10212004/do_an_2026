@@ -408,6 +408,13 @@ public class WalletService {
         return new int[]{lots, dormant};
     }
 
+    /** 30000.00 → "30.000đ" (thông báo + email). */
+    static String vnd(java.math.BigDecimal amount) {
+        java.text.DecimalFormatSymbols sym = new java.text.DecimalFormatSymbols();
+        sym.setGroupingSeparator('.');
+        return new java.text.DecimalFormat("#,##0", sym).format(amount) + "đ";
+    }
+
     /** Nhắc trước 30 ngày và 7 ngày: khuyến mãi sắp hết hạn, ví sắp "ngủ". Best-effort (thông báo lỗi không ảnh hưởng tiền). */
     public int sendReminders(OffsetDateTime now) {
         int sent = 0;
@@ -418,7 +425,8 @@ public class WalletService {
             for (Map<String, Object> lot : lots) {
                 UUID userId = (UUID) lot.get("user_id");
                 mentoring.notify(userId, null, "WALLET_PROMO_EXPIRING", "Tiền khuyến mãi sắp hết hạn",
-                        "Bạn có " + lot.get("remaining") + "đ khuyến mãi sẽ hết hạn trong " + days + " ngày. Hãy dùng trước khi hết hạn.", "/wallet");
+                        "Bạn có " + vnd((java.math.BigDecimal) lot.get("remaining")) + " khuyến mãi sẽ hết hạn trong " + days
+                                + " ngày. Hãy dùng trước khi hết hạn.", "/wallet");
                 jdbc.update("UPDATE wallet_promo_lots SET " + col + " = now() WHERE id = ?", lot.get("id"));
                 sent++;
             }
