@@ -30,6 +30,9 @@ class SessionBookingTest {
 
     static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
     static final String AGENDA = "Review kien truc REST API cua du an quan ly kho";
+    static final com.mmp.mentoring.dto.MockInterviewDtos.MockIntakeInput MOCK_INTAKE = new com.mmp.mentoring.dto.MockInterviewDtos.MockIntakeInput(
+            com.mmp.mentoring.entity.MockIntake.InterviewType.BACKEND, com.mmp.mentoring.entity.MockIntake.Level.FRESHER,
+            "Backend Java Fresher", "FPT Software", null, "https://example.com/jd");
 
     final UUID menteeId = UUID.randomUUID();
     final UUID mentorId = UUID.randomUUID();
@@ -61,7 +64,7 @@ class SessionBookingTest {
     }
 
     BookSessionInput input(OffsetDateTime start, int duration, String agenda) {
-        return new BookSessionInput(menteeId, mentorId, start, duration, SessionType.CODE_REVIEW, agenda, null, null);
+        return new BookSessionInput(menteeId, mentorId, start, duration, SessionType.CODE_REVIEW, agenda, null, null, null);
     }
 
     private void givenMentor(ProfileClient.MentorInfo info) {
@@ -81,11 +84,26 @@ class SessionBookingTest {
     void validBookingIsSavedAsPendingWithFormFields() {
         givenMentor(mentor(null, null, null, null));
         f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 45, SessionType.MOCK_INTERVIEW,
-                "  " + AGENDA + "  ", "https://github.com/me/repo", null));
+                "  " + AGENDA + "  ", "https://github.com/me/repo", null, MOCK_INTAKE));
         verify(f.sessionRepo).save(argThatSession(s -> s.getStatus() == MentoringSession.Status.PENDING
                 && s.getDurationMinutes() == 45 && s.getSessionType() == SessionType.MOCK_INTERVIEW
                 && AGENDA.equals(s.getAgenda()) && "https://github.com/me/repo".equals(s.getPreReadLink())
                 && s.getPrice().compareTo(new BigDecimal("150000")) == 0));
+    }
+
+    @Test
+    void mockInterviewNeedsAValidIntake() {
+        givenMentor(mentor(null, null, null, null));
+        assertThat(code(() -> f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 60,
+                SessionType.MOCK_INTERVIEW, AGENDA, null, null, null)))).isEqualTo("MOCK_INTAKE_REQUIRED");
+        assertThat(code(() -> f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 60,
+                SessionType.MOCK_INTERVIEW, AGENDA, null, null, new com.mmp.mentoring.dto.MockInterviewDtos.MockIntakeInput(
+                        com.mmp.mentoring.entity.MockIntake.InterviewType.BACKEND, com.mmp.mentoring.entity.MockIntake.Level.JUNIOR,
+                        "Dev", null, null, "ftp://jd"))))).isEqualTo("INVALID_JD_URL");
+        f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 60, SessionType.MOCK_INTERVIEW,
+                AGENDA, null, null, MOCK_INTAKE));
+        verify(f.mockIntakeRepo).save(org.mockito.ArgumentMatchers.argThat(i -> i.getInterviewType()
+                == com.mmp.mentoring.entity.MockIntake.InterviewType.BACKEND && "Backend Java Fresher".equals(i.getTargetRole())));
     }
 
     @Test
@@ -95,7 +113,7 @@ class SessionBookingTest {
         assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, "qua ngan")))).isEqualTo("INVALID_AGENDA");
         assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, "x".repeat(501))))).isEqualTo("INVALID_AGENDA");
         assertThat(code(() -> f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 60,
-                SessionType.CODE_REVIEW, AGENDA, "ftp://x", null)))).isEqualTo("INVALID_PRE_READ_LINK");
+                SessionType.CODE_REVIEW, AGENDA, "ftp://x", null, null)))).isEqualTo("INVALID_PRE_READ_LINK");
     }
 
     @Test

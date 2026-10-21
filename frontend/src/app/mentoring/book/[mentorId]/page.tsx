@@ -8,9 +8,10 @@ import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
 import { AGENDA_MAX, AGENDA_MIN, SESSION_DURATIONS, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
+import { MOCK_LEVELS, MOCK_LEVEL_LABELS, MOCK_TYPES, MOCK_TYPE_LABELS } from "@/features/mentoring/mockLabels";
 import { formatDateTime, formatMoney, formatRate } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { IsoDateTime, MentorProfile, MentoringRequest, SessionDuration, SessionType, SessionUser } from "@/types";
+import type { IsoDateTime, MentorProfile, MentoringRequest, MockIntakeInput, SessionDuration, SessionType, SessionUser } from "@/types";
 
 interface BookingForm {
   scheduledAt: IsoDateTime | null;
@@ -18,9 +19,15 @@ interface BookingForm {
   sessionType: SessionType;
   agenda: string;
   preReadLink: string;
+  /** US-58 — chỉ gửi khi sessionType = MOCK_INTERVIEW. */
+  mock: Required<Omit<MockIntakeInput, "targetCompany" | "interviewDate" | "jdUrl">> & { targetCompany: string; interviewDate: string; jdUrl: string };
 }
 
-const INITIAL: BookingForm = { scheduledAt: null, durationMinutes: 60, sessionType: "CAREER_ADVICE", agenda: "", preReadLink: "" };
+const INITIAL: BookingForm = {
+  scheduledAt: null, durationMinutes: 60, sessionType: "CAREER_ADVICE", agenda: "", preReadLink: "",
+  mock: { interviewType: "BACKEND", level: "FRESHER", targetRole: "", targetCompany: "", interviewDate: "", jdUrl: "" },
+};
+const isHttpUrl = (v: string) => /^https?:\/\/\S+$/i.test(v);
 
 /** US-03 / US-05 — form đặt lịch phiên mentoring (PRD-SES-1, PRD-SES-2). */
 function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }) {
@@ -42,11 +49,16 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 
   const agenda = form.agenda.trim();
   const agendaValid = agenda.length >= AGENDA_MIN && agenda.length <= AGENDA_MAX;
-  const linkValid = !form.preReadLink.trim() || /^https?:\/\/\S+$/i.test(form.preReadLink.trim());
+  const linkValid = !form.preReadLink.trim() || isHttpUrl(form.preReadLink.trim());
+  const isMock = form.sessionType === "MOCK_INTERVIEW";
+  const role = form.mock.targetRole.trim();
+  const jdValid = !form.mock.jdUrl.trim() || isHttpUrl(form.mock.jdUrl.trim());
+  const mockValid = !isMock || (role.length >= 2 && role.length <= 120 && jdValid);
+  const setMock = (patch: Partial<BookingForm["mock"]>) => setForm((f) => ({ ...f, mock: { ...f.mock, ...patch } }));
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!form.scheduledAt || !agendaValid || !linkValid) return;
+    if (!form.scheduledAt || !agendaValid || !linkValid || !mockValid) return;
     setBusy(true);
     setError("");
     try {
@@ -58,6 +70,14 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
         sessionType: form.sessionType,
         agenda,
         preReadLink: form.preReadLink.trim() || undefined,
+        mockIntake: isMock ? {
+          interviewType: form.mock.interviewType,
+          level: form.mock.level,
+          targetRole: role,
+          targetCompany: form.mock.targetCompany.trim() || undefined,
+          interviewDate: form.mock.interviewDate || undefined,
+          jdUrl: form.mock.jdUrl.trim() || undefined,
+        } : undefined,
       });
       if (session.status === "PENDING") router.push(`/payment/${session.id}`);
       else router.push("/mentoring/sessions?booked=1");
@@ -79,7 +99,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
     );
   }
   const price = Math.round((Number(mentor.hourlyRate) * form.durationMinutes) / 60 / 1000) * 1000;
-  const ready = !!form.scheduledAt && agendaValid && linkValid;
+  const ready = !!form.scheduledAt && agendaValid && linkValid && mockValid;
 
   return (
     <>
@@ -106,6 +126,47 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
               <SlotPicker mentorId={mentorId} durationMinutes={form.durationMinutes} value={form.scheduledAt} onChange={pickSlot} refreshKey={slotsVersion} />
             </CardBody>
           </Card>
+          {isMock && (
+            <Card>
+              <CardHeader title="Thông tin phỏng vấn thử" description="Mentor dùng thông tin này để chuẩn bị câu hỏi sát với buổi phỏng vấn thật của bạn." />
+              <CardBody className="flex flex-col gap-5">
+                <div className="form-grid">
+                  <Field label="Dạng phỏng vấn" id="mockType" required>
+                    <Select id="mockType" value={form.mock.interviewType} onChange={(e) => setMock({ interviewType: e.target.value as MockIntakeInput["interviewType"] })}>
+                      {MOCK_TYPES.map((t) => <option key={t} value={t}>{MOCK_TYPE_LABELS[t]}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Cấp độ" id="mockLevel" required>
+                    <Select id="mockLevel" value={form.mock.level} onChange={(e) => setMock({ level: e.target.value as MockIntakeInput["level"] })}>
+                      {MOCK_LEVELS.map((l) => <option key={l} value={l}>{MOCK_LEVEL_LABELS[l]}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+                <div className="form-grid">
+                  <Field label="Vị trí ứng tuyển" id="mockRole" required
+                    error={role.length === 1 ? "Tối thiểu 2 ký tự." : undefined}>
+                    <Input id="mockRole" value={form.mock.targetRole} maxLength={120} required placeholder="Backend Java Fresher"
+                      onChange={(e) => setMock({ targetRole: e.target.value })} />
+                  </Field>
+                  <Field label="Công ty" id="mockCompany" hint="Không bắt buộc.">
+                    <Input id="mockCompany" value={form.mock.targetCompany} maxLength={120} placeholder="FPT Software"
+                      onChange={(e) => setMock({ targetCompany: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="form-grid">
+                  <Field label="Ngày phỏng vấn thật" id="mockDate" hint="Không bắt buộc.">
+                    <Input id="mockDate" type="date" value={form.mock.interviewDate} min={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setMock({ interviewDate: e.target.value })} />
+                  </Field>
+                  <Field label="Link mô tả công việc (JD)" id="mockJd" hint="Không bắt buộc."
+                    error={jdValid ? undefined : "Link phải bắt đầu bằng http:// hoặc https://"}>
+                    <Input id="mockJd" type="url" value={form.mock.jdUrl} maxLength={500} placeholder="https://…"
+                      onChange={(e) => setMock({ jdUrl: e.target.value })} />
+                  </Field>
+                </div>
+              </CardBody>
+            </Card>
+          )}
           <Card>
             <CardHeader title="Nội dung phiên" />
             <CardBody className="flex flex-col gap-5">

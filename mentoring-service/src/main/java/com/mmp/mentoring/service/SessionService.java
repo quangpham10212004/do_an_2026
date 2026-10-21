@@ -3,17 +3,21 @@ package com.mmp.mentoring.service;
 import com.mmp.mentoring.client.PaymentClient;
 import com.mmp.mentoring.client.ProfileClient;
 import com.mmp.mentoring.dto.MentoringDtos.*;
+import com.mmp.mentoring.dto.MockInterviewDtos;
 import com.mmp.mentoring.entity.Dispute;
 import com.mmp.mentoring.entity.LateCancellation;
 import com.mmp.mentoring.entity.MentorStrike;
 import com.mmp.mentoring.entity.MentoringRequest;
 import com.mmp.mentoring.entity.MentoringSession;
+import com.mmp.mentoring.entity.MockIntake;
 import com.mmp.mentoring.entity.RescheduleProposal;
 import com.mmp.mentoring.entity.Review;
+import com.mmp.mentoring.entity.SessionType;
 import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.repository.DisputeRepository;
 import com.mmp.mentoring.repository.LateCancellationRepository;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
+import com.mmp.mentoring.repository.MockIntakeRepository;
 import com.mmp.mentoring.repository.RescheduleProposalRepository;
 import com.mmp.mentoring.repository.ReviewRepository;
 import com.mmp.mentoring.repository.SessionRepository;
@@ -50,6 +54,7 @@ public class SessionService {
     private final StrikeService strikes;
     private final RescheduleProposalRepository proposalRepo;
     private final DisputeRepository disputeRepo;
+    private final MockIntakeRepository mockIntakeRepo;
     private final ProfileClient profileClient;
     private final PaymentClient paymentClient;
     private final NotificationService notifications;
@@ -62,7 +67,7 @@ public class SessionService {
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
                           LateCancellationRepository lateCancelRepo, CancellationPolicy policy, PaymentOutboxService outbox,
                           StrikeService strikes, RescheduleProposalRepository proposalRepo, DisputeRepository disputeRepo,
-                          ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
+                          MockIntakeRepository mockIntakeRepo, ProfileClient profileClient, PaymentClient paymentClient, NotificationService notifications,
                           TransactionTemplate tx,
                           @Value("${app.timezone}") String timezone,
                           @Value("${app.booking.min-lead-time}") Duration minLeadTime,
@@ -77,6 +82,7 @@ public class SessionService {
         this.strikes = strikes;
         this.proposalRepo = proposalRepo;
         this.disputeRepo = disputeRepo;
+        this.mockIntakeRepo = mockIntakeRepo;
         this.profileClient = profileClient;
         this.paymentClient = paymentClient;
         this.notifications = notifications;
@@ -117,6 +123,8 @@ public class SessionService {
         }
         OffsetDateTime start = in.scheduledAt();
         OffsetDateTime now = OffsetDateTime.now();
+        // US-58 — phiên phỏng vấn thử phải kèm intake (dạng phỏng vấn, cấp độ, vị trí ứng tuyển...)
+        MockIntakeData intake = in.sessionType() == SessionType.MOCK_INTERVIEW ? validIntake(in.mockIntake(), now) : null;
         if (start.isBefore(now.plus(minLeadTime))) {
             throw ApiException.badRequest("TOO_SOON", "Cần đặt lịch trước giờ bắt đầu ít nhất " + minLeadTime.toHours() + " giờ");
         }
@@ -158,7 +166,12 @@ public class SessionService {
             // Phiên miễn phí được xác nhận ngay; phiên có phí chờ thanh toán (FR-6.2)
             session.setStatus(session.getPrice().signum() == 0 ? MentoringSession.Status.CONFIRMED : MentoringSession.Status.PENDING);
             requestRepo.clearInactivityWarning(request.getId()); // US-31 — đặt phiên mới = còn hoạt động
-            return sessionRepo.save(session);
+            MentoringSession stored = sessionRepo.save(session);
+            if (intake != null) {
+                mockIntakeRepo.save(new MockIntake(stored.getId(), intake.type(), intake.level(), intake.targetRole(),
+                        intake.targetCompany(), intake.interviewDate(), intake.jdUrl()));
+            }
+            return stored;
         });
 
         String when = saved.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
@@ -169,6 +182,30 @@ public class SessionService {
                     "Mentee đã đặt phiên lúc " + when + ", đang chờ thanh toán.", "/mentoring/sessions");
         }
         return toView(saved);
+    }
+
+    record MockIntakeData(MockIntake.InterviewType type, MockIntake.Level level, String targetRole, String targetCompany,
+                          LocalDate interviewDate, String jdUrl) {
+    }
+
+    /** US-58 (PRD-PREP-7) — intake hợp lệ: vị trí 2–120 ký tự, link JD http(s), ngày phỏng vấn thật không ở quá khứ. */
+    MockIntakeData validIntake(MockInterviewDtos.MockIntakeInput in, OffsetDateTime now) {
+        if (in == null || in.interviewType() == null || in.level() == null) {
+            throw ApiException.badRequest("MOCK_INTAKE_REQUIRED", "Phiên phỏng vấn thử cần chọn dạng phỏng vấn và cấp độ");
+        }
+        String role = MentoringRequestService.trimToNull(in.targetRole());
+        if (role == null || role.length() < MockInterviewRules.ROLE_MIN || role.length() > MockInterviewRules.TEXT_MAX) {
+            throw ApiException.badRequest("INVALID_TARGET_ROLE", "Vị trí ứng tuyển dài 2–120 ký tự");
+        }
+        String jd = MentoringRequestService.trimToNull(in.jdUrl());
+        if (jd != null && !BookingRules.isHttpUrl(jd)) {
+            throw ApiException.badRequest("INVALID_JD_URL", "Link mô tả công việc phải là URL http(s) hợp lệ");
+        }
+        if (in.interviewDate() != null && in.interviewDate().isBefore(now.atZoneSameInstant(zone).toLocalDate())) {
+            throw ApiException.badRequest("INVALID_INTERVIEW_DATE", "Ngày phỏng vấn thật không được ở quá khứ");
+        }
+        return new MockIntakeData(in.interviewType(), in.level(), role, MentoringRequestService.trimToNull(in.targetCompany()),
+                in.interviewDate(), jd);
     }
 
     /**

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { CalendarDays, CalendarPlus, FileText, Flag, Link2, MessageSquareText, Repeat, Star, Video, X } from "lucide-react";
+import { CalendarDays, CalendarPlus, FileText, Flag, Link2, MessageSquareText, Mic, Repeat, Star, Video, X } from "lucide-react";
 import { Alert, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import DisputeForm, { canReportIssue } from "@/features/mentoring/DisputeForm";
@@ -310,6 +310,9 @@ function Sessions({ user }: { user: SessionUser }) {
                   {canReportIssue(s) && <Button variant="ghost" icon={Flag} className="mr-auto" onClick={toggle(reporting, setReporting)}>Báo cáo sự cố</Button>}
                   {!["PENDING", "EXPIRED"].includes(s.status) && (
                     <ButtonLink href={`/mentoring/sessions/${s.id}/notes`} icon={FileText}>Ghi chú</ButtonLink>
+                  )}
+                  {s.sessionType === "MOCK_INTERVIEW" && !["PENDING", "EXPIRED", "CANCELLED"].includes(s.status) && (
+                    <ButtonLink href={`/mentoring/sessions/${s.id}/mock`} icon={Mic}>{isMentor ? "Phiếu phỏng vấn thử" : "Kết quả phỏng vấn thử"}</ButtonLink>
                   )}
                   {s.status === "CONFIRMED" && future && (
                     <Button icon={CalendarPlus} title="Tải file .ics; tải lại sau khi dời lịch để cập nhật"

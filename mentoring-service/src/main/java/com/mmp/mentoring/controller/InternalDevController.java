@@ -48,6 +48,7 @@ public class InternalDevController {
     private final com.mmp.mentoring.service.ResponseTimeSyncJob responseTime;
     private final com.mmp.mentoring.service.MessageEmailDigestJob messageDigest;
     private final com.mmp.mentoring.repository.MessageRepository messageRepo;
+    private final com.mmp.mentoring.service.MockInterviewService mockInterviews;
     private final TransactionTemplate tx;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
@@ -55,7 +56,8 @@ public class InternalDevController {
                                  RequestExpiryService requestExpiry, com.mmp.mentoring.service.MentorshipEndService endService,
                                  com.mmp.mentoring.service.ResponseTimeSyncJob responseTime,
                                  com.mmp.mentoring.service.MessageEmailDigestJob messageDigest,
-                                 com.mmp.mentoring.repository.MessageRepository messageRepo, TransactionTemplate tx) {
+                                 com.mmp.mentoring.repository.MessageRepository messageRepo,
+                                 com.mmp.mentoring.service.MockInterviewService mockInterviews, TransactionTemplate tx) {
         this.endService = endService;
         this.responseTime = responseTime;
         this.messageDigest = messageDigest;
@@ -66,6 +68,7 @@ public class InternalDevController {
         this.attendance = attendance;
         this.outbox = outbox;
         this.scheduler = scheduler;
+        this.mockInterviews = mockInterviews;
         this.tx = tx;
     }
 
@@ -126,7 +129,10 @@ public class InternalDevController {
         return Map.of("conversationId", id, "shifted", n == null ? 0 : n);
     }
 
-    /** Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | response-time | message-digest | request-expiry | inactivity. */
+    /**
+     * Chạy ngay một job nền: attendance | payment-outbox | unpaid-expiry | reminders | response-time | message-digest |
+     * request-expiry | inactivity | mock-scorecard.
+     */
     @PostMapping("/jobs/{job}")
     public Map<String, String> runJob(@PathVariable String job) {
         switch (job) {
@@ -138,6 +144,7 @@ public class InternalDevController {
             case "message-digest" -> messageDigest.run();
             case "request-expiry" -> requestExpiry.expire(OffsetDateTime.now());
             case "inactivity" -> endService.runInactivity(OffsetDateTime.now());
+            case "mock-scorecard" -> mockInterviews.runScorecardJob(OffsetDateTime.now());
             default -> throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);
         }
         return Map.of("job", job, "status", "DONE");
