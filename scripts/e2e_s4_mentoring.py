@@ -96,11 +96,11 @@ def us33(ctx):
     check("US-33", "Hồ sơ đã đóng → không còn xem luồng", closed["status"] == "RESOLVED" and closed["thread"] is None)
     check("US-33", "Người gửi nhận MESSAGE_WARNING", notes(mentor, "MESSAGE_WARNING"))
 
-    # Phiên trả phí đầu tiên được xác nhận → bỏ che SĐT.
+    # Bản chốt v2.0 §12: liên hệ luôn bị che, kể cả sau khi đã có phiên trả phí.
     paid(mentee, mentor, at(5, 10))
     view = thread(mentor, cid)
-    check("US-33", "Sau phiên trả phí CONFIRMED: SĐT hiện nguyên văn",
-          not view["contactsMasked"] and view["messages"][0]["body"] == "call me 0912345678", view["messages"][0]["body"])
+    check("US-33", "Sau phiên trả phí CONFIRMED: SĐT vẫn bị che (v2.0 che vô điều kiện)",
+          view["contactsMasked"] and "0912345678" not in view["messages"][0]["body"], view["messages"][0]["body"])
 
 
 def notes_of(user, sid):
@@ -161,7 +161,7 @@ def ics(user, sid):
 
 
 def us34(ctx):
-    print("US-34 — .ics và nhắc lịch 24 giờ / 1 giờ")
+    print("US-34 — .ics và nhắc lịch 24 giờ / 15 phút (bản chốt v2.0)")
     admin = ctx["admin"]
     mentor = approved_mentor(admin["accessToken"], "remind")
     mentee = accepted_mentee(mentor, "remind")
@@ -188,11 +188,13 @@ def us34(ctx):
     check("US-34", "Nhắc 24 giờ tới mentee đúng 1 lần, có link + agenda",
           len(n24) == 1 and link in n24[0]["message"] and AGENDA[:20] in n24[0]["message"], [n["message"] for n in n24])
     check("US-34", "Mentor cũng nhận nhắc 24 giờ", len(notes(mentor, "SESSION_REMINDER_24H")) == 1)
-    check("US-34", "Chưa tới mốc 1 giờ → chưa nhắc 1 giờ", not notes(mentee, "SESSION_REMINDER_1H"))
     dev(f"sessions/{s['id']}/shift", {"startsInMinutes": 50})
     dev("jobs/reminders")
-    check("US-34", "Còn ≤ 1 giờ → nhắc 1 giờ cho cả hai",
-          len(notes(mentee, "SESSION_REMINDER_1H")) == 1 and len(notes(mentor, "SESSION_REMINDER_1H")) == 1)
+    check("US-34", "Còn 50 phút → chưa nhắc 15 phút", not notes(mentee, "SESSION_REMINDER_15M"))
+    dev(f"sessions/{s['id']}/shift", {"startsInMinutes": 12})
+    dev("jobs/reminders")
+    check("US-34", "Còn ≤ 15 phút → nhắc 15 phút cho cả hai",
+          len(notes(mentee, "SESSION_REMINDER_15M")) == 1 and len(notes(mentor, "SESSION_REMINDER_15M")) == 1)
 
     # Dời lịch → SEQUENCE tăng (lịch cập nhật sự kiện cũ) và nhắc lại từ đầu.
     s2 = paid(mentee, mentor, at(8, 10))

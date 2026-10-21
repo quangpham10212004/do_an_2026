@@ -29,7 +29,7 @@ MENTORS = [
      "Backend developer chuyên Node.js và TypeScript, từng làm startup thương mại điện tử. Hỗ trợ người mới xây dựng API và triển khai Docker.", 150000, 3,
      [(2, "20:00", "22:00"), (4, "20:00", "22:00"), (7, "09:00", "11:00")], True),
     ("mentor.python@demo.local", "Lê Quốc Bảo", "backend", ["Python", "Django", "FastAPI", "PostgreSQL", "Redis"], 6,
-     "Kỹ sư Python backend, xây dựng API hiệu năng cao với FastAPI. Mentor về clean code, testing và tối ưu cơ sở dữ liệu.", 0, 5,
+     "Kỹ sư Python backend, xây dựng API hiệu năng cao với FastAPI. Mentor về clean code, testing và tối ưu cơ sở dữ liệu.", 150000, 5,
      [(1, "07:00", "09:00"), (5, "19:00", "21:00"), (6, "14:00", "18:00")], True),
     ("mentor.react@demo.local", "Phạm Minh Anh", "frontend", ["React", "Next.js", "TypeScript", "CSS", "Testing"], 7,
      "Frontend lead với 7 năm kinh nghiệm React/Next.js. Hướng dẫn xây dựng UI hiệu năng cao, accessibility và kiến trúc frontend.", 250000, 3,

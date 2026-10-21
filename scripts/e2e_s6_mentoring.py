@@ -71,6 +71,7 @@ def us58(ctx):
     status, code = error_code(lambda: submit(mentor, s["id"], CARD_INPUT))
     check("US-58", "Nộp phiếu trước giờ kết thúc → 409 SESSION_NOT_ENDED", status == 409 and code == "SESSION_NOT_ENDED", (status, code))
 
+    dev(f"sessions/{s['id']}/joined", {"mentor": True, "mentee": True})   # v2.0 §6: cả hai vào phòng, không bị coi là vắng
     dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 5})
     dev("jobs/attendance")
     check("US-58", "Sau giờ kết thúc mentor điền được phiếu", mock_view(mentor, s["id"])["canScore"])
@@ -93,6 +94,7 @@ def us58(ctx):
 
     s2 = book_mock(mentee, mentor, at(4, 9), {"interviewType": "SYSTEM_DESIGN", "level": "JUNIOR", "targetRole": "Backend Engineer"})
     charge(s2["id"], CARD, mentee["accessToken"])
+    dev(f"sessions/{s2['id']}/joined", {"mentor": True, "mentee": True})   # v2.0 §6: cả hai vào phòng, không bị coi là vắng
     dev(f"sessions/{s2['id']}/shift", {"endedMinutesAgo": 13 * 60})
     dev("jobs/attendance")
     dev("jobs/mock-scorecard")
