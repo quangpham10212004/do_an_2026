@@ -27,6 +27,22 @@ public final class MessageRules {
     private static final Pattern PHONE = Pattern.compile("(?<![\\p{L}\\p{N}+])(?:\\+?84|0)(?:[ .-]?\\d){8,10}(?![\\p{L}\\p{N}])");
     private static final Pattern EMAIL = Pattern.compile("([\\p{L}\\p{N}._%+-])[\\p{L}\\p{N}._%+-]*@[\\p{L}\\p{N}-]+(?:\\.[\\p{L}\\p{N}-]+)*\\.([A-Za-z]{2,})");
 
+    /** Bản chốt v2.0 §12 — đường dẫn ngoài (http(s):// hoặc www.) và tài khoản mạng xã hội / ứng dụng nhắn tin. */
+    private static final Pattern LINK = Pattern.compile("(?i)\\b(?:https?://|www\\.)[^\\s<>\"]+");
+    private static final Pattern SOCIAL = Pattern.compile(
+            "(?i)\\b(zalo|telegram|skype|whatsapp|viber|messenger|facebook|fb|instagram|ig|discord|wechat|line)\\b[\\s:@/=-]*[\\w./+-]{3,}");
+
+    /** Loại thông tin liên hệ có trong tin nhắn (để ghi vi phạm): PHONE, EMAIL, LINK, SOCIAL — rỗng nếu không có. */
+    public static java.util.Set<String> contactKinds(String body) {
+        java.util.Set<String> kinds = new java.util.LinkedHashSet<>();
+        if (body == null || body.isEmpty()) return kinds;
+        if (PHONE.matcher(body).find()) kinds.add("PHONE");
+        if (EMAIL.matcher(body).find()) kinds.add("EMAIL");
+        if (LINK.matcher(body).find()) kinds.add("LINK");
+        if (SOCIAL.matcher(body).find()) kinds.add("SOCIAL");
+        return kinds;
+    }
+
     /** Nội dung sau khi trim, 1–2000 ký tự. */
     public static String validateBody(String body) {
         String t = body == null ? "" : body.strip();
@@ -85,6 +101,8 @@ public final class MessageRules {
             em.appendReplacement(out, Matcher.quoteReplacement(em.group(1) + "•••@•••." + em.group(2)));
         }
         em.appendTail(out);
-        return out.toString();
+        // Bản chốt v2.0 §12: che cả đường dẫn ngoài và tài khoản mạng xã hội / ứng dụng nhắn tin
+        String links = LINK.matcher(out.toString()).replaceAll(Matcher.quoteReplacement("•••(liên kết ngoài)•••"));
+        return SOCIAL.matcher(links).replaceAll(m -> Matcher.quoteReplacement(m.group(1) + " •••"));
     }
 }

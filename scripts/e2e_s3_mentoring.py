@@ -122,7 +122,10 @@ def pay_dev(path):
     return call("POST", f"{PAYMENT}/internal/dev/{path}", {}, internal=True)
 
 
-def ended(sid, minutes_ago):
+def ended(sid, minutes_ago, mentor=True, mentee=True):
+    """Dời giờ phiên để phiên đã kết thúc `minutes_ago` phút trước, rồi chạy job chuyển AWAITING_ATTENDANCE / giải quyết.
+    Bản chốt v2.0 §6: nhật ký vào phòng là căn cứ vắng mặt — mô phỏng việc vào phòng của mỗi bên (mặc định cả hai đã vào)."""
+    dev(f"sessions/{sid}/joined", {"mentor": mentor, "mentee": mentee})
     dev(f"sessions/{sid}/shift", {"endedMinutesAgo": minutes_ago})
     dev("jobs/attendance")
 
@@ -320,7 +323,7 @@ def us32(ctx):
 
     # Phiên DISPUTED (US-12) → tranh chấp NO_SHOW tự tạo; NO_REFUND → COMPLETED, trả mentor
     s3 = paid(mentee, mentor, at(8, 10))
-    ended(s3["id"], 5)
+    ended(s3["id"], 5, mentee=False)
     attend(mentee, s3["id"], "HELD")
     attend(mentor, s3["id"], "MENTEE_NO_SHOW")
     dev("jobs/payment-outbox")

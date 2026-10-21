@@ -46,11 +46,16 @@ public class MessagingService {
     private final ProfileClient profileClient;
     private final NotificationService notifications;
     private final AuditClient audit;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MessagingService.class);
     private final TransactionTemplate tx;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    static final int CONTACT_VIOLATION_THRESHOLD = 3;
 
     public MessagingService(MentoringRequestRepository requestRepo, MessageRepository messageRepo,
                             MessageReportRepository reportRepo, SessionRepository sessionRepo, ProfileClient profileClient,
-                            NotificationService notifications, AuditClient audit, TransactionTemplate tx) {
+                            NotificationService notifications, AuditClient audit, TransactionTemplate tx,
+                            org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         this.requestRepo = requestRepo;
         this.messageRepo = messageRepo;
         this.reportRepo = reportRepo;
@@ -147,6 +152,7 @@ public class MessagingService {
             boolean firstUnread = messageRepo.countUnreadIn(conversationId, recipient) == 0;
             Message m = messageRepo.save(new Message(conversationId, user.userId(),
                     isMentee ? Message.SenderRole.MENTEE : Message.SenderRole.MENTOR, body, now));
+            recordContactViolation(user.userId(), conversationId, body);
             // Người gửi đã đọc hết luồng tới tin của chính mình.
             messageRepo.markRead(conversationId, user.userId(), now);
             return new Sent(m, firstUnread);
@@ -270,8 +276,34 @@ public class MessagingService {
         }
     }
 
+    /**
+     * Bản chốt v2.0 §12: thông tin liên hệ (SĐT, email, đường dẫn ngoài, tài khoản mạng xã hội) LUÔN bị che — mọi tư vấn và học trực tuyến
+     * diễn ra trong hệ thống (phòng học, chat), không còn mở khoá sau buổi trả tiền đầu tiên.
+     */
+    /**
+     * Bản chốt v2.0 §12 — mỗi tin nhắn chứa thông tin liên hệ ghi 1 lượt vi phạm; đủ 3 lượt trong 30 ngày thì báo admin (một lần mỗi đợt).
+     * Ghi lỗi không làm hỏng việc gửi tin.
+     */
+    private void recordContactViolation(UUID userId, UUID conversationId, String body) {
+        java.util.Set<String> kinds = MessageRules.contactKinds(body);
+        if (kinds.isEmpty()) return;
+        try {
+            jdbc.update("INSERT INTO contact_violations (user_id, request_id, kinds) VALUES (?, ?, ?)", userId, conversationId, String.join(",", kinds));
+            Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM contact_violations WHERE user_id = ? AND created_at > now() - interval '30 days' AND flagged_at IS NULL",
+                    Integer.class, userId);
+            if (n != null && n >= CONTACT_VIOLATION_THRESHOLD) {
+                jdbc.update("UPDATE contact_violations SET flagged_at = now() WHERE user_id = ? AND created_at > now() - interval '30 days' AND flagged_at IS NULL", userId);
+                notifications.notifyRole("ADMIN", "CONTACT_VIOLATIONS", "Chia sẻ thông tin liên hệ ngoài nền tảng",
+                        "Người dùng " + userId + " đã có " + n + " tin nhắn chứa thông tin liên hệ trong 30 ngày.", "/admin/message-reports");
+                audit.record(null, "SYSTEM", "CONTACT_VIOLATIONS_FLAGGED", "USER", userId.toString(), null, AuditClient.fields("count", n));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not record contact violation of {}: {}", userId, e.getMessage());
+        }
+    }
+
     private boolean contactsVisible(MentoringRequest r) {
-        return sessionRepo.existsPaidConfirmedForPair(r.getMenteeId(), r.getMentorId());
+        return false;
     }
 
     static String status(MentoringRequest r) {

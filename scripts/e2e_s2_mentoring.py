@@ -109,8 +109,10 @@ def dev(path, body=None):
     return call("POST", f"{MENTORING}/internal/dev/{path}", body or {}, internal=True)
 
 
-def ended(sid, minutes_ago):
-    """Dời giờ phiên để phiên đã kết thúc `minutes_ago` phút trước, rồi chạy job chuyển AWAITING_ATTENDANCE / giải quyết."""
+def ended(sid, minutes_ago, mentor=True, mentee=True):
+    """Dời giờ phiên để phiên đã kết thúc `minutes_ago` phút trước, rồi chạy job chuyển AWAITING_ATTENDANCE / giải quyết.
+    Bản chốt v2.0 §6: nhật ký vào phòng là căn cứ vắng mặt — mô phỏng việc vào phòng của mỗi bên (mặc định cả hai đã vào)."""
+    dev(f"sessions/{sid}/joined", {"mentor": mentor, "mentee": mentee})
     dev(f"sessions/{sid}/shift", {"endedMinutesAgo": minutes_ago})
     dev("jobs/attendance")
 
@@ -215,6 +217,7 @@ def us12(ctx):
 
     # AC: không ai trả lời → COMPLETED sau 24 giờ
     s = paid_session(ctx, 21)
+    dev(f"sessions/{s['id']}/joined", {"mentor": True, "mentee": True})
     dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 23 * 60})
     dev("jobs/attendance")
     check("US-12", "Sau 23 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
@@ -226,7 +229,7 @@ def us12(ctx):
 
     # AC: trả lời mâu thuẫn → DISPUTED ngay, giao dịch ON_HOLD, không hoàn/không trả
     s = paid_session(ctx, 22)
-    ended(s["id"], 5)
+    ended(s["id"], 5, mentee=False)
     attend(mentee, s["id"], "HELD")
     v = attend(mentor, s["id"], "MENTEE_NO_SHOW")
     t = txs(mentee, s["id"])[0]
@@ -244,9 +247,9 @@ def us12(ctx):
 
     # Mentee báo mentor vắng, mentor im lặng 24 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
     s = paid_session(ctx, 23)
-    ended(s["id"], 5)
+    ended(s["id"], 5, mentor=False)
     attend(mentee, s["id"], "MENTOR_NO_SHOW")
-    ended(s["id"], 24 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1, mentor=False)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     if t["status"] != "REFUNDED":
@@ -260,9 +263,9 @@ def us12(ctx):
 
     # Mentor báo mentee vắng, mentee im lặng → NO_SHOW_MENTEE, không hoàn
     s = paid_session(ctx, 24)
-    ended(s["id"], 5)
+    ended(s["id"], 5, mentee=False)
     attend(mentor, s["id"], "MENTEE_NO_SHOW")
-    ended(s["id"], 24 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1, mentee=False)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     check("US-12", "Mentor báo mentee vắng + mentee im lặng → NO_SHOW_MENTEE, không hoàn (SUCCESS)",

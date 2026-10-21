@@ -304,6 +304,7 @@ def main():
     check(9, "Chưa hoàn thành phiên thì chưa đánh giá được", ok)
     # US-12: không còn hoàn thành trước giờ kết thúc — dời phiên về quá khứ bằng endpoint dev, mentor "complete"
     # (= trả lời HELD) và mentee xác nhận HELD → COMPLETED.
+    call("POST", f"{MENTORING}/internal/dev/sessions/{session['id']}/joined", {"mentor": True, "mentee": True}, internal=True)   # v2.0: nhật ký vào phòng
     call("POST", f"{MENTORING}/internal/dev/sessions/{session['id']}/shift", {"endedMinutesAgo": 5}, internal=True)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/complete", token=mentor_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/attendance", {"answer": "HELD"}, token=referred_token)
