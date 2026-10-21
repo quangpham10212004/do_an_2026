@@ -88,6 +88,16 @@ flowchart LR
 Đánh đổi đã chấp nhận: phức tạp hơn khi triển khai và gỡ lỗi; nhất quán dữ liệu giữa service là
 *eventual consistency* (xử lý bằng retry/đối soát — mục 4).
 
+### 1.x Thay đổi kiến trúc theo bản chốt v2.0 (⚒ chưa hiện thực)
+
+- **payment-service** trở thành chủ sở hữu **ví**: `wallets`, `wallet_entries` (sổ cái append-only, số dư = tổng bút toán, khoá idempotency), hoàn tiền nạp, job hết hạn
+  số dư/ví ngủ, job giải phóng thu nhập 72 giờ. Cổng sandbox/MoMo/VNPay chỉ còn dùng cho **nạp ví**. mentoring-service gọi `POST /internal/wallet/hold|release|settle`
+  thay cho lời gọi thanh toán từng phiên.
+- **Phòng học** *(mới)*: thêm container **Jitsi Meet** tự host (web + prosody + jicofo + jvb) vào `docker-compose.yml`; mentoring-service ký JWT Jitsi cho đúng hai người tham gia
+  (`GET /api/mentoring/sessions/{id}/room`), ghi nhật ký vào phòng (webhook/endpoint `room/joined`). Frontend nhúng iframe/External API; vẫn đi qua proxy `/api/<service>/**`.
+- **profile-service** thêm `tier`, khung giá cấu hình; **ai-service** trả `suggestedTier` và gọi `POST /internal/mentor/{id}/tier` khi admin duyệt.
+- Phạm vi ngoài: rút tiền tự do, KYC, gói/combo buổi (không merge phần `packages` của nhánh `feature/mentoring-intro-reschedule-packages`).
+
 ## 2. Kiến trúc bên trong mỗi service
 
 ### 2.1 Service Java (Spring Boot) — kiến trúc phân lớp

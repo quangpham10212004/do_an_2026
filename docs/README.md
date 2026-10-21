@@ -4,11 +4,14 @@ Nền tảng học tập và kết nối Mentor-Mentee trong lĩnh vực lập t
 Nhóm: Phạm Ngọc Quang (B22DCDT243), Đinh Quyết Thắng (B22DCCN809), Phạm Ninh Phương Thảo (B22DCCN803) —
 Lớp E22CNPM03 — GVHD: Đào Ngọc Phong.
 
+> **21/10/2026 — Bản chốt v2.0**: [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) là nguồn chuẩn cho nghiệp vụ và thông số (ví VND, cấp độ + khung giá, buổi trải nghiệm, phòng học, chính sách huỷ, referral). Nội dung đánh dấu ⚒ trong SRD / business-domain / database-design / api-reference là **mục tiêu chưa hiện thực**; số liệu ở mục "Số liệu chính" bên dưới là của 06/10/2026 và chưa phản ánh Sprint 3–6 — chạy lại các lệnh đếm trước khi trích dẫn.
+
 ## Danh mục tài liệu
 
 | Tài liệu | Nội dung | Gợi ý dùng cho chương báo cáo |
 |---|---|---|
-| [SRD-Mentor-Mentee-Platform.md](SRD-Mentor-Mentee-Platform.md) | Đặc tả yêu cầu v1.0: phạm vi, yêu cầu chức năng/phi chức năng, quyết định thiết kế, tiêu chí nghiệm thu | Ch.1 Giới thiệu · Ch.2 Phân tích yêu cầu |
+| [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) | **Bản chốt nghiệp vụ và thông số v2.0**: mọi quy tắc, ngưỡng, mốc thời gian; bảng thông số cấu hình; tác động lên code | Ch.2 Phân tích yêu cầu · nguồn chuẩn khi các tài liệu khác mâu thuẫn |
+| [SRD-Mentor-Mentee-Platform.md](SRD-Mentor-Mentee-Platform.md) | Đặc tả yêu cầu v2.0: phạm vi, yêu cầu chức năng/phi chức năng, quyết định thiết kế, tiêu chí nghiệm thu | Ch.1 Giới thiệu · Ch.2 Phân tích yêu cầu |
 | [business-domain-mentor-mentee.md](business-domain-mentor-mentee.md) | Use case, luồng nghiệp vụ chi tiết, sơ đồ tuần tự, sơ đồ trạng thái | Ch.2 Phân tích yêu cầu · Ch.3 Thiết kế |
 | [architecture.md](architecture.md) | Kiến trúc microservices, cấu trúc mã nguồn, bảo mật, nhất quán dữ liệu, tác vụ nền, triển khai, CI/CD, hạn chế đã biết | Ch.3 Thiết kế hệ thống |
 | [adr.md](adr.md) | **Sổ quyết định kiến trúc (ADR)**: đọc `profile_db` read-only, best-effort + đối soát, `R-1` chuyển chỉ mục embedding sang matching-service, schema không migration, proxy thay API Gateway | Ch.3 Thiết kế hệ thống · Chuẩn bị bảo vệ |

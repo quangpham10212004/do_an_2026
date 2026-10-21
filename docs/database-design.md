@@ -1,5 +1,8 @@
 # Thiết kế cơ sở dữ liệu — MentorHub
 
+> **v2.0 (21/10/2026)** — nội dung đánh dấu ⚒ là **mục tiêu theo bản chốt** [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md), chưa hiện thực; phần không đánh dấu mô tả hệ thống hiện tại.
+
+
 Nguyên tắc **database-per-service**: mỗi service sở hữu một CSDL PostgreSQL 16 riêng; không service
 nào ghi vào CSDL của service khác. Liên kết giữa các service chỉ là **khoá tham chiếu logic** (UUID
 người dùng/phiên) — không có khoá ngoại vật lý xuyên CSDL. Schema nằm tại `db/init/<service>.sql`
@@ -70,7 +73,10 @@ erDiagram
         int years_experience
         text cv_file_url
         text_array portfolio_links
-        numeric hourly_rate "VND/giờ"
+        numeric hourly_rate "VND/buổi 60 phút; v2.0: nằm trong khung của tier"
+        text tier "v2.0 ⚒ JUNIOR|SENIOR|EXPERT, NULL khi chưa duyệt"
+        timestamptz tier_assigned_at "v2.0 ⚒ — xin nâng cấp sau 90 ngày"
+        boolean trial_enabled "v2.0 ⚒ nhận buổi trải nghiệm, mặc định true"
         int capacity
         int active_mentee_count "đồng bộ từ mentoring"
         boolean is_available
@@ -101,6 +107,7 @@ erDiagram
 |---|---|
 | `mentor_profiles` | Hồ sơ mentor + dữ liệu phục vụ matching (trạng thái xác thực, sức chứa, rating) |
 | `mentee_profiles` | Hồ sơ mentee |
+| `mentor_profiles.tier` *(v2.0 ⚒)* | Cấp độ do admin gán lúc duyệt phỏng vấn; khung giá lấy từ cấu hình `pricing.tiers` (JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k, bước 10.000đ); `hourly_rate` bị kẹp về khung khi đổi cấp |
 | `mentor_availability` | Khung giờ rảnh lặp lại hằng tuần (giờ Việt Nam); `CHECK (end_time > start_time)` |
 | Role `matching_reader` | Chỉ có `SELECT` trên 3 bảng trên — hiện thực hoá ngoại lệ kiến trúc read-only |
 
@@ -170,10 +177,13 @@ erDiagram
         uuid mentee_id
         uuid mentor_id
         timestamptz scheduled_at
-        int duration_minutes "15..240"
-        numeric price
+        int duration_minutes "v2.0: 60 (thường) hoặc 15 (trải nghiệm)"
+        numeric price "v2.0: chốt lúc gửi yêu cầu đặt"
+        text kind "v2.0 ⚒ REGULAR|TRIAL"
+        timestamptz mentor_joined_at "v2.0 ⚒ nhật ký vào phòng"
+        timestamptz mentee_joined_at "v2.0 ⚒"
         text topic
-        text status "PENDING|CONFIRMED|COMPLETED|CANCELLED"
+        text status "PENDING|CONFIRMED|AWAITING_ATTENDANCE|COMPLETED|CANCELLED|EXPIRED|NO_SHOW_*|DISPUTED"
         boolean reminder_sent
     }
     reviews {
@@ -200,7 +210,10 @@ erDiagram
 |---|---|
 | `mentoring_requests` | Yêu cầu mentoring; số yêu cầu `ACCEPTED` phân biệt theo mentee = số mentee đang được hướng dẫn (so với `capacity`) |
 | `sessions` | Phiên mentoring. `PENDING` = chờ thanh toán. Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch |
-| `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE) |
+| `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE); v2.0: không có đánh giá cho `kind = TRIAL` |
+| `sessions.kind`, `*_joined_at` *(v2.0 ⚒)* | Loại buổi và nhật ký vào phòng — căn cứ duy nhất xác định vắng mặt (chờ 10 phút; trải nghiệm 5 phút) |
+| `trial_uses` *(v2.0 ⚒)* | `(mentee_id, mentor_id)` UNIQUE — mỗi cặp một buổi trải nghiệm |
+| `contact_violations` *(v2.0 ⚒)* | Mỗi lần tin nhắn bị che thông tin liên hệ; 3 lần/30 ngày báo admin |
 | `notifications` | Thông báo trong ứng dụng, gửi cho 1 người hoặc cho cả role ADMIN; ai-service tạo thông báo qua `POST /internal/notifications` |
 
 ---
@@ -330,7 +343,49 @@ erDiagram
 | `transactions` | Giao dịch thanh toán; `uq_transactions_session_success` — unique partial index đảm bảo mỗi phiên tối đa 1 giao dịch `SUCCESS` |
 | `referral_codes` | Mỗi người dùng 1 mã (tạo lần đầu khi xem trang giới thiệu) |
 | `referrals` | Quan hệ người giới thiệu → người được giới thiệu; `CHECK (referrer_id <> referee_id)`, `referee_id` UNIQUE |
-| `reward_ledger` | Sổ cái điểm thưởng dạng append-only; số dư = `SUM(points)` |
+| `reward_ledger` | Sổ cái điểm thưởng dạng append-only; số dư = `SUM(points)` — **v2.0 ⚒ thay bằng `wallet_entries` (kind `PROMO`)**, `reward_ledger` giữ lại để truy vết |
+
+### 6.1 Ví VND *(v2.0 ⚒)*
+
+```mermaid
+erDiagram
+    wallets ||--o{ wallet_entries : "bút toán"
+    wallets {
+        uuid user_id PK
+        text status "ACTIVE|DORMANT|FROZEN"
+        timestamptz last_activity_at "12 tháng không giao dịch → DORMANT"
+    }
+    wallet_entries {
+        uuid id PK
+        uuid user_id FK
+        text kind "TOPUP|HOLD|RELEASE_TO_EARNING|REFUND_TO_WALLET|REFUND_TO_SOURCE|PROMO_GRANT|PROMO_EXPIRE|ADJUST"
+        text bucket "CASH|PROMO"
+        numeric amount "có dấu; số dư = SUM theo bucket"
+        text state "AVAILABLE|HELD|FROZEN"
+        uuid session_id "NULL nếu không gắn buổi"
+        uuid topup_tx_id "nguồn nạp, dùng khi hoàn về nguồn"
+        timestamptz expires_at "chỉ PROMO: +12 tháng"
+        text idempotency_key UK
+    }
+    topup_refund_requests {
+        uuid id PK
+        uuid user_id
+        numeric amount "<= min(CASH khả dụng, tiền nạp 7 ngày)"
+        text status "PENDING|DONE|REJECTED"
+        text admin_reason
+    }
+```
+
+| Đối tượng | Mô tả |
+|---|---|
+| `wallet_entries` | Sổ cái append-only; **không có cột số dư**. Số dư khả dụng = `SUM(amount)` theo `bucket` và `state`. `idempotency_key` UNIQUE chống ghi trùng (IPN, retry) |
+| `HOLD` | Chuyển khả dụng → tạm giữ; trừ `PROMO` trước, thiếu thì trừ `CASH`; mỗi bucket là một dòng để hoàn đúng nguồn |
+| `REFUND_TO_WALLET` | Hoàn tiền buổi học về đúng bucket đã trừ (khuyến mãi đã hết hạn thì cấp lại hạn 30 ngày) |
+| `REFUND_TO_SOURCE` | Hoàn tiền nạp qua cổng; chỉ `CASH`, trong 7 ngày từ lần nạp gần nhất, tối đa 2 yêu cầu/tháng |
+| `PROMO_EXPIRE` | Job hằng ngày: khoản `PROMO` quá `expires_at` bị trừ; ví không hoạt động 12 tháng → `DORMANT` |
+| `wallets.status = FROZEN` | Admin khoá tài khoản: không đặt, không hoàn ra nguồn |
+| `referral_codes` | v2.0: khoá `(owner_id, mentor_id)` thay vì một mã mỗi người; `referrals.qualifying_session_id` + `eligible_at = completed_at + 7 ngày` |
+| `mentor_ledger` | Giữ nguyên (US-25); `release-delay` 72 giờ và khiếu nại giữ thu nhập |
 
 ---
 

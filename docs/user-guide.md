@@ -1,5 +1,8 @@
 # Hướng dẫn sử dụng — MentorHub
 
+> **v2.0 (21/10/2026)** — nội dung đánh dấu ⚒ là **mục tiêu theo bản chốt** [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md), chưa hiện thực; phần không đánh dấu mô tả hệ thống hiện tại.
+
+
 Giao diện tại <http://localhost:3000>. Thanh điều hướng thay đổi theo vai trò; biểu tượng 🔔 hiển thị số
 thông báo chưa đọc; bấm tên người dùng để vào trang *Tài khoản*.
 
@@ -34,21 +37,23 @@ thông báo chưa đọc; bấm tên người dùng để vào trang *Tài kho�
    từ khoá, có phân trang.
 4. **Gửi yêu cầu mentoring**: từ thẻ mentor hoặc trang hồ sơ mentor, kèm lời nhắn. Theo dõi tại
    *Yêu cầu* (`/mentoring/requests`); có thể huỷ khi đang chờ.
-5. **Đặt lịch** (sau khi được chấp nhận): trang hồ sơ mentor → chọn thời lượng 30–120 phút → chọn ngày và
-   giờ bắt đầu trong bộ chọn khung giờ (giờ Việt Nam; chỉ hiện các giờ còn trống trong 14 ngày tới — đã trừ
-   lịch rảnh bận và phiên khác của bạn) → chủ đề → xem chi phí → *Xác nhận*. Nếu khung giờ vừa bị người khác
-   đặt, hệ thống báo lỗi và tự tải lại danh sách giờ trống.
-   - Phiên miễn phí: xác nhận ngay.
-   - Phiên có phí: chuyển tới trang thanh toán; cần thanh toán trong 30 phút.
-6. **Thanh toán** (`/payment/<mã phiên>`): nhập thẻ (có sẵn nút chọn thẻ test) → *Thanh toán*. Thành
-   công → phiên chuyển *Đã xác nhận*; thất bại → xem lý do và thử lại.
-7. **Phiên học** (`/mentoring/sessions`): lọc theo trạng thái; *Huỷ* phiên chưa bắt đầu (phiên đã thanh
+5. **Nạp ví** (⚒ `/wallet`): chọn số tiền (50.000đ–5.000.000đ) và kênh (sandbox / MoMo test / VNPay sandbox). Ví có **tiền nạp** và **tiền khuyến mãi**
+   (từ giới thiệu hoặc admin); học phí trừ khuyến mãi trước. Khuyến mãi hết hạn sau 12 tháng; ví không dùng 12 tháng sẽ *ngủ* — bấm *Kích hoạt lại*.
+   Trong 7 ngày kể từ lần nạp gần nhất bạn có thể *Yêu cầu hoàn tiền nạp* (tối đa bằng số nhỏ hơn giữa tiền nạp còn lại và tiền đã nạp 7 ngày; không gồm tiền đang
+   tạm giữ hay khuyến mãi; tối đa 2 lần/tháng).
+6. **Đặt lịch** (sau khi được chấp nhận): trang hồ sơ mentor → xem giá (theo cấp Junior/Senior/Expert) → chọn ngày, giờ (đặt trước ≥ 3 giờ; buổi học 60 phút)
+   → chủ đề → *Xác nhận*. Học phí được **tạm giữ từ ví**; ví thiếu tiền thì khung giờ được giữ 15 phút để bạn nạp thêm. Mentor xác nhận trong 24 giờ, quá hạn
+   hoặc bị từ chối thì bạn được hoàn 100%.
+   - **Buổi trải nghiệm 15 phút (30.000đ)**: để làm quen trước khi học, mỗi mentor một lần, không chấm sao.
+   - **Huỷ**: ≥ 24 giờ trước giờ học hoàn 100%; 4–24 giờ hoàn 50%; dưới 4 giờ hoặc vắng mặt không hoàn. Mentor huỷ hoặc vắng bạn được hoàn 100%.
+   - **Mã giới thiệu**: sau khi học xong một buổi với mentor, bạn nhận mã riêng cho mentor đó; bạn bè dùng mã ở lần đặt buổi đầu với mentor ấy, bạn nhận 30.000đ khuyến mãi sau 7 ngày nếu buổi không bị hoàn tiền.
+7. **Phiên học** (`/mentoring/sessions`; ⚒ có nút *Vào phòng học* trước giờ học 10 phút — video và chat ngay trong hệ thống): lọc theo trạng thái; *Huỷ* phiên chưa bắt đầu (phiên đã thanh
    toán được hoàn tiền); sau khi phiên *Hoàn thành* bấm *Đánh giá* (1–5 sao + nhận xét).
 
 ## 3. Dành cho Mentor
 
 1. **Tạo hồ sơ mentor** (`/profile`): có thể *Điền nhanh từ CV* (tải PDF để tự điền kỹ năng, số năm kinh
-   nghiệm) → kiểm tra lại tên hiển thị, lĩnh vực, kỹ năng, giới thiệu, mức phí/giờ (0 = miễn phí), sức
+   nghiệm) → kiểm tra lại tên hiển thị, lĩnh vực, kỹ năng, giới thiệu, mức phí (⚒ chọn trong khung theo cấp độ do admin duyệt: Junior 100–200k, Senior 200–400k, Expert 400–700k, bước 10.000đ), sức
    chứa (số mentee tối đa), portfolio, trạng thái nhận mentee → *Lưu hồ sơ*. CV dùng để điền nhanh cũng
    được lưu và hiện trong mục **CV của tôi** cùng trang — xoá được bất cứ lúc nào. Khi xét yêu cầu
    mentoring, mentor mở được CV của mentee đang gửi yêu cầu hoặc đang được mình hướng dẫn.
