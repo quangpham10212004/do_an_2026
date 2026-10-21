@@ -7,7 +7,7 @@ import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardHeader, Descript
 import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
-import { AGENDA_MAX, AGENDA_MIN, SESSION_DURATIONS, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
+import { AGENDA_MAX, AGENDA_MIN, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
 import { formatDateTime, formatMoney, formatRate } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { IsoDateTime, MentorProfile, MentoringRequest, SessionDuration, SessionType, SessionUser } from "@/types";
@@ -59,6 +59,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
         agenda,
         preReadLink: form.preReadLink.trim() || undefined,
       });
+      // Ví đủ tiền → học phí đã được tạm giữ (AWAITING_MENTOR, chờ mentor xác nhận); thiếu tiền → trang nạp ví / thanh toán
       if (session.status === "PENDING") router.push(`/payment/${session.id}`);
       else router.push("/mentoring/sessions?booked=1");
     } catch (err) {
@@ -78,7 +79,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
       </Alert>
     );
   }
-  const price = Math.round((Number(mentor.hourlyRate) * form.durationMinutes) / 60 / 1000) * 1000;
+  const price = Number(mentor.hourlyRate);   // Bản chốt v2.0: buổi thường cố định 60 phút, giá niêm yết theo buổi
   const ready = !!form.scheduledAt && agendaValid && linkValid;
 
   return (
@@ -91,12 +92,6 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
             <CardHeader title="Chọn thời gian" />
             <CardBody className="flex flex-col gap-5">
               <div className="form-grid">
-                <Field label="Thời lượng" id="duration">
-                  <Select id="duration" value={form.durationMinutes}
-                    onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) as SessionDuration })}>
-                    {SESSION_DURATIONS.map((d) => <option key={d} value={d}>{d} phút</option>)}
-                  </Select>
-                </Field>
                 <Field label="Loại phiên" id="sessionType">
                   <Select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
                     {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
@@ -129,7 +124,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
             <Avatar name={mentor.displayName} src={mentor.avatarUrl} />
             <div className="min-w-0">
               <div className="font-semibold">{mentor.displayName}</div>
-              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}</div>
+              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}{mentor.tier ? ` · ${mentor.tier}` : ""}</div>
             </div>
           </div>
           <CardBody className="flex flex-col gap-4">
@@ -144,9 +139,10 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
               <span className="font-mono text-title-2 font-medium tabular">{formatMoney(price)}</span>
             </div>
             <Button type="submit" variant="primary" size="lg" block loading={busy} disabled={!ready}>
-              {busy ? "Đang kiểm tra lịch…" : price > 0 ? "Xác nhận và thanh toán" : "Xác nhận đặt lịch"}
+              {busy ? "Đang kiểm tra lịch…" : "Đặt lịch và tạm giữ học phí từ ví"}
             </Button>
             {!form.scheduledAt && <p className="text-center text-small text-ink-muted">Chọn một khung giờ để tiếp tục.</p>}
+            <p className="text-small text-ink-muted">Học phí được tạm giữ từ ví ngay khi đặt. Mentor xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, bạn được hoàn 100%. Huỷ trước 24 giờ: hoàn 100%, 4–24 giờ: 50%, dưới 4 giờ: không hoàn.</p>
           </CardBody>
         </Card>
       </form>

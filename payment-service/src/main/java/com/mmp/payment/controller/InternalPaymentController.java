@@ -65,6 +65,15 @@ public class InternalPaymentController {
         return paymentService.release(req.sessionId());
     }
 
+    /**
+     * Bản chốt v2.0 §5 — mentoring-service nhờ tạm giữ học phí của phiên từ ví mentee ngay sau khi đặt lịch. Giá lấy từ
+     * mentoring-service; 402 INSUFFICIENT_FUNDS khi ví thiếu tiền (phiên giữ PENDING để mentee nạp thêm).
+     */
+    @PostMapping("/wallet/pay")
+    public TransactionResponse walletPay(@Valid @RequestBody WalletPayInternalRequest req) {
+        return walletService.pay(new com.mmp.payment.security.AuthUser(req.userId(), null, "MENTEE", true), req.sessionId(), null);
+    }
+
     /** Bản chốt v2.0 §2.1 — admin khoá / mở khoá tài khoản: đóng băng / mở ví. Idempotent. */
     @PostMapping("/wallet/freeze")
     public Map<String, Object> freeze(@Valid @RequestBody FreezeRequest req) {

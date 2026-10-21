@@ -28,6 +28,8 @@ class TestFixtures {
     final StrikeService strikes = mock(StrikeService.class);
     final com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo = mock(com.mmp.mentoring.repository.RescheduleProposalRepository.class);
     final com.mmp.mentoring.repository.DisputeRepository disputeRepo = mock(com.mmp.mentoring.repository.DisputeRepository.class);
+    final com.mmp.mentoring.client.MatchingClient matchingClient = mock(com.mmp.mentoring.client.MatchingClient.class);
+    com.mmp.mentoring.entity.MentoringSession lastSaved;
     CancellationPolicy policy = CancellationPolicy.defaults();
 
     TestFixtures() {
@@ -36,14 +38,21 @@ class TestFixtures {
             inv.<java.util.function.Consumer<org.springframework.transaction.TransactionStatus>>getArgument(0).accept(null);
             return null;
         }).when(tx).executeWithoutResult(any());
-        when(sessionRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(sessionRepo.save(any())).thenAnswer(inv -> {
+            lastSaved = inv.getArgument(0);
+            return lastSaved;
+        });
+        when(sessionRepo.findById(any())).thenAnswer(inv -> java.util.Optional.ofNullable(lastSaved));
+        when(paymentClient.payFromWallet(any(), any()))
+                .thenReturn(new com.mmp.mentoring.client.PaymentClient.WalletPayResult(false, true, "INSUFFICIENT_FUNDS"));
         when(requestRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(profileClient.displayNames(any())).thenReturn(java.util.Map.of());
     }
 
     SessionService service() {
-        return new SessionService(sessionRepo, requestRepo, reviewRepo, lateCancelRepo, policy, outbox, strikes, proposalRepo, disputeRepo,
-                profileClient, paymentClient, notifications, tx,
-                "Asia/Ho_Chi_Minh", Duration.ofHours(1), Duration.ofDays(60), Duration.ofHours(48));
+        return new SessionService(sessionRepo, requestRepo, reviewRepo, policy, outbox, strikes, proposalRepo, disputeRepo,
+                profileClient, paymentClient, notifications, tx, matchingClient,
+                "Asia/Ho_Chi_Minh", Duration.ofHours(3), Duration.ofDays(60), Duration.ofHours(24),
+                Duration.ofHours(24), Duration.ofHours(1));
     }
 }

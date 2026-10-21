@@ -28,6 +28,38 @@ public class PaymentClient {
                 .build();
     }
 
+    /** Kết quả trả học phí từ ví: PAID, hoặc thiếu tiền (balance / needed lấy từ thông báo lỗi payment-service). */
+    public record WalletPayResult(boolean paid, boolean insufficientFunds, String errorCode) {
+    }
+
+    /**
+     * Bản chốt v2.0 §5 — tạm giữ học phí của phiên từ ví của mentee. payment-service tự đọc giá phiên từ mentoring-service
+     * (không tin client) rồi báo lại {@code payment-succeeded}. 402 INSUFFICIENT_FUNDS → phiên giữ PENDING để mentee nạp thêm.
+     * Lỗi khác (ví đóng băng / ngủ / mạng) cũng không ném: phiên vẫn PENDING, mentee thử lại từ trang thanh toán.
+     */
+    public WalletPayResult payFromWallet(UUID menteeId, UUID sessionId) {
+        try {
+            restClient.post().uri("/internal/wallet/pay")
+                    .body(Map.of("userId", menteeId.toString(), "sessionId", sessionId.toString())).retrieve().toBodilessEntity();
+            return new WalletPayResult(true, false, null);
+        } catch (HttpClientErrorException e) {
+            String code = e.getStatusCode().value() == 402 ? "INSUFFICIENT_FUNDS" : "WALLET_PAY_" + e.getStatusCode().value();
+            return new WalletPayResult(false, e.getStatusCode().value() == 402, code);
+        } catch (RestClientException e) {
+            return new WalletPayResult(false, false, "PAYMENT_UNAVAILABLE");
+        }
+    }
+
+    /** Admin khoá / mở khoá tài khoản → đóng băng / mở ví (best-effort, idempotent). */
+    public void freezeWallet(UUID userId, boolean frozen) {
+        try {
+            restClient.post().uri("/internal/wallet/freeze").body(Map.of("userId", userId.toString(), "frozen", frozen))
+                    .retrieve().toBodilessEntity();
+        } catch (RestClientException e) {
+            org.slf4j.LoggerFactory.getLogger(PaymentClient.class).warn("Could not {} wallet of {}: {}", frozen ? "freeze" : "unfreeze", userId, e.getMessage());
+        }
+    }
+
     /** Hoàn tiền toàn bộ cho phiên đã thanh toán. Trả về false nếu phiên không có giao dịch thành công. */
     public boolean refund(UUID sessionId, String reason) {
         return refund(sessionId, reason, 100);

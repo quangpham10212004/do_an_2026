@@ -9,6 +9,7 @@ export type EndReason = "GOAL_REACHED" | "NO_LONGER_NEEDED" | "NOT_A_FIT" | "OTH
 /** US-12 — PENDING = chờ thanh toán; EXPIRED = quá hạn thanh toán; AWAITING_ATTENDANCE = chờ hai bên xác nhận tham dự. */
 export type SessionStatus =
   | "PENDING"
+  | "AWAITING_MENTOR"
   | "CONFIRMED"
   | "AWAITING_ATTENDANCE"
   | "COMPLETED"
@@ -30,7 +31,8 @@ export type AttendanceResolution =
   /** US-32 — phiên DISPUTED / chờ xác nhận thành COMPLETED do tranh chấp kết luận không hoàn tiền. */
   | "DISPUTE_RESOLVED";
 /** US-03 — thời lượng phiên được phép (phút). */
-export type SessionDuration = 30 | 45 | 60 | 90 | 120;
+/** Bản chốt v2.0 §4: buổi thường cố định 60 phút. */
+export type SessionDuration = 60;
 
 /** US-14 — tần suất mong muốn của quan hệ mentoring. */
 export type RequestFrequency = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "ONE_OFF";
@@ -104,6 +106,10 @@ export interface MentoringSession {
   /** US-04 — chỉ có giá trị khi phiên đã CONFIRMED (hoặc sau đó). */
   meetingLink: string | null;
   status: SessionStatus;
+  /** Bản chốt v2.0 — REGULAR | TRIAL. */
+  kind: "REGULAR" | "TRIAL";
+  /** Hạn mentor xác nhận (chỉ AWAITING_MENTOR). */
+  confirmDeadline: IsoDateTime | null;
   cancelledBy: CancelActor | null;
   cancelReason: string | null;
   refundPercent: number | null;

@@ -65,6 +65,10 @@ export const mentoringApi = {
   /** @deprecated thiếu sessionType/agenda (US-03) — dùng bookSession hoặc chuyển tới /mentoring/book/{mentorId}. */
   book: (body: LegacyBookSessionInput) => api<MentoringSession>("/api/mentoring/sessions", { method: "POST", body }),
   cancelPreview: (id: Uuid) => api<CancelPreview>(`/api/mentoring/sessions/${id}/cancel-preview`),
+  /** Bản chốt v2.0 §5 — mentor xác nhận / từ chối buổi đang chờ (học phí đã được tạm giữ từ ví). */
+  confirmSession: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/confirm`, { method: "POST" }),
+  declineSession: (id: Uuid, reason?: string) =>
+    api<MentoringSession>(`/api/mentoring/sessions/${id}/decline`, { method: "POST", body: { reason: reason || undefined } }),
   cancelSession: (id: Uuid, reason: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
   updateMeetingLink: (id: Uuid, meetingLink: string) =>

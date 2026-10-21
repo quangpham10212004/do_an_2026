@@ -49,13 +49,16 @@ public class InternalDevController {
     private final com.mmp.mentoring.service.MessageEmailDigestJob messageDigest;
     private final com.mmp.mentoring.repository.MessageRepository messageRepo;
     private final TransactionTemplate tx;
+    private final com.mmp.mentoring.service.SessionService sessionService;
 
     public InternalDevController(SessionRepository sessionRepo, AttendanceService attendance, PaymentOutboxService outbox,
                                  SessionScheduler scheduler, MentoringRequestRepository requestRepo,
                                  RequestExpiryService requestExpiry, com.mmp.mentoring.service.MentorshipEndService endService,
                                  com.mmp.mentoring.service.ResponseTimeSyncJob responseTime,
                                  com.mmp.mentoring.service.MessageEmailDigestJob messageDigest,
-                                 com.mmp.mentoring.repository.MessageRepository messageRepo, TransactionTemplate tx) {
+                                 com.mmp.mentoring.repository.MessageRepository messageRepo, TransactionTemplate tx,
+                                 com.mmp.mentoring.service.SessionService sessionService) {
+        this.sessionService = sessionService;
         this.endService = endService;
         this.responseTime = responseTime;
         this.messageDigest = messageDigest;
@@ -92,6 +95,26 @@ public class InternalDevController {
             return ss;
         });
         return Map.of("id", s.getId(), "scheduledAt", s.getScheduledAt(), "endsAt", s.endsAt(), "status", s.getStatus().name());
+    }
+
+    /** Bản chốt v2.0 — mentor xác nhận buổi AWAITING_MENTOR (script e2e cũ không có token mentor). */
+    @PostMapping("/sessions/{id}/mentor-confirm")
+    public Map<String, Object> mentorConfirm(@PathVariable UUID id) {
+        var view = sessionService.confirm(new com.mmp.mentoring.security.AuthUser(null, null, com.mmp.mentoring.security.AuthUser.ROLE_INTERNAL), id);
+        return Map.of("id", id, "status", view.status());
+    }
+
+    /** Đưa hạn xác nhận của buổi AWAITING_MENTOR về {@code minutesAgo} phút trước (kiểm thử hết hạn xác nhận). */
+    @PostMapping("/sessions/{id}/confirm-deadline")
+    public Map<String, Object> shiftConfirmDeadline(@PathVariable UUID id, @RequestBody Map<String, Integer> in) {
+        int ago = in.getOrDefault("minutesAgo", 1);
+        MentoringSession s = tx.execute(st -> {
+            MentoringSession ss = sessionRepo.findById(id)
+                    .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
+            ss.setConfirmDeadline(OffsetDateTime.now().minusMinutes(ago));
+            return ss;
+        });
+        return Map.of("id", s.getId(), "confirmDeadline", s.getConfirmDeadline().toString(), "status", s.getStatus().name());
     }
 
     /** Lùi thời điểm tạo yêu cầu về {@code createdHoursAgo} giờ trước (kiểm thử US-15 hết hạn 72 giờ). */
@@ -133,6 +156,7 @@ public class InternalDevController {
             case "attendance" -> attendance.runJob();
             case "payment-outbox" -> outbox.flush();
             case "unpaid-expiry" -> scheduler.expireUnpaidSessions();
+            case "unconfirmed-expiry" -> scheduler.expireUnconfirmedSessions();
             case "reminders" -> scheduler.sendReminders();
             case "response-time" -> responseTime.run();
             case "message-digest" -> messageDigest.run();

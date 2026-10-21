@@ -52,6 +52,8 @@ public final class PaymentDtos {
             UUID id, UUID sessionId, UUID payerId, UUID mentorId, BigDecimal amount, BigDecimal fee, BigDecimal mentorEarning,
             BigDecimal feeRate, BigDecimal refundedAmount, String currency,
             String status, String provider, String providerReference, String failureReason, String holdReason,
+            /** Bản chốt v2.0 — SESSION | TOPUP; phần học phí lấy từ khuyến mãi / tiền nạp (provider = WALLET). */
+            String kind, BigDecimal paidPromo, BigDecimal paidCash,
             List<RefundView> refunds, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 
         public static TransactionResponse from(Transaction t, List<Refund> refunds) {
@@ -59,7 +61,8 @@ public final class PaymentDtos {
             return new TransactionResponse(t.getId(), t.getSessionId(), t.getPayerId(), t.getMentorId(), t.getAmount(),
                     t.getFee(), t.getMentorEarning(), t.getFeeRate(), refunded,
                     t.getCurrency(), t.getStatus().name(), t.getProvider(), t.getProviderReference(),
-                    t.getFailureReason(), t.getHoldReason(), refunds.stream().map(RefundView::from).toList(),
+                    t.getFailureReason(), t.getHoldReason(), t.getKind(), t.getPaidPromo(), t.getPaidCash(),
+                    refunds.stream().map(RefundView::from).toList(),
                     t.getCreatedAt(), t.getUpdatedAt());
         }
     }
@@ -148,6 +151,9 @@ public final class PaymentDtos {
 
     public record PromoGrantRequest(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount,
                                     @NotBlank @Size(max = 200) String reason) {
+    }
+
+    public record WalletPayInternalRequest(@NotNull UUID userId, @NotNull UUID sessionId) {
     }
 
     public record FreezeRequest(@NotNull UUID userId, boolean frozen) {

@@ -138,6 +138,20 @@ public class MentoringController {
     }
 
     /** Giữ từ Sprint 1 — US-12: = mentor trả lời HELD (chỉ trong 48 giờ sau giờ kết thúc). */
+    /** Bản chốt v2.0 §5 — mentor xác nhận buổi đang chờ (học phí đã được tạm giữ từ ví của mentee). */
+    @PostMapping("/sessions/{id}/confirm")
+    @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
+    public SessionView confirmSession(@PathVariable UUID id) {
+        return sessionService.confirm(CurrentUser.get(), id);
+    }
+
+    /** Bản chốt v2.0 §5 — mentor từ chối buổi đang chờ: hoàn 100% cho mentee, không tính lỗi vi phạm. */
+    @PostMapping("/sessions/{id}/decline")
+    @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
+    public SessionView declineSession(@PathVariable UUID id, @Valid @RequestBody(required = false) DeclineSessionInput in) {
+        return sessionService.decline(CurrentUser.get(), id, in);
+    }
+
     @PostMapping("/sessions/{id}/complete")
     @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
     public SessionView complete(@PathVariable UUID id) {

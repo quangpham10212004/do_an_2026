@@ -38,9 +38,55 @@ components:
         providerReference: { type: string, nullable: true }
         failureReason: { type: string, nullable: true, example: CARD_DECLINED, description: "Chỉ lý do charge thất bại (hoàn tiền không còn ghi đè trường này)" }
         holdReason: { type: string, nullable: true, example: SESSION_DISPUTED }
+        kind: { type: string, enum: [SESSION, TOPUP], description: "Bản chốt v2.0 — SESSION = trả học phí; TOPUP = nạp ví qua cổng" }
+        paidPromo: { type: number, description: "Phần học phí lấy từ tiền khuyến mãi (provider = WALLET)" }
+        paidCash: { type: number, description: "Phần học phí lấy từ tiền nạp (provider = WALLET)" }
         refunds: { type: array, items: { $ref: "#/components/schemas/Refund" } }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    Wallet:
+      type: object
+      description: "Bản chốt v2.0 §8 — ví VND. cash = tiền nạp khả dụng; promo = khuyến mãi còn hạn; held = học phí đang tạm giữ."
+      properties:
+        status: { type: string, enum: [ACTIVE, DORMANT, FROZEN] }
+        cash: { type: number }
+        promo: { type: number }
+        held: { type: number }
+        nextPromoExpiry: { type: string, format: date-time, nullable: true }
+        topupMin: { type: number, example: 50000 }
+        topupMax: { type: number, example: 5000000 }
+        cashCap: { type: number, example: 20000000 }
+        refund: { $ref: "#/components/schemas/RefundEligibility" }
+    RefundEligibility:
+      type: object
+      properties:
+        windowOpen: { type: boolean }
+        windowEndsAt: { type: string, format: date-time, nullable: true }
+        maxAmount: { type: number, description: "min(tiền nạp khả dụng, tiền nạp còn hoàn được trong 7 ngày)" }
+        remainingRequests: { type: integer }
+    WalletEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [TOPUP, HOLD, REFUND_TO_WALLET, TOPUP_REFUND, PROMO_GRANT, PROMO_EXPIRE, ADJUST] }
+        bucket: { type: string, enum: [CASH, PROMO] }
+        amount: { type: number, description: "Có dấu: + cộng vào khả dụng, − trừ" }
+        sessionId: { type: string, format: uuid, nullable: true }
+        transactionId: { type: string, format: uuid, nullable: true }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    TopupRefundRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        amount: { type: number }
+        status: { type: string, enum: [PENDING, DONE, REJECTED] }
+        kind: { type: string, enum: [AUTO, EXCEPTION] }
+        userReason: { type: string, nullable: true }
+        adminReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time, nullable: true }
     Refund:
       type: object
       description: US-13 — một lần hoàn tiền (bảng refunds); SUM(amount) ≤ Transaction.amount
@@ -145,10 +191,229 @@ paths:
       responses:
         "200": { description: OK }
 
+  /api/payment/wallet:
+    get:
+      summary: Bản chốt v2.0 §8 (MENTEE) Số dư ví — tiền nạp khả dụng, khuyến mãi còn hạn, học phí đang tạm giữ, điều kiện hoàn tiền nạp
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+  /api/payment/wallet/entries:
+    get:
+      summary: Bản chốt v2.0 §8 Lịch sử bút toán ví (append-only), mới nhất trước
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/WalletEntry" } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalItems: { type: integer }
+                  totalPages: { type: integer }
+  /api/payment/wallet/topups:
+    post:
+      summary: >
+        Bản chốt v2.0 §8.2 (MENTEE) Nạp ví 50.000–5.000.000đ mỗi lần (số nguyên); tiền nạp khả dụng sau khi nạp ≤ 20.000.000đ
+        (409 CASH_CAP_EXCEEDED). provider trống / SANDBOX + card → kết quả ngay (Transaction kind = TOPUP, SUCCESS | FAILED; lỗi không
+        đổi số dư). provider MOMO / VNPAY → trả link chuyển hướng (CheckoutResponse), ví được cộng khi cổng xác nhận (IPN / return /
+        đối soát). Ví FROZEN → 403 WALLET_FROZEN; DORMANT → 409 WALLET_DORMANT (kích hoạt lại trước).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, example: 500000 }
+                provider: { type: string, enum: [SANDBOX, MOMO, VNPAY] }
+                card:
+                  type: object
+                  properties:
+                    cardNumber: { type: string }
+                    cardHolder: { type: string }
+                    expiry: { type: string }
+                    cvv: { type: string }
+      responses:
+        "200":
+          description: Transaction (sandbox) hoặc { transactionId, provider, paymentUrl } (cổng chuyển hướng)
+        "400": { description: INVALID_TOPUP_AMOUNT / CARD_REQUIRED }
+        "409": { description: CASH_CAP_EXCEEDED / WALLET_DORMANT }
+  /api/payment/wallet/pay:
+    post:
+      summary: >
+        Bản chốt v2.0 §5/§8 (MENTEE chủ phiên) Trả học phí của phiên PENDING từ ví: trừ khuyến mãi (lô sắp hết hạn trước) rồi tiền nạp;
+        ghi giao dịch provider = WALLET, SUCCESS, với phí nền tảng chốt lúc này; báo mentoring-service chuyển phiên sang AWAITING_MENTOR.
+        Không đủ tiền → 402 INSUFFICIENT_FUNDS (không ghi gì). Thay cho POST /api/payment/charge (mặc định tắt: 409 USE_WALLET).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string, format: uuid }
+                amount: { type: number, description: Tuỳ chọn, dùng để đối chiếu }
+      responses:
+        "200":
+          description: Transaction
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "402": { description: INSUFFICIENT_FUNDS }
+        "403": { description: WALLET_FROZEN / không phải mentee của phiên }
+        "409": { description: ALREADY_PAID / SESSION_NOT_PAYABLE / WALLET_DORMANT }
+  /api/payment/wallet/reactivate:
+    post:
+      summary: Bản chốt v2.0 §8.5 (MENTEE) Kích hoạt lại ví DORMANT (12 tháng không giao dịch) — tiền nạp được giữ nguyên
+      responses:
+        "204": { description: OK }
+        "403": { description: Ví đang bị đóng băng }
+  /api/payment/wallet/topup-refund/eligibility:
+    get:
+      summary: Bản chốt v2.0 §8.4 (MENTEE) Điều kiện hoàn tiền nạp hiện tại
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefundEligibility" }
+  /api/payment/wallet/topup-refund:
+    get:
+      summary: Yêu cầu hoàn tiền nạp của tôi (50 gần nhất)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TopupRefundRequest" } }
+    post:
+      summary: >
+        Bản chốt v2.0 §8.4 (MENTEE) Hoàn tiền nạp về nguồn thanh toán: chỉ tiền nạp khả dụng (không gồm khuyến mãi / tiền đang tạm
+        giữ), trong 7 ngày kể từ lần nạp gần nhất, tối đa min(tiền nạp khả dụng, tiền nạp còn hoàn được trong 7 ngày), tối đa 2 yêu
+        cầu / tháng. Hợp lệ → xử lý ngay (DONE). Ngoài quy định → 409 (REFUND_WINDOW_CLOSED / REFUND_LIMIT_REACHED /
+        REFUND_AMOUNT_EXCEEDED) trừ khi gửi exceptionReason → tạo yêu cầu ngoại lệ PENDING cho admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number }
+                exceptionReason: { type: string, maxLength: 1000 }
+      responses:
+        "201":
+          description: TopupRefundRequest
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopupRefundRequest" }
+        "409": { description: REFUND_WINDOW_CLOSED / REFUND_LIMIT_REACHED / REFUND_AMOUNT_EXCEEDED }
+        "502": { description: REFUND_FAILED }
+  /api/payment/wallet/admin/topup-refunds:
+    get:
+      summary: Bản chốt v2.0 §8.4 (ADMIN) Hàng chờ yêu cầu hoàn tiền nạp ngoại lệ
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, DONE, REJECTED] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TopupRefundRequest" } }
+  /api/payment/wallet/admin/topup-refunds/{id}/decide:
+    post:
+      summary: Bản chốt v2.0 §8.4 (ADMIN) Duyệt (hoàn ngay, tối đa tiền nạp khả dụng) hoặc từ chối yêu cầu ngoại lệ — bắt buộc lý do
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string, maxLength: 1000 }
+      responses:
+        "200":
+          description: TopupRefundRequest
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopupRefundRequest" }
+        "409": { description: REQUEST_NOT_PENDING / REFUND_AMOUNT_EXCEEDS_CASH }
+  /api/payment/wallet/admin/{userId}/promo:
+    post:
+      summary: Bản chốt v2.0 §8 (ADMIN) Cấp tiền khuyến mãi cho người dùng (lô hết hạn sau 12 tháng)
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, reason]
+              properties:
+                amount: { type: number }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        "201": { description: "{ lotId }" }
+  /internal/wallet/pay:
+    post:
+      summary: >
+        Bản chốt v2.0 §5 (nội bộ — mentoring-service) Tạm giữ học phí của phiên từ ví của mentee ngay sau khi đặt lịch. Giá lấy từ
+        mentoring-service. 402 INSUFFICIENT_FUNDS khi ví thiếu (phiên giữ PENDING).
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, sessionId]
+              properties:
+                userId: { type: string, format: uuid }
+                sessionId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Transaction
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "402": { description: INSUFFICIENT_FUNDS }
+  /internal/wallet/freeze:
+    post:
+      summary: Bản chốt v2.0 §2.1 (nội bộ) Admin khoá / mở khoá tài khoản → đóng băng / mở ví. Idempotent.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, frozen]
+              properties:
+                userId: { type: string, format: uuid }
+                frozen: { type: boolean }
+      responses:
+        "200": { description: "{ userId, frozen }" }
   /api/payment/charge:
     post:
       summary: >
-        FR-6.1 → FR-6.3 Thanh toán 1 phiên PENDING (MENTEE chủ phiên). Số tiền lấy từ
+        FR-6.1 → FR-6.3 [v2.0: mặc định TẮT → 409 USE_WALLET; chỉ bật bằng app.payment.direct-session-payment cho dev] Thanh toán 1 phiên PENDING (MENTEE chủ phiên). Số tiền lấy từ
         mentoring-service; nếu client gửi amount khác giá phiên → AMOUNT_MISMATCH.
         SUCCESS → xử lý referral + báo mentoring-service xác nhận phiên (FR-6.2).
         US-13: phí nền tảng (app.payment.platform-fee-rate, mặc định 15%) chốt vào fee / mentorEarning lúc tạo giao dịch.

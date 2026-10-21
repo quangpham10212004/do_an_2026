@@ -35,10 +35,12 @@ public class SessionScheduler {
     private final ProfileClient profileClient;
     private final TransactionTemplate tx;
     private final Duration paymentHold;
+    private final SessionService sessions;
 
     public SessionScheduler(SessionRepository sessionRepo, NotificationService notifications, AttendanceService attendance,
                             ProfileClient profileClient, TransactionTemplate tx,
-                            @Value("${app.booking.payment-hold}") Duration paymentHold) {
+                            @Value("${app.booking.payment-hold}") Duration paymentHold, SessionService sessions) {
+        this.sessions = sessions;
         this.sessionRepo = sessionRepo;
         this.notifications = notifications;
         this.attendance = attendance;
@@ -82,6 +84,12 @@ public class SessionScheduler {
         }
     }
 
+    /** Bản chốt v2.0 §5 — mentor không xác nhận kịp hạn: huỷ, hoàn 100% khoản tạm giữ, gợi ý mentor tương tự. */
+    @Scheduled(fixedDelay = 60_000, initialDelay = 55_000)
+    public void expireUnconfirmedSessions() {
+        sessions.expireUnconfirmed(OffsetDateTime.now());
+    }
+
     @Scheduled(fixedDelay = 60_000, initialDelay = 40_000)
     @Transactional
     public void expireUnpaidSessions() {
@@ -92,7 +100,7 @@ public class SessionScheduler {
             s.setRefundPercent(0);
             s.setCancelledAt(OffsetDateTime.now());
             notifications.notifyUser(s.getMenteeId(), "SESSION_EXPIRED", "Phiên đã hết hạn",
-                    "Phiên chưa được thanh toán trong " + paymentHold.toMinutes() + " phút nên đã hết hạn và khung giờ được giải phóng.",
+                    "Ví chưa đủ tiền để tạm giữ học phí trong " + paymentHold.toMinutes() + " phút nên phiên đã hết hạn và khung giờ được giải phóng.",
                     "/mentoring/sessions");
         }
     }

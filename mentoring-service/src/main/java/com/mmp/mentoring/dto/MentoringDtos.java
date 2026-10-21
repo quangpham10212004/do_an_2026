@@ -76,6 +76,10 @@ public final class MentoringDtos {
     public record CancelSessionInput(@Size(max = 300) String reason) {
     }
 
+    /** Bản chốt v2.0 §5 — mentor từ chối buổi đang chờ xác nhận (hoàn 100% cho mentee). */
+    public record DeclineSessionInput(@Size(max = 300) String reason) {
+    }
+
     /** US-04 — mentor đổi link phòng họp riêng cho 1 phiên (https Google Meet / Zoom / Teams). */
     public record MeetingLinkInput(@NotBlank @Size(max = 500) String meetingLink) {
     }
@@ -90,7 +94,9 @@ public final class MentoringDtos {
                               boolean reviewed, Integer reviewRating, OffsetDateTime createdAt,
                               DisputeBrief dispute,
                               /* US-37 (PRD-PROF-6) — múi giờ hai bên, frontend hiện giờ địa phương của bên kia khi rê chuột. */
-                              String mentorTimezone, String menteeTimezone) {
+                              String mentorTimezone, String menteeTimezone,
+                              /* Bản chốt v2.0 — REGULAR | TRIAL; hạn mentor xác nhận (chỉ AWAITING_MENTOR). */
+                              String kind, OffsetDateTime confirmDeadline) {
     }
 
     /** US-32 — tranh chấp gần nhất của phiên (null nếu chưa có). */

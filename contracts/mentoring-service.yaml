@@ -24,6 +24,8 @@ components:
         menteeName: { type: string }
         mentorId: { type: string, format: uuid }
         mentorName: { type: string }
+        kind: { type: string, enum: [REGULAR, TRIAL], description: "Bản chốt v2.0 — REGULAR (60 phút) | TRIAL (15 phút, 30.000đ)" }
+        confirmDeadline: { type: string, format: date-time, nullable: true, description: "Hạn mentor xác nhận (chỉ AWAITING_MENTOR)" }
         message: { type: string, nullable: true }
         goal: { type: string, description: "US-14 — mục tiêu (50–1000 ký tự với yêu cầu mới; yêu cầu cũ được migrate từ message)" }
         sessionType: { $ref: "#/components/schemas/SessionType" }
@@ -177,7 +179,11 @@ components:
         createdAt: { type: string, format: date-time }
     SessionStatus:
       type: string
-      enum: [PENDING, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED]
+      enum: [PENDING, AWAITING_MENTOR, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED]
+      description: >
+        Bản chốt v2.0: PENDING = giữ khung giờ, ví chưa đủ tiền (tối đa app.booking.payment-hold = 15 phút → EXPIRED);
+        AWAITING_MENTOR = học phí đã tạm giữ từ ví, chờ mentor xác nhận trong confirmDeadline (24 giờ hoặc 1 giờ trước giờ bắt đầu,
+        lấy mốc sớm hơn; quá hạn → EXPIRED + hoàn 100%); CONFIRMED sau khi mentor xác nhận.
       description: >
         PENDING = chờ thanh toán → CONFIRMED (đã thanh toán / miễn phí) | EXPIRED (quá 30 phút chưa thanh toán — trước
         US-12 là CANCELLED + PAYMENT_TIMEOUT, đã migrate); PENDING/CONFIRMED → CANCELLED (huỷ trước giờ bắt đầu).
@@ -449,13 +455,17 @@ paths:
       summary: >
         FR-5.4 / PRD-SES-1 (MENTEE) Đặt lịch — yêu cầu đã ACCEPTED; trạng thái mentor không phải
         ON_LEAVE (tới hết onLeaveUntil) / SUSPENDED (PAUSED vẫn cho mentee đã được nhận); đặt trước
-        ≥ max(1 giờ, minNoticeHours của mentor — mặc định 12) và trong 60 ngày; nằm trọn trong lịch rảnh
+        ≥ max(3 giờ, minNoticeHours của mentor) và trong 60 ngày; nằm trọn trong lịch rảnh
         hằng tuần (giờ Asia/Ho_Chi_Minh) và không rơi vào ngoại lệ (nghỉ cả ngày / bận một khoảng giờ);
         không trùng phiên PENDING/CONFIRMED của mentor tính cả bufferMinutes trước và sau (mặc định 15 —
         phiên 10:00–11:00 chặn tới 11:15) hoặc của mentee. Kiểm tra trùng + tạo phiên chạy dưới advisory
         lock theo mentor. Dữ kiện mentor lấy từ profile-service GET /internal/mentor/{id} (status,
         onLeaveUntil, bufferMinutes, minNoticeHours, exceptions — thiếu thì dùng mặc định).
-        Phiên có phí → PENDING (chờ thanh toán, quá 30 phút → EXPIRED); phiên miễn phí → CONFIRMED.
+        Bản chốt v2.0 §4–5: buổi thường cố định 60 phút (durationMinutes khác 60 → 400 INVALID_DURATION), giá = giá mentor đang áp dụng
+        (mentor chưa có giá → 409 PRICE_NOT_SET), không còn buổi miễn phí. Sau khi tạo phiên (PENDING, giữ khung giờ),
+        mentoring-service nhờ payment-service tạm giữ học phí từ ví của mentee: đủ tiền → phiên chuyển AWAITING_MENTOR (chờ mentor
+        xác nhận trong confirmDeadline); thiếu tiền → phiên giữ PENDING tối đa 15 phút để mentee nạp thêm rồi
+        POST /api/payment/wallet/pay, quá hạn → EXPIRED.
       requestBody:
         required: true
         content:
@@ -487,12 +497,40 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Session }
+  /api/mentoring/sessions/{id}/confirm:
+    post:
+      summary: >
+        Bản chốt v2.0 §5 (MENTOR của phiên / ADMIN) Xác nhận buổi AWAITING_MENTOR → CONFIRMED (học phí đã được tạm giữ từ ví
+        của mentee). Quá confirmDeadline → 409 CONFIRM_WINDOW_CLOSED; buổi không ở AWAITING_MENTOR → 409 NOT_AWAITING_MENTOR.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Session }
+        "403": { description: Không phải mentor của buổi }
+        "409": { description: NOT_AWAITING_MENTOR / CONFIRM_WINDOW_CLOSED }
+  /api/mentoring/sessions/{id}/decline:
+    post:
+      summary: >
+        Bản chốt v2.0 §5 (MENTOR của phiên / ADMIN) Từ chối buổi AWAITING_MENTOR: hoàn 100% khoản tạm giữ về ví mentee, buổi
+        CANCELLED (cancelledBy = MENTOR), KHÔNG tính lỗi vi phạm; mentee nhận gợi ý mentor tương tự.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 300 }
+      responses:
+        "200": { description: Session }
+        "409": { description: NOT_AWAITING_MENTOR }
+        "502": { description: REFUND_FAILED }
   /api/mentoring/sessions/{id}/cancel-preview:
     get:
       summary: >
-        US-01 (người tham gia / admin) Xem trước kết quả nếu huỷ phiên ngay bây giờ theo chính sách:
-        mentee huỷ ≥ 72 giờ trước → hoàn 100%, < 72 giờ → 0%; mentor huỷ → hoàn 100% + 20 điểm cho mentee +
-        1 strike; admin/hệ thống → 100%. Phiên chưa thanh toán / miễn phí → 0đ. Ngưỡng cấu hình app.cancellation.*.
+        Bản chốt v2.0 §7 (người tham gia / admin) Xem trước kết quả nếu huỷ phiên ngay bây giờ theo chính sách:
+        mentee huỷ trước khi mentor xác nhận → hoàn 100%; sau đó ≥ 24 giờ trước → 100%, từ 4 đến dưới 24 giờ → 50%, dưới 4 giờ → 0%
+        (buổi trải nghiệm: ≥ 2 giờ → 100%, muộn hơn → 0%); mentor huỷ → hoàn 100% + 1 strike; admin/hệ thống → 100%.
+        Phiên chưa tạm giữ học phí → 0đ. Ngưỡng cấu hình app.cancellation.*. rewardPoints / lateFreeCancel luôn 0 / false (giữ để tương thích).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200":
@@ -506,8 +544,8 @@ paths:
                   refundPercent: { type: integer }
                   refundAmount: { type: number, description: "VND, 0 nếu chưa thanh toán" }
                   policyText: { type: string }
-                  rewardPoints: { type: integer, description: "Điểm xin lỗi mentee được cộng (mentor huỷ)" }
-                  lateFreeCancel: { type: boolean, description: "Huỷ phiên miễn phí < 2 giờ trước giờ bắt đầu → ghi nhận huỷ muộn" }
+                  rewardPoints: { type: integer, description: "Luôn 0 từ v2.0 (bỏ điểm xin lỗi)" }
+                  lateFreeCancel: { type: boolean, description: "Luôn false từ v2.0 (không còn buổi miễn phí)" }
         "409": { description: SESSION_NOT_CANCELLABLE / SESSION_ALREADY_STARTED }
   # US-02: mentor huỷ phiên → bảng mentor_strikes; strike thứ 3 trong 30 ngày (app.strikes.*) → gọi
   # profile-service PUT /internal/mentor/{id}/status {"status":"PAUSED","reason":"STRIKES"} (best-effort,
@@ -516,10 +554,8 @@ paths:
     post:
       summary: >
         Huỷ phiên chưa bắt đầu theo chính sách US-01 (xem cancel-preview). Phiên đã thanh toán và được hoàn > 0%
-        → gọi payment-service hoàn tiền TRƯỚC (lỗi → 502 REFUND_FAILED, phiên không bị huỷ). Lưu cancelledBy,
-        cancelReason, refundPercent. Mentor huỷ → điểm xin lỗi (POST /internal/rewards qua outbox) + strike.
-        Mentee huỷ phiên miễn phí < 2 giờ trước → ghi nhận huỷ muộn; 3 lần trong 30 ngày → đặt phiên miễn phí
-        bị chặn 14 ngày (409 FREE_BOOKING_BLOCKED ở POST /api/mentoring/sessions).
+        → gọi payment-service hoàn tiền về ví TRƯỚC (lỗi → 502 REFUND_FAILED, phiên không bị huỷ). Lưu cancelledBy,
+        cancelReason, refundPercent (100 / 50 / 0). Mentor huỷ → strike (không còn điểm xin lỗi).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         content:

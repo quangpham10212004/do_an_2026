@@ -42,7 +42,7 @@ class SessionSchedulerTest {
         when(tx.execute(any())).thenAnswer(inv -> ((TransactionCallback<Object>) inv.getArgument(0)).doInTransaction(null));
         when(profileClient.timezone(any())).thenReturn(ZoneId.of("Asia/Ho_Chi_Minh"));
         when(profileClient.displayNames(any())).thenReturn(Map.of());
-        scheduler = new SessionScheduler(repo, notifications, attendance, profileClient, tx, Duration.ofMinutes(30));
+        scheduler = new SessionScheduler(repo, notifications, attendance, profileClient, tx, Duration.ofMinutes(15), mock(SessionService.class));
     }
 
     private static MentoringSession session(MentoringSession.Status status, OffsetDateTime start) {
@@ -110,7 +110,7 @@ class SessionSchedulerTest {
 
         ArgumentCaptor<OffsetDateTime> before = ArgumentCaptor.forClass(OffsetDateTime.class);
         verify(repo).findExpiredPending(before.capture());
-        assertThat(before.getValue()).isCloseTo(OffsetDateTime.now().minusMinutes(30), within(5, java.time.temporal.ChronoUnit.SECONDS));
+        assertThat(before.getValue()).isCloseTo(OffsetDateTime.now().minusMinutes(15), within(5, java.time.temporal.ChronoUnit.SECONDS));
         assertThat(pending.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
         assertThat(pending.getCancelReason()).isEqualTo("PAYMENT_TIMEOUT");
         verify(notifications).notifyUser(eq(pending.getMenteeId()), eq("SESSION_EXPIRED"), anyString(), anyString(), anyString());
