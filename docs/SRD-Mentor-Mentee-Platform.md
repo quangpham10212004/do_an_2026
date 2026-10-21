@@ -202,29 +202,29 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-5.1 | Xem danh sách mentor đề xuất | Kèm điểm phù hợp và lý do | ✅ |
 | FR-5.2 | Gửi yêu cầu mentoring | Tới mentor đã được xác thực, không trùng yêu cầu đang hoạt động | ✅ |
 | FR-5.3 | Mentor phản hồi yêu cầu | Chấp nhận (khi còn sức chứa) / từ chối kèm lời nhắn | ✅ |
-| FR-5.4 | Đặt lịch phiên mentoring | Trong lịch rảnh của mentor, không trùng lịch, đặt trước ≥ 3 giờ, giá lấy theo giá mentor đang đặt (buổi 60 phút); học phí **tạm giữ từ ví** (D9, D13); giao diện chỉ cho chọn khung giờ còn trống | ✅ lõi · ⚒ trả từ ví |
-| FR-5.5 | Nhắc lịch/thông báo | Thông báo trong ứng dụng + email; nhắc lịch trước **24 giờ và 15 phút**, nhắc lại khi dời/huỷ lịch | ✅ · ⚒ mốc 15 phút |
+| FR-5.4 | Đặt lịch phiên mentoring | Trong lịch rảnh của mentor, không trùng lịch, đặt trước ≥ 3 giờ, giá lấy theo giá mentor đang đặt (buổi 60 phút); học phí **tạm giữ từ ví** (D9, D13); giao diện chỉ cho chọn khung giờ còn trống | ✅ |
+| FR-5.5 | Nhắc lịch/thông báo | Thông báo trong ứng dụng + email; nhắc lịch trước **24 giờ và 15 phút**, nhắc lại khi dời/huỷ lịch | ✅ |
 | FR-5.6 | Đánh giá sau phiên | Rating 1–5 + nhận xét, 1 lần/phiên, cập nhật rating mentor | ✅ |
 | FR-5.7 | Lịch sử mentoring | Danh sách phiên theo trạng thái | ✅ |
 | FR-5.8 | Buổi trải nghiệm | 15 phút, phí cố định 30.000đ, mỗi cặp 1 lần, trả từ ví, hoa hồng như buổi thường, không chấm sao (D20) | ⚒ |
 | FR-5.9 | Phòng học trực tuyến | Phòng video + chat trong hệ thống (Jitsi, JWT); chỉ người tham gia hợp lệ vào được, rớt mạng vào lại được | ⚒ |
 | FR-5.10 | Tham dự & vắng mặt | Nhật ký vào phòng; chờ 10 phút (trải nghiệm 5 phút) rồi báo vắng; tự hoàn thành sau 24 giờ; hai bên báo ngược nhau → tranh chấp (D18) | ⚒ |
-| FR-5.11 | Chính sách huỷ | Ba bậc theo thời điểm (D19); mentor huỷ/vắng hoàn 100% + lỗi vi phạm, 3 lỗi/30 ngày → PAUSED | ✅ lõi · ⚒ bậc 50% |
+| FR-5.11 | Chính sách huỷ | Ba bậc theo thời điểm (D19); mentor huỷ/vắng hoàn 100% + lỗi vi phạm, 3 lỗi/30 ngày → PAUSED; mentee huỷ trước khi mentor xác nhận → 100% | ✅ |
 | FR-5.12 | Chặn liên hệ ngoài nền tảng | Tin nhắn luôn che số điện thoại, email, mạng xã hội, đường dẫn ngoài; 3 vi phạm/30 ngày báo admin | ✅ một phần · ⚒ che vô điều kiện |
 
 ### 3.6 Module: Ví, thanh toán & Referral (payment-service)
 
 | ID | Yêu cầu | Mô tả | Trạng thái |
 |---|---|---|---|
-| FR-6.1 | Nạp ví | Qua cổng sandbox/MoMo test/VNPay sandbox; 50.000đ–5.000.000đ/lần, trần tiền nạp khả dụng 20.000.000đ; giao dịch lỗi/trùng IPN không đổi số dư (D13) | ✅ cổng · ⚒ nạp ví |
-| FR-6.2 | Tạm giữ & xác nhận | Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước, D14); phiên CONFIRMED khi mentor xác nhận; có job đối soát | ✅ lõi · ⚒ ví |
-| FR-6.3 | Trạng thái & hoàn tiền buổi học | Hoàn theo chính sách huỷ (D19) về đúng nguồn đã trừ; mỗi lần hoàn là một dòng, tổng ≤ số đã trả | ✅ lõi · ⚒ theo nguồn |
+| FR-6.1 | Nạp ví | Qua cổng sandbox/MoMo test/VNPay sandbox; 50.000đ–5.000.000đ/lần, trần tiền nạp khả dụng 20.000.000đ; giao dịch lỗi/trùng IPN không đổi số dư (D13) | ✅ |
+| FR-6.2 | Tạm giữ & xác nhận | Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước, D14); phiên CONFIRMED khi mentor xác nhận; có job đối soát | ✅ |
+| FR-6.3 | Trạng thái & hoàn tiền buổi học | Hoàn theo chính sách huỷ (D19) về đúng nguồn đã trừ; mỗi lần hoàn là một dòng, tổng ≤ số đã trả | ✅ |
 | FR-6.4 | Mã giới thiệu | Mã riêng cho từng cặp (người giới thiệu, mentor) — chỉ cấp khi đã hoàn thành ≥ 1 buổi thường đã trả tiền với mentor đó | ⚒ (hiện: 1 mã/người) |
 | FR-6.5 | Ghi nhận referral | Người mới dùng mã ở yêu cầu đặt buổi thường đầu tiên với mentor đó; không áp dụng cho tự giới thiệu, người đã học với mentor, mã sai | ⚒ |
 | FR-6.6 | Thưởng referral | 30.000đ **tiền khuyến mãi**, sau 7 ngày kể từ khi buổi hoàn thành mà không bị hoàn tiền; tối đa 5 lượt/tháng; bất thường chuyển admin (D10) | ⚒ (hiện: 100 điểm) |
-| FR-6.7 | Hoàn tiền nạp | Theo D16 (7 ngày, min(...), tối đa 2 yêu cầu/tháng); admin xử lý ngoại lệ có lý do | ⚒ |
-| FR-6.8 | Hạn dùng số dư | Khuyến mãi hết hạn 12 tháng; ví "ngủ" sau 12 tháng không giao dịch; nhắc 30 và 7 ngày (D15) | ⚒ |
-| FR-6.9 | Hoa hồng & thu nhập mentor | 15%; chờ 72 giờ; khiếu nại giữ thu nhập; yêu cầu nhận tiền ≥ 200.000đ, cần tài khoản ngân hàng, admin xác nhận (D20) | ✅ lõi · ⚒ mốc 72 giờ |
+| FR-6.7 | Hoàn tiền nạp | Theo D16 (7 ngày, min(...), tối đa 2 yêu cầu/tháng); admin xử lý ngoại lệ có lý do | ✅ |
+| FR-6.8 | Hạn dùng số dư | Khuyến mãi hết hạn 12 tháng; ví "ngủ" sau 12 tháng không giao dịch; nhắc 30 và 7 ngày (D15) | ✅ |
+| FR-6.9 | Hoa hồng & thu nhập mentor | 15%; chờ 72 giờ; khiếu nại giữ thu nhập; yêu cầu nhận tiền ≥ 200.000đ, cần tài khoản ngân hàng, admin xác nhận (D20) | ✅ |
 | FR-6.10 | Đóng băng ví | Admin khoá tài khoản → huỷ buổi chưa diễn ra, hoàn 100%, đóng băng ví đến khi mở khoá | ⚒ |
 
 ### 3.7 Module: AI Interview (ai-service `app/interview`)
@@ -236,7 +236,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-7.3 | Giới hạn số lượt | 5 lượt (quyết định D2) | ✅ |
 | FR-7.4 | Tổng hợp đánh giá | Điểm 0–100, tóm tắt, điểm mạnh, điểm yếu, khuyến nghị APPROVE/REJECT/NEEDS_REVIEW | ✅ |
 | FR-7.5 | Admin review | Admin đọc toàn bộ hội thoại, duyệt hoặc từ chối kèm nhận xét; mentor bị từ chối được phỏng vấn lại | ✅ |
-| FR-7.6 | Đề xuất cấp độ | Từ điểm 0–100: <60 không đạt, 60–74 Junior, 75–87 Senior, ≥88 Expert; admin nâng/hạ một bậc hoặc từ chối, bắt buộc ghi lý do; gián đoạn tiếp tục trong 24 giờ; làm lại sau 7 ngày, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày | ⚒ (hiện: duyệt/từ chối, tiếp tục 72 giờ) |
+| FR-7.6 | Đề xuất cấp độ | Từ điểm 0–100: <60 không đạt, 60–74 Junior, 75–87 Senior, ≥88 Expert; admin chọn cấp khác đề xuất hoặc từ chối, bắt buộc ghi lý do; gián đoạn tiếp tục trong 24 giờ; làm lại sau 7 ngày, tối đa 3 lượt | ✅ · ⚒ xin nâng cấp sau 90 ngày |
 
 ### 3.8 Module: CV Parsing + Chatbot Enrichment (ai-service `app/cv`, `app/enrichment`)
 
@@ -255,11 +255,11 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 
 | ID | Yêu cầu | Mô tả | Trạng thái |
 |---|---|---|---|
-| FR-9.1 | Cấp độ mentor | `tier` ∈ {JUNIOR, SENIOR, EXPERT} gán lúc admin duyệt; số năm kinh nghiệm chỉ để hiển thị | ⚒ |
-| FR-9.2 | Khung giá | JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k mỗi buổi 60 phút (cấu hình được; là giả định, khảo sát trước khi chốt) | ⚒ |
-| FR-9.3 | Chọn giá | Mentor chọn giá trong khung, bước 10.000đ, đổi lúc nào cũng được nhưng chỉ áp cho yêu cầu đặt mới | ⚒ |
-| FR-9.4 | Đổi cấp độ | Giá nằm ngoài khung mới thì tự kẹp về biên gần nhất và báo mentor; buổi đã đặt giữ giá | ⚒ |
-| FR-9.5 | Đổi mentor | Huỷ buổi cũ theo chính sách huỷ, đặt buổi mới theo giá mentor mới, không bù chênh lệch | ⚒ |
+| FR-9.1 | Cấp độ mentor | `tier` ∈ {JUNIOR, SENIOR, EXPERT} gán lúc admin duyệt; số năm kinh nghiệm chỉ để hiển thị | ✅ |
+| FR-9.2 | Khung giá | JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k mỗi buổi 60 phút (cấu hình được; là giả định, khảo sát trước khi chốt) | ✅ |
+| FR-9.3 | Chọn giá | Mentor chọn giá trong khung, bước 10.000đ, đổi lúc nào cũng được nhưng chỉ áp cho yêu cầu đặt mới | ✅ |
+| FR-9.4 | Đổi cấp độ | Giá nằm ngoài khung mới thì tự kẹp về biên gần nhất và báo mentor; buổi đã đặt giữ giá | ✅ |
+| FR-9.5 | Đổi mentor | Huỷ buổi cũ theo chính sách huỷ, đặt buổi mới theo giá mentor mới, không bù chênh lệch | ✅ |
 
 Bộ lọc "miễn phí" trong đề xuất mentor bị gỡ (không còn buổi miễn phí).
 
@@ -347,13 +347,13 @@ Mỗi tiêu chí được kiểm chứng tự động bằng `scripts/e2e_accept
 
 **Tiêu chí bổ sung v2.0 (chưa đạt — ⚒):**
 
-- [ ] Mentee nạp ví qua cổng thử nghiệm; giao dịch lỗi hoặc IPN trùng không đổi số dư
-- [ ] Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước); thiếu tiền thì giữ chỗ 15 phút rồi nhả khung giờ
+- [x] Mentee nạp ví qua cổng thử nghiệm; giao dịch lỗi hoặc IPN trùng không đổi số dư
+- [x] Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước); thiếu tiền thì giữ chỗ 15 phút rồi nhả khung giờ
 - [ ] Buổi hoàn thành: chia học phí mentor/nền tảng (15%); thu nhập khả dụng sau 72 giờ; khiếu nại giữ thu nhập
-- [ ] Huỷ buổi theo 3 bậc (≥24h 100%, 4–24h 50%, <4h 0%); mentor huỷ/vắng hoàn 100% + lỗi vi phạm
-- [ ] Hoàn tiền nạp về nguồn trong 7 ngày đúng công thức min(...); không hoàn khuyến mãi hay tiền tạm giữ
-- [ ] Số dư: khuyến mãi hết hạn 12 tháng, ví "ngủ" sau 12 tháng, thông báo nhắc 30/7 ngày
-- [ ] Admin gán cấp Junior/Senior/Expert khi duyệt; mentor chỉ chọn giá trong khung; buổi đã đặt giữ giá
+- [x] Huỷ buổi theo 3 bậc (≥24h 100%, 4–24h 50%, <4h 0%); mentor huỷ/vắng hoàn 100% + lỗi vi phạm
+- [x] Hoàn tiền nạp về nguồn trong 7 ngày đúng công thức min(...); không hoàn khuyến mãi hay tiền tạm giữ
+- [x] Số dư: khuyến mãi hết hạn 12 tháng, ví "ngủ" sau 12 tháng, thông báo nhắc 30/7 ngày
+- [x] Admin gán cấp Junior/Senior/Expert khi duyệt; mentor chỉ chọn giá trong khung; buổi đã đặt giữ giá
 - [ ] Buổi trải nghiệm 15 phút 30.000đ, mỗi cặp một lần
 - [ ] Phòng học Jitsi: chỉ người tham gia vào được; nhật ký vào phòng quyết định vắng mặt; tự hoàn thành sau 24 giờ
 - [ ] Referral theo cặp mentor: thưởng 30.000đ khuyến mãi sau 7 ngày, tối đa 5 lượt/tháng; tự giới thiệu/đã học với mentor bị từ chối

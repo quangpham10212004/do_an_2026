@@ -52,16 +52,28 @@ app:
     auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}     # US-30 — POST /internal/audit (bắn-rồi-quên)
   timezone: Asia/Ho_Chi_Minh
   booking:
-    min-lead-time: PT1H           # phải đặt trước giờ bắt đầu ít nhất 1 giờ
+    min-lead-time: ${BOOKING_MIN_LEAD_TIME:PT3H}   # phải đặt trước giờ bắt đầu ít nhất 3 giờ (bản chốt v2.0 §5)
     max-advance: P60D             # chỉ đặt lịch trong vòng 60 ngày tới
-    payment-hold: PT30M           # phiên chưa thanh toán sau 30 phút sẽ tự huỷ để giải phóng khung giờ
-  cancellation:                    # US-01 — chính sách huỷ phiên
-    full-refund-before: PT72H       # mentee huỷ trước ≥ 72 giờ → hoàn 100%, muộn hơn → 0%
-    free-late-window: PT2H          # phiên miễn phí huỷ < 2 giờ trước giờ bắt đầu = huỷ muộn
-    mentor-apology-points: 20       # mentor huỷ → mentee được cộng điểm thưởng (reward_ledger MENTOR_CANCEL_APOLOGY)
-    free-block-threshold: 3         # 3 lần huỷ muộn ...
-    free-block-window: P30D         # ... trong 30 ngày ...
-    free-block-duration: P14D       # ... → chặn đặt phiên miễn phí 14 ngày (409 FREE_BOOKING_BLOCKED)
+    confirm-within: ${BOOKING_CONFIRM_WITHIN:PT24H}          # mentor xác nhận buổi trong 24 giờ kể từ lúc học phí được tạm giữ ...
+    confirm-before-start: ${BOOKING_CONFIRM_BEFORE_START:PT1H}   # ... hoặc trước giờ bắt đầu 1 giờ (lấy mốc sớm hơn); quá hạn → huỷ + hoàn 100%
+    payment-hold: ${BOOKING_PAYMENT_HOLD:PT15M}   # phiên chưa thanh toán / ví thiếu tiền sau 15 phút tự huỷ để giải phóng khung giờ
+  cancellation:                    # Bản chốt v2.0 §7 — chính sách huỷ buổi (mentee): ≥ 24h hoàn 100%, 4–24h hoàn 50%, < 4h hoàn 0%
+    full-refund-before: ${CANCEL_FULL_REFUND_BEFORE:PT24H}
+    half-refund-before: ${CANCEL_HALF_REFUND_BEFORE:PT4H}
+    trial-full-refund-before: ${CANCEL_TRIAL_FULL_REFUND_BEFORE:PT2H}   # buổi trải nghiệm: ≥ 2h hoàn 100%, muộn hơn 0%
+  room:                            # Bản chốt v2.0 §6 — phòng học Jitsi Meet tự host (docker compose --profile jitsi up)
+    domain: ${JITSI_PUBLIC_DOMAIN:localhost:8443}        # domain trình duyệt dùng để tải external_api.js / vào phòng
+    xmpp-domain: ${JITSI_XMPP_DOMAIN:meet.jitsi}          # claim `sub` của JWT (XMPP_DOMAIN của Jitsi)
+    app-id: ${JITSI_APP_ID:mentorhub}                     # claim `iss` (JWT_APP_ID)
+    jwt-secret: ${JITSI_JWT_SECRET:dev-only-jitsi-secret-change-me-0123456789abcdef}   # JWT_APP_SECRET — bắt buộc đổi khi triển khai
+    opens-before: ${ROOM_OPENS_BEFORE:PT10M}              # phòng mở 10 phút trước giờ bắt đầu ...
+    closes-after: ${ROOM_CLOSES_AFTER:PT30M}              # ... đóng 30 phút sau giờ kết thúc
+    grace: ${ROOM_GRACE:PT10M}                            # chờ bên vắng mặt 10 phút (buổi trải nghiệm: trial-grace)
+    trial-grace: ${ROOM_TRIAL_GRACE:PT5M}
+    require-join-log: ${ROOM_REQUIRE_JOIN_LOG:true}       # không ai vào phòng → cả hai vắng (hoàn 100%, không lỗi vi phạm)
+  trial:                           # Bản chốt v2.0 §10 — buổi trải nghiệm 15 phút
+    fee: ${TRIAL_FEE:30000}                 # phí cố định toàn nền tảng
+    max-open-per-mentee: ${TRIAL_MAX_OPEN:3}   # tối đa 3 buổi chưa diễn ra
   strikes:                         # US-02 — strike thứ 3 trong 30 ngày → PAUSED (profile-service) + báo admin
     threshold: 3
     window: P30D
@@ -73,16 +85,16 @@ app:
     expire-interval: PT1M
   requests:                        # US-14 / US-15 — yêu cầu mentoring
     max-pending: 3                  # mỗi mentee tối đa 3 yêu cầu PENDING (409 TOO_MANY_PENDING_REQUESTS)
-    expire-after: PT72H             # US-15 — PENDING không được phản hồi sau 72 giờ → EXPIRED
+    expire-after: ${REQUEST_EXPIRE_AFTER:PT24H}   # PENDING không được mentor phản hồi sau 24 giờ → EXPIRED (bản chốt v2.0 §5)
     expire-interval: PT5M           # chu kỳ job hết hạn yêu cầu
     inactivity-warn-after: P30D     # US-31 — ACCEPTED không có phiên 30 ngày → nhắc "Bạn có muốn tiếp tục?"
     inactivity-end-after: P7D       # ... thêm 7 ngày vẫn không có phiên mới → ENDED (INACTIVE, SYSTEM)
     inactivity-interval: PT1H       # chu kỳ job không hoạt động
   attendance:                      # US-12 — xác nhận tham dự (thay tự hoàn thành sau 2 giờ)
-    window: PT48H                   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 48h); hết hạn → job kết luận
+    window: ${ATTENDANCE_WINDOW:PT24H}   # hai bên trả lời trong [giờ kết thúc, giờ kết thúc + 24h); hết hạn → tự hoàn thành (bản chốt v2.0 §6)
     interval: PT1M                  # job CONFIRMED → AWAITING_ATTENDANCE và kết luận phiên quá hạn
   disputes:                        # US-32 — tranh chấp
-    open-window: P7D                # mở trong 7 ngày sau giờ kết thúc phiên (409 DISPUTE_WINDOW_CLOSED)
+    open-window: ${DISPUTE_OPEN_WINDOW:P4D}   # = 24h tự hoàn thành + 72h thu nhập chờ (bản chốt v2.0 §9) (409 DISPUTE_WINDOW_CLOSED)
     first-response-sla: PT48H       # admin phản hồi đầu tiên trong 48 giờ (cờ overdue ở danh sách admin)
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công

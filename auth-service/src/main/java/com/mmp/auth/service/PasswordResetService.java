@@ -36,7 +36,7 @@ public class PasswordResetService {
     private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
 
     static final int MAX_REQUESTS_PER_HOUR = 3;
-    static final Duration TOKEN_TTL = Duration.ofMinutes(30);
+    static final Duration TOKEN_TTL = Duration.ofMinutes(15);   // bản chốt v2.0 §2
     static final String RATE_KEY_PREFIX = "auth:pwd-reset:";
 
     private final UserRepository userRepository;

@@ -46,6 +46,7 @@ public class ProfileService {
     private final Clock clock;
     /** US-37 — null trong các unit test cũ (coi như không ai có ảnh). */
     private final ProfileAvatarRepository avatarRepo;
+    private final PricingTiers pricing = PricingTiers.fromEnv();
 
     /**
      * Không thể kiểm tra trùng với phiên CONFIRMED: dữ liệu phiên thuộc mentoring-service và hiện chưa
@@ -119,7 +120,11 @@ public class ProfileService {
             p.setYearsExperience(Optional.ofNullable(in.yearsExperience()).orElse(p.getYearsExperience()));
             p.setCvFileUrl(in.cvFileUrl());
             p.setPortfolioLinks(normalizeList(in.portfolioLinks()));
-            p.setHourlyRate(Optional.ofNullable(in.hourlyRate()).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO)));
+            BigDecimal rate = Optional.ofNullable(in.hourlyRate()).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO));
+            if (p.getTier() != null && rate.compareTo(p.getHourlyRate()) != 0) {
+                requireRateInTier(p.getTier(), rate);
+            }
+            p.setHourlyRate(rate);
             p.setCapacity(Optional.ofNullable(in.capacity()).orElse(p.getCapacity()));
             if (in.headline() != null) {
                 p.setHeadline(blankToNull(in.headline().strip().replaceAll("\\s+", " ")));
@@ -285,8 +290,73 @@ public class ProfileService {
     }
 
     public MentorProfileResponse updateVerification(UUID mentorId, String status) {
-        tx.executeWithoutResult(s -> findMentor(mentorId).setVerificationStatus(MentorProfile.VerificationStatus.valueOf(status)));
+        return updateVerification(mentorId, status, null);
+    }
+
+    /**
+     * Bản chốt v2.0 §3 — khi APPROVED gán cấp độ: dùng {@code tier} do admin chọn; thiếu thì giữ cấp đang có, chưa có thì suy ra
+     * từ mức giá hiện tại (tương thích bên gọi cũ). Giá bị kẹp về khung của cấp.
+     */
+    public MentorProfileResponse updateVerification(UUID mentorId, String status, String tier) {
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            p.setVerificationStatus(MentorProfile.VerificationStatus.valueOf(status));
+            if (p.getVerificationStatus() == MentorProfile.VerificationStatus.APPROVED) {
+                String t = tier != null ? tier : p.getTier() != null ? p.getTier() : pricing.tierForRate(p.getHourlyRate()).name();
+                applyTier(p, t);
+            }
+        });
         return getMentor(mentorId);
+    }
+
+    /** Đổi cấp (xin nâng cấp được duyệt, hoặc admin chỉnh); giá bị kẹp về khung mới, buổi đã đặt không đổi giá. */
+    public MentorProfileResponse changeTier(UUID mentorId, String tier) {
+        tx.executeWithoutResult(s -> applyTier(findMentor(mentorId), tier));
+        return getMentor(mentorId);
+    }
+
+    private void applyTier(MentorProfile p, String tier) {
+        PricingTiers.Tier t = PricingTiers.Tier.valueOf(tier);
+        BigDecimal clamped = pricing.clamp(t, p.getHourlyRate());
+        // Dữ liệu cũ có thể nằm sẵn trong khung nhưng lệch bước: chỉ đổi giá khi thật sự ngoài khung hoặc đổi cấp.
+        if (!tier.equals(p.getTier()) || pricing.violation(t, p.getHourlyRate()).isPresent()) {
+            p.setHourlyRate(clamped);
+        }
+        if (!tier.equals(p.getTier())) {
+            p.assignTier(tier, OffsetDateTime.now(clock));
+        }
+    }
+
+    /** Bản chốt v2.0 §10 — mentor bật / tắt nhận buổi trải nghiệm. */
+    public MentorProfileResponse setTrialEnabled(UUID mentorId, boolean enabled) {
+        tx.executeWithoutResult(s -> findMentor(mentorId).setTrialEnabled(enabled));
+        return getMentor(mentorId);
+    }
+
+    /** Mentor tự chọn giá trong khung của cấp (chỉ áp cho yêu cầu đặt mới). */
+    public MentorProfileResponse updateRate(UUID mentorId, BigDecimal rate) {
+        tx.executeWithoutResult(s -> {
+            MentorProfile p = findMentor(mentorId);
+            if (p.getTier() == null) {
+                throw new ApiException(org.springframework.http.HttpStatus.CONFLICT, "TIER_NOT_ASSIGNED",
+                        "Chưa được gán cấp độ — hoàn tất phỏng vấn và chờ admin duyệt trước khi chọn giá");
+            }
+            requireRateInTier(p.getTier(), rate);
+            p.setHourlyRate(rate);
+        });
+        matchingIndexClient.reindexAsync(ROLE_MENTOR, mentorId);
+        return getMentor(mentorId);
+    }
+
+    private void requireRateInTier(String tier, BigDecimal rate) {
+        pricing.violation(PricingTiers.Tier.valueOf(tier), rate).ifPresent(msg -> {
+            throw ApiException.badRequest("RATE_OUT_OF_TIER", msg);
+        });
+    }
+
+    public PricingTiersResponse pricingTiers() {
+        return new PricingTiersResponse(pricing.step(), pricing.bands().stream()
+                .map(b -> new TierBand(b.tier().name(), b.min(), b.max())).toList());
     }
 
     public void updateRating(UUID mentorId, float rating, int ratingCount) {

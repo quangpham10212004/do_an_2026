@@ -68,10 +68,11 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
 | GET | `/api/profile/pricing-tiers` | Auth | `{tiers:[{tier, min, max, step}]}` | 9.2 |
-| PUT | `/api/profile/mentor/rate` | Mentor | `{hourlyRate}` — 400 `RATE_OUT_OF_TIER` nếu ngoài khung hoặc không chia hết bước 10.000 | 9.3 |
-| POST | `/internal/mentor/{id}/tier` | Internal (ai-service) | `{tier}` — gán lúc admin duyệt; kẹp lại giá nếu ngoài khung | 9.1, 9.4 |
+| PUT | `/api/profile/mentor/{userId}/rate` | Mentor (chủ hồ sơ) | `{hourlyRate}` — 400 `RATE_OUT_OF_TIER` nếu ngoài khung hoặc không chia hết bước 10.000; 409 `TIER_NOT_ASSIGNED` khi chưa có cấp | 9.3 |
+| PUT | `/internal/mentor/{id}/verification` | Internal (ai-service) | `{status, tier?}` — tier gán lúc admin APPROVE (thiếu thì giữ cấp cũ / suy ra từ giá); giá được kẹp về khung | 9.1, 9.4 |
+| PUT | `/internal/mentor/{id}/tier` | Internal | `{tier}` — đổi cấp, kẹp lại giá nếu ngoài khung | 9.4 |
 
-AI Interview v2.0: `GET /api/ai/interview/{id}` thêm `suggestedTier`; `POST /api/ai/admin/interviews/{id}/decision` nhận `{decision, tier, reason}` (`reason` bắt buộc khi khác đề xuất hoặc từ chối); `POST /api/ai/interview/upgrade-request` cho mentor đã duyệt xin nâng cấp sau 90 ngày.
+AI Interview v2.0: `GET /api/ai/interviews/{id}` (admin) thêm `suggestedTier`; `POST /api/ai/admin/interviews/{id}/review` nhận `{decision, note, tier?}` (khác cấp đề xuất hoặc điểm dưới ngưỡng đạt thì bắt buộc `note` ≥ 10 ký tự; dưới ngưỡng bắt buộc `tier`). *Xin nâng cấp sau 90 ngày: ⚒ chưa hiện thực.*
 
 ## 3. matching-service (8090) — Thảo
 
@@ -156,7 +157,9 @@ Ví dụ response:
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
-| POST | `/api/mentoring/sessions` | Mentee | v2.0: thêm `kind: REGULAR\|TRIAL`, `referralCode?`; tạm giữ từ ví, 402 `INSUFFICIENT_FUNDS` (giữ chỗ 15 phút), 409 `TRIAL_ALREADY_USED`, 409 `TRIAL_LIMIT` | 5.4, 5.8 |
+| POST | `/api/mentoring/sessions` | Mentee | v2.0: thời lượng cố định 60 phút (`INVALID_DURATION`), mentor chưa có giá → 409 `PRICE_NOT_SET`; tạo phiên PENDING rồi tạm giữ học phí từ ví → `AWAITING_MENTOR` (ví thiếu → giữ PENDING 15 phút). *`kind: TRIAL`, `referralCode`: ⚒* | 5.4 |
+| POST | `/api/mentoring/sessions/{id}/confirm` | Mentor | AWAITING_MENTOR → CONFIRMED; 409 `NOT_AWAITING_MENTOR` / `CONFIRM_WINDOW_CLOSED` | 5.4 |
+| POST | `/api/mentoring/sessions/{id}/decline` | Mentor | `{reason?}` — từ chối buổi chờ xác nhận: hoàn 100%, không tính lỗi vi phạm | 5.4 |
 | GET | `/api/mentoring/sessions/{id}/room` | Người tham gia | `{provider:"jitsi", roomName, domain, jwt, opensAt, closesAt}`; 403 ngoài giờ mở phòng | 5.9 |
 | POST | `/api/mentoring/sessions/{id}/room/joined` | Người tham gia | Ghi nhật ký vào phòng | 5.10 |
 | POST | `/api/mentoring/sessions/{id}/report-absent` | Người tham gia | Báo bên kia vắng mặt sau thời gian chờ | 5.10 |
@@ -199,12 +202,12 @@ Ví dụ response:
 | POST | `/api/payment/wallet/reactivate` | Mentee | Kích hoạt lại ví `DORMANT` | 6.8 |
 | GET | `/api/payment/wallet/topup-refund/eligibility` | Mentee | `{maxAmount, windowEndsAt, remainingRequests}` | 6.7 |
 | POST | `/api/payment/wallet/topup-refund` | Mentee | `{amount}` — 409 `REFUND_WINDOW_CLOSED`, `REFUND_AMOUNT_EXCEEDED`, `REFUND_LIMIT_REACHED` | 6.7 |
-| GET | `/api/payment/admin/topup-refunds` | Admin | Hàng chờ ngoại lệ | 6.7 |
-| POST | `/api/payment/admin/topup-refunds/{id}/decide` | Admin | `{decision, reason}` | 6.7 |
-| POST | `/api/payment/admin/wallets/{userId}/promo` | Admin | `{amount, reason}` cấp khuyến mãi | 6.8 |
-| POST | `/internal/wallet/hold` | Internal | `{userId, sessionId, amount}` → `{holdId, fromPromo, fromCash}`; 402 `INSUFFICIENT_FUNDS` | 6.2 |
-| POST | `/internal/wallet/release` | Internal | `{sessionId}` → hoàn khoản giữ (huỷ/hết hạn) | 6.3 |
-| POST | `/internal/wallet/settle` | Internal | `{sessionId, outcome, refundPercent}` → chia mentor/nền tảng/hoàn | 6.3, 6.9 |
+| GET | `/api/payment/wallet/admin/topup-refunds?status=` | Admin | Hàng chờ ngoại lệ | 6.7 |
+| POST | `/api/payment/wallet/admin/topup-refunds/{id}/decide` | Admin | `{decision: APPROVE\|REJECT, reason}` | 6.7 |
+| POST | `/api/payment/wallet/admin/{userId}/promo` | Admin | `{amount, reason}` cấp khuyến mãi (lô hết hạn 12 tháng) | 6.8 |
+| POST | `/api/payment/wallet/pay` | Mentee | `{sessionId, amount?}` — trả học phí phiên PENDING từ ví (khuyến mãi trước); 402 `INSUFFICIENT_FUNDS`; phiên chuyển AWAITING_MENTOR | 6.2 |
+| POST | `/internal/wallet/pay` | Internal (mentoring) | `{userId, sessionId}` — tạm giữ ngay sau khi đặt lịch; 402 `INSUFFICIENT_FUNDS` | 6.2 |
+| POST | `/internal/payments/refund` | Internal | `{sessionId, percent?, amount?, reason?}` — giao dịch WALLET hoàn về ví đúng nguồn (khuyến mãi / tiền nạp) | 6.3 |
 | POST | `/internal/wallet/freeze` | Internal | `{userId, frozen}` (admin khoá/mở khoá) | 6.10 |
 
 `POST /api/payment/charge` (trả trực tiếp từng phiên) bị thay bằng `topups` + `hold`.

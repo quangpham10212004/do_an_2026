@@ -117,6 +117,17 @@ public class MentorProfile {
     @Column(name = "verification_status", nullable = false)
     private VerificationStatus verificationStatus = VerificationStatus.PENDING_INTERVIEW;
 
+    /** Bản chốt v2.0: JUNIOR | SENIOR | EXPERT, null = chưa gán. */
+    @Column(name = "tier")
+    private String tier;
+
+    @Column(name = "tier_assigned_at")
+    private OffsetDateTime tierAssignedAt;
+
+    /** Bản chốt v2.0 §10 — nhận buổi trải nghiệm 15 phút (mặc định bật). */
+    @Column(name = "trial_enabled", nullable = false)
+    private boolean trialEnabled = true;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -240,6 +251,11 @@ public class MentorProfile {
     public void setRating(float rating) { this.rating = rating; }
     public int getRatingCount() { return ratingCount; }
     public void setRatingCount(int ratingCount) { this.ratingCount = ratingCount; }
+    public boolean isTrialEnabled() { return trialEnabled; }
+    public void setTrialEnabled(boolean trialEnabled) { this.trialEnabled = trialEnabled; }
+    public String getTier() { return tier; }
+    public OffsetDateTime getTierAssignedAt() { return tierAssignedAt; }
+    public void assignTier(String tier, OffsetDateTime at) { this.tier = tier; this.tierAssignedAt = at; }
     public VerificationStatus getVerificationStatus() { return verificationStatus; }
     public void setVerificationStatus(VerificationStatus s) { this.verificationStatus = s; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }

@@ -37,7 +37,7 @@ public class RequestExpiryService {
 
     public RequestExpiryService(MentoringRequestRepository requestRepo, MatchingClient matchingClient, ProfileClient profileClient,
                                 NotificationService notifications, TransactionTemplate tx,
-                                @Value("${app.requests.expire-after:PT72H}") Duration expireAfter) {
+                                @Value("${app.requests.expire-after:PT24H}") Duration expireAfter) {
         this.requestRepo = requestRepo;
         this.matchingClient = matchingClient;
         this.profileClient = profileClient;

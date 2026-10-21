@@ -17,6 +17,10 @@ public class Transaction {
      */
     public enum Status { PENDING, SUCCESS, FAILED, REFUNDED, PARTIALLY_REFUNDED, ON_HOLD }
 
+    public static final String KIND_SESSION = "SESSION";
+    public static final String KIND_TOPUP = "TOPUP";
+    public static final String PROVIDER_WALLET = "WALLET";
+
     /** "Đã thu tiền" — tối đa 1 giao dịch như vậy cho mỗi phiên (unique index uq_transactions_session_paid). */
     public static final List<Status> PAID_STATUSES = List.of(Status.SUCCESS, Status.ON_HOLD, Status.PARTIALLY_REFUNDED);
 
@@ -87,6 +91,20 @@ public class Transaction {
     @Column(name = "session_synced", nullable = false)
     private boolean sessionSynced;
 
+    /** V7 — SESSION = trả học phí; TOPUP = nạp ví qua cổng (session_id lúc đó là mã ngẫu nhiên, mentor_id = người nạp). */
+    @Column(nullable = false)
+    private String kind = KIND_SESSION;
+
+    @Column(name = "paid_promo", nullable = false)
+    private BigDecimal paidPromo = BigDecimal.ZERO;
+
+    @Column(name = "paid_cash", nullable = false)
+    private BigDecimal paidCash = BigDecimal.ZERO;
+
+    /** REGULAR | TRIAL — buổi trải nghiệm không tính để được cấp mã giới thiệu. */
+    @Column(name = "session_kind", nullable = false)
+    private String sessionKind = "REGULAR";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -139,6 +157,32 @@ public class Transaction {
     public void release() {
         this.status = Status.SUCCESS;
     }
+    public String getSessionKind() { return sessionKind; }
+    public void setSessionKind(String sessionKind) { this.sessionKind = sessionKind; }
+    public String getKind() { return kind; }
+    public boolean isTopup() { return KIND_TOPUP.equals(kind); }
+    public BigDecimal getPaidPromo() { return paidPromo; }
+    public BigDecimal getPaidCash() { return paidCash; }
+
+    /** V7 — học phí lấy bao nhiêu từ khuyến mãi / tiền nạp (provider = WALLET). */
+    public void applyFunding(BigDecimal promo, BigDecimal cash) {
+        this.paidPromo = promo;
+        this.paidCash = cash;
+    }
+
+    /** V7 — giao dịch nạp ví: không có phiên/mentor, không phí. session_id chỉ để thoả NOT NULL + unique. */
+    public static Transaction topup(UUID payerId, BigDecimal amount, String provider) {
+        Transaction t = new Transaction();
+        t.kind = KIND_TOPUP;
+        t.sessionId = UUID.randomUUID();
+        t.payerId = payerId;
+        t.mentorId = payerId;
+        t.amount = amount;
+        t.provider = provider;
+        t.sessionSynced = true;   // không có phiên cần báo → job đối soát phiên bỏ qua
+        return t;
+    }
+
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public String getProvider() { return provider; }

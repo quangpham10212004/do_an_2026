@@ -55,7 +55,7 @@ export interface PipelineStats {
 }
 
 /** US-17 — tên bộ lọc = tên query param của GET /api/matching/mentors. */
-export type MatchFilterName = "maxRate" | "days" | "timeOfDay" | "language" | "sessionType" | "minRating" | "freeOnly";
+export type MatchFilterName = "maxRate" | "days" | "timeOfDay" | "language" | "sessionType" | "minRating";
 
 /** Bộ lọc người dùng; null / [] / false = không bật. */
 export interface MatchFilterValues {
@@ -65,7 +65,6 @@ export interface MatchFilterValues {
   language: LanguageCode[];
   sessionType: SessionType | null;
   minRating: number | null;
-  freeOnly: boolean;
 }
 
 /** Bộ lọc hiệu lực server trả lại, kèm những bộ lọc lấy từ sở thích hồ sơ. */

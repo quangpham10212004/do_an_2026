@@ -7,7 +7,7 @@ chỗ, cùng lĩnh vực), một cờ đúng/sai cho từng điều kiện ngư�
 quyết định mentor nào còn lại và đếm `excludedBy`.
 
 Tên bộ lọc = tên query param của GET /api/matching/mentors (để frontend "Nới điều kiện" bỏ đúng
-param đó): maxRate, days, timeOfDay, language, sessionType, minRating, freeOnly.
+param đó): maxRate, days, timeOfDay, language, sessionType, minRating.
 
 Giá trị mặc định lấy từ sở thích của mentee (US-16, cột trong mentee_profiles) khi request không
 truyền và useProfileDefaults = true: maxRate ← budget_max_per_hour, days ← preferred_days,
@@ -23,8 +23,7 @@ TIME_OF_DAY = "timeOfDay"
 LANGUAGE = "language"
 SESSION_TYPE = "sessionType"
 MIN_RATING = "minRating"
-FREE_ONLY = "freeOnly"
-FILTER_NAMES = (MAX_RATE, DAYS, TIME_OF_DAY, LANGUAGE, SESSION_TYPE, MIN_RATING, FREE_ONLY)
+FILTER_NAMES = (MAX_RATE, DAYS, TIME_OF_DAY, LANGUAGE, SESSION_TYPE, MIN_RATING)   # bản chốt v2.0: bỏ freeOnly (không còn buổi miễn phí)
 
 # Khung giờ theo giờ địa phương của lịch rảnh mentor: mentor khớp nếu có ít nhất một khung lịch rảnh
 # hằng tuần GIAO với cửa sổ (start < cửa sổ.end và end > cửa sổ.start).
@@ -53,7 +52,6 @@ class MatchFilters:
     language: tuple[str, ...] = ()
     session_type: str | None = None
     min_rating: float | None = None
-    free_only: bool = False
     # Tên các bộ lọc có giá trị lấy từ sở thích trong hồ sơ (không phải từ request).
     from_profile_defaults: tuple[str, ...] = field(default=())
 
@@ -66,7 +64,6 @@ class MatchFilters:
             LANGUAGE: bool(self.language),
             SESSION_TYPE: self.session_type is not None,
             MIN_RATING: self.min_rating is not None,
-            FREE_ONLY: self.free_only,
         }
         return {name for name, on in values.items() if on}
 
@@ -115,7 +112,6 @@ def resolve(requested: dict[str, Any], prefs: dict | None, use_profile_defaults:
         language=_norm_languages(values[LANGUAGE]),
         session_type=values[SESSION_TYPE] if values[SESSION_TYPE] in SESSION_TYPES else None,
         min_rating=float(min_rating) if min_rating is not None else None,
-        free_only=bool(values[FREE_ONLY]),
         from_profile_defaults=tuple(from_defaults),
     )
 
@@ -135,8 +131,6 @@ def without(filters: MatchFilters, names: set[str] | frozenset[str]) -> MatchFil
         changes["session_type"] = None
     if MIN_RATING in names:
         changes["min_rating"] = None
-    if FREE_ONLY in names:
-        changes["free_only"] = False
     changes["from_profile_defaults"] = tuple(n for n in filters.from_profile_defaults if n not in names)
     return replace(filters, **changes)
 
@@ -150,8 +144,6 @@ def passes(row: dict, active: set[str]) -> bool:
     cần có khung trong ngày đó (days_ok).
     """
     if MAX_RATE in active and not row["rate_ok"]:
-        return False
-    if FREE_ONLY in active and not row["free_ok"]:
         return False
     if LANGUAGE in active and not row["language_ok"]:
         return False
@@ -201,6 +193,5 @@ def to_echo(filters: MatchFilters) -> dict:
         "language": list(filters.language),
         "session_type": filters.session_type,
         "min_rating": filters.min_rating,
-        "free_only": filters.free_only,
         "from_profile_defaults": list(filters.from_profile_defaults),
     }

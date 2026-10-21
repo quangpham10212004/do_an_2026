@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { CalendarPlus, Clock, Globe, Send } from "lucide-react";
+import { CalendarPlus, Clock, Globe, Send, Sparkles } from "lucide-react";
 import { Alert, Avatar, Badge, ButtonLink, Card, CardBody, CardHeader, Chip, Chips, DescriptionList, Loading, StatusBadge } from "@/components/ui";
 import { domainLabel } from "@/features/profile/api";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, exceptionTimeLabel, formatLocalDate, mentorStatusText, profileApi, publicMentorStatusText } from "@/features/profile/api";
@@ -48,7 +48,7 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-ink-muted">
               <span>{domainLabel(mentor.domain)}</span>
               <span>{mentor.yearsExperience} năm kinh nghiệm</span>
-              <span className="font-medium text-ink tabular">{formatRate(mentor.hourlyRate)}</span>
+              <span className="font-medium text-ink tabular">{formatRate(mentor.hourlyRate)}{mentor.tier ? ` · ${mentor.tier}` : ""}</span>
               {response && <span className="inline-flex items-center gap-1"><Clock aria-hidden="true" className="size-4" />{response}</span>}
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
@@ -97,6 +97,14 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
                     <div className="text-title-3 font-semibold">Gửi yêu cầu mentoring</div>
                     <p className="text-small text-ink-muted">Mentor cần chấp nhận yêu cầu trước khi bạn đặt lịch. Còn {Math.max(0, mentor.capacity - mentor.activeMenteeCount)} chỗ.</p>
                     <ButtonLink href={`/mentoring/request/${id}`} variant="primary" icon={Send} block>Gửi yêu cầu</ButtonLink>
+                    {mentor.trialEnabled && (
+                      <>
+                        <hr className="divider" />
+                        <div className="text-title-3 font-semibold">Chưa chắc chắn? Học thử 15 phút</div>
+                        <p className="text-small text-ink-muted">Buổi trải nghiệm 30.000đ, không cần mentor chấp nhận trước, mỗi mentor một lần.</p>
+                        <ButtonLink href={`/mentoring/book/${id}?trial=1`} icon={Sparkles} block>Đặt buổi trải nghiệm</ButtonLink>
+                      </>
+                    )}
                   </>
                 )}
                 {request?.status === "PENDING" && <Alert tone="info">Yêu cầu của bạn đang chờ mentor phản hồi.</Alert>}

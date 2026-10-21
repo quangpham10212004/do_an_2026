@@ -24,7 +24,10 @@ import java.util.UUID;
 public final class BookingRules {
 
     /** US-03 — các thời lượng phiên được phép (phút). */
-    public static final Set<Integer> ALLOWED_DURATIONS = Set.of(30, 45, 60, 90, 120);
+    /** Bản chốt v2.0 §4: buổi thường cố định 60 phút (giá niêm yết theo buổi 60 phút), buổi trải nghiệm 15 phút. */
+    public static final int REGULAR_DURATION_MINUTES = 60;
+    public static final int TRIAL_DURATION_MINUTES = 15;
+    public static final Set<Integer> ALLOWED_DURATIONS = Set.of(REGULAR_DURATION_MINUTES, TRIAL_DURATION_MINUTES);
     public static final int MAX_DURATION_MINUTES = 120;
     /** Phiên cũ (trước US-03) có thể dài tới 240 phút (CHECK của bảng sessions) — dùng khi quét trùng lịch. */
     public static final int MAX_STORED_DURATION_MINUTES = 240;
@@ -33,7 +36,7 @@ public final class BookingRules {
 
     /** Trạng thái phiên đang giữ chỗ trên lịch. */
     public static final Set<MentoringSession.Status> HOLDING_STATUSES =
-            Set.of(MentoringSession.Status.PENDING, MentoringSession.Status.CONFIRMED);
+            Set.of(MentoringSession.Status.PENDING, MentoringSession.Status.AWAITING_MENTOR, MentoringSession.Status.CONFIRMED);
 
     /**
      * Một khoảng thời gian đang bận: phiên đang giữ chỗ hoặc khung giờ của đề xuất dời lịch đang chờ (US-06).

@@ -11,7 +11,7 @@ export interface RefundEntry {
   actorId: Uuid | null;
   createdAt: IsoDateTime;
 }
-export type ReferralStatus = "REGISTERED" | "QUALIFIED" | "REJECTED";
+export type ReferralStatus = "REGISTERED" | "UNDER_REVIEW" | "QUALIFIED" | "REJECTED" | "CAPPED";
 export type ReferralRejectReason = "REFERRER_IS_SESSION_MENTOR" | "DAILY_LIMIT_EXCEEDED";
 
 export interface Transaction {
@@ -32,6 +32,11 @@ export interface Transaction {
   providerReference: string | null;
   failureReason: string | null;
   holdReason: string | null;
+  /** Bản chốt v2.0 — SESSION = trả học phí; TOPUP = nạp ví. */
+  kind: "SESSION" | "TOPUP";
+  /** Phần học phí lấy từ tiền khuyến mãi / tiền nạp (provider = WALLET). */
+  paidPromo: number;
+  paidCash: number;
   refunds: RefundEntry[];
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -184,4 +189,87 @@ export interface Receipt {
   refunded: number;
   netPaid: number;
   refunds: { receiptNumber: string; refundId: string; amount: number; reason: string | null; createdAt: string }[];
+}
+
+// ---------- Bản chốt v2.0 §8: ví VND ----------
+
+export type WalletStatus = "ACTIVE" | "DORMANT" | "FROZEN";
+
+export interface WalletRefundEligibility {
+  windowOpen: boolean;
+  windowEndsAt: IsoDateTime | null;
+  /** min(tiền nạp khả dụng, tiền nạp còn hoàn được trong 7 ngày) */
+  maxAmount: number;
+  remainingRequests: number;
+}
+
+/** cash = tiền nạp khả dụng; promo = khuyến mãi còn hạn; held = học phí đang tạm giữ chờ buổi học kết thúc. */
+export interface Wallet {
+  status: WalletStatus;
+  cash: number;
+  promo: number;
+  held: number;
+  nextPromoExpiry: IsoDateTime | null;
+  topupMin: number;
+  topupMax: number;
+  cashCap: number;
+  refund: WalletRefundEligibility;
+}
+
+export type WalletEntryKind = "TOPUP" | "HOLD" | "REFUND_TO_WALLET" | "TOPUP_REFUND" | "PROMO_GRANT" | "PROMO_EXPIRE" | "ADJUST";
+
+export interface WalletEntry {
+  id: Uuid;
+  kind: WalletEntryKind;
+  bucket: "CASH" | "PROMO";
+  amount: number;
+  sessionId: Uuid | null;
+  transactionId: Uuid | null;
+  note: string | null;
+  createdAt: IsoDateTime;
+}
+
+export interface TopupRefundRequest {
+  id: Uuid;
+  userId: Uuid;
+  amount: number;
+  status: "PENDING" | "DONE" | "REJECTED";
+  kind: "AUTO" | "EXCEPTION";
+  userReason: string | null;
+  adminReason: string | null;
+  createdAt: IsoDateTime;
+  decidedAt: IsoDateTime | null;
+}
+
+// ---------- Bản chốt v2.0 §11: giới thiệu theo mentor ----------
+
+export interface MentorReferralCode {
+  mentorId: Uuid;
+  mentorName: string;
+  code: string;
+  shareUrl: string;
+}
+
+export interface MentorReferral {
+  id: Uuid;
+  ownerId: Uuid;
+  mentorId: Uuid;
+  refereeId: Uuid;
+  sessionId: Uuid;
+  status: ReferralStatus;
+  rejectReason: string | null;
+  rewardAmount: number | null;
+  createdAt: IsoDateTime;
+  decidedAt: IsoDateTime | null;
+}
+
+/** GET /api/payment/referrals/me — mã theo mentor, lượt giới thiệu, tiền thưởng (khuyến mãi). */
+export interface MyMentorReferrals {
+  reward: number;
+  pendingDays: number;
+  monthlyCap: number;
+  qualifiedThisMonth: number;
+  earned: number;
+  codes: MentorReferralCode[];
+  referrals: MentorReferral[];
 }

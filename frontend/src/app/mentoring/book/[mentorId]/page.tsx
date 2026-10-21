@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardHeader, DescriptionList, Field, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
-import { AGENDA_MAX, AGENDA_MIN, SESSION_DURATIONS, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
+import { AGENDA_MAX, AGENDA_MIN, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
 import { MOCK_LEVELS, MOCK_LEVEL_LABELS, MOCK_TYPES, MOCK_TYPE_LABELS } from "@/features/mentoring/mockLabels";
 import { formatDateTime, formatMoney, formatRate } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
@@ -19,12 +19,13 @@ interface BookingForm {
   sessionType: SessionType;
   agenda: string;
   preReadLink: string;
+  referralCode: string;
   /** US-58 — chỉ gửi khi sessionType = MOCK_INTERVIEW. */
   mock: Required<Omit<MockIntakeInput, "targetCompany" | "interviewDate" | "jdUrl">> & { targetCompany: string; interviewDate: string; jdUrl: string };
 }
 
 const INITIAL: BookingForm = {
-  scheduledAt: null, durationMinutes: 60, sessionType: "CAREER_ADVICE", agenda: "", preReadLink: "",
+  scheduledAt: null, durationMinutes: 60, sessionType: "CAREER_ADVICE", agenda: "", preReadLink: "", referralCode: "",
   mock: { interviewType: "BACKEND", level: "FRESHER", targetRole: "", targetCompany: "", interviewDate: "", jdUrl: "" },
 };
 const isHttpUrl = (v: string) => /^https?:\/\/\S+$/i.test(v);
@@ -32,9 +33,10 @@ const isHttpUrl = (v: string) => /^https?:\/\/\S+$/i.test(v);
 /** US-03 / US-05 — form đặt lịch phiên mentoring (PRD-SES-1, PRD-SES-2). */
 function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }) {
   const router = useRouter();
+  const trial = useSearchParams().get("trial") === "1";   // Bản chốt v2.0 §10 — buổi trải nghiệm 15 phút, không cần quan hệ mentoring
   const [mentor, setMentor] = useState<MentorProfile | null | undefined>(undefined);
   const [request, setRequest] = useState<MentoringRequest | null | undefined>(undefined);
-  const [form, setForm] = useState<BookingForm>(INITIAL);
+  const [form, setForm] = useState<BookingForm>({ ...INITIAL, durationMinutes: trial ? 15 : 60 });
   const [slotsVersion, setSlotsVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,10 +44,13 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 
   useEffect(() => {
     profileApi.getMentor(mentorId).then(setMentor).catch(() => setMentor(null));
-    mentoringApi.requests()
-      .then((rs) => setRequest(rs.find((r) => r.mentorId === mentorId && r.status === "ACCEPTED") || null))
-      .catch(() => setRequest(null));
-  }, [mentorId]);
+    if (trial) setRequest(null);
+    else {
+      mentoringApi.requests()
+        .then((rs) => setRequest(rs.find((r) => r.mentorId === mentorId && r.status === "ACCEPTED") || null))
+        .catch(() => setRequest(null));
+    }
+  }, [mentorId, trial]);
 
   const agenda = form.agenda.trim();
   const agendaValid = agenda.length >= AGENDA_MIN && agenda.length <= AGENDA_MAX;
@@ -70,6 +75,8 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
         sessionType: form.sessionType,
         agenda,
         preReadLink: form.preReadLink.trim() || undefined,
+        kind: trial ? "TRIAL" : "REGULAR",
+        referralCode: !trial && form.referralCode.trim() ? form.referralCode.trim().toUpperCase() : undefined,
         mockIntake: isMock ? {
           interviewType: form.mock.interviewType,
           level: form.mock.level,
@@ -79,6 +86,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
           jdUrl: form.mock.jdUrl.trim() || undefined,
         } : undefined,
       });
+      // Ví đủ tiền → học phí đã được tạm giữ (AWAITING_MENTOR, chờ mentor xác nhận); thiếu tiền → trang nạp ví / thanh toán
       if (session.status === "PENDING") router.push(`/payment/${session.id}`);
       else router.push("/mentoring/sessions?booked=1");
     } catch (err) {
@@ -91,19 +99,19 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 
   if (mentor === undefined || request === undefined) return <Loading />;
   if (!mentor) return <Alert action={<ButtonLink href="/mentors" size="sm">Danh sách mentor</ButtonLink>}>Không tìm thấy mentor này.</Alert>;
-  if (!request) {
+  if (!request && !trial) {
     return (
       <Alert tone="info" action={<ButtonLink href={`/mentoring/request/${mentorId}`} size="sm" variant="primary">Gửi yêu cầu</ButtonLink>}>
         Bạn cần được {mentor.displayName} chấp nhận yêu cầu mentoring trước khi đặt lịch.
       </Alert>
     );
   }
-  const price = Math.round((Number(mentor.hourlyRate) * form.durationMinutes) / 60 / 1000) * 1000;
+  const price = trial ? 30_000 : Number(mentor.hourlyRate);   // Bản chốt v2.0: buổi thường cố định 60 phút (giá theo cấp), trải nghiệm 15 phút 30.000đ
   const ready = !!form.scheduledAt && agendaValid && linkValid && mockValid;
 
   return (
     <>
-      <PageHeader title="Đặt lịch phiên mentoring" back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
+      <PageHeader title={trial ? "Đặt buổi trải nghiệm 15 phút" : "Đặt lịch phiên mentoring"} back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
       <form onSubmit={submit} className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-6">
           <Alert>{error}</Alert>
@@ -111,12 +119,6 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
             <CardHeader title="Chọn thời gian" />
             <CardBody className="flex flex-col gap-5">
               <div className="form-grid">
-                <Field label="Thời lượng" id="duration">
-                  <Select id="duration" value={form.durationMinutes}
-                    onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) as SessionDuration })}>
-                    {SESSION_DURATIONS.map((d) => <option key={d} value={d}>{d} phút</option>)}
-                  </Select>
-                </Field>
                 <Field label="Loại phiên" id="sessionType">
                   <Select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
                     {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
@@ -177,6 +179,12 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
                   placeholder="Bạn muốn trao đổi gì trong phiên này? Ví dụ: review kiến trúc REST API của dự án quản lý kho"
                   onChange={(e) => setForm({ ...form, agenda: e.target.value })} />
               </Field>
+              {!trial && (
+                <Field label="Mã giới thiệu" id="referral" hint="Không bắt buộc. Chỉ dùng được ở buổi học đầu tiên với mentor này, không được giảm giá; người giới thiệu nhận thưởng sau khi buổi học hoàn thành.">
+                  <Input id="referral" value={form.referralCode} maxLength={20} placeholder="VD: K7M2X9QA" className="font-mono uppercase"
+                    onChange={(e) => setForm({ ...form, referralCode: e.target.value })} />
+                </Field>
+              )}
               <Field label="Tài liệu đọc trước" id="preRead" hint="Không bắt buộc."
                 error={linkValid ? undefined : "Link phải bắt đầu bằng http:// hoặc https://"}>
                 <Input id="preRead" type="url" value={form.preReadLink} maxLength={500} placeholder="https://github.com/…"
@@ -190,7 +198,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
             <Avatar name={mentor.displayName} src={mentor.avatarUrl} />
             <div className="min-w-0">
               <div className="font-semibold">{mentor.displayName}</div>
-              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}</div>
+              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}{mentor.tier ? ` · ${mentor.tier}` : ""}</div>
             </div>
           </div>
           <CardBody className="flex flex-col gap-4">
@@ -205,9 +213,10 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
               <span className="font-mono text-title-2 font-medium tabular">{formatMoney(price)}</span>
             </div>
             <Button type="submit" variant="primary" size="lg" block loading={busy} disabled={!ready}>
-              {busy ? "Đang kiểm tra lịch…" : price > 0 ? "Xác nhận và thanh toán" : "Xác nhận đặt lịch"}
+              {busy ? "Đang kiểm tra lịch…" : "Đặt lịch và tạm giữ học phí từ ví"}
             </Button>
             {!form.scheduledAt && <p className="text-center text-small text-ink-muted">Chọn một khung giờ để tiếp tục.</p>}
+            <p className="text-small text-ink-muted">Học phí được tạm giữ từ ví ngay khi đặt. Mentor xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, bạn được hoàn 100%. Huỷ trước 24 giờ: hoàn 100%, 4–24 giờ: 50%, dưới 4 giờ: không hoàn.</p>
           </CardBody>
         </Card>
       </form>
@@ -216,5 +225,13 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
 }
 
 export default function BookSessionPage({ params }: { params: { mentorId: string } }) {
-  return <RequireAuth roles={["MENTEE"]}>{(user) => <BookSession user={user} mentorId={params.mentorId} />}</RequireAuth>;
+  return (
+    <RequireAuth roles={["MENTEE"]}>
+      {(user) => (
+        <Suspense>
+          <BookSession user={user} mentorId={params.mentorId} />
+        </Suspense>
+      )}
+    </RequireAuth>
+  );
 }

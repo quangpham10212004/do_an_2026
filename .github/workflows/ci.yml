@@ -126,7 +126,7 @@ jobs:
       - name: Sprint end-to-end suites
         run: |
           status=0
-          for f in scripts/e2e_p0_*.py scripts/e2e_s[0-9]*_*.py; do
+          for f in scripts/e2e_p0_*.py scripts/e2e_s[0-9]*_*.py scripts/e2e_v2_*.py; do
             echo "::group::$f"
             python3 "$f" || { echo "::error::$f failed"; status=1; }
             echo "::endgroup::"

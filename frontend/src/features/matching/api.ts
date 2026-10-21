@@ -20,7 +20,6 @@ export function filterParams(filters: MatchFilterValues): URLSearchParams {
   filters.language.forEach((l) => p.append("language", l));
   if (filters.sessionType) p.set("sessionType", filters.sessionType);
   if (filters.minRating !== null) p.set("minRating", String(filters.minRating));
-  if (filters.freeOnly) p.set("freeOnly", "true");
   return p;
 }
 

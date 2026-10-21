@@ -63,7 +63,7 @@ def answer(m, iid, text):
 
 
 def us43(ctx):
-    print("US-43 — giới hạn câu trả lời, tiếp tục trong 72 giờ, nhận xét sau khi admin quyết định")
+    print("US-43 — giới hạn câu trả lời, tiếp tục trong 24 giờ, nhận xét sau khi admin quyết định")
     admin = ctx["admin"]
     m = mentor_with_profile("limits")
     iv = start(m)
@@ -79,7 +79,7 @@ def us43(ctx):
     check("US-43", "Chờ duyệt: mentor chưa thấy điểm / nhận xét từng câu", iv["status"] == "PENDING_REVIEW"
           and not iv["feedbackVisible"] and all(t["score"] is None and t["feedback"] is None for t in iv["turns"]), iv["status"])
     check("US-43", "…nhưng vẫn thấy tổng điểm", iv["overallScore"] is not None)
-    call("POST", f"{AI}/api/ai/admin/interviews/{iv['id']}/review", {"decision": "APPROVE", "note": "Tra loi tot, du kinh nghiem"},
+    call("POST", f"{AI}/api/ai/admin/interviews/{iv['id']}/review", {"decision": "APPROVE", "note": "Tra loi tot, du kinh nghiem", "tier": "JUNIOR"},
          token=admin["accessToken"])
     mine = call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=m["accessToken"])
     check("US-43", "Sau khi admin quyết định: thấy điểm + nhận xét từng câu", mine["feedbackVisible"]
@@ -87,11 +87,11 @@ def us43(ctx):
 
     idle = mentor_with_profile("idle")
     iv2 = start(idle)
-    call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=71", internal=True)
-    check("US-43", "Sau 71 giờ vẫn tiếp tục được buổi cũ", start(idle)["id"] == iv2["id"])
+    call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=23", internal=True)
+    check("US-43", "Sau 23 giờ vẫn tiếp tục được buổi cũ", start(idle)["id"] == iv2["id"])
     call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=2", internal=True)
     status, code = error_code(lambda: answer(idle, iv2["id"], STRONG))
-    check("US-43", "Quá 72 giờ → 409 INTERVIEW_ABANDONED", status == 409 and code == "INTERVIEW_ABANDONED", (status, code))
+    check("US-43", "Quá 24 giờ → 409 INTERVIEW_ABANDONED", status == 409 and code == "INTERVIEW_ABANDONED", (status, code))
     e = call("GET", f"{AI}/api/ai/interviews/eligibility", token=idle["accessToken"])
     check("US-43", "Buổi bỏ dở tính là 1 lần phỏng vấn", e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2, e)
     iv3 = start(idle)

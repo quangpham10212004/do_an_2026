@@ -83,12 +83,14 @@ class SessionBookingTest {
     @Test
     void validBookingIsSavedAsPendingWithFormFields() {
         givenMentor(mentor(null, null, null, null));
-        f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 45, SessionType.MOCK_INTERVIEW,
+        f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 60, SessionType.MOCK_INTERVIEW,
                 "  " + AGENDA + "  ", "https://github.com/me/repo", null, MOCK_INTAKE));
         verify(f.sessionRepo).save(argThatSession(s -> s.getStatus() == MentoringSession.Status.PENDING
-                && s.getDurationMinutes() == 45 && s.getSessionType() == SessionType.MOCK_INTERVIEW
+                && s.getDurationMinutes() == 60 && s.getSessionType() == SessionType.MOCK_INTERVIEW
                 && AGENDA.equals(s.getAgenda()) && "https://github.com/me/repo".equals(s.getPreReadLink())
-                && s.getPrice().compareTo(new BigDecimal("150000")) == 0));
+                && s.getPrice().compareTo(new BigDecimal("200000")) == 0));
+        // ví thiếu tiền (mặc định của fixture) → phiên giữ PENDING; đã thử tạm giữ học phí từ ví
+        verify(f.paymentClient).payFromWallet(eq(menteeId), any());
     }
 
     @Test
@@ -120,11 +122,11 @@ class SessionBookingTest {
     void mentorMinNoticeHoursOverridesPlatformLeadTime() {
         givenMentor(mentor(null, null, 12, null));
         OffsetDateTime in6h = OffsetDateTime.now().plusHours(6).withMinute(0).withSecond(0).withNano(0);
-        assertThat(code(() -> f.service().book(mentee, input(in6h, 30, AGENDA)))).isIn("TOO_SOON", "MENTOR_NOT_AVAILABLE");
-        // mặc định 12 giờ khi profile-service chưa trả minNoticeHours
+        assertThat(code(() -> f.service().book(mentee, input(in6h, 60, AGENDA)))).isIn("TOO_SOON", "MENTOR_NOT_AVAILABLE");
+        // mặc định 3 giờ (bản chốt v2.0) khi profile-service chưa trả minNoticeHours
         givenMentor(mentor(null, null, null, null));
-        OffsetDateTime in3h = OffsetDateTime.now().plusHours(3);
-        assertThat(code(() -> f.service().book(mentee, input(in3h, 30, AGENDA)))).isEqualTo("TOO_SOON");
+        OffsetDateTime in2h = OffsetDateTime.now().plusHours(2);
+        assertThat(code(() -> f.service().book(mentee, input(in2h, 60, AGENDA)))).isEqualTo("TOO_SOON");
     }
 
     @Test
@@ -154,28 +156,36 @@ class SessionBookingTest {
         existing.setDurationMinutes(60);
         existing.setStatus(MentoringSession.Status.CONFIRMED);
         when(f.sessionRepo.findActiveAround(eq(mentorId), any(), any())).thenReturn(List.of(existing));
-        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 11), 30, AGENDA)))).isEqualTo("MENTOR_NOT_AVAILABLE");
-        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 11).plusMinutes(15), 30, AGENDA)))).isEqualTo("OK");
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 11), 60, AGENDA)))).isEqualTo("MENTOR_NOT_AVAILABLE");
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 11).plusMinutes(15), 60, AGENDA)))).isEqualTo("OK");
     }
 
     @Test
-    void freeBookingBlockedAfterThreeLateCancels() {
-        ProfileClient.MentorInfo free = new ProfileClient.MentorInfo(mentorId, "Mentor", List.of(), "backend", "", 5, BigDecimal.ZERO,
+    void mentorWithoutAPriceCannotBeBooked() {
+        ProfileClient.MentorInfo noPrice = new ProfileClient.MentorInfo(mentorId, "Mentor", List.of(), "backend", "", 5, BigDecimal.ZERO,
                 3, 0, true, 0, 0, "APPROVED", allWeek(), null, null, null, null, null, null, null);
-        givenMentor(free);
-        OffsetDateTime now = OffsetDateTime.now();
-        var lates = List.of(late(now.minusDays(9)), late(now.minusDays(5)), late(now.minusDays(1)));
-        when(f.lateCancelRepo.findByMenteeIdAndCreatedAtAfter(eq(menteeId), any())).thenReturn(lates);
-        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("FREE_BOOKING_BLOCKED");
-        // phiên có phí không bị chặn
+        givenMentor(noPrice);
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("PRICE_NOT_SET");
         givenMentor(mentor(null, null, null, null));
         assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("OK");
     }
 
-    private com.mmp.mentoring.entity.LateCancellation late(OffsetDateTime at) {
-        com.mmp.mentoring.entity.LateCancellation lc = mock(com.mmp.mentoring.entity.LateCancellation.class);
-        when(lc.getCreatedAt()).thenReturn(at);
-        return lc;
+    @Test
+    void walletPaymentIsAttemptedRightAfterBooking() {
+        givenMentor(mentor(null, null, null, null));
+        when(f.paymentClient.payFromWallet(any(), any()))
+                .thenReturn(new com.mmp.mentoring.client.PaymentClient.WalletPayResult(true, false, null));
+        f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA));
+        verify(f.paymentClient).payFromWallet(eq(menteeId), any());
+        // payment-service gọi lại markPaid → AWAITING_MENTOR (kiểm ở SessionConfirmTest); ở đây phiên mới được tạo PENDING
+        assertThat(f.lastSaved.getStatus()).isEqualTo(MentoringSession.Status.PENDING);
+    }
+
+    @Test
+    void durationIsFixedAtSixtyMinutes() {
+        givenMentor(mentor(null, null, null, null));
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 30, AGENDA)))).isEqualTo("INVALID_DURATION");
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 90, AGENDA)))).isEqualTo("INVALID_DURATION");
     }
 
     private static MentoringSession argThatSession(java.util.function.Predicate<MentoringSession> p) {

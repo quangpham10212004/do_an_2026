@@ -23,7 +23,7 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     @Query("""
             SELECT s FROM MentoringSession s
             WHERE (s.mentorId = :userId OR s.menteeId = :userId)
-              AND s.status IN ('PENDING', 'CONFIRMED')
+              AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED')
               AND s.scheduledAt < :to
               AND s.scheduledAt > :fromMinusMaxDuration
             """)
@@ -61,19 +61,37 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     @Query("SELECT s FROM MentoringSession s WHERE s.status = 'PENDING' AND s.createdAt < :before")
     List<MentoringSession> findExpiredPending(@Param("before") OffsetDateTime before);
 
+    /** Bản chốt v2.0 §11 — số buổi thường đã / đang có của một cặp (không tính buổi đã huỷ / hết hạn). */
+    @Query("SELECT COUNT(s) FROM MentoringSession s WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.kind = 'REGULAR' "
+            + "AND s.status NOT IN ('CANCELLED', 'EXPIRED')")
+    long countRegularWithMentor(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId);
+
+    /** Bản chốt v2.0 §10 — số buổi trải nghiệm chưa diễn ra (đang giữ chỗ) của một mentee. */
+    @Query("SELECT COUNT(s) FROM MentoringSession s WHERE s.menteeId = :menteeId AND s.kind = 'TRIAL' "
+            + "AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now")
+    long countOpenTrials(@Param("menteeId") UUID menteeId, @Param("now") OffsetDateTime now);
+
+    /** Bản chốt v2.0 §5 — phiên đã tạm giữ học phí nhưng mentor không xác nhận kịp hạn. */
+    @Query("SELECT s FROM MentoringSession s WHERE s.status = 'AWAITING_MENTOR' AND s.confirmDeadline < :now")
+    List<MentoringSession> findUnconfirmedPastDeadline(@Param("now") OffsetDateTime now);
+
     long countByStatus(MentoringSession.Status status);
 
     /** US-44 (PRD-MATCH-9) — số phiên đã hoàn thành của mentor (trang mentor công khai). */
     long countByMentorIdAndStatus(UUID mentorId, MentoringSession.Status status);
 
     /** US-27 — phiên sắp tới đang giữ chỗ (PENDING/CONFIRMED, chưa bắt đầu) của mentor. */
-    @Query("SELECT s FROM MentoringSession s WHERE s.mentorId = :mentorId AND s.status IN ('PENDING', 'CONFIRMED') AND s.scheduledAt > :now ORDER BY s.scheduledAt")
+    /** Bản chốt v2.0 §2.1 — mọi buổi chưa diễn ra (đang giữ chỗ) của một người, dù là mentor hay mentee. */
+    @Query("SELECT s FROM MentoringSession s WHERE (s.mentorId = :userId OR s.menteeId = :userId) AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now ORDER BY s.scheduledAt")
+    List<MentoringSession> findUpcomingHoldingByUser(@Param("userId") UUID userId, @Param("now") OffsetDateTime now);
+
+    @Query("SELECT s FROM MentoringSession s WHERE s.mentorId = :mentorId AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now ORDER BY s.scheduledAt")
     List<MentoringSession> findUpcomingHoldingByMentor(@Param("mentorId") UUID mentorId, @Param("now") OffsetDateTime now);
 
     /** US-31 — phiên sắp tới đang giữ chỗ của 1 cặp mentee–mentor. */
     @Query("""
             SELECT s FROM MentoringSession s
-            WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.status IN ('PENDING', 'CONFIRMED') AND s.scheduledAt > :now
+            WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now
             ORDER BY s.scheduledAt
             """)
     List<MentoringSession> findUpcomingHoldingByPair(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId,

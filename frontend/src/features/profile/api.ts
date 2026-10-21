@@ -28,11 +28,16 @@ import type {
 // profile-service (Thảo)
 export const profileApi = {
   getMentor: (id: Uuid) => api<MentorProfile>(`/api/profile/mentor/${id}`),
+  /** Bản chốt v2.0 — khung giá theo cấp độ mentor. */
+  pricingTiers: () => api<{ step: number; tiers: { tier: "JUNIOR" | "SENIOR" | "EXPERT"; min: number; max: number }[] }>("/api/profile/pricing-tiers"),
   saveMentor: (id: Uuid, body: MentorProfileInput) => api<MentorProfile>(`/api/profile/mentor/${id}`, { method: "PUT", body }),
   getAvailability: (id: Uuid) => api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`),
   saveAvailability: (id: Uuid, slots: AvailabilitySlot[]) =>
     api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`, { method: "PUT", body: { slots } }),
   // US-04 — cài đặt đặt lịch
+  /** Bản chốt v2.0 §10 — mentor bật / tắt nhận buổi trải nghiệm. */
+  setTrialEnabled: (id: Uuid, enabled: boolean) =>
+    api<MentorProfile>(`/api/profile/mentor/${id}/trial`, { method: "PUT", body: { enabled } }),
   saveBookingSettings: (id: Uuid, body: BookingSettingsInput) =>
     api<MentorProfile>(`/api/profile/mentor/${id}/booking-settings`, { method: "PUT", body }),
   // US-08 — trạng thái nhận mentee

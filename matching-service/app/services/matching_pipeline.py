@@ -4,7 +4,7 @@ Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6, US-17 PRD-MATCH-1/2):
     1. Hard filter       : profile_db (read-only) cho biết mentor nào thoả MỌI ràng buộc cứng —
                            5 ràng buộc hệ thống (APPROVED, trạng thái hiệu lực ACCEPTING, có lịch rảnh,
                            còn chỗ, cùng lĩnh vực) + bộ lọc người dùng (giá, ngày, buổi, ngôn ngữ,
-                           loại phiên, rating, miễn phí — match_filters.py)
+                           loại phiên, rating — match_filters.py)
     2. Top-K retrieval   : CHỈ trong các mentor đó, lấy K mentor có vector gần mentee nhất
                            (cosine, pgvector <=>) trong matching_db
     3. Re-rank           : điểm cuối = 0.6·similarity + 0.15·rating/5 + 0.1·kinh nghiệm + 0.1·scheduleFit
@@ -97,7 +97,6 @@ WITH c AS (
                WHEN $1::text IS NOT NULL AND lower(trim(m.domain)) <> lower(trim($1::text)) THEN 'domainMismatch'
            END AS reason,
            ($2::numeric IS NULL OR m.hourly_rate <= $2::numeric) AS rate_ok,
-           (m.hourly_rate = 0) AS free_ok,
            (cardinality($6::text[]) = 0 OR m.languages && $6::text[]) AS language_ok,
            ($7::text IS NULL OR $7::text = ANY (m.session_types)) AS session_ok,
            ($8::real IS NULL OR m.rating >= $8::real) AS rating_ok,

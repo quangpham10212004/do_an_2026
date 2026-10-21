@@ -244,6 +244,27 @@ _DECISION_VERIFICATION = {"APPROVE": "APPROVED", "REJECT": "REJECTED", "REQUEST_
 MIN_OVERRULE_NOTE = 10
 
 
+def _tier_for_approval(choice: str, current, requested: str | None, note: str | None) -> str | None:
+    """
+    Bản chốt v2.0 §3 — cấp gán khi APPROVE: mặc định cấp đề xuất từ điểm. Admin được chọn cấp khác và phải ghi lý do
+    (≥ MIN_OVERRULE_NOTE ký tự); điểm dưới ngưỡng đạt (không có đề xuất) thì bắt buộc chọn cấp rõ ràng kèm lý do.
+    """
+    if choice != "APPROVE":
+        return None
+    suggested = rubric.suggest_tier(current["overall_score"])
+    if suggested is None:
+        if requested is None:
+            raise errors.bad_request("TIER_REQUIRED", "Điểm dưới ngưỡng đạt — chọn cấp độ rõ ràng nếu vẫn duyệt")
+        if len(note or "") < MIN_OVERRULE_NOTE:
+            raise errors.bad_request("REVIEW_NOTE_REQUIRED", f"Duyệt khi điểm dưới ngưỡng đạt — ghi rõ lý do (ít nhất {MIN_OVERRULE_NOTE} ký tự)")
+        return requested
+    tier = requested or suggested
+    if tier != suggested:
+        if len(note or "") < MIN_OVERRULE_NOTE:
+            raise errors.bad_request("REVIEW_NOTE_REQUIRED", f"Khác cấp đề xuất ({suggested}) — ghi rõ lý do (ít nhất {MIN_OVERRULE_NOTE} ký tự)")
+    return tier
+
+
 async def review(admin: AuthUser, interview_id: UUID, decision: ReviewInterviewInput) -> InterviewView:
     """FR-7.5 / NFR-8 / US-23 — admin xác nhận cuối cùng: APPROVE | REJECT | REQUEST_RETAKE."""
     choice = decision.decision
@@ -256,15 +277,16 @@ async def review(admin: AuthUser, interview_id: UUID, decision: ReviewInterviewI
         raise errors.bad_request("REVIEW_NOTE_REQUIRED",
                                  f"Quyết định khác khuyến nghị của AI ({current['recommendation']}) — "
                                  f"vui lòng ghi rõ lý do (ít nhất {MIN_OVERRULE_NOTE} ký tự)")
+    tier = _tier_for_approval(choice, current, decision.tier, note)
     updated = await repo.review(pool, interview_id, _DECISION_STATUS[choice], admin.user_id, note)
     if updated is None:
         raise errors.conflict("INTERVIEW_NOT_PENDING_REVIEW", "Buổi phỏng vấn không ở trạng thái chờ duyệt")
 
-    await profile.update_verification(updated["mentor_id"], _DECISION_VERIFICATION[choice])
+    await profile.update_verification(updated["mentor_id"], _DECISION_VERIFICATION[choice], tier)
     suffix = "" if note is None else f" Nhận xét: {note}"
     if choice == "APPROVE":
         notice = ("MENTOR_APPROVED", "Tài khoản mentor đã được kích hoạt",
-                  "Chúc mừng! Bạn đã có thể xuất hiện trong kết quả gợi ý và nhận mentee." + suffix)
+                  f"Chúc mừng! Bạn được xếp cấp {tier}: có thể chọn mức giá trong khung của cấp, xuất hiện trong kết quả gợi ý và nhận mentee." + suffix)
     elif choice == "REJECT":
         days = config.INTERVIEW_COOLDOWN_DAYS
         notice = ("MENTOR_REJECTED", "Hồ sơ mentor chưa được duyệt",
@@ -277,7 +299,8 @@ async def review(admin: AuthUser, interview_id: UUID, decision: ReviewInterviewI
                        {"status": current["status"], "recommendation": current["recommendation"],
                         "overallScore": current["overall_score"]},
                        {"status": updated["status"], "decision": choice, "note": note,
-                        "mentorId": str(updated["mentor_id"]),
+                        "mentorId": str(updated["mentor_id"]), "tier": tier,
+                        "suggestedTier": rubric.suggest_tier(current["overall_score"]),
                         "agreesWithAi": rubric.agrees(choice, current["recommendation"])})
     return await _view(pool, updated, for_admin=True)
 

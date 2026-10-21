@@ -26,9 +26,12 @@ public class PaymentController {
     private final EarningService earningService;
     private final PayoutService payoutService;
     private final ReceiptService receiptService;
+    private final com.mmp.payment.service.MentorReferralService mentorReferrals;
 
     public PaymentController(PaymentService paymentService, ReferralService referralService, EarningService earningService,
-                             PayoutService payoutService, ReceiptService receiptService) {
+                             PayoutService payoutService, ReceiptService receiptService,
+                             com.mmp.payment.service.MentorReferralService mentorReferrals) {
+        this.mentorReferrals = mentorReferrals;
         this.payoutService = payoutService;
         this.receiptService = receiptService;
         this.paymentService = paymentService;
@@ -58,9 +61,17 @@ public class PaymentController {
         return paymentService.bySession(CurrentUser.get(), sessionId);
     }
 
+    /** Bản chốt v2.0 §11 — mã giới thiệu theo mentor (chỉ mentor đã hoàn thành ≥ 1 buổi thường đã trả), lượt giới thiệu, tiền thưởng. */
     @GetMapping("/referrals/me")
-    public MyReferralOverview myReferral() {
-        return referralService.overview(CurrentUser.get().userId());
+    public MyMentorReferrals myReferral() {
+        return mentorReferrals.overview(CurrentUser.get().userId());
+    }
+
+    /** Lấy (hoặc tạo lần đầu) mã giới thiệu của cặp (tôi, mentor); 409 REFERRAL_NOT_ELIGIBLE nếu chưa hoàn thành buổi nào với mentor. */
+    @PostMapping("/referrals/codes")
+    @PreAuthorize("hasRole('MENTEE')")
+    public MentorReferralCodeView referralCode(@Valid @RequestBody ReferralCodeRequest req) {
+        return mentorReferrals.codeFor(CurrentUser.get().userId(), req.mentorId());
     }
 
     // ---- US-25: thu nhập mentor ----
@@ -153,6 +164,18 @@ public class PaymentController {
     @PreAuthorize("hasRole('ADMIN')")
     public PaymentStats stats() {
         return paymentService.stats();
+    }
+
+    @GetMapping("/admin/mentor-referrals")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<MentorReferralView> adminMentorReferrals(@RequestParam(required = false) String status) {
+        return mentorReferrals.adminList(status);
+    }
+
+    @PostMapping("/admin/mentor-referrals/{id}/decide")
+    @PreAuthorize("hasRole('ADMIN')")
+    public MentorReferralView decideReferral(@PathVariable UUID id, @Valid @RequestBody ReferralDecision body) {
+        return mentorReferrals.decide(CurrentUser.get().userId(), id, "APPROVE".equals(body.decision()), body.reason());
     }
 
     @GetMapping("/admin/referrals")

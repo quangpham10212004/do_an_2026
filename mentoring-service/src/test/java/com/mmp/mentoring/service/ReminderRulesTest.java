@@ -26,13 +26,13 @@ class ReminderRulesTest {
 
     @Test
     void oneHourReminderOncePerSession() {
-        assertThat(ReminderRules.due(start, start.minusMinutes(60), true, false)).isEqualTo(ReminderRules.Kind.H1);
+        assertThat(ReminderRules.due(start, start.minusMinutes(10), true, false)).isEqualTo(ReminderRules.Kind.H1);
         assertThat(ReminderRules.due(start, start.minusMinutes(5), true, true)).isNull();
     }
 
     @Test
     void lateBookingSkipsStraightTo1h() {
-        assertThat(ReminderRules.due(start, start.minusMinutes(40), false, false)).isEqualTo(ReminderRules.Kind.H1);
+        assertThat(ReminderRules.due(start, start.minusMinutes(10), false, false)).isEqualTo(ReminderRules.Kind.H1);
     }
 
     @Test

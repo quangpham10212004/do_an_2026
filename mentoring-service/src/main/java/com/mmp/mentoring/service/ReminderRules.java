@@ -8,8 +8,8 @@ import java.time.format.DateTimeFormatter;
 /**
  * US-34 (PRD-SES-14) — quy tắc thuần của nhắc lịch (không I/O để unit test).
  *
- * - Nhắc 24 giờ: gửi khi còn ≤ 24 giờ và > 1 giờ tới giờ bắt đầu (phiên đặt sát giờ, vd. còn 10 giờ, vẫn nhận nhắc này).
- * - Nhắc 1 giờ: gửi khi còn ≤ 1 giờ; nếu chưa gửi nhắc 24 giờ thì bỏ qua luôn mốc đó (chỉ nhắc 1 lần).
+ * - Nhắc 24 giờ: gửi khi còn ≤ 24 giờ và > 15 phút tới giờ bắt đầu (phiên đặt sát giờ, vd. còn 10 giờ, vẫn nhận nhắc này).
+ * - Nhắc 15 phút (hằng H1 giữ tên cũ vì cột cờ `reminder_1h_sent` không đổi): gửi khi còn ≤ 15 phút; nếu chưa gửi nhắc 24 giờ thì bỏ qua luôn mốc đó (chỉ nhắc 1 lần).
  * - Nội dung theo múi giờ của từng người nhận, kèm link tham gia và agenda.
  */
 public final class ReminderRules {
@@ -19,7 +19,7 @@ public final class ReminderRules {
 
     public enum Kind {
         H24("SESSION_REMINDER_24H", "Nhắc lịch: phiên mentoring ngày mai", Duration.ofHours(24)),
-        H1("SESSION_REMINDER_1H", "Nhắc lịch: phiên mentoring sau 1 giờ", Duration.ofHours(1));
+        H1("SESSION_REMINDER_15M", "Nhắc lịch: phiên mentoring sau 15 phút", Duration.ofMinutes(15));
 
         public final String type;
         public final String title;

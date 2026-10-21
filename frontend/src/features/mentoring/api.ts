@@ -1,5 +1,6 @@
 import { api, apiBlob } from "@/lib/api";
 import type {
+  RoomInfo,
   AttendanceAnswer,
   ActionItem,
   ActionItemInput,
@@ -73,6 +74,14 @@ export const mentoringApi = {
     api<MockInterviewView>(`/api/mentoring/sessions/${id}/scorecard`, { method: "PUT", body }),
   mockHistory: () => api<MockHistoryItem[]>("/api/mentoring/mock-interviews/history"),
   cancelPreview: (id: Uuid) => api<CancelPreview>(`/api/mentoring/sessions/${id}/cancel-preview`),
+  /** Bản chốt v2.0 §6 — phòng học Jitsi (JWT cho đúng người tham gia; lần đầu lấy token được ghi nhật ký vào phòng). */
+  room: (id: Uuid) => api<RoomInfo>(`/api/mentoring/sessions/${id}/room`),
+  /** Báo bên kia vắng mặt sau thời gian chờ (cần đã vào phòng). */
+  reportAbsent: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/report-absent`, { method: "POST" }),
+  /** Bản chốt v2.0 §5 — mentor xác nhận / từ chối buổi đang chờ (học phí đã được tạm giữ từ ví). */
+  confirmSession: (id: Uuid) => api<MentoringSession>(`/api/mentoring/sessions/${id}/confirm`, { method: "POST" }),
+  declineSession: (id: Uuid, reason?: string) =>
+    api<MentoringSession>(`/api/mentoring/sessions/${id}/decline`, { method: "POST", body: { reason: reason || undefined } }),
   cancelSession: (id: Uuid, reason: string) =>
     api<MentoringSession>(`/api/mentoring/sessions/${id}/cancel`, { method: "POST", body: { reason } }),
   updateMeetingLink: (id: Uuid, meetingLink: string) =>

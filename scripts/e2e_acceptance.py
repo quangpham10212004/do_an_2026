@@ -209,7 +209,7 @@ def main():
     pending = call("GET", f"{AI}/api/ai/admin/interviews?status=PENDING_REVIEW", token=admin_token)
     check(4, "Admin thấy buổi phỏng vấn trong danh sách chờ duyệt", any(i["id"] == interview["id"] for i in pending))
     call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review",
-         {"decision": "APPROVE", "note": "Tra loi tot"}, token=admin_token)
+         {"decision": "APPROVE", "note": "Tra loi tot", "tier": "JUNIOR"}, token=admin_token)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
     check(4, "Admin duyệt → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED")
 
@@ -258,14 +258,14 @@ def main():
         token=referred_token), 409)
     check(8, "Đặt ngoài lịch rảnh bị từ chối (409)", ok)
     slot = next_slot().replace(hour=10)
-    slots_url = f"{MENTORING}/api/mentoring/mentors/{mentor['userId']}/available-slots?durationMinutes=90&days=7"
+    slots_url = f"{MENTORING}/api/mentoring/mentors/{mentor['userId']}/available-slots?durationMinutes=60&days=7"
     free = [datetime.fromisoformat(x["startAt"]) for x in call("GET", slots_url, token=referred_token)["slots"]]
     check(8, "Khung giờ trống: có giờ trong lịch rảnh, không có giờ ngoài lịch (FR-5.4)",
           slot in free and night not in free and all(t > datetime.now(VN) for t in free), free[:4])
     session = call("POST", f"{MENTORING}/api/mentoring/sessions", {
-        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": slot.isoformat(), "durationMinutes": 90,
+        "menteeId": referred["userId"], "mentorId": mentor["userId"], "scheduledAt": slot.isoformat(), "durationMinutes": 60,
         "topic": "Review CV", **BOOKING_FORM}, token=referred_token)
-    check(8, "Tạo phiên PENDING với giá = 200.000đ × 1.5 giờ", session["status"] == "PENDING" and float(session["price"]) == 300000, session)
+    check(8, "Tạo phiên PENDING (ví trống) với giá = 200.000đ / buổi 60 phút", session["status"] == "PENDING" and float(session["price"]) == 200000, session)
     free = [datetime.fromisoformat(x["startAt"]) for x in call("GET", slots_url, token=referred_token)["slots"]]
     check(8, "Khung giờ đã đặt (và giờ chồng lấn) biến mất khỏi danh sách trống",
           slot not in free and slot + timedelta(minutes=30) not in free and slot - timedelta(minutes=60) not in free, free[:6])
@@ -277,17 +277,17 @@ def main():
     expiry = (datetime.now() + timedelta(days=800)).strftime("%m/%y")
     declined = charge(session["id"], {
         "cardNumber": "4000 0000 0000 0002", "expiry": expiry, "cvv": "123"}, referred_token)
-    check(8, "Thẻ bị từ chối → giao dịch FAILED", declined["status"] == "FAILED" and declined["failureReason"] == "CARD_DECLINED")
+    check(8, "Thẻ bị từ chối khi nạp ví → giao dịch nạp FAILED", declined["status"] == "FAILED" and declined["failureReason"] == "CARD_DECLINED")
     still = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
-    check(8, "Thanh toán thất bại thì phiên vẫn PENDING (FR-6.2)", still["status"] == "PENDING")
+    check(8, "Nạp ví thất bại thì phiên vẫn PENDING (FR-6.2)", still["status"] == "PENDING")
     ok, _ = expect_error(lambda: charge(session["id"], {
         "cardNumber": "4242424242424242", "expiry": expiry, "cvv": "123"}, referred_token, amount=1000), 400)
     check(8, "Client sửa số tiền bị từ chối (AMOUNT_MISMATCH)", ok)
     paid = charge(session["id"], {
         "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token)
-    check(8, "Thẻ hợp lệ → giao dịch SUCCESS", paid["status"] == "SUCCESS")
+    check(8, "Nạp ví + trả từ ví → giao dịch học phí SUCCESS", paid["status"] == "SUCCESS" and paid["provider"] == "WALLET")
     confirmed = call("GET", f"{MENTORING}/api/mentoring/sessions/{session['id']}", token=referred_token)
-    check(8, "Booking được xác nhận sau thanh toán thành công", confirmed["status"] == "CONFIRMED")
+    check(8, "Booking được xác nhận sau khi mentor xác nhận (dev) — học phí đã tạm giữ", confirmed["status"] == "CONFIRMED")
     ok, _ = expect_error(lambda: charge(session["id"], {
         "cardNumber": "4242 4242 4242 4242", "expiry": expiry, "cvv": "123"}, referred_token), 409)
     check(8, "Không thanh toán trùng 1 phiên (409)", ok)
@@ -304,6 +304,7 @@ def main():
     check(9, "Chưa hoàn thành phiên thì chưa đánh giá được", ok)
     # US-12: không còn hoàn thành trước giờ kết thúc — dời phiên về quá khứ bằng endpoint dev, mentor "complete"
     # (= trả lời HELD) và mentee xác nhận HELD → COMPLETED.
+    call("POST", f"{MENTORING}/internal/dev/sessions/{session['id']}/joined", {"mentor": True, "mentee": True}, internal=True)   # v2.0: nhật ký vào phòng
     call("POST", f"{MENTORING}/internal/dev/sessions/{session['id']}/shift", {"endedMinutesAgo": 5}, internal=True)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/complete", token=mentor_token)
     call("POST", f"{MENTORING}/api/mentoring/sessions/{session['id']}/attendance", {"answer": "HELD"}, token=referred_token)

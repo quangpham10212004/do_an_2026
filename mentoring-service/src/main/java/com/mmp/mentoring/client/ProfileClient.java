@@ -64,7 +64,23 @@ public class ProfileClient {
                              boolean isAvailable, float rating, int ratingCount, String verificationStatus,
                              List<AvailabilitySlot> availability,
                              String status, LocalDate onLeaveUntil, Integer bufferMinutes, Integer minNoticeHours,
-                             String meetingLink, String timezone, List<AvailabilityException> exceptions) {
+                             String meetingLink, String timezone, List<AvailabilityException> exceptions,
+                             Boolean trialEnabled) {
+
+        /** Tương thích lời gọi cũ (không có trialEnabled → mặc định bật). */
+        public MentorInfo(UUID userId, String displayName, List<String> skills, String domain, String bio,
+                          int yearsExperience, BigDecimal hourlyRate, int capacity, int activeMenteeCount,
+                          boolean isAvailable, float rating, int ratingCount, String verificationStatus,
+                          List<AvailabilitySlot> availability, String status, LocalDate onLeaveUntil, Integer bufferMinutes,
+                          Integer minNoticeHours, String meetingLink, String timezone, List<AvailabilityException> exceptions) {
+            this(userId, displayName, skills, domain, bio, yearsExperience, hourlyRate, capacity, activeMenteeCount, isAvailable,
+                    rating, ratingCount, verificationStatus, availability, status, onLeaveUntil, bufferMinutes, minNoticeHours,
+                    meetingLink, timezone, exceptions, null);
+        }
+
+        public boolean effectiveTrialEnabled() {
+            return trialEnabled == null || trialEnabled;
+        }
 
         public MentorStatus effectiveStatus() {
             if (status == null || status.isBlank()) return MentorStatus.ACCEPTING;

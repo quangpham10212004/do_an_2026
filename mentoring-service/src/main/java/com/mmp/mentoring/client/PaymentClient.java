@@ -28,6 +28,63 @@ public class PaymentClient {
                 .build();
     }
 
+    /** Kết quả trả học phí từ ví: PAID, hoặc thiếu tiền (balance / needed lấy từ thông báo lỗi payment-service). */
+    public record WalletPayResult(boolean paid, boolean insufficientFunds, String errorCode) {
+    }
+
+    /**
+     * Bản chốt v2.0 §5 — tạm giữ học phí của phiên từ ví của mentee. payment-service tự đọc giá phiên từ mentoring-service
+     * (không tin client) rồi báo lại {@code payment-succeeded}. 402 INSUFFICIENT_FUNDS → phiên giữ PENDING để mentee nạp thêm.
+     * Lỗi khác (ví đóng băng / ngủ / mạng) cũng không ném: phiên vẫn PENDING, mentee thử lại từ trang thanh toán.
+     */
+    public WalletPayResult payFromWallet(UUID menteeId, UUID sessionId) {
+        try {
+            restClient.post().uri("/internal/wallet/pay")
+                    .body(Map.of("userId", menteeId.toString(), "sessionId", sessionId.toString())).retrieve().toBodilessEntity();
+            return new WalletPayResult(true, false, null);
+        } catch (HttpClientErrorException e) {
+            String code = e.getStatusCode().value() == 402 ? "INSUFFICIENT_FUNDS" : "WALLET_PAY_" + e.getStatusCode().value();
+            return new WalletPayResult(false, e.getStatusCode().value() == 402, code);
+        } catch (RestClientException e) {
+            return new WalletPayResult(false, false, "PAYMENT_UNAVAILABLE");
+        }
+    }
+
+    /** Bản chốt v2.0 §11 — kiểm tra mã giới thiệu trước khi tạo buổi; mã không dùng được → ném ApiException 400 với mã lỗi của payment-service. */
+    public void validateReferral(String code, UUID refereeId, UUID mentorId) {
+        try {
+            restClient.post().uri("/internal/referrals/validate")
+                    .body(Map.of("code", code, "refereeId", refereeId.toString(), "mentorId", mentorId.toString())).retrieve().toBodilessEntity();
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"code\"\\s*:\\s*\"([A-Z_]+)\"").matcher(body);
+            throw ApiException.badRequest(m.find() ? m.group(1) : "INVALID_REFERRAL_CODE", "Mã giới thiệu không dùng được");
+        } catch (RestClientException e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "REFERRAL_UNAVAILABLE", "Không kiểm tra được mã giới thiệu, hãy thử lại hoặc bỏ mã");
+        }
+    }
+
+    /** Ghi nhận mã được dùng cho buổi (best-effort: lỗi chỉ ghi log, không làm hỏng việc đặt lịch đã tạo). */
+    public void applyReferral(String code, UUID refereeId, UUID mentorId, UUID sessionId) {
+        try {
+            restClient.post().uri("/internal/referrals/apply")
+                    .body(Map.of("code", code, "refereeId", refereeId.toString(), "mentorId", mentorId.toString(), "sessionId", sessionId.toString()))
+                    .retrieve().toBodilessEntity();
+        } catch (RestClientException e) {
+            org.slf4j.LoggerFactory.getLogger(PaymentClient.class).warn("Could not apply referral code for session {}: {}", sessionId, e.getMessage());
+        }
+    }
+
+    /** Admin khoá / mở khoá tài khoản → đóng băng / mở ví (best-effort, idempotent). */
+    public void freezeWallet(UUID userId, boolean frozen) {
+        try {
+            restClient.post().uri("/internal/wallet/freeze").body(Map.of("userId", userId.toString(), "frozen", frozen))
+                    .retrieve().toBodilessEntity();
+        } catch (RestClientException e) {
+            org.slf4j.LoggerFactory.getLogger(PaymentClient.class).warn("Could not {} wallet of {}: {}", frozen ? "freeze" : "unfreeze", userId, e.getMessage());
+        }
+    }
+
     /** Hoàn tiền toàn bộ cho phiên đã thanh toán. Trả về false nếu phiên không có giao dịch thành công. */
     public boolean refund(UUID sessionId, String reason) {
         return refund(sessionId, reason, 100);

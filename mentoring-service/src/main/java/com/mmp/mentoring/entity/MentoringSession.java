@@ -15,7 +15,10 @@ public class MentoringSession {
      * CONFIRMED → AWAITING_ATTENDANCE (tới giờ kết thúc, US-12) → COMPLETED | NO_SHOW_MENTEE | NO_SHOW_MENTOR | DISPUTED |
      * CANCELLED (huỷ trong buổi gọi).
      */
-    public enum Status { PENDING, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED }
+    public enum Status { PENDING, AWAITING_MENTOR, CONFIRMED, AWAITING_ATTENDANCE, COMPLETED, EXPIRED, CANCELLED, NO_SHOW_MENTEE, NO_SHOW_MENTOR, DISPUTED }
+
+    /** Bản chốt v2.0 §10 — REGULAR (60 phút) | TRIAL (15 phút, 30.000đ, mỗi cặp một lần). */
+    public enum Kind { REGULAR, TRIAL }
 
     /** US-12 — câu trả lời xác nhận tham dự của mỗi bên. */
     public enum Attendance { HELD, MENTOR_NO_SHOW, MENTEE_NO_SHOW, CANCELLED_ON_CALL }
@@ -76,6 +79,21 @@ public class MentoringSession {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Kind kind = Kind.REGULAR;
+
+    /** Hạn mentor xác nhận (AWAITING_MENTOR): sớm hơn của 24 giờ sau khi tạm giữ học phí và 1 giờ trước giờ bắt đầu. */
+    @Column(name = "confirm_deadline")
+    private OffsetDateTime confirmDeadline;
+
+    /** Nhật ký vào phòng học — căn cứ duy nhất xác định vắng mặt (bản chốt v2.0 §6). */
+    @Column(name = "mentor_joined_at")
+    private OffsetDateTime mentorJoinedAt;
+
+    @Column(name = "mentee_joined_at")
+    private OffsetDateTime menteeJoinedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "mentee_attendance")
@@ -162,6 +180,15 @@ public class MentoringSession {
     public void setCancelledAt(OffsetDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
     public int getRescheduleCount() { return rescheduleCount; }
     public void setRescheduleCount(int rescheduleCount) { this.rescheduleCount = rescheduleCount; }
+    public Kind getKind() { return kind; }
+    public void setKind(Kind kind) { this.kind = kind; }
+    public boolean isTrial() { return kind == Kind.TRIAL; }
+    public OffsetDateTime getConfirmDeadline() { return confirmDeadline; }
+    public void setConfirmDeadline(OffsetDateTime confirmDeadline) { this.confirmDeadline = confirmDeadline; }
+    public OffsetDateTime getMentorJoinedAt() { return mentorJoinedAt; }
+    public void setMentorJoinedAt(OffsetDateTime at) { this.mentorJoinedAt = at; }
+    public OffsetDateTime getMenteeJoinedAt() { return menteeJoinedAt; }
+    public void setMenteeJoinedAt(OffsetDateTime at) { this.menteeJoinedAt = at; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public Attendance getMenteeAttendance() { return menteeAttendance; }

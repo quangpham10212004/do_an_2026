@@ -23,6 +23,7 @@ public class MentoringController {
 
     private final MentoringRequestService requestService;
     private final SessionService sessionService;
+    private final com.mmp.mentoring.service.RoomService roomService;
     private final NotificationService notificationService;
     private final RescheduleService rescheduleService;
     private final AttendanceService attendanceService;
@@ -32,7 +33,8 @@ public class MentoringController {
     public MentoringController(MentoringRequestService requestService, SessionService sessionService,
                                NotificationService notificationService, RescheduleService rescheduleService,
                                AttendanceService attendanceService, DisputeService disputeService,
-                               MentorshipEndService endService) {
+                               MentorshipEndService endService, com.mmp.mentoring.service.RoomService roomService) {
+        this.roomService = roomService;
         this.requestService = requestService;
         this.sessionService = sessionService;
         this.notificationService = notificationService;
@@ -138,6 +140,38 @@ public class MentoringController {
     }
 
     /** Giữ từ Sprint 1 — US-12: = mentor trả lời HELD (chỉ trong 48 giờ sau giờ kết thúc). */
+    /**
+     * Bản chốt v2.0 §6 — phòng học Jitsi: cấp JWT cho đúng hai người tham gia của buổi CONFIRMED trong khung giờ phòng mở; lần đầu
+     * mỗi bên lấy token được ghi vào nhật ký vào phòng (căn cứ xác định vắng mặt).
+     */
+    @GetMapping("/sessions/{id}/room")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public RoomView room(@PathVariable UUID id) {
+        return roomService.join(CurrentUser.get(), id);
+    }
+
+    /** Bản chốt v2.0 §6 — báo bên kia vắng mặt sau thời gian chờ (10 phút; trải nghiệm 5 phút) khi mình đã vào phòng. */
+    @PostMapping("/sessions/{id}/report-absent")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public SessionView reportAbsent(@PathVariable UUID id) {
+        roomService.reportAbsent(CurrentUser.get(), id);
+        return sessionService.get(CurrentUser.get(), id);
+    }
+
+    /** Bản chốt v2.0 §5 — mentor xác nhận buổi đang chờ (học phí đã được tạm giữ từ ví của mentee). */
+    @PostMapping("/sessions/{id}/confirm")
+    @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
+    public SessionView confirmSession(@PathVariable UUID id) {
+        return sessionService.confirm(CurrentUser.get(), id);
+    }
+
+    /** Bản chốt v2.0 §5 — mentor từ chối buổi đang chờ: hoàn 100% cho mentee, không tính lỗi vi phạm. */
+    @PostMapping("/sessions/{id}/decline")
+    @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
+    public SessionView declineSession(@PathVariable UUID id, @Valid @RequestBody(required = false) DeclineSessionInput in) {
+        return sessionService.decline(CurrentUser.get(), id, in);
+    }
+
     @PostMapping("/sessions/{id}/complete")
     @PreAuthorize("hasAnyRole('MENTOR','ADMIN')")
     public SessionView complete(@PathVariable UUID id) {

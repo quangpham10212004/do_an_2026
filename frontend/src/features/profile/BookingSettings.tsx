@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Button, Card, CardBody, CardFooter, CardHeader, Chip, Chips, Field, FlashAlerts, Input, Select, type Flash } from "@/components/ui";
+import { Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Chip, Chips, Field, FlashAlerts, Input, Select, type Flash } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { LANGUAGE_LABELS, SESSION_TYPE_LABELS, profileApi } from "@/features/profile/api";
 import type { BookingSettingsInput, LanguageCode, MentorProfile, SessionType } from "@/types";
@@ -30,6 +30,16 @@ export default function BookingSettings({ profile, onChange }: { profile: Mentor
   const linkInvalid = link !== "" && !MEETING_LINK_RE.test(link);
   const timezones = TIMEZONES.includes(profile.timezone) ? TIMEZONES : [profile.timezone, ...TIMEZONES];
 
+  async function setTrial(enabled: boolean) {
+    setMsg({});
+    try {
+      onChange(await profileApi.setTrialEnabled(profile.userId, enabled));
+      setMsg({ ok: enabled ? "Đã bật nhận buổi trải nghiệm." : "Đã tắt nhận buổi trải nghiệm." });
+    } catch (err) {
+      setMsg({ error: errorMessage(err) });
+    }
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -51,6 +61,8 @@ export default function BookingSettings({ profile, onChange }: { profile: Mentor
         <CardHeader title="Cài đặt đặt lịch" description="Áp dụng khi mentee đặt phiên với bạn." />
         <CardBody className="flex flex-col gap-5">
           <FlashAlerts flash={msg} />
+          <Checkbox label="Nhận buổi trải nghiệm 15 phút (mentee trả 30.000đ, mỗi mentee một lần)" checked={profile.trialEnabled}
+            onChange={() => setTrial(!profile.trialEnabled)} />
           <Field label="Link phòng họp" id="bs-link"
             error={linkInvalid ? "Chỉ nhận link https của Google Meet, Zoom hoặc Microsoft Teams." : undefined}
             hint="Chỉ gửi cho mentee khi phiên đã xác nhận.">

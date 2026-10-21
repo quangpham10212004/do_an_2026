@@ -46,8 +46,8 @@ public class CalendarService {
         if (!GoalRules.isParticipant(user, s.getMentorId(), s.getMenteeId())) {
             throw ApiException.forbidden("Chỉ mentor và mentee của phiên tải được lịch");
         }
-        if (s.getStatus() == MentoringSession.Status.PENDING) {
-            throw ApiException.conflict("SESSION_NOT_CONFIRMED", "Phiên chưa được xác nhận (chờ thanh toán) — chưa thể thêm vào lịch");
+        if (s.getStatus() == MentoringSession.Status.PENDING || s.getStatus() == MentoringSession.Status.AWAITING_MENTOR) {
+            throw ApiException.conflict("SESSION_NOT_CONFIRMED", "Phiên chưa được xác nhận (chờ thanh toán hoặc chờ mentor) — chưa thể thêm vào lịch");
         }
         boolean cancelled = CANCELLED.contains(s.getStatus());
         UUID other = user.userId().equals(s.getMentorId()) ? s.getMenteeId() : s.getMentorId();

@@ -10,7 +10,7 @@ Chạy khi hệ thống đang chạy (docker compose up, profile khác prod) —
 Để không phải chờ thật, script dùng endpoint dev (X-Internal-Token, không tồn tại ở profile prod):
 - mentoring-service: POST /internal/dev/sessions/{id}/shift, /internal/dev/requests/{id}/inactivity,
   /internal/dev/jobs/{attendance|payment-outbox|inactivity}
-- payment-service: POST /internal/dev/earnings/{sessionId}/due (đưa lịch giải phóng 48 giờ tới hạn ngay),
+- payment-service: POST /internal/dev/earnings/{sessionId}/due (đưa lịch giải phóng 72 giờ tới hạn ngay),
   /internal/dev/jobs/earning-release
 """
 import sys
@@ -18,7 +18,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, charge
+from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, charge, tier_for_rate
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -53,7 +53,7 @@ def at(days, hour, minute=0):
     return (datetime.now(VN) + timedelta(days=days)).replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
-def approved_mentor(admin_token, name, hourly_rate=200000, capacity=5):
+def approved_mentor(admin_token, name, hourly_rate=300000, capacity=5):
     m = register("MENTOR", name)
     t = m["accessToken"]
     call("PUT", f"{PROFILE}/api/profile/mentor/{m['userId']}", {
@@ -67,7 +67,8 @@ def approved_mentor(admin_token, name, hourly_rate=200000, capacity=5):
               "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
     while interview["status"] == "IN_PROGRESS":
         interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": answer}, token=t)
-    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok"}, token=admin_token)
+    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok", "tier": tier_for_rate(hourly_rate)},
+         token=admin_token)
     return m
 
 
@@ -93,13 +94,13 @@ def accepted_mentee(mentor, name):
     return me
 
 
-def book(mentee, mentor, start, duration=90):
+def book(mentee, mentor, start, duration=60):
     return call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": mentee["userId"], "mentorId": mentor["userId"], "scheduledAt": start.isoformat(),
         "durationMinutes": duration, "sessionType": "CODE_REVIEW", "agenda": AGENDA}, token=mentee["accessToken"])
 
 
-def paid(mentee, mentor, start, duration=90):
+def paid(mentee, mentor, start, duration=60):
     s = book(mentee, mentor, start, duration)
     charge(s["id"], CARD, mentee["accessToken"])
     return s
@@ -121,7 +122,10 @@ def pay_dev(path):
     return call("POST", f"{PAYMENT}/internal/dev/{path}", {}, internal=True)
 
 
-def ended(sid, minutes_ago):
+def ended(sid, minutes_ago, mentor=True, mentee=True):
+    """Dời giờ phiên để phiên đã kết thúc `minutes_ago` phút trước, rồi chạy job chuyển AWAITING_ATTENDANCE / giải quyết.
+    Bản chốt v2.0 §6: nhật ký vào phòng là căn cứ vắng mặt — mô phỏng việc vào phòng của mỗi bên (mặc định cả hai đã vào)."""
+    dev(f"sessions/{sid}/joined", {"mentor": mentor, "mentee": mentee})
     dev(f"sessions/{sid}/shift", {"endedMinutesAgo": minutes_ago})
     dev("jobs/attendance")
 
@@ -174,25 +178,25 @@ def us25(ctx):
 
     completed(mentee, mentor, s["id"])
     row = earning_row(mentor, s["id"])
-    check("US-25", "Phiên COMPLETED → payment nhận final-state, releaseAt = giờ kết thúc + 48h",
+    check("US-25", "Phiên COMPLETED → payment nhận final-state, releaseAt = giờ kết thúc + 72h",
           row and row["finalState"] == "COMPLETED" and row["releaseAt"] is not None, row)
     pay_dev("jobs/earning-release")
     row = earning_row(mentor, s["id"])
-    check("US-25", "Chưa đủ 48 giờ → job không giải phóng (vẫn PENDING)", float(row["pending"]) == 255000 and float(row["available"]) == 0, row)
+    check("US-25", "Chưa đủ 72 giờ → job không giải phóng (vẫn PENDING)", float(row["pending"]) == 255000 and float(row["available"]) == 0, row)
     pay_dev(f"earnings/{s['id']}/due")
     pay_dev("jobs/earning-release")
     row = earning_row(mentor, s["id"])
-    check("US-25", "Đủ 48 giờ → EARNING_AVAILABLE 255.000, pending = 0 (PENDING→AVAILABLE)",
+    check("US-25", "Đủ 72 giờ → EARNING_AVAILABLE 255.000, pending = 0 (PENDING→AVAILABLE)",
           types(row) == ["EARNING_PENDING", "EARNING_AVAILABLE"] and float(row["available"]) == 255000 and float(row["pending"]) == 0, row)
     pay_dev("jobs/earning-release")
     check("US-25", "Job chạy lại idempotent (không ghi thêm dòng)", len(earning_row(mentor, s["id"])["entries"]) == 2)
 
-    # Không ai trả lời trong 48 giờ → COMPLETED với giờ kết thúc 48h+ trước → giải phóng ngay khi nhận final-state
+    # Không ai trả lời trong 24 giờ → COMPLETED; giờ kết thúc 24h+72h+ trước → giải phóng ngay khi nhận final-state
     s2 = paid(mentee, mentor, at(7, 9))
-    ended(s2["id"], 48 * 60 + 5)
+    ended(s2["id"], 96 * 60 + 5)
     dev("jobs/payment-outbox")
     row2 = earning_row(mentor, s2["id"])
-    check("US-25", "Phiên kết thúc > 48 giờ (NO_ANSWER → COMPLETED) → AVAILABLE ngay khi báo final-state",
+    check("US-25", "Phiên kết thúc > 96 giờ (NO_ANSWER → COMPLETED) → AVAILABLE ngay khi báo final-state",
           row2 and row2["finalState"] == "COMPLETED" and float(row2["available"]) == 255000, row2)
 
     # REVERSAL theo tỉ lệ khi hoàn tiền
@@ -210,7 +214,7 @@ def us25(ctx):
           row4 and float(row4["reversed"]) == 255000 and float(row4["pending"]) == 0 and float(row4["available"]) == 0
           and "EARNING_AVAILABLE" not in types(row4), row4)
 
-    # Mentee huỷ muộn (< 72h, hoàn 0%) → mentor được trả: final-state CANCELLED, giải phóng sau 48 giờ
+    # Mentee huỷ muộn (< 72h, hoàn 0%) → mentor được trả: final-state CANCELLED, giải phóng sau 72 giờ
     s5 = paid(mentee, mentor, at(2, 15))
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s5['id']}/cancel", {"reason": "Ban"}, token=mentee["accessToken"])
     dev("jobs/payment-outbox")
@@ -218,7 +222,7 @@ def us25(ctx):
     pay_dev(f"earnings/{s5['id']}/due")
     pay_dev("jobs/earning-release")
     row5b = earning_row(mentor, s5["id"])
-    check("US-25", "Mentee huỷ muộn (0%) → final-state CANCELLED, sau 48 giờ AVAILABLE 255.000",
+    check("US-25", "Mentee huỷ muộn (0%) → final-state CANCELLED, sau 72 giờ AVAILABLE 255.000",
           row5 and row5["finalState"] == "CANCELLED" and float(row5["available"]) == 0 and float(row5b["available"]) == 255000,
           (row5, row5b))
 
@@ -271,7 +275,7 @@ def us32(ctx):
     pay_dev(f"earnings/{s['id']}/due")
     pay_dev("jobs/earning-release")
     row = earning_row(mentor, s["id"])
-    check("US-32", "Tranh chấp đang mở chặn giải phóng thu nhập (đủ 48h vẫn pending, ON_HOLD)",
+    check("US-32", "Tranh chấp đang mở chặn giải phóng thu nhập (đủ 72h vẫn pending, ON_HOLD)",
           row["transactionStatus"] == "ON_HOLD" and float(row["available"]) == 0 and float(row["pending"]) == 255000, row)
 
     status, code = error_code(lambda: call("GET", f"{MENTORING}/api/mentoring/admin/disputes", token=mentor["accessToken"]))
@@ -319,7 +323,7 @@ def us32(ctx):
 
     # Phiên DISPUTED (US-12) → tranh chấp NO_SHOW tự tạo; NO_REFUND → COMPLETED, trả mentor
     s3 = paid(mentee, mentor, at(8, 10))
-    ended(s3["id"], 5)
+    ended(s3["id"], 5, mentee=False)
     attend(mentee, s3["id"], "HELD")
     attend(mentor, s3["id"], "MENTEE_NO_SHOW")
     dev("jobs/payment-outbox")

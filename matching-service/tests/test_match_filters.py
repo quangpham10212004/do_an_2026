@@ -15,7 +15,7 @@ PREFS = {
 
 def row(**flags) -> dict:
     """Một mentor đã qua ràng buộc hệ thống; mặc định thoả mọi bộ lọc."""
-    base = {k: True for k in ("rate_ok", "free_ok", "language_ok", "session_ok", "rating_ok",
+    base = {k: True for k in ("rate_ok", "language_ok", "session_ok", "rating_ok",
                               "days_ok", "time_ok", "days_time_ok")}
     base.update(flags)
     return base
@@ -43,8 +43,8 @@ def test_request_overrides_profile_without_saving():
 
 
 def test_use_profile_defaults_false_ignores_preferences():
-    f = mf.resolve({"freeOnly": True}, PREFS, use_profile_defaults=False)
-    assert f.active() == {"freeOnly"}
+    f = mf.resolve({"minRating": 4}, PREFS, use_profile_defaults=False)
+    assert f.active() == {"minRating"}
     assert f.from_profile_defaults == ()
 
 
@@ -91,7 +91,7 @@ def test_time_of_day_alone_checks_any_day():
 
 
 def test_inactive_filters_are_ignored():
-    assert mf.passes(row(rate_ok=False, free_ok=False, rating_ok=False), set())
+    assert mf.passes(row(rate_ok=False, rating_ok=False), set())
 
 
 # ---------------- apply + excludedBy ----------------
@@ -132,7 +132,7 @@ def test_no_filters_keeps_everyone_and_reports_nothing():
 
 
 def test_echo_uses_filter_names():
-    echo = mf.to_echo(mf.resolve({"freeOnly": True}, PREFS))
-    assert echo["free_only"] is True and echo["max_rate"] == 150000.0
+    echo = mf.to_echo(mf.resolve({"minRating": 4}, PREFS))
+    assert echo["min_rating"] == 4.0 and echo["max_rate"] == 150000.0
     assert echo["days"] == [2, 6] and echo["language"] == ["vi"]
     assert set(echo["from_profile_defaults"]) == {"maxRate", "days", "timeOfDay", "language"}

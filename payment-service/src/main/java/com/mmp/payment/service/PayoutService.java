@@ -33,10 +33,12 @@ public class PayoutService {
     private final ProfileClient profiles;
     private final AuditClient audit;
     private final TransactionTemplate tx;
+    private final WalletLedger wallets;
 
     public PayoutService(BankAccountRepository banks, PayoutRepository payouts, LedgerRepository ledger,
                          TransactionRepository transactions, EarningService earnings, MentoringClient mentoring,
-                         ProfileClient profiles, AuditClient audit, TransactionTemplate tx) {
+                         ProfileClient profiles, AuditClient audit, TransactionTemplate tx, WalletLedger wallets) {
+        this.wallets = wallets;
         this.banks = banks;
         this.payouts = payouts;
         this.ledger = ledger;
@@ -82,6 +84,9 @@ public class PayoutService {
             payouts.lockMentor(mentorId);
             if (payouts.findFirstByMentorIdAndStatus(mentorId, Payout.Status.REQUESTED).isPresent()) {
                 throw ApiException.conflict("PAYOUT_ALREADY_OPEN", "Bạn đang có một yêu cầu rút tiền chờ xử lý");
+            }
+            if ("FROZEN".equals(wallets.find(mentorId).status())) {
+                throw ApiException.conflict("ACCOUNT_FROZEN", "Tài khoản đang bị khoá — chưa thể rút tiền");
             }
             BankAccount bank = banks.findById(mentorId).orElseThrow(() ->
                     ApiException.badRequest("BANK_ACCOUNT_REQUIRED", "Hãy thêm tài khoản ngân hàng trước khi rút tiền"));

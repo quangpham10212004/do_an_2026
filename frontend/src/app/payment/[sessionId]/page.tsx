@@ -1,159 +1,112 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import Link from "next/link";
-import { CreditCard, ExternalLink, Lock } from "lucide-react";
-import { Alert, Avatar, Button, Card, CardBody, CardHeader, DescriptionList, Field, Input, Loading, PageHeader } from "@/components/ui";
+import { Wallet as WalletIcon } from "lucide-react";
+import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardHeader, DescriptionList, Loading, PageHeader } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
-import { PROVIDER_LABELS, TEST_CARDS, feePercent, newIdempotencyKey, paymentApi, paymentReasonLabel, type RedirectProvider } from "@/features/payment/api";
+import { feePercent, paymentApi, paymentReasonLabel } from "@/features/payment/api";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
 import { SESSION_STATUS_LABELS } from "@/features/mentoring/labels";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { CardInput, MentoringSession, Transaction } from "@/types";
+import type { MentoringSession, Transaction, Wallet } from "@/types";
 
+/**
+ * Bản chốt v2.0 §1/§5 — học phí chỉ trả từ ví. Trang này hiển thị khi phiên còn PENDING (ví chưa đủ tiền lúc đặt lịch):
+ * nạp thêm rồi bấm "Thanh toán từ ví". Khung giờ được giữ 15 phút từ lúc đặt.
+ */
 function Payment({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [session, setSession] = useState<MentoringSession | null | undefined>(undefined);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [history, setHistory] = useState<Transaction[]>([]);
-  const expiry = (() => {
-    const d = new Date();
-    return `${String(d.getMonth() + 1).padStart(2, "0")}/${String((d.getFullYear() + 3) % 100).padStart(2, "0")}`;
-  })();
-  const [card, setCard] = useState<Required<CardInput>>({ cardNumber: TEST_CARDS[0][0], cardHolder: "NGUYEN VAN A", expiry, cvv: "123" });
   const [result, setResult] = useState<Transaction | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  // US-56 — undefined = đang tải; "MOMO" / "VNPAY" → chuyển sang trang của cổng; null → form thẻ sandbox
-  const [gateway, setGateway] = useState<RedirectProvider | null | undefined>(undefined);
-  // US-13 — 1 Idempotency-Key cho mỗi lần checkout: giữ nguyên khi gửi lại (mạng lỗi / bấm 2 lần), đổi sau khi có kết quả.
-  const [idemKey, setIdemKey] = useState<string>(() => newIdempotencyKey());
 
   useEffect(() => {
     mentoringApi.session(sessionId).then(setSession).catch((e) => { setError(errorMessage(e)); setSession(null); });
+    paymentApi.wallet().then(setWallet).catch(() => {});
     paymentApi.sessionTransactions(sessionId).then(setHistory).catch(() => {});
-    paymentApi.methods().then((m) => setGateway(m.redirect)).catch(() => setGateway(null));
   }, [sessionId]);
 
-  async function pay(e: FormEvent) {
-    e.preventDefault();
-    if (!session) return;
+  async function pay() {
     setBusy(true);
     setError("");
     try {
-      const tx = await paymentApi.charge(sessionId, session.price, card, idemKey);
+      const tx = await paymentApi.payFromWallet(sessionId);
       setResult(tx);
       setHistory((h) => [tx, ...h.filter((x) => x.id !== tx.id)]);
-      setIdemKey(newIdempotencyKey()); // lần thử tiếp theo (vd. đổi thẻ sau khi bị từ chối) là checkout mới
-      if (tx.status === "SUCCESS") setTimeout(() => router.push("/mentoring/sessions?paid=1"), 1500);
+      setTimeout(() => router.push("/mentoring/sessions?booked=1"), 1500);
     } catch (err) {
       setError(errorMessage(err));
-      // ApiError = server đã trả lời (key không bị tiêu nếu chưa tạo giao dịch); lỗi mạng → giữ key để gửi lại an toàn
-      if (err instanceof ApiError) setIdemKey(newIdempotencyKey());
+      if (err instanceof ApiError && err.code === "INSUFFICIENT_FUNDS") paymentApi.wallet().then(setWallet).catch(() => {});
     } finally {
       setBusy(false);
     }
   }
 
-  async function payWithGateway() {
-    if (!session) return;
-    setBusy(true);
-    setError("");
-    try {
-      const { paymentUrl } = await paymentApi.checkout(sessionId, session.price);
-      window.location.assign(paymentUrl);
-    } catch (err) {
-      setError(errorMessage(err));
-      setBusy(false);
-    }
-  }
-
-  if (session === undefined || gateway === undefined) return <Loading />;
+  if (session === undefined) return <Loading />;
   if (!session) return <Alert>{error}</Alert>;
-  const set = (k: keyof CardInput) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setCard({ ...card, [k]: e.target.value });
+  const price = Number(session.price);
+  const available = wallet ? wallet.cash + wallet.promo : 0;
+  const enough = !!wallet && wallet.status === "ACTIVE" && available >= price;
+  const shortfall = Math.max(price - available, 0);
+  const pending = session.status === "PENDING";
 
   return (
     <>
-      <PageHeader title="Thanh toán phiên mentoring"
-        description={gateway ? `Thanh toán qua ${PROVIDER_LABELS[gateway]} (môi trường thử nghiệm), không phát sinh giao dịch thật.` : "Cổng thanh toán sandbox, không phát sinh giao dịch thật."}
+      <PageHeader title="Thanh toán từ ví" description="Học phí được tạm giữ từ ví và chỉ chuyển cho mentor sau khi buổi học hoàn thành."
         back={{ href: "/mentoring/sessions", label: "Phiên học" }} />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <form onSubmit={pay}>
-          <Card>
-            <CardHeader title={<span className="inline-flex items-center gap-2"><CreditCard aria-hidden="true" className="size-4 text-ink-muted" />{gateway ? "Phương thức thanh toán" : "Thẻ thanh toán"}</span>} />
-            <CardBody className="flex flex-col gap-4">
-              {result?.status === "SUCCESS" && (
-                <Alert tone="success" title="Thanh toán thành công">
-                  {formatMoney(result.amount)} (phí nền tảng {formatMoney(result.fee)}, mentor nhận {formatMoney(result.mentorEarning)}).
-                  Phiên đã được xác nhận, đang chuyển trang…
-                </Alert>
-              )}
-              {result?.status === "FAILED" && <Alert title="Thanh toán thất bại">{paymentReasonLabel(result.failureReason)}. Kiểm tra thẻ hoặc thử thẻ khác.</Alert>}
-              <Alert>{error}</Alert>
-              {session.status !== "PENDING" ? (
-                <Alert tone="info">Phiên không ở trạng thái chờ thanh toán.</Alert>
-              ) : gateway ? (
-                <>
-                  <p className="text-ink-muted">Bạn sẽ được chuyển sang trang {PROVIDER_LABELS[gateway]} để thanh toán, sau đó quay lại đây.</p>
-                  <Button type="button" variant="primary" size="lg" block icon={ExternalLink} loading={busy} onClick={payWithGateway}>
-                    {busy ? `Đang chuyển sang ${PROVIDER_LABELS[gateway]}…` : `Thanh toán ${formatMoney(session.price)} qua ${PROVIDER_LABELS[gateway]}`}
+        <Card>
+          <CardHeader title={<span className="inline-flex items-center gap-2"><WalletIcon aria-hidden="true" className="size-4 text-ink-muted" />Ví của bạn</span>} />
+          <CardBody className="flex flex-col gap-4">
+            {result?.status === "SUCCESS" && (
+              <Alert tone="success" title="Đã tạm giữ học phí">
+                {formatMoney(result.amount)} (khuyến mãi {formatMoney(result.paidPromo)}, tiền nạp {formatMoney(result.paidCash)}). Đang chờ mentor xác nhận, đang chuyển trang…
+              </Alert>
+            )}
+            <Alert>{error}</Alert>
+            {!pending ? (
+              <Alert tone="info">
+                {session.status === "AWAITING_MENTOR" ? "Học phí đã được tạm giữ, đang chờ mentor xác nhận." : "Phiên không ở trạng thái chờ thanh toán."}
+              </Alert>
+            ) : !wallet ? (
+              <Loading />
+            ) : (
+              <>
+                <DescriptionList items={[
+                  ["Tiền nạp khả dụng", formatMoney(wallet.cash)],
+                  ["Tiền khuyến mãi", formatMoney(wallet.promo)],
+                  ["Cần thanh toán", formatMoney(price)],
+                ]} />
+                {wallet.status !== "ACTIVE" ? (
+                  <Alert tone="warning">Ví đang ở trạng thái {wallet.status === "FROZEN" ? "đóng băng" : "ngủ"} — mở trang Ví để xem chi tiết.</Alert>
+                ) : enough ? (
+                  <Button variant="primary" size="lg" block icon={WalletIcon} loading={busy} onClick={pay}>
+                    {busy ? "Đang xử lý…" : `Thanh toán ${formatMoney(price)} từ ví`}
                   </Button>
-                  <div className="well flex flex-col gap-1.5 text-small">
-                    <div className="eyebrow">Thông tin test {PROVIDER_LABELS[gateway]}</div>
-                    {gateway === "MOMO" ? (
-                      <>
-                        <div>Chọn &ldquo;Thanh toán bằng VISA/Master/JCB&rdquo;: số thẻ <span className="font-mono">4111 1111 1111 1111</span> (không cần OTP)</div>
-                        <div>Chủ thẻ NGUYEN VAN A · Hết hạn 05/26 · CVC <span className="font-mono">111</span></div>
-                        <div>Hoặc thẻ ATM: <span className="font-mono">9704 0000 0000 0018</span>, chủ thẻ NGUYEN VAN A, ngày phát hành 03/07</div>
-                      </>
-                    ) : (
-                      <>
-                        <div>Ngân hàng NCB · Số thẻ <span className="font-mono">9704198526191432198</span></div>
-                        <div>Chủ thẻ NGUYEN VAN A · Ngày phát hành 07/15 · OTP <span className="font-mono">123456</span></div>
-                      </>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Field label="Số thẻ" id="pay-number">
-                    <Input id="pay-number" required inputMode="numeric" autoComplete="cc-number" className="font-mono" value={card.cardNumber} onChange={set("cardNumber")} />
-                  </Field>
-                  <Field label="Chủ thẻ" id="pay-holder">
-                    <Input id="pay-holder" autoComplete="cc-name" value={card.cardHolder} onChange={set("cardHolder")} />
-                  </Field>
-                  <div className="form-grid">
-                    <Field label="Hết hạn (MM/YY)" id="pay-exp">
-                      <Input id="pay-exp" required autoComplete="cc-exp" className="font-mono" value={card.expiry} onChange={set("expiry")} />
-                    </Field>
-                    <Field label="CVV" id="pay-cvv">
-                      <Input id="pay-cvv" required autoComplete="cc-csc" className="font-mono" value={card.cvv} onChange={set("cvv")} />
-                    </Field>
-                  </div>
-                  <Button type="submit" variant="primary" size="lg" block icon={Lock} loading={busy}>{busy ? "Đang xử lý…" : `Thanh toán ${formatMoney(session.price)}`}</Button>
-                  <div className="well flex flex-col gap-1.5 text-small">
-                    <div className="eyebrow">Thẻ test sandbox</div>
-                    {TEST_CARDS.map(([n, l]) => (
-                      <div key={n} className="flex flex-wrap items-center gap-2">
-                        <button type="button" className="cursor-pointer font-mono text-accent hover:underline" onClick={() => setCard({ ...card, cardNumber: n })}>{n}</button>
-                        <span className="text-ink-muted">{l}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </CardBody>
-          </Card>
-        </form>
+                ) : (
+                  <>
+                    <Alert tone="warning">Ví còn thiếu {formatMoney(shortfall)}. Nạp thêm để giữ khung giờ này (giữ tối đa 15 phút từ lúc đặt).</Alert>
+                    <ButtonLink variant="primary" href={`/wallet?needed=${price}&back=${encodeURIComponent(`/payment/${sessionId}`)}`}>Nạp ví</ButtonLink>
+                  </>
+                )}
+              </>
+            )}
+          </CardBody>
+        </Card>
         <div className="flex min-w-0 flex-col gap-6">
           <Card>
             <div className="flex items-center gap-3 border-b border-border px-5 py-4">
               <Avatar name={session.mentorName} />
               <div className="min-w-0 flex-1">
                 <div className="font-semibold">{session.mentorName}</div>
-                <div className="text-small text-ink-muted">Phiên mentoring</div>
+                <div className="text-small text-ink-muted">{session.kind === "TRIAL" ? "Buổi trải nghiệm" : "Phiên mentoring"}</div>
               </div>
               <MentoringStatusBadge status={session.status} labels={SESSION_STATUS_LABELS} />
             </div>
@@ -164,10 +117,13 @@ function Payment({ sessionId }: { sessionId: string }) {
               ]} />
               <hr className="divider" />
               <div className="flex items-baseline justify-between">
-                <span className="text-ink-muted">Tổng thanh toán</span>
+                <span className="text-ink-muted">Học phí</span>
                 <span className="font-mono text-title-1 font-medium tabular">{formatMoney(session.price)}</span>
               </div>
-              <p className="text-small text-ink-muted">Giá đã gồm phí nền tảng. Phiên chưa thanh toán tự huỷ sau 30 phút kể từ lúc đặt để giải phóng khung giờ.</p>
+              <p className="text-small text-ink-muted">
+                Giá đã gồm phí nền tảng. Mentor cần xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, học phí được hoàn 100% về ví.
+                Phiên chưa đủ tiền trong ví sau 15 phút sẽ tự huỷ để giải phóng khung giờ.
+              </p>
             </CardBody>
           </Card>
           {history.length > 0 && (

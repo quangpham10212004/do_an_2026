@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { CalendarDays, CalendarPlus, FileText, Flag, Link2, MessageSquareText, Mic, Repeat, Star, Video, X } from "lucide-react";
-import { Alert, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import DisputeForm, { canReportIssue } from "@/features/mentoring/DisputeForm";
 import {
@@ -24,15 +24,17 @@ import { formatDateTime, formatMoney, formatInZone, getDisplayTimeZone } from "@
 import { errorMessage } from "@/lib/api";
 import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
 
-/** US-04 — nút "Tham gia" hiện từ 15 phút trước giờ bắt đầu tới khi phiên kết thúc. */
-const JOIN_EARLY_MS = 15 * 60 * 1000;
+/** Bản chốt v2.0 §6 — phòng học mở 10 phút trước giờ bắt đầu, đóng 30 phút sau giờ kết thúc. */
+const JOIN_EARLY_MS = 10 * 60 * 1000;
+const JOIN_LATE_MS = 30 * 60 * 1000;
 function canJoin(s: MentoringSession, now = Date.now()): boolean {
-  return now >= new Date(s.scheduledAt).getTime() - JOIN_EARLY_MS && now <= new Date(s.endsAt).getTime();
+  return now >= new Date(s.scheduledAt).getTime() - JOIN_EARLY_MS && now <= new Date(s.endsAt).getTime() + JOIN_LATE_MS;
 }
 
 const FILTERS: [SessionStatus | "", string][] = [
   ["", "Tất cả"],
-  ["PENDING", "Chờ thanh toán"],
+  ["PENDING", "Chờ nạp ví"],
+  ["AWAITING_MENTOR", "Chờ mentor xác nhận"],
   ["CONFIRMED", "Đã xác nhận"],
   ["AWAITING_ATTENDANCE", "Chờ xác nhận tham dự"],
   ["COMPLETED", "Hoàn thành"],
@@ -105,14 +107,16 @@ function outcomeText(s: MentoringSession): string | null {
     case "DISPUTED":
       return `Hai bên xác nhận khác nhau${paid ? " · khoản thanh toán đang được tạm giữ chờ quản trị viên xử lý" : " · chờ quản trị viên xử lý"}`;
     case "EXPIRED":
-      return "Quá hạn thanh toán, khung giờ đã được giải phóng";
+      return s.cancelReason === "MENTOR_NO_RESPONSE"
+        ? "Mentor không xác nhận kịp hạn · học phí đã hoàn 100% về ví"
+        : "Ví chưa đủ tiền trong 15 phút, khung giờ đã được giải phóng";
     case "COMPLETED":
       return s.attendanceResolution ? `Hoàn thành: ${ATTENDANCE_RESOLUTION_LABELS[s.attendanceResolution]}` : null;
     case "CANCELLED": {
       if (!s.cancelledBy) return null;
       const who = s.cancelReason === "CANCELLED_ON_CALL" ? "Huỷ trong buổi gọi"
         : `Huỷ bởi ${s.cancelledBy === "MENTEE" ? "mentee" : s.cancelledBy === "MENTOR" ? "mentor" : "hệ thống"}`;
-      const refund = s.refundPercent !== null && paid ? ` · hoàn ${s.refundPercent}%` : "";
+      const refund = s.refundPercent !== null && paid ? ` · hoàn ${s.refundPercent}% về ví` : "";
       const reason = s.cancelReason && !["PAYMENT_TIMEOUT", "CANCELLED_ON_CALL"].includes(s.cancelReason) ? ` · ${s.cancelReason}` : "";
       return who + refund + reason;
     }
@@ -185,7 +189,7 @@ function Sessions({ user }: { user: SessionUser }) {
   const [rescheduling, setRescheduling] = useState<string | null>(null);
   const [reporting, setReporting] = useState<string | null>(null);
   const [dialog, ask] = useDialog();
-  const [msg, setMsg] = useState<Flash>(params.get("booked") ? { ok: "Đặt lịch thành công!" } : params.get("paid") ? { ok: "Thanh toán thành công, phiên đã được xác nhận." } : {});
+  const [msg, setMsg] = useState<Flash>(params.get("booked") ? { ok: "Đặt lịch thành công! Học phí đã được tạm giữ từ ví, đang chờ mentor xác nhận." } : params.get("paid") ? { ok: "Học phí đã được tạm giữ từ ví, đang chờ mentor xác nhận." } : {});
   const isMentor = user.role === "MENTOR";
   const load = useCallback(
     () => mentoringApi.sessions(filter).then(setItems).catch((e) => { setItems((cur) => cur ?? []); setMsg({ error: errorMessage(e) }); }),
@@ -238,6 +242,7 @@ function Sessions({ user }: { user: SessionUser }) {
                       <div className="flex flex-wrap items-center gap-2">
                         {isMentor ? <strong className="text-title-3">{other}</strong> : <Link href={`/mentors/${s.mentorId}`} className="text-title-3 font-semibold">{other}</Link>}
                         <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
+                        {s.kind === "TRIAL" && <Badge tone="info">Trải nghiệm</Badge>}
                         {s.reviewed && <Stars value={s.reviewRating} />}
                       </div>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-small text-ink-muted">
@@ -247,12 +252,17 @@ function Sessions({ user }: { user: SessionUser }) {
                         {s.sessionType && <span>{SESSION_TYPE_LABELS[s.sessionType]}</span>}
                         {s.topic && <span>{s.topic}</span>}
                       </div>
-                      {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
-                        <div className="text-small text-ink-subtle">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
+                      {s.status === "AWAITING_MENTOR" && s.confirmDeadline && (
+                        <div className="text-small text-ink-muted">
+                          {isMentor ? "Hãy xác nhận trước" : "Mentor cần xác nhận trước"} {formatDateTime(s.confirmDeadline)}; quá hạn buổi tự huỷ và học phí được hoàn 100%.
+                        </div>
+                      )}
+                      {s.status === "CONFIRMED" && !canJoin(s) && future && (
+                        <div className="text-small text-ink-subtle">Nút “Vào phòng học” mở từ 10 phút trước giờ bắt đầu.</div>
                       )}
                     </div>
-                    {s.status === "CONFIRMED" && s.meetingLink && canJoin(s) && (
-                      <a className="btn btn-primary" href={s.meetingLink} target="_blank" rel="noreferrer"><Video aria-hidden="true" />Tham gia</a>
+                    {(s.status === "CONFIRMED" || s.status === "AWAITING_ATTENDANCE") && canJoin(s) && (
+                      <ButtonLink variant="primary" href={`/mentoring/sessions/${s.id}/room`} icon={Video}>Vào phòng học</ButtonLink>
                     )}
                   </div>
                   {(s.agenda || s.preReadLink) && (
@@ -291,7 +301,16 @@ function Sessions({ user }: { user: SessionUser }) {
                   )}
                 </div>
                 <div className="card-foot">
-                  {["PENDING", "CONFIRMED"].includes(s.status) && future && (
+                  {isMentor && s.status === "AWAITING_MENTOR" && future && (
+                    <>
+                      <Button variant="primary" onClick={() => act(() => mentoringApi.confirmSession(s.id), "Đã xác nhận buổi học.")}>Xác nhận</Button>
+                      <Button variant="danger-quiet" onClick={async () => {
+                        const reason = await ask({ title: "Từ chối buổi học?", message: "Học phí đã tạm giữ sẽ được hoàn 100% cho mentee; không bị tính lỗi vi phạm.", input: { label: "Lý do (không bắt buộc)", maxLength: 300 }, confirmText: "Từ chối", cancelText: "Giữ lại", danger: true });
+                        if (reason !== null) act(() => mentoringApi.declineSession(s.id, reason), "Đã từ chối buổi học, mentee được hoàn 100%.");
+                      }}>Từ chối</Button>
+                    </>
+                  )}
+                  {["PENDING", "AWAITING_MENTOR", "CONFIRMED"].includes(s.status) && future && (
                     <Button variant="danger-quiet" icon={X} className="mr-auto" onClick={async () => {
                       setMsg({});
                       let preview: CancelPreview;
@@ -301,14 +320,14 @@ function Sessions({ user }: { user: SessionUser }) {
                         setMsg({ error: errorMessage(e) });
                         return;
                       }
-                      const paid = s.status === "CONFIRMED" && Number(s.price) > 0;
+                      const paid = (s.status === "CONFIRMED" || s.status === "AWAITING_MENTOR") && Number(s.price) > 0;
                       const refundLine = paid ? `Số tiền được hoàn: ${Number(preview.refundAmount) > 0 ? formatMoney(preview.refundAmount) : "0 đ"} (${preview.refundPercent}%).` : "";
                       const reason = await ask({ title: "Huỷ phiên học?", message: <>{refundLine && <strong className="text-ink">{refundLine}<br /></strong>}{preview.policyText}</>, input: { label: "Lý do huỷ (không bắt buộc)", maxLength: 300 }, confirmText: "Huỷ phiên", cancelText: "Giữ phiên", danger: true });
                       if (reason !== null) act(() => mentoringApi.cancelSession(s.id, reason), Number(preview.refundAmount) > 0 ? `Đã huỷ phiên, ${formatMoney(preview.refundAmount)} sẽ được hoàn lại.` : "Đã huỷ phiên.");
                     }}>Huỷ phiên</Button>
                   )}
                   {canReportIssue(s) && <Button variant="ghost" icon={Flag} className="mr-auto" onClick={toggle(reporting, setReporting)}>Báo cáo sự cố</Button>}
-                  {!["PENDING", "EXPIRED"].includes(s.status) && (
+                  {!["PENDING", "AWAITING_MENTOR", "EXPIRED"].includes(s.status) && (
                     <ButtonLink href={`/mentoring/sessions/${s.id}/notes`} icon={FileText}>Ghi chú</ButtonLink>
                   )}
                   {s.sessionType === "MOCK_INTERVIEW" && !["PENDING", "EXPIRED", "CANCELLED"].includes(s.status) && (
@@ -330,13 +349,16 @@ function Sessions({ user }: { user: SessionUser }) {
                     && new Date(s.scheduledAt).getTime() - Date.now() >= 2 * 3600 * 1000 && (
                     <Button icon={Repeat} onClick={toggle(rescheduling, setRescheduling)}>Dời lịch</Button>
                   )}
-                  {!isMentor && s.status === "COMPLETED" && !s.reviewed && (
+                  {!isMentor && s.status === "COMPLETED" && s.kind === "TRIAL" && (
+                    <ButtonLink href={`/mentoring/request/${s.mentorId}`} variant="primary">Muốn học tiếp? Gửi yêu cầu mentoring</ButtonLink>
+                  )}
+                  {!isMentor && s.status === "COMPLETED" && s.kind !== "TRIAL" && !s.reviewed && (
                     <Button variant="primary" icon={Star} onClick={toggle(reviewing, setReviewing)}>Đánh giá</Button>
                   )}
                   {isMentor && s.status === "COMPLETED" && (
                     <Button icon={MessageSquareText} onClick={toggle(reviewing, setReviewing)}>Nhận xét mentee</Button>
                   )}
-                  {!isMentor && s.status === "PENDING" && <ButtonLink href={`/payment/${s.id}`} variant="primary">Thanh toán</ButtonLink>}
+                  {!isMentor && s.status === "PENDING" && <ButtonLink href={`/payment/${s.id}`} variant="primary">Nạp ví và thanh toán</ButtonLink>}
                 </div>
               </Card>
             );

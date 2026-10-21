@@ -8,7 +8,7 @@ import { STATUS_LABELS } from "@/lib/format";
 import { paymentApi } from "@/features/payment/api";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
-import type { PageResponse, Referral, Transaction, TransactionStatus } from "@/types";
+import type { MentorReferral, PageResponse, Transaction, TransactionStatus } from "@/types";
 
 const TRANSACTION_STATUSES: TransactionStatus[] = ["PENDING", "SUCCESS", "FAILED", "REFUNDED"];
 
@@ -17,7 +17,7 @@ function Transactions() {
   const [status, setStatus] = useState<TransactionStatus | "">("");
   const [page, setPage] = useState(0);
   const [data, setData] = useState<PageResponse<Transaction> | null>(null);
-  const [referrals, setReferrals] = useState<Referral[] | null>(null);
+  const [referrals, setReferrals] = useState<MentorReferral[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -25,7 +25,7 @@ function Transactions() {
     paymentApi.adminTransactions(status, page).then(setData).catch((e) => setError(errorMessage(e)));
   }, [status, page]);
   useEffect(() => {
-    if (tab === "referrals" && !referrals) paymentApi.adminReferrals().then(setReferrals).catch((e) => { setError(errorMessage(e)); setReferrals([]); });
+    if (tab === "referrals" && !referrals) paymentApi.adminMentorReferrals().then(setReferrals).catch((e) => { setError(errorMessage(e)); setReferrals([]); });
   }, [tab, referrals]);
 
   return (
@@ -73,16 +73,24 @@ function Transactions() {
         <Card>
           {referrals.length === 0 ? <EmptyState title="Chưa có lượt giới thiệu nào" /> : (
             <Table>
-              <thead><tr><th>Thời gian</th><th>Mã</th><th>Người giới thiệu</th><th>Người được giới thiệu</th><th>Trạng thái</th><th>Lý do từ chối</th></tr></thead>
+              <thead><tr><th>Thời gian</th><th>Mentor</th><th>Người giới thiệu</th><th>Người được giới thiệu</th><th>Trạng thái</th><th>Lý do / thưởng</th><th></th></tr></thead>
               <tbody>
                 {referrals.map((r) => (
                   <tr key={r.id}>
                     <td className="whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
-                    <td className="mono">{r.code}</td>
-                    <td className="mono">{r.referrerId.slice(0, 8)}</td>
+                    <td className="mono">{r.mentorId.slice(0, 8)}</td>
+                    <td className="mono">{r.ownerId.slice(0, 8)}</td>
                     <td className="mono">{r.refereeId.slice(0, 8)}</td>
                     <td><MentoringStatusBadge status={r.status} /></td>
-                    <td className="text-small text-ink-muted">{r.rejectReason || "—"}</td>
+                    <td className="text-small text-ink-muted">{r.rejectReason || (r.rewardAmount ? `+${r.rewardAmount}` : "—")}</td>
+                    <td>
+                      {r.status === "UNDER_REVIEW" && (
+                        <span className="inline-flex gap-2">
+                          <button className="btn btn-sm" onClick={() => paymentApi.decideMentorReferral(r.id, "APPROVE", "Đã xem xét, hợp lệ").then(() => setReferrals(null)).catch((e) => setError(errorMessage(e)))}>Duyệt</button>
+                          <button className="btn btn-sm" onClick={() => paymentApi.decideMentorReferral(r.id, "REJECT", "Nghi ngờ lạm dụng").then(() => setReferrals(null)).catch((e) => setError(errorMessage(e)))}>Từ chối</button>
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

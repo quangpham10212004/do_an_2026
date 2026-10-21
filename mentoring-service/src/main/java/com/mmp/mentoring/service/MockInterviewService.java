@@ -34,7 +34,7 @@ import java.util.UUID;
  *   <li>Sau giờ kết thúc, mentor điền phiếu (4 tiêu chí 0–10 theo trọng số của dạng phỏng vấn, kết luận, đúng 3 điểm cần
  *   sửa). Lần nộp đầu tạo 3 việc cần làm cho mentee (mang sang phiên sau như mọi action item).</li>
  *   <li>Phiếu chỉ mentee và mentor của phiên xem được (Q66); ghi chú riêng chỉ cho mentee.</li>
- *   <li>Job: nhắc mentor ở 12 giờ / 36 giờ; 48 giờ chưa có phiếu → đánh dấu thiếu phiếu (thu nhập vẫn giải phóng 48 giờ).</li>
+ *   <li>Job: nhắc mentor ở 12 giờ / 36 giờ; 48 giờ chưa có phiếu → đánh dấu thiếu phiếu (thu nhập vẫn giải phóng theo mốc chung — 72 giờ, bản chốt v2.0).</li>
  * </ul>
  */
 @Service

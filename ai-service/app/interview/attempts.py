@@ -2,26 +2,27 @@
 US-22 (PRD-AIV-4) — quy tắc số lần phỏng vấn. Hàm thuần, không I/O, để unit test.
 
 - Một "lần" (attempt) = một buổi phỏng vấn đã có kết quả: PENDING_REVIEW, APPROVED, REJECTED hoặc ABANDONED
-  (US-43, PRD-AIV-3: bỏ dở quá 72 giờ). Buổi đang làm (IN_PROGRESS) chưa tính; buổi admin yêu cầu làm lại
+  (US-43, PRD-AIV-3: bỏ dở quá 24 giờ). Buổi đang làm (IN_PROGRESS) chưa tính; buổi admin yêu cầu làm lại
   (RETAKE_REQUESTED) KHÔNG tính.
 - Tối đa `max_attempts` lần (mặc định 3). Bị từ chối đủ `max_attempts` lần => khoá (INTERVIEW_LOCKED) cho tới
   khi admin mở khoá; mở khoá => chỉ các buổi tạo SAU lần mở khoá gần nhất được tính.
 - Buổi gần nhất bị REJECTED => phải chờ `cooldown` (mặc định 7 ngày) tính từ lúc admin từ chối.
 """
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 COUNTED_STATUSES = ("PENDING_REVIEW", "APPROVED", "REJECTED", "ABANDONED")
 
-# US-43 (PRD-AIV-3) — buổi IN_PROGRESS tiếp tục được trong 72 giờ kể từ hoạt động gần nhất.
-RESUME_WINDOW = timedelta(hours=72)
+# US-43 (PRD-AIV-3) — buổi IN_PROGRESS tiếp tục được trong 24 giờ kể từ hoạt động gần nhất.
+RESUME_WINDOW = timedelta(hours=float(os.getenv("INTERVIEW_RESUME_HOURS", "24")))
 # US-43 (PRD-AIV-2) — độ dài câu trả lời (ký tự, sau khi trim).
 ANSWER_MIN = 50
 ANSWER_MAX = 3000
 
 
 def resume_deadline(created_at: datetime, last_answered_at: datetime | None) -> datetime:
-    """Hạn tiếp tục = hoạt động gần nhất (bắt đầu hoặc câu trả lời cuối) + 72 giờ."""
+    """Hạn tiếp tục = hoạt động gần nhất (bắt đầu hoặc câu trả lời cuối) + 24 giờ."""
     last = max(created_at, last_answered_at) if last_answered_at else created_at
     return last + RESUME_WINDOW
 

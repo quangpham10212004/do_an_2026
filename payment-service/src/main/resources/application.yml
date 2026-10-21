@@ -43,6 +43,7 @@ app:
   payment:                         # US-13
     platform-fee-rate: ${PLATFORM_FEE_RATE:0.15}   # phí nền tảng chốt vào giao dịch lúc charge (fee, mentor_earning)
     idempotency-ttl: PT24H         # Idempotency-Key của /charge có hiệu lực 24 giờ / người gọi
+    direct-session-payment: ${DIRECT_SESSION_PAYMENT:false}   # v2.0: học phí chỉ trả từ ví; true = bật lại /charge và /checkout (chỉ dev)
     gateway: ${PAYMENT_GATEWAY:sandbox}   # US-56 — sandbox (form thẻ test trong tiến trình) | momo | vnpay
     reconcile-after: ${PAYMENT_RECONCILE_AFTER:PT2M}   # PENDING quá mốc này → truy vấn cổng (local không nhận được IPN)
   momo:                            # US-56 — https://developers.momo.vn/v3/docs/payment/api/wallet/onetime/
@@ -59,11 +60,24 @@ app:
     pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
     api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
     link-ttl: PT15M                # vnp_ExpireDate; ngắn hơn thời gian giữ chỗ 30 phút của phiên để kịp thử lại
+  wallet:                          # Bản chốt v2.0 §8 — ví VND
+    topup-min: ${WALLET_TOPUP_MIN:50000}
+    topup-max: ${WALLET_TOPUP_MAX:5000000}
+    cash-cap: ${WALLET_CASH_CAP:20000000}           # tiền nạp khả dụng tối đa
+    refund-window: ${WALLET_REFUND_WINDOW:P7D}       # hoàn tiền nạp về nguồn trong 7 ngày kể từ lần nạp gần nhất
+    refund-requests-per-month: ${WALLET_REFUND_REQUESTS_PER_MONTH:2}
+    promo-expiry-months: ${WALLET_PROMO_EXPIRY_MONTHS:12}
+    restored-promo-days: 30        # khuyến mãi hoàn lại sau khi lô gốc đã hết hạn → cấp lô mới hạn 30 ngày
+    dormant-after-months: ${WALLET_DORMANT_AFTER_MONTHS:12}
   earnings:                        # US-25 — sổ thu nhập mentor
-    release-delay: ${EARNING_RELEASE_DELAY:PT48H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE
+    release-delay: ${EARNING_RELEASE_DELAY:PT72H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE (bản chốt v2.0 §9)
     release-interval: PT5M           # chu kỳ job giải phóng
   referral:
-    # FR-6.6 — quy tắc cộng điểm & chống gian lận cơ bản
+    reward-amount: ${REFERRAL_REWARD:30000}       # Bản chốt v2.0 §11 — thưởng bằng TIỀN KHUYẾN MÃI cho người giới thiệu
+    pending: ${REFERRAL_PENDING:P7D}           # chờ 7 ngày kể từ khi buổi hoàn thành, huỷ nếu buổi bị hoàn tiền
+    monthly-cap: ${REFERRAL_MONTHLY_CAP:5}     # tối đa 5 lượt thưởng / tháng / người giới thiệu
+    anomaly-uses-24h: 3                        # > 3 lượt dùng mã trong 24 giờ → chuyển admin xem xét
+    # FR-6.6 (v1.x, chỉ cho luồng thẻ trực tiếp đã tắt) — quy tắc cộng điểm & chống gian lận cơ bản
     reward-points: 100
     min-qualifying-amount: 50000
     max-qualified-per-referrer-per-day: 5

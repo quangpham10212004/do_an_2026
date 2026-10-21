@@ -19,9 +19,23 @@ import java.util.UUID;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
 
-    List<Transaction> findByPayerIdOrderByCreatedAtDesc(UUID payerId);
+    /** Giao dịch học phí của người trả (không gồm nạp ví — xem {@link #findTopups}). */
+    @Query("SELECT t FROM Transaction t WHERE t.payerId = :payerId AND t.kind = 'SESSION' ORDER BY t.createdAt DESC")
+    List<Transaction> findByPayerIdOrderByCreatedAtDesc(@Param("payerId") UUID payerId);
 
-    List<Transaction> findByMentorIdOrderByCreatedAtDesc(UUID mentorId);
+    @Query("SELECT t FROM Transaction t WHERE t.payerId = :payerId AND t.kind = 'TOPUP' ORDER BY t.createdAt DESC")
+    List<Transaction> findTopups(@Param("payerId") UUID payerId);
+
+    /** Các lần nạp thành công (còn hoàn được: SUCCESS / PARTIALLY_REFUNDED) từ mốc `since`, mới nhất trước. */
+    @Query("SELECT t FROM Transaction t WHERE t.payerId = :payerId AND t.kind = 'TOPUP' AND t.status IN ('SUCCESS', 'PARTIALLY_REFUNDED') "
+            + "AND t.createdAt >= :since ORDER BY t.createdAt DESC")
+    List<Transaction> findRefundableTopupsSince(@Param("payerId") UUID payerId, @Param("since") OffsetDateTime since);
+
+    @Query("SELECT MAX(t.createdAt) FROM Transaction t WHERE t.payerId = :payerId AND t.kind = 'TOPUP' AND t.status IN ('SUCCESS', 'PARTIALLY_REFUNDED', 'REFUNDED')")
+    OffsetDateTime latestTopupAt(@Param("payerId") UUID payerId);
+
+    @Query("SELECT t FROM Transaction t WHERE t.mentorId = :mentorId AND t.kind = 'SESSION' ORDER BY t.createdAt DESC")
+    List<Transaction> findByMentorIdOrderByCreatedAtDesc(@Param("mentorId") UUID mentorId);
 
     List<Transaction> findBySessionIdOrderByCreatedAtDesc(UUID sessionId);
 
@@ -45,20 +59,23 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     /** US-25 — giao dịch "đã từng thu tiền" của mentor (SUCCESS / ON_HOLD / PARTIALLY_REFUNDED / REFUNDED). */
     List<Transaction> findByMentorIdAndStatusInOrderByCreatedAtDesc(UUID mentorId, Collection<Transaction.Status> statuses);
 
-    @Query("SELECT COALESCE(SUM(t.fee), 0) FROM Transaction t WHERE t.status IN :statuses")
+    @Query("SELECT COALESCE(SUM(t.fee), 0) FROM Transaction t WHERE t.kind = 'SESSION' AND t.status IN :statuses")
     BigDecimal sumFeeByStatusIn(@Param("statuses") Collection<Transaction.Status> statuses);
 
-    long countByPayerIdAndStatus(UUID payerId, Transaction.Status status);
+    /** Số giao dịch học phí (không gồm nạp ví) của người trả ở trạng thái `status`. */
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.payerId = :payerId AND t.kind = 'SESSION' AND t.status = :status")
+    long countByPayerIdAndStatus(@Param("payerId") UUID payerId, @Param("status") Transaction.Status status);
 
     List<Transaction> findByStatusInAndSessionSyncedFalse(List<Transaction.Status> statuses);
 
-    @Query("SELECT t FROM Transaction t WHERE (:status IS NULL OR t.status = :status) ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.kind = 'SESSION' AND (:status IS NULL OR t.status = :status) ORDER BY t.createdAt DESC")
     Page<Transaction> search(@Param("status") Transaction.Status status, Pageable pageable);
 
-    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = :status")
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.kind = 'SESSION' AND t.status = :status")
     BigDecimal sumByStatus(@Param("status") Transaction.Status status);
 
-    long countByStatus(Transaction.Status status);
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.kind = 'SESSION' AND t.status = :status")
+    long countByStatus(@Param("status") Transaction.Status status);
 
     /** US-56 — vnp_TxnRef → giao dịch. */
     Optional<Transaction> findByProviderTxnRef(String providerTxnRef);

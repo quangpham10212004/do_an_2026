@@ -5,6 +5,7 @@ export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "R
 export type InterviewStrategy = "OPENING" | "DEEPEN" | "PIVOT";
 export type Recommendation = "APPROVE" | "REJECT" | "NEEDS_REVIEW";
 export type ReviewDecision = "APPROVE" | "REJECT" | "REQUEST_RETAKE";
+export type MentorTier = "JUNIOR" | "SENIOR" | "EXPERT";
 
 /** US-23: điểm 4 tiêu chí rubric (0–10). */
 export interface RubricScores {
@@ -51,6 +52,8 @@ export interface Interview {
   currentQuestion: InterviewTurn | null;
   turns: InterviewTurn[];
   overallScore: number | null;
+  /** Bản chốt v2.0 — cấp đề xuất từ điểm (chỉ admin); null = chưa có điểm hoặc dưới ngưỡng đạt (< 60) */
+  suggestedTier: MentorTier | null;
   summary: string | null;
   strengths: string[];
   weaknesses: string[];

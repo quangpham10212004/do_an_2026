@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, ReviewDecision, Uuid } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, MentorTier, ReviewDecision, Uuid } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -17,8 +17,8 @@ export const aiApi = {
     api<Interview>(`/api/ai/interviews/${id}/answers`, { method: "POST", body: { answer, pastedLargeText } }),
   interview: (id: Uuid) => api<Interview>(`/api/ai/interviews/${id}`),
   adminInterviews: (status: InterviewStatus | "" = "") => api<Interview[]>(`/api/ai/admin/interviews?status=${status}`),
-  reviewInterview: (id: Uuid, decision: ReviewDecision, note: string) =>
-    api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
+  reviewInterview: (id: Uuid, decision: ReviewDecision, note: string, tier?: MentorTier | null) =>
+    api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note, ...(tier ? { tier } : {}) } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // CV + chatbot enrichment
   // US-19: consentExternalAi bắt buộc — false => chỉ engine rule-based cho CV này (parse + chatbot)

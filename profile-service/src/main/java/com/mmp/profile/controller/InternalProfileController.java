@@ -37,7 +37,13 @@ public class InternalProfileController {
 
     @PutMapping("/mentor/{mentorId}/verification")
     public MentorProfileResponse verification(@PathVariable UUID mentorId, @Valid @RequestBody VerificationUpdate body) {
-        return profileService.updateVerification(mentorId, body.status());
+        return profileService.updateVerification(mentorId, body.status(), body.tier());
+    }
+
+    /** Bản chốt v2.0 — ai-service gọi khi admin duyệt xin nâng cấp: đổi cấp, giá được kẹp về khung mới. */
+    @PutMapping("/mentor/{mentorId}/tier")
+    public MentorProfileResponse tier(@PathVariable UUID mentorId, @Valid @RequestBody TierUpdate body) {
+        return profileService.changeTier(mentorId, body.tier());
     }
 
     /**

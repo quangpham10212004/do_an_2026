@@ -2,6 +2,7 @@ package com.mmp.auth.service;
 
 import com.mmp.auth.dto.AuthDtos.PageResponse;
 import com.mmp.auth.dto.AuthDtos.UserResponse;
+import com.mmp.auth.client.MentoringClient;
 import com.mmp.auth.entity.User;
 import com.mmp.auth.exception.ApiException;
 import com.mmp.auth.repository.RefreshTokenRepository;
@@ -10,6 +11,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
 
@@ -20,9 +23,11 @@ public class UserAdminService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AuditService auditService;
+    private final MentoringClient mentoringClient;
 
     public UserAdminService(UserRepository userRepository, RefreshTokenRepository refreshTokenRepository,
-                            AuditService auditService) {
+                            AuditService auditService, MentoringClient mentoringClient) {
+        this.mentoringClient = mentoringClient;
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.auditService = auditService;
@@ -59,8 +64,26 @@ public class UserAdminService {
                     "USER", user.getId().toString(),
                     java.util.Map.of("status", oldStatus.name(), "email", user.getEmail()),
                     java.util.Map.of("status", newStatus.name(), "email", user.getEmail()));
+            notifyMentoringAfterCommit(user.getId(), newStatus == User.Status.LOCKED, actingAdminId);
         }
         return UserResponse.from(user);
+    }
+
+    /**
+     * Bản chốt v2.0 §2.1 — sau khi trạng thái tài khoản đã commit mới nhờ mentoring-service huỷ buổi chưa diễn ra (hoàn 100%) và
+     * đóng băng / mở ví. Ngoài transaction (hoặc khi test không có transaction) gọi ngay.
+     */
+    private void notifyMentoringAfterCommit(UUID userId, boolean locked, UUID actorId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    mentoringClient.accountLockChanged(userId, locked, actorId);
+                }
+            });
+        } else {
+            mentoringClient.accountLockChanged(userId, locked, actorId);
+        }
     }
 
     @Transactional(readOnly = true)

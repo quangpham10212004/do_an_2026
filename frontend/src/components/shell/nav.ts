@@ -103,6 +103,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       items: [
         { href: "/admin/transactions", label: "Giao dịch", icon: Receipt },
         { href: "/admin/payouts", label: "Rút tiền", icon: Banknote },
+        { href: "/admin/wallet", label: "Ví người dùng", icon: Wallet },
       ],
     },
     {
@@ -120,6 +121,7 @@ export const NAV: Record<Role, NavGroup[]> = {
 /** Mục ít dùng, đặt trong menu tài khoản thay vì sidebar. */
 export const ACCOUNT_LINKS: Record<Role, NavItem[]> = {
   MENTEE: [
+    { href: "/wallet", label: "Ví", icon: Wallet },
     { href: "/payment/transactions", label: "Giao dịch", icon: Receipt },
     { href: "/referral", label: "Giới thiệu bạn bè", icon: Gift },
   ],

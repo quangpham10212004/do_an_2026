@@ -48,20 +48,22 @@ class SessionCancelTest {
         assertThat(p.refundPercent()).isEqualTo(100);
         assertThat(p.refundAmount()).isEqualByComparingTo("200000");
         assertThat(p.cancelledBy()).isEqualTo("MENTEE");
-        session.setScheduledAt(OffsetDateTime.now().plusDays(1));
+        session.setScheduledAt(OffsetDateTime.now().plusHours(10));   // 4–24 giờ → 50%
+        assertThat(f.service().cancelPreview(mentee, id).refundAmount()).isEqualByComparingTo("100000");
+        session.setScheduledAt(OffsetDateTime.now().plusHours(3));
         assertThat(f.service().cancelPreview(mentee, id).refundAmount()).isEqualByComparingTo("0");
     }
 
     @Test
     void lateMenteeCancelDoesNotCallRefund() {
-        session.setScheduledAt(OffsetDateTime.now().plusDays(1));
+        session.setScheduledAt(OffsetDateTime.now().plusHours(3));
         var view = f.service().cancel(mentee, id, null);
         assertThat(view.status()).isEqualTo("CANCELLED");
         assertThat(view.cancelledBy()).isEqualTo("MENTEE");
         assertThat(view.refundPercent()).isZero();
         verify(f.paymentClient, never()).refund(any(), any(), anyInt());
         verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());
-        // US-25 — hoàn 0% → mentor được trả: báo trạng thái cuối CANCELLED để giải phóng thu nhập sau 48 giờ
+        // US-25 — hoàn 0% → mentor được trả: báo trạng thái cuối CANCELLED để giải phóng thu nhập sau 72 giờ
         verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
     }
 
@@ -76,11 +78,11 @@ class SessionCancelTest {
     }
 
     @Test
-    void mentorCancelRefundsAndQueuesApologyPoints() {
+    void mentorCancelRefundsFullyWithStrikeAndNoApologyPoints() {
         session.setScheduledAt(OffsetDateTime.now().plusHours(3));
         f.service().cancel(mentor, id, null);
         verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTOR"), eq(100));
-        verify(f.outbox).enqueueReward(eq(menteeId), eq(20), eq(PaymentOutboxService.MENTOR_CANCEL_APOLOGY), any());
+        verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());   // v2.0: bỏ điểm xin lỗi
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
         verify(f.strikes).record(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL); // US-02
     }
@@ -102,12 +104,22 @@ class SessionCancelTest {
     }
 
     @Test
-    void freeSessionLateCancelIsRecorded() {
-        session.setPrice(BigDecimal.ZERO);
-        session.setScheduledAt(OffsetDateTime.now().plusMinutes(90));
+    void midWindowMenteeCancelRefundsHalfAndReportsFinalStateForTheMentorShare() {
+        session.setScheduledAt(OffsetDateTime.now().plusHours(10));
         f.service().cancel(mentee, id, null);
-        verify(f.lateCancelRepo).save(any(LateCancellation.class));
-        verify(f.paymentClient, never()).refund(any(), any(), anyInt());
+        verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTEE"), eq(50));
+        assertThat(session.getRefundPercent()).isEqualTo(50);
+        verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
+    }
+
+    @Test
+    void menteeCancellingBeforeMentorConfirmationIsRefundedFullyEvenWhenLate() {
+        session.setStatus(MentoringSession.Status.AWAITING_MENTOR);
+        session.setScheduledAt(OffsetDateTime.now().plusHours(2));
+        f.service().cancel(mentee, id, null);
+        verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTEE"), eq(100));
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
     }
 
     @Test

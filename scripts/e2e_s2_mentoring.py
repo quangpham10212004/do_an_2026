@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MATCHING, MENTORING, PAYMENT, PROFILE, ApiError, call, charge
+from common import AI, AUTH, MATCHING, MENTORING, PAYMENT, PROFILE, ApiError, call, charge, tier_for_rate
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -64,7 +64,8 @@ def approved_mentor(admin_token, name, hourly_rate, capacity=5):
               "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
     while interview["status"] == "IN_PROGRESS":
         interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": answer}, token=t)
-    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok"}, token=admin_token)
+    call("POST", f"{AI}/api/ai/admin/interviews/{interview['id']}/review", {"decision": "APPROVE", "note": "ok", "tier": tier_for_rate(hourly_rate)},
+         token=admin_token)
     return m
 
 
@@ -108,8 +109,10 @@ def dev(path, body=None):
     return call("POST", f"{MENTORING}/internal/dev/{path}", body or {}, internal=True)
 
 
-def ended(sid, minutes_ago):
-    """Dời giờ phiên để phiên đã kết thúc `minutes_ago` phút trước, rồi chạy job chuyển AWAITING_ATTENDANCE / giải quyết."""
+def ended(sid, minutes_ago, mentor=True, mentee=True):
+    """Dời giờ phiên để phiên đã kết thúc `minutes_ago` phút trước, rồi chạy job chuyển AWAITING_ATTENDANCE / giải quyết.
+    Bản chốt v2.0 §6: nhật ký vào phòng là căn cứ vắng mặt — mô phỏng việc vào phòng của mỗi bên (mặc định cả hai đã vào)."""
+    dev(f"sessions/{sid}/joined", {"mentor": mentor, "mentee": mentee})
     dev(f"sessions/{sid}/shift", {"endedMinutesAgo": minutes_ago})
     dev("jobs/attendance")
 
@@ -121,42 +124,35 @@ def attend(user, sid, answer):
 def us13(ctx):
     print("US-13 — Thanh toán: phí nền tảng, Idempotency-Key, hoàn tiền")
     mentor, mentee = ctx["mentor"], ctx["mentee"]
-    s = book(mentee, mentor, at(8, 9), duration=90)
-    check("US-13", "Phiên 90 phút × 200.000đ/giờ = 300.000đ", float(s["price"]) == 300000, s["price"])
+    s = book(mentee, mentor, at(8, 9), duration=60)
+    check("US-13", "Phiên 60 phút × 300.000đ = 300.000đ (giá theo buổi)", float(s["price"]) == 300000, s["price"])
+    # Bản chốt v2.0: thẻ trả thẳng từng phiên (/charge + Idempotency-Key) đã tắt — học phí chỉ trả từ ví
     status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": s["id"], "card": CARD},
-                                           token=mentee["accessToken"]))
-    check("US-13", "Thiếu Idempotency-Key → 400 IDEMPOTENCY_KEY_REQUIRED", status == 400 and code == "IDEMPOTENCY_KEY_REQUIRED",
-          (status, code))
-    key = str(uuid.uuid4())
-    t1 = charge(s["id"], CARD, mentee["accessToken"], idempotency_key=key)
+                                           token=mentee["accessToken"], headers={"Idempotency-Key": str(uuid.uuid4())}))
+    check("US-13", "Thanh toán thẻ trực tiếp đã tắt → 409 USE_WALLET", status == 409 and code == "USE_WALLET", (status, code))
+    t1 = charge(s["id"], CARD, mentee["accessToken"])
     check("US-13", "300.000đ → fee = 45.000, mentorEarning = 255.000 (AC)",
-          t1["status"] == "SUCCESS" and float(t1["fee"]) == 45000 and float(t1["mentorEarning"]) == 255000
+          t1["status"] == "SUCCESS" and t1["provider"] == "WALLET" and float(t1["fee"]) == 45000 and float(t1["mentorEarning"]) == 255000
           and abs(float(t1["feeRate"]) - 0.15) < 1e-9, t1)
-    t2 = charge(s["id"], CARD, mentee["accessToken"], idempotency_key=key)
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/wallet/pay", {"sessionId": s["id"]}, token=mentee["accessToken"]))
     all_tx = txs(mentee, s["id"])
-    check("US-13", "2 lần charge cùng Idempotency-Key → 1 giao dịch, lần 2 trả kết quả lần 1 (AC)",
-          t2["id"] == t1["id"] and len(all_tx) == 1, (t2["id"], len(all_tx)))
-    other = book(mentee, mentor, at(9, 9))
-    status, code = error_code(lambda: charge(other["id"], CARD, mentee["accessToken"], idempotency_key=key))
-    check("US-13", "Dùng lại key cho phiên khác → 409 IDEMPOTENCY_KEY_REUSED", status == 409 and code == "IDEMPOTENCY_KEY_REUSED",
-          (status, code))
-    status, code = error_code(lambda: charge(s["id"], CARD, mentee["accessToken"]))
-    check("US-13", "Key mới cho phiên đã trả → 409 (phiên đã CONFIRMED / ALREADY_PAID), không charge lần 2",
-          status == 409 and code in ("SESSION_NOT_PAYABLE", "ALREADY_PAID") and len(txs(mentee, s["id"])) == 1, (status, code))
+    check("US-13", "Trả lần 2 cho phiên đã tạm giữ → 409, vẫn 1 giao dịch học phí (không trả hai lần)",
+          status == 409 and len(all_tx) == 1, (status, code, len(all_tx)))
     check("US-13", "Mentor thấy fee/mentorEarning trong giao dịch của mình",
           any(t["id"] == t1["id"] and float(t["mentorEarning"]) == 255000
               for t in call("GET", f"{PAYMENT}/api/payment/transactions", token=mentor["accessToken"])))
 
-    # Mentee huỷ < 72h phiên 300.000đ → không có dòng refund (AC)
-    late = book(mentee, mentor, at(2, 15), duration=90)
+    # Mentee huỷ < 4h phiên 300.000đ → không có dòng refund (AC)
+    late = book(mentee, mentor, at(2, 15), duration=60)
     charge(late["id"], CARD, mentee["accessToken"])
+    dev(f"sessions/{late['id']}/shift", {"startsInMinutes": 180})   # còn 3 giờ → hoàn 0%
     c = call("POST", f"{MENTORING}/api/mentoring/sessions/{late['id']}/cancel", {"reason": "Ban"}, token=mentee["accessToken"])
     t = txs(mentee, late["id"])[0]
-    check("US-13", "Mentee huỷ < 72h phiên 300.000đ → không tạo dòng refund, giao dịch vẫn SUCCESS (AC)",
+    check("US-13", "Mentee huỷ < 4h phiên 300.000đ → không tạo dòng refund, giao dịch vẫn SUCCESS (AC)",
           c["refundPercent"] == 0 and t["status"] == "SUCCESS" and t["refunds"] == [] and float(t["refundedAmount"]) == 0, t)
 
     # Hoàn một phần qua endpoint nội bộ (percent / amount), tổng ≤ giá
-    part = book(mentee, mentor, at(10, 9), duration=90)
+    part = book(mentee, mentor, at(10, 9), duration=60)
     charge(part["id"], CARD, mentee["accessToken"])
     r1 = call("POST", f"{PAYMENT}/internal/payments/refund", {"sessionId": part["id"], "reason": "TEST", "percent": 50}, internal=True)
     check("US-13", "Hoàn 50% → PARTIALLY_REFUNDED, 1 dòng refund 150.000, fee/amount giữ nguyên",
@@ -186,7 +182,7 @@ def us13(ctx):
 
 
 def paid_session(ctx, day):
-    s = book(ctx["mentee"], ctx["mentor"], at(day, 9), duration=90)
+    s = book(ctx["mentee"], ctx["mentor"], at(day, 9), duration=60)
     charge(s["id"], CARD, ctx["mentee"]["accessToken"])
     return s
 
@@ -219,20 +215,21 @@ def us12(ctx):
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/review", {"rating": 5}, token=mentee["accessToken"])
     check("US-12", "Phiên COMPLETED đánh giá được", get_session(mentee, s["id"])["reviewed"])
 
-    # AC: không ai trả lời → COMPLETED sau 48 giờ
+    # AC: không ai trả lời → COMPLETED sau 24 giờ
     s = paid_session(ctx, 21)
-    dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 47 * 60})
+    dev(f"sessions/{s['id']}/joined", {"mentor": True, "mentee": True})
+    dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 23 * 60})
     dev("jobs/attendance")
-    check("US-12", "Sau 47 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
-    ended(s["id"], 48 * 60 + 1)
+    check("US-12", "Sau 23 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
+    ended(s["id"], 24 * 60 + 1)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
-    check("US-12", "Không ai trả lời → COMPLETED 48 giờ sau giờ kết thúc, mentor được trả (giao dịch SUCCESS) (AC)",
+    check("US-12", "Không ai trả lời → COMPLETED 24 giờ sau giờ kết thúc, mentor được trả (giao dịch SUCCESS) (AC)",
           v["status"] == "COMPLETED" and v["attendanceResolution"] == "NO_ANSWER" and t["status"] == "SUCCESS", (v["status"], t["status"]))
 
     # AC: trả lời mâu thuẫn → DISPUTED ngay, giao dịch ON_HOLD, không hoàn/không trả
     s = paid_session(ctx, 22)
-    ended(s["id"], 5)
+    ended(s["id"], 5, mentee=False)
     attend(mentee, s["id"], "HELD")
     v = attend(mentor, s["id"], "MENTEE_NO_SHOW")
     t = txs(mentee, s["id"])[0]
@@ -248,11 +245,11 @@ def us12(ctx):
     check("US-12", "Admin nhận thông báo SESSION_DISPUTED (hook US-32)",
           any(n["type"] == "SESSION_DISPUTED" and s["id"] in n["message"] for n in admin_notes))
 
-    # Mentee báo mentor vắng, mentor im lặng 48 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
+    # Mentee báo mentor vắng, mentor im lặng 24 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
     s = paid_session(ctx, 23)
-    ended(s["id"], 5)
+    ended(s["id"], 5, mentor=False)
     attend(mentee, s["id"], "MENTOR_NO_SHOW")
-    ended(s["id"], 48 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1, mentor=False)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     if t["status"] != "REFUNDED":
@@ -266,9 +263,9 @@ def us12(ctx):
 
     # Mentor báo mentee vắng, mentee im lặng → NO_SHOW_MENTEE, không hoàn
     s = paid_session(ctx, 24)
-    ended(s["id"], 5)
+    ended(s["id"], 5, mentee=False)
     attend(mentor, s["id"], "MENTEE_NO_SHOW")
-    ended(s["id"], 48 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1, mentee=False)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     check("US-12", "Mentor báo mentee vắng + mentee im lặng → NO_SHOW_MENTEE, không hoàn (SUCCESS)",
@@ -341,20 +338,20 @@ def us14(ctx):
 
 
 def us15(ctx):
-    print("US-15 — Yêu cầu hết hạn sau 72 giờ")
+    print("US-15 — Yêu cầu hết hạn sau 24 giờ")
     mentor = approved_mentor(ctx["admin"]["accessToken"], "expiry", 150000)
     accepted_mentee(mentor, "expiry-active")   # mentor có 1 mentee đang hướng dẫn
     before = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
     me = mentee_with_profile("expiry")
     r = send_request(me, mentor)
-    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 71})
+    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 23})
     dev("jobs/request-expiry")
     mine = {x["id"]: x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])}
-    check("US-15", "PENDING 71 giờ → vẫn PENDING", mine[r["id"]]["status"] == "PENDING", mine[r["id"]]["status"])
-    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 73})
+    check("US-15", "PENDING 23 giờ → vẫn PENDING", mine[r["id"]]["status"] == "PENDING", mine[r["id"]]["status"])
+    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 25})
     dev("jobs/request-expiry")
     mine = {x["id"]: x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])}
-    check("US-15", "PENDING quá 72 giờ không phản hồi → EXPIRED (kèm expiredAt)",
+    check("US-15", "PENDING quá 24 giờ không phản hồi → EXPIRED (kèm expiredAt)",
           mine[r["id"]]["status"] == "EXPIRED" and mine[r["id"]]["expiredAt"], mine[r["id"]])
     after = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
     check("US-15", "active_mentee_count của mentor không đổi", before == after == 1, (before, after))
@@ -387,7 +384,7 @@ def main(selected):
     t0 = time.time()
     print(f"E2E Sprint 2 mentoring/payment run {RUN}\n")
     admin = call("POST", f"{AUTH}/api/auth/login", {"email": "admin@mmp.local", "password": "Admin@123"})
-    mentor = approved_mentor(admin["accessToken"], "main", 200000)
+    mentor = approved_mentor(admin["accessToken"], "main", 300000)
     ctx = {"admin": admin, "mentor": mentor, "mentee": accepted_mentee(mentor, "main"), "matching_url": MATCHING}
     for story, fn in STORIES.items():
         if not selected or story in selected:

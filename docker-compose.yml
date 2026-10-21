@@ -113,6 +113,7 @@ services:
       DB_NAME: auth_db
       REDIS_HOST: redis
       PAYMENT_SERVICE_URL: http://payment-service:8084
+      MENTORING_SERVICE_URL: http://mentoring-service:8083
       # US-38 — múi giờ người nhận (giờ yên tĩnh); EMAIL_MODE=smtp + `docker compose --profile mail up` để gửi qua Mailpit.
       PROFILE_SERVICE_URL: http://profile-service:8082
       EMAIL_MODE: ${EMAIL_MODE:-log}
@@ -170,6 +171,11 @@ services:
       PAYMENT_SERVICE_URL: http://payment-service:8084
       MATCHING_SERVICE_URL: http://matching-service:8090
       AUTH_SERVICE_URL: http://auth-service:8081
+      # Bản chốt v2.0 §6 — phòng học Jitsi (bật bằng `docker compose --profile jitsi up`)
+      JITSI_PUBLIC_DOMAIN: ${JITSI_PUBLIC_DOMAIN:-localhost:8443}
+      JITSI_XMPP_DOMAIN: ${JITSI_XMPP_DOMAIN:-meet.jitsi}
+      JITSI_APP_ID: ${JITSI_APP_ID:-mentorhub}
+      JITSI_JWT_SECRET: ${JITSI_JWT_SECRET:-dev-only-jitsi-secret-change-me-0123456789abcdef}
     depends_on:
       mentoring-db: { condition: service_healthy }
     healthcheck:
@@ -253,6 +259,7 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       CV_STORAGE_DIR: /data/cv
       INTERVIEW_MAX_TURNS: ${INTERVIEW_MAX_TURNS:-5}
+      INTERVIEW_RESUME_HOURS: ${INTERVIEW_RESUME_HOURS:-24}
       ENRICHMENT_MAX_TURNS: ${ENRICHMENT_MAX_TURNS:-4}
       # Để trống DEEPSEEK_API_KEY => AI Interview & CV enrichment dùng engine rule-based (chạy offline)
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
@@ -288,6 +295,69 @@ services:
       - mentoring-service
       - payment-service
       - ai-service
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # Bản chốt v2.0 §6 — phòng học video + chat tự host (Jitsi Meet), xác thực bằng JWT do mentoring-service cấp
+  # (GET /api/mentoring/sessions/{id}/room). Bật: docker compose --profile jitsi up -d ; mở https://localhost:8443
+  # (chứng chỉ tự ký) một lần để trình duyệt chấp nhận. Cần UDP 10000 cho media (jitsi-jvb).
+  # ---------------------------------------------------------------------------------------------------------------
+  jitsi-prosody:
+    image: jitsi/prosody:stable-9823
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    environment: &jitsi-env
+      XMPP_DOMAIN: meet.jitsi
+      XMPP_AUTH_DOMAIN: auth.meet.jitsi
+      XMPP_MUC_DOMAIN: muc.meet.jitsi
+      XMPP_INTERNAL_MUC_DOMAIN: internal-muc.meet.jitsi
+      XMPP_GUEST_DOMAIN: guest.meet.jitsi
+      ENABLE_AUTH: "1"
+      ENABLE_GUESTS: "0"
+      AUTH_TYPE: jwt
+      JWT_APP_ID: ${JITSI_APP_ID:-mentorhub}
+      JWT_APP_SECRET: ${JITSI_JWT_SECRET:-dev-only-jitsi-secret-change-me-0123456789abcdef}
+      JWT_ACCEPTED_ISSUERS: ${JITSI_APP_ID:-mentorhub}
+      JWT_ACCEPTED_AUDIENCES: jitsi
+      JICOFO_AUTH_USER: focus
+      JICOFO_AUTH_PASSWORD: ${JITSI_JICOFO_AUTH_PASSWORD:-dev-only-jicofo-password}
+      JVB_AUTH_USER: jvb
+      JVB_AUTH_PASSWORD: ${JITSI_JVB_AUTH_PASSWORD:-dev-only-jvb-password}
+      JICOFO_COMPONENT_SECRET: ${JITSI_JICOFO_COMPONENT_SECRET:-dev-only-jicofo-component}
+      TZ: Asia/Ho_Chi_Minh
+    networks:
+      default:
+        aliases: [xmpp.meet.jitsi]
+
+  jitsi-jicofo:
+    image: jitsi/jicofo:stable-9823
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    environment: *jitsi-env
+    depends_on: [jitsi-prosody]
+
+  jitsi-jvb:
+    image: jitsi/jvb:stable-9823
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    ports: ["10000:10000/udp"]
+    environment:
+      <<: *jitsi-env
+      JVB_PORT: "10000"
+      JVB_ADVERTISE_IPS: ${JITSI_JVB_ADVERTISE_IP:-127.0.0.1}
+    depends_on: [jitsi-prosody]
+
+  jitsi-web:
+    image: jitsi/web:stable-9823
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    ports: ["8443:443"]
+    environment:
+      <<: *jitsi-env
+      PUBLIC_URL: https://localhost:8443
+      ENABLE_LETSENCRYPT: "0"
+      ENABLE_HTTP_REDIRECT: "0"
+      DISABLE_HTTPS: "0"
+    depends_on: [jitsi-prosody]
 
 volumes:
   auth-db-data:

@@ -42,8 +42,9 @@ class MessagingServiceTest {
     private final NotificationService notifications = mock(NotificationService.class);
     private final AuditClient audit = mock(AuditClient.class);
     private final TransactionTemplate tx = mock(TransactionTemplate.class);
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class);
     private final MessagingService service = new MessagingService(requestRepo, messageRepo, reportRepo, sessionRepo,
-            profileClient, notifications, audit, tx);
+            profileClient, notifications, audit, tx, jdbc);
 
     private final UUID mentorId = UUID.randomUUID();
     private final UUID menteeId = UUID.randomUUID();
@@ -118,12 +119,27 @@ class MessagingServiceTest {
     }
 
     @Test
-    void contactsVisibleAfterPaidSessionConfirmed() {
+    void contactsStayMaskedEvenAfterAPaidSession() {
+        // Bản chốt v2.0 §12: không còn mở khoá thông tin liên hệ sau buổi trả tiền đầu tiên
         send(mentee, "call me 0912345678");
         when(sessionRepo.existsPaidConfirmedForPair(menteeId, mentorId)).thenReturn(true);
         ConversationView view = service.get(mentor, convId, null);
-        assertThat(view.contactsMasked()).isFalse();
-        assertThat(view.messages().get(0).body()).isEqualTo("call me 0912345678");
+        assertThat(view.contactsMasked()).isTrue();
+        assertThat(view.messages().get(0).body()).isEqualTo("call me 09•••••••78");
+    }
+
+    @Test
+    void contactDetailsAreRecordedAsViolationsAndThreeInAMonthAlertTheAdmins() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(3);
+        send(mentee, "zalo: nguyenvana");
+        verify(jdbc).update(startsWith("INSERT INTO contact_violations"), any(), any(), eq("SOCIAL"));
+        verify(notifications).notifyRole(eq("ADMIN"), eq("CONTACT_VIOLATIONS"), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void plainMessagesRecordNothing() {
+        send(mentee, "Chào anh, em muốn học Spring Boot");
+        verify(jdbc, never()).update(startsWith("INSERT INTO contact_violations"), any(), any(), any());
     }
 
     @Test

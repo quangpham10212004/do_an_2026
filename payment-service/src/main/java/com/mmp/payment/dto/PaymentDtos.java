@@ -52,6 +52,8 @@ public final class PaymentDtos {
             UUID id, UUID sessionId, UUID payerId, UUID mentorId, BigDecimal amount, BigDecimal fee, BigDecimal mentorEarning,
             BigDecimal feeRate, BigDecimal refundedAmount, String currency,
             String status, String provider, String providerReference, String failureReason, String holdReason,
+            /** Bản chốt v2.0 — SESSION | TOPUP; phần học phí lấy từ khuyến mãi / tiền nạp (provider = WALLET). */
+            String kind, BigDecimal paidPromo, BigDecimal paidCash,
             List<RefundView> refunds, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 
         public static TransactionResponse from(Transaction t, List<Refund> refunds) {
@@ -59,7 +61,8 @@ public final class PaymentDtos {
             return new TransactionResponse(t.getId(), t.getSessionId(), t.getPayerId(), t.getMentorId(), t.getAmount(),
                     t.getFee(), t.getMentorEarning(), t.getFeeRate(), refunded,
                     t.getCurrency(), t.getStatus().name(), t.getProvider(), t.getProviderReference(),
-                    t.getFailureReason(), t.getHoldReason(), refunds.stream().map(RefundView::from).toList(),
+                    t.getFailureReason(), t.getHoldReason(), t.getKind(), t.getPaidPromo(), t.getPaidCash(),
+                    refunds.stream().map(RefundView::from).toList(),
                     t.getCreatedAt(), t.getUpdatedAt());
         }
     }
@@ -114,6 +117,70 @@ public final class PaymentDtos {
             String code, String shareUrl, long totalReferrals, long qualifiedReferrals, long pointsBalance,
             int rewardPointsPerReferral, BigDecimal minQualifyingAmount,
             List<ReferralResponse> referrals, List<RewardResponse> rewards) {
+    }
+
+    // ---------- Bản chốt v2.0 §11: giới thiệu theo mentor ----------
+
+    public record MentorReferralCodeView(UUID mentorId, String mentorName, String code, String shareUrl) {
+    }
+
+    /** status: REGISTERED | UNDER_REVIEW | QUALIFIED | REJECTED | CAPPED. */
+    public record MentorReferralView(UUID id, UUID ownerId, UUID mentorId, UUID refereeId, UUID sessionId, String status,
+                                     String rejectReason, BigDecimal rewardAmount, OffsetDateTime createdAt, OffsetDateTime decidedAt) {
+    }
+
+    public record MyMentorReferrals(BigDecimal reward, int pendingDays, int monthlyCap, int qualifiedThisMonth, BigDecimal earned,
+                                    List<MentorReferralCodeView> codes, List<MentorReferralView> referrals) {
+    }
+
+    public record ReferralCodeRequest(@NotNull UUID mentorId) {
+    }
+
+    public record ReferralApplyRequest(@NotBlank String code, @NotNull UUID refereeId, @NotNull UUID mentorId, UUID sessionId) {
+    }
+
+    public record ReferralDecision(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "APPROVE|REJECT") String decision,
+                                   @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    // ---------- Bản chốt v2.0 §8: ví ----------
+
+    /** cash = tiền nạp khả dụng; promo = khuyến mãi còn hạn; held = học phí đang tạm giữ (chưa có trạng thái cuối). */
+    public record WalletView(String status, BigDecimal cash, BigDecimal promo, BigDecimal held, OffsetDateTime nextPromoExpiry,
+                             BigDecimal topupMin, BigDecimal topupMax, BigDecimal cashCap, RefundEligibility refund) {
+    }
+
+    public record RefundEligibility(boolean windowOpen, OffsetDateTime windowEndsAt, BigDecimal maxAmount, int remainingRequests) {
+    }
+
+    /** provider trống / "SANDBOX" → cần card; "MOMO" / "VNPAY" → trả link chuyển hướng. */
+    public record TopupRequest(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount, @Size(max = 20) String provider,
+                               @Valid CardInput card) {
+    }
+
+    public record PayFromWalletRequest(@NotNull UUID sessionId, BigDecimal amount) {
+    }
+
+    public record TopupRefundBody(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount,
+                                  @Size(max = 1000) String exceptionReason) {
+    }
+
+    public record TopupRefundView(UUID id, UUID userId, BigDecimal amount, String status, String kind, String userReason,
+                                  String adminReason, OffsetDateTime createdAt, OffsetDateTime decidedAt) {
+    }
+
+    public record TopupRefundDecision(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "APPROVE|REJECT") String decision,
+                                      @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    public record PromoGrantRequest(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount,
+                                    @NotBlank @Size(max = 200) String reason) {
+    }
+
+    public record WalletPayInternalRequest(@NotNull UUID userId, @NotNull UUID sessionId) {
+    }
+
+    public record FreezeRequest(@NotNull UUID userId, boolean frozen) {
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {

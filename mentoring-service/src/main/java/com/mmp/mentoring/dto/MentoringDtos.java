@@ -65,8 +65,36 @@ public final class MentoringDtos {
             @NotBlank @Size(max = 500) String agenda,
             @Size(max = 500) String preReadLink,
             @Size(max = 300) String topic,
+            /** Bản chốt v2.0 §10 — REGULAR (mặc định) | TRIAL (buổi trải nghiệm 15 phút, phí cố định). */
+            @jakarta.validation.constraints.Pattern(regexp = "REGULAR|TRIAL") String kind,
+            /** Bản chốt v2.0 §11 — mã giới thiệu của mentor này, chỉ ở yêu cầu đặt buổi thường đầu tiên (không giảm giá). */
+            @Size(max = 20) String referralCode,
             /** US-58 — bắt buộc khi sessionType = MOCK_INTERVIEW, bỏ qua với loại khác. */
             @jakarta.validation.Valid MockInterviewDtos.MockIntakeInput mockIntake) {
+
+        /** Tương thích lời gọi cũ (buổi thường). */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null, null, null);
+        }
+
+        /** Buổi thường kèm intake phỏng vấn thử (US-58). */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic,
+                                MockInterviewDtos.MockIntakeInput mockIntake) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null, null, mockIntake);
+        }
+
+        /** Buổi trải nghiệm / mã giới thiệu (v2.0), không có intake. */
+        public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
+                                SessionType sessionType, String agenda, String preReadLink, String topic,
+                                String kind, String referralCode) {
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, kind, referralCode, null);
+        }
+
+        public boolean trial() {
+            return "TRIAL".equalsIgnoreCase(kind);
+        }
     }
 
     public record SlotView(OffsetDateTime startAt, OffsetDateTime endAt) {
@@ -76,6 +104,15 @@ public final class MentoringDtos {
     }
 
     public record CancelSessionInput(@Size(max = 300) String reason) {
+    }
+
+    /** Bản chốt v2.0 §6 — phòng học Jitsi: domain + tên phòng + JWT (chỉ người tham gia, trong khung giờ phòng mở). */
+    public record RoomView(String provider, String domain, String roomName, String jwt, OffsetDateTime opensAt,
+                           OffsetDateTime closesAt, int graceMinutes, boolean moderator) {
+    }
+
+    /** Bản chốt v2.0 §5 — mentor từ chối buổi đang chờ xác nhận (hoàn 100% cho mentee). */
+    public record DeclineSessionInput(@Size(max = 300) String reason) {
     }
 
     /** US-04 — mentor đổi link phòng họp riêng cho 1 phiên (https Google Meet / Zoom / Teams). */
@@ -92,7 +129,9 @@ public final class MentoringDtos {
                               boolean reviewed, Integer reviewRating, OffsetDateTime createdAt,
                               DisputeBrief dispute,
                               /* US-37 (PRD-PROF-6) — múi giờ hai bên, frontend hiện giờ địa phương của bên kia khi rê chuột. */
-                              String mentorTimezone, String menteeTimezone) {
+                              String mentorTimezone, String menteeTimezone,
+                              /* Bản chốt v2.0 — REGULAR | TRIAL; hạn mentor xác nhận (chỉ AWAITING_MENTOR). */
+                              String kind, OffsetDateTime confirmDeadline) {
     }
 
     /** US-32 — tranh chấp gần nhất của phiên (null nếu chưa có). */
@@ -118,7 +157,7 @@ public final class MentoringDtos {
 
     /** Dạng rút gọn cho payment-service gọi nội bộ. */
     public record SessionInternalView(UUID id, UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt,
-                                      int durationMinutes, BigDecimal price, String status) {
+                                      int durationMinutes, BigDecimal price, String status, String kind) {
     }
 
     public record PaymentSucceededInput(@NotNull UUID transactionId) {

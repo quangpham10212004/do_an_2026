@@ -39,7 +39,7 @@ function PaymentReturn({ provider }: { provider: string }) {
         setTx(t);
         setAttempts(n);
         if (t.status === "PENDING" && n < POLL_LIMIT) timer = setTimeout(() => check(n + 1), POLL_MS);
-        if (t.status === "SUCCESS") timer = setTimeout(() => router.push("/mentoring/sessions?paid=1"), 2000);
+        if (t.status === "SUCCESS") timer = setTimeout(() => router.push(t.kind === "TOPUP" ? "/wallet?topup=1" : "/mentoring/sessions?paid=1"), 2000);
       } catch (e) {
         if (!cancelled) setError(errorMessage(e));
       }
@@ -53,7 +53,7 @@ function PaymentReturn({ provider }: { provider: string }) {
 
   return (
     <>
-      <PageHeader title={`Kết quả thanh toán ${label}`} back={{ href: "/mentoring/sessions", label: "Phiên học" }} />
+      <PageHeader title={`Kết quả thanh toán ${label}`} back={{ href: "/wallet", label: "Ví" }} />
       <Card>
         <CardBody className="flex flex-col gap-4">
           <Alert>{error}</Alert>

@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** Kiểm thử các job nền: nhắc lịch 24 giờ / 1 giờ (US-34), phiên quá hạn thanh toán → EXPIRED, job xác nhận tham dự (US-12). */
+/** Kiểm thử các job nền: nhắc lịch 24 giờ / 15 phút (US-34), phiên quá hạn thanh toán → EXPIRED, job xác nhận tham dự (US-12). */
 class SessionSchedulerTest {
 
     private SessionRepository repo;
@@ -42,7 +42,7 @@ class SessionSchedulerTest {
         when(tx.execute(any())).thenAnswer(inv -> ((TransactionCallback<Object>) inv.getArgument(0)).doInTransaction(null));
         when(profileClient.timezone(any())).thenReturn(ZoneId.of("Asia/Ho_Chi_Minh"));
         when(profileClient.displayNames(any())).thenReturn(Map.of());
-        scheduler = new SessionScheduler(repo, notifications, attendance, profileClient, tx, Duration.ofMinutes(30));
+        scheduler = new SessionScheduler(repo, notifications, attendance, profileClient, tx, Duration.ofMinutes(15), mock(SessionService.class), mock(TrialService.class));
     }
 
     private static MentoringSession session(MentoringSession.Status status, OffsetDateTime start) {
@@ -80,14 +80,14 @@ class SessionSchedulerTest {
 
     @Test
     void oneHourReminderAfterTheDailyOne() {
-        MentoringSession s = session(MentoringSession.Status.CONFIRMED, OffsetDateTime.now().plusMinutes(50));
+        MentoringSession s = session(MentoringSession.Status.CONFIRMED, OffsetDateTime.now().plusMinutes(10));
         ReflectionTestUtils.setField(s, "reminder24hSentAt", OffsetDateTime.now().minusHours(20));
         when(repo.findNeedingReminder(any(), any())).thenReturn(List.of(s));
         when(repo.claimReminder1h(any(), any())).thenReturn(1);
 
         scheduler.sendReminders();
 
-        verify(notifications, times(2)).notifyUser(any(), eq("SESSION_REMINDER_1H"), anyString(), anyString(), anyString(), any());
+        verify(notifications, times(2)).notifyUser(any(), eq("SESSION_REMINDER_15M"), anyString(), anyString(), anyString(), any());
     }
 
     @Test
@@ -110,7 +110,7 @@ class SessionSchedulerTest {
 
         ArgumentCaptor<OffsetDateTime> before = ArgumentCaptor.forClass(OffsetDateTime.class);
         verify(repo).findExpiredPending(before.capture());
-        assertThat(before.getValue()).isCloseTo(OffsetDateTime.now().minusMinutes(30), within(5, java.time.temporal.ChronoUnit.SECONDS));
+        assertThat(before.getValue()).isCloseTo(OffsetDateTime.now().minusMinutes(15), within(5, java.time.temporal.ChronoUnit.SECONDS));
         assertThat(pending.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
         assertThat(pending.getCancelReason()).isEqualTo("PAYMENT_TIMEOUT");
         verify(notifications).notifyUser(eq(pending.getMenteeId()), eq("SESSION_EXPIRED"), anyString(), anyString(), anyString());

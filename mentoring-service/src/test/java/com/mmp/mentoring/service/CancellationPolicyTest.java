@@ -6,20 +6,23 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** US-01 — chính sách huỷ phiên. */
+/** Bản chốt v2.0 §7 — chính sách huỷ buổi (3 bậc 24h / 4h; trải nghiệm 2h; mentor / hệ thống hoàn đủ). */
 class CancellationPolicyTest {
 
     private final CancellationPolicy policy = CancellationPolicy.defaults();
     private final OffsetDateTime now = OffsetDateTime.parse("2026-10-07T10:00:00+07:00");
     private final BigDecimal price = new BigDecimal("300000");
 
+    private Decision mentee(OffsetDateTime start) {
+        return policy.evaluate(Actor.MENTEE, price, true, start, now);
+    }
+
     @Test
-    void menteeCancellingAtLeast72HoursAheadGetsFullRefund() {
-        Decision d = policy.evaluate(Actor.MENTEE, price, true, now.plusHours(72), now);
+    void menteeCancellingAtLeast24HoursAheadGetsFullRefund() {
+        Decision d = mentee(now.plusHours(24));
         assertThat(d.refundPercent()).isEqualTo(100);
         assertThat(d.refundAmount()).isEqualByComparingTo("300000");
         assertThat(d.strike()).isFalse();
@@ -28,19 +31,47 @@ class CancellationPolicyTest {
     }
 
     @Test
-    void menteeCancellingLateGetsNothing() {
-        Decision d = policy.evaluate(Actor.MENTEE, price, true, now.plusHours(71).plusMinutes(59), now);
-        assertThat(d.refundPercent()).isZero();
-        assertThat(d.refundAmount()).isEqualByComparingTo("0");
-        assertThat(d.lateFreeCancel()).isFalse(); // phiên có phí không tính "huỷ muộn phiên miễn phí"
+    void menteeCancellingBetween4And24HoursGetsHalf() {
+        Decision d = mentee(now.plusHours(23).plusMinutes(59));
+        assertThat(d.refundPercent()).isEqualTo(50);
+        assertThat(d.refundAmount()).isEqualByComparingTo("150000");
+        assertThat(mentee(now.plusHours(4)).refundPercent()).isEqualTo(50);
+        assertThat(d.policyText()).contains("50%");
     }
 
     @Test
-    void mentorCancelAlwaysRefundsFullyWithPointsAndStrike() {
+    void menteeCancellingUnder4HoursGetsNothing() {
+        Decision d = mentee(now.plusHours(3).plusMinutes(59));
+        assertThat(d.refundPercent()).isZero();
+        assertThat(d.refundAmount()).isEqualByComparingTo("0");
+        assertThat(d.lateFreeCancel()).isFalse();
+    }
+
+    @Test
+    void menteeCancellingBeforeTheMentorConfirmsIsAlwaysRefundedFully() {
+        Decision d = policy.evaluate(Actor.MENTEE, price, true, now.plusHours(1), now, false, false);
+        assertThat(d.refundPercent()).isEqualTo(100);
+        assertThat(d.policyText()).contains("chưa xác nhận");
+    }
+
+    @Test
+    void trialSessionIsFullyRefundedOnlyTwoHoursAhead() {
+        BigDecimal trialPrice = new BigDecimal("30000");
+        Decision early = policy.evaluate(Actor.MENTEE, trialPrice, true, now.plusHours(2), now, true, true);
+        assertThat(early.refundPercent()).isEqualTo(100);
+        Decision late = policy.evaluate(Actor.MENTEE, trialPrice, true, now.plusHours(1).plusMinutes(59), now, true, true);
+        assertThat(late.refundPercent()).isZero();
+        assertThat(late.refundAmount()).isEqualByComparingTo("0");
+        // trải nghiệm không có bậc 50%
+        assertThat(policy.evaluate(Actor.MENTEE, trialPrice, true, now.plusHours(10), now, true, true).refundPercent()).isEqualTo(100);
+    }
+
+    @Test
+    void mentorCancelAlwaysRefundsFullyWithStrikeButNoApologyPoints() {
         Decision d = policy.evaluate(Actor.MENTOR, price, true, now.plusHours(1), now);
         assertThat(d.refundPercent()).isEqualTo(100);
         assertThat(d.refundAmount()).isEqualByComparingTo("300000");
-        assertThat(d.rewardPoints()).isEqualTo(20);
+        assertThat(d.rewardPoints()).isZero();   // v2.0 bỏ điểm xin lỗi
         assertThat(d.strike()).isTrue();
     }
 
@@ -57,30 +88,13 @@ class CancellationPolicyTest {
         Decision d = policy.evaluate(Actor.MENTEE, price, false, now.plusDays(5), now);
         assertThat(d.refundPercent()).isZero();
         assertThat(d.refundAmount()).isEqualByComparingTo("0");
-        assertThat(d.policyText()).contains("chưa thanh toán");
+        assertThat(d.policyText()).contains("chưa tạm giữ");
     }
 
     @Test
-    void freeSessionCancelledUnderTwoHoursIsLate() {
-        assertThat(policy.evaluate(Actor.MENTEE, BigDecimal.ZERO, false, now.plusMinutes(119), now).lateFreeCancel()).isTrue();
-        assertThat(policy.evaluate(Actor.MENTEE, BigDecimal.ZERO, false, now.plusHours(2), now).lateFreeCancel()).isFalse();
-        assertThat(policy.evaluate(Actor.MENTOR, BigDecimal.ZERO, false, now.plusMinutes(30), now).lateFreeCancel()).isFalse();
-    }
-
-    @Test
-    void threeLateCancelsIn30DaysBlockFreeBookingFor14Days() {
-        List<OffsetDateTime> two = List.of(now.minusDays(20), now.minusDays(1));
-        assertThat(policy.freeBookingBlockedUntil(two, now)).isEmpty();
-
-        List<OffsetDateTime> three = List.of(now.minusDays(20), now.minusDays(10), now.minusDays(1));
-        assertThat(policy.freeBookingBlockedUntil(three, now)).contains(now.minusDays(1).plusDays(14));
-
-        // 3 lần nhưng trải dài hơn 30 ngày → không chặn
-        List<OffsetDateTime> spread = List.of(now.minusDays(40), now.minusDays(20), now.minusDays(1));
-        assertThat(policy.freeBookingBlockedUntil(spread, now)).isEmpty();
-
-        // chặn đã hết hạn (lần thứ 3 cách đây 15 ngày)
-        List<OffsetDateTime> expired = List.of(now.minusDays(25), now.minusDays(20), now.minusDays(15));
-        assertThat(policy.freeBookingBlockedUntil(expired, now)).isEmpty();
+    void thresholdsAreConfigurable() {
+        CancellationPolicy strict = new CancellationPolicy(java.time.Duration.ofHours(48), java.time.Duration.ofHours(12), java.time.Duration.ofHours(2));
+        assertThat(strict.evaluate(Actor.MENTEE, price, true, now.plusHours(30), now).refundPercent()).isEqualTo(50);
+        assertThat(strict.evaluate(Actor.MENTEE, price, true, now.plusHours(10), now).refundPercent()).isZero();
     }
 }
