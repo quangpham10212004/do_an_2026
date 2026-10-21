@@ -61,7 +61,8 @@ function Room({ sessionId }: { sessionId: string }) {
           parentNode: container.current,
           width: "100%",
           height: "100%",
-          configOverwrite: { prejoinPageEnabled: false, startWithAudioMuted: true },
+          // Jitsi stable-9823 đọc prejoinConfig.enabled; prejoinPageEnabled giữ cho bản cũ. Tên + quyền đã có trong JWT nên bỏ màn "Join meeting".
+          configOverwrite: { prejoinConfig: { enabled: false }, prejoinPageEnabled: false, startWithAudioMuted: true },
           interfaceConfigOverwrite: { MOBILE_APP_PROMO: false },
         });
         api.addListener("readyToClose", () => { window.location.href = "/mentoring/sessions"; });

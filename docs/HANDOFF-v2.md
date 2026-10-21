@@ -20,7 +20,7 @@ Nhánh: `feature/v2-wallet-and-pricing` (từ `main`). Nguồn nghiệp vụ: `d
 ## 2. Việc còn lại (giao cho người làm tiếp)
 
 ### 2.1 Sửa e2e cũ — ✅ xong (22/10/2026)
-Toàn bộ 20 script e2e pass trên stack Docker (AI rule-based như CI): **657/657** — `e2e_acceptance` 69/69.
+Toàn bộ 20 script e2e pass trên stack Docker (AI rule-based như CI): **663/663** — `e2e_acceptance` 69/69.
 Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env | cut -d= -f2) python3 scripts/<file>.py`
 
 - Script cũ dời phiên về quá khứ phải ghi nhật ký vào phòng (`/internal/dev/sessions/{id}/joined`), nếu không job kết luận
@@ -49,9 +49,20 @@ Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env
 SRD (FR-5.8–5.12, 6.4–6.6, 6.10, D13–D20, DoD v2.0), `api-reference.md` (đường dẫn thật), `database-design.md`
 (ví, lô khuyến mãi, `mentor_referrals`, `contact_violations`, `mock_*`), `README.md`.
 
-### 2.4 Chưa kiểm chứng
-- Jitsi video/chat chưa chạy trong trình duyệt (compose profile Jitsi chưa thử cùng frontend). Chỉ JWT + nhật ký vào phòng được test.
-- Frontend chưa được duyệt bằng trình duyệt thật (chỉ tsc/lint).
+### 2.5 Khoá tài khoản (§2.1) — ✅ xong (22/10/2026)
+Khoá bắt buộc lý do ≥ 10 ký tự (400 `LOCK_REASON_REQUIRED`); khoá mentor → thu nhập đang chờ của buổi đã học / bị mentee huỷ muộn được
+giữ bằng tranh chấp hệ thống (giao dịch ON_HOLD) để admin kết luận giải phóng hoặc hoàn cho mentee; người bị khoá / mở khoá nhận thông
+báo + email (`ACCOUNT_LOCKED` vẫn gửi cho tài khoản đang bị khoá). `e2e_v2_room_referral` §5, `AccountLockServiceTest`.
+Chưa làm (cần chốt): referral bất thường "trùng tài khoản nhận tiền / thiết bị" — hệ thống không thu thập dữ liệu thiết bị (Q75).
+
+### 2.4 Kiểm chứng
+- ✅ (22/10) Jitsi chạy cùng frontend trên Chromium: mentor + mentee vào cùng một phòng (mỗi bên thấy 1 người còn lại), không còn màn
+  "Join meeting", nhật ký vào phòng ghi cả hai. Sửa kèm: JWT thiếu header `typ: JWT` → prosody từ chối ("Invalid typ"); Jitsi
+  stable-9823 đọc `prejoinConfig.enabled`. Chưa thử: chat trong phòng (tính năng có sẵn của Jitsi), media thật qua UDP 10000 giữa hai máy.
+  Trình duyệt phải chấp nhận chứng chỉ tự ký của https://localhost:8443 một lần.
+- ✅ (22/10) Duyệt trên trình duyệt: ví, đặt buổi trải nghiệm, mentor xác nhận, phòng học, admin khoá / vi phạm liên hệ / tranh chấp.
+  Sửa: số dư 0 hiện "Miễn phí" → "0 đ"; giá 0 hiện "Chưa đặt giá"; gợi ý ngân sách "0 = mentor miễn phí"; chữ 48 giờ → 24 giờ ở
+  xác nhận tham dự; nhãn kết luận theo nhật ký phòng (`BOTH_ABSENT`, `JOIN_LOG_*`); chính sách huỷ riêng của buổi trải nghiệm.
 - Cổng MoMo/VNPay thật chưa thử (chỉ sandbox).
 
 ## 3. Lưu ý vận hành

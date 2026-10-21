@@ -207,7 +207,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-5.6 | Đánh giá sau phiên | Rating 1–5 + nhận xét, 1 lần/phiên, cập nhật rating mentor | ✅ |
 | FR-5.7 | Lịch sử mentoring | Danh sách phiên theo trạng thái | ✅ |
 | FR-5.8 | Buổi trải nghiệm | 15 phút, phí cố định 30.000đ, mỗi cặp 1 lần, trả từ ví, hoa hồng như buổi thường, không chấm sao (D20) | ✅ |
-| FR-5.9 | Phòng học trực tuyến | Phòng video + chat trong hệ thống (Jitsi, JWT); chỉ người tham gia hợp lệ vào được, rớt mạng vào lại được | ✅ JWT + quyền vào phòng · video/chat chưa kiểm trên trình duyệt |
+| FR-5.9 | Phòng học trực tuyến | Phòng video + chat trong hệ thống (Jitsi, JWT); chỉ người tham gia hợp lệ vào được, rớt mạng vào lại được | ✅ (hai bên vào cùng phòng đã kiểm trên trình duyệt 22/10) |
 | FR-5.10 | Tham dự & vắng mặt | Nhật ký vào phòng; chờ 10 phút (trải nghiệm 5 phút) rồi báo vắng; tự hoàn thành sau 24 giờ; hai bên báo ngược nhau → tranh chấp (D18) | ✅ |
 | FR-5.11 | Chính sách huỷ | Ba bậc theo thời điểm (D19); mentor huỷ/vắng hoàn 100% + lỗi vi phạm, 3 lỗi/30 ngày → PAUSED; mentee huỷ trước khi mentor xác nhận → 100% | ✅ |
 | FR-5.12 | Chặn liên hệ ngoài nền tảng | Tin nhắn luôn che số điện thoại, email, mạng xã hội, đường dẫn ngoài; 3 vi phạm/30 ngày báo admin | ✅ |
@@ -331,7 +331,7 @@ Vector nằm ở `matching_db` của chính matching-service. Mọi thao tác gh
 ## 6. Tiêu chí nghiệm thu (Definition of Done)
 
 Mỗi tiêu chí được kiểm chứng tự động bằng `scripts/e2e_acceptance.py` (kết quả lần chạy cuối:
-**69/69 kiểm tra PASS** (lần chạy 22/10/2026, sau khi cập nhật theo bản chốt v2.0; toàn bộ 20 script e2e: 657/657), chi tiết tại [testing-report.md](testing-report.md)).
+**69/69 kiểm tra PASS** (lần chạy 22/10/2026, sau khi cập nhật theo bản chốt v2.0; toàn bộ 20 script e2e: 663/663), chi tiết tại [testing-report.md](testing-report.md)).
 
 - [x] Người dùng đăng ký/đăng nhập được với 3 vai trò mentee/mentor/admin
 - [x] Mentee tạo được Career Profile; matching-service lập chỉ mục embedding sau khi lưu — **nhất quán cuối cùng**: e2e chờ tối đa 30 giây qua `GET /api/matching/index-status` (giới hạn trên khi thông báo bị mất: 1 chu kỳ `INDEX_SYNC_INTERVAL` = 60 giây), xem [testing-report.md](testing-report.md) §3

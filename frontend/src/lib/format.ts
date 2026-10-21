@@ -2,10 +2,9 @@ import type { Role } from "@/types";
 
 export const DAY_NAMES = ["", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
 
+/** Số tiền VND. Bản chốt v2.0 không còn buổi miễn phí, nên 0 hiển thị "0 đ" (số dư ví, khoản hoàn…). */
 export function formatMoney(value: number | string | null | undefined): string {
-  const n = Number(value || 0);
-  if (n === 0) return "Miễn phí";
-  return n.toLocaleString("vi-VN") + " đ";
+  return formatVnd(value);
 }
 
 /** Số tiền VND luôn hiển thị số (0 → "0 đ"), dùng cho số dư / thu nhập. */
@@ -13,9 +12,9 @@ export function formatVnd(value: number | string | null | undefined): string {
   return Number(value || 0).toLocaleString("vi-VN") + " đ";
 }
 
-/** Đơn giá theo giờ: "Miễn phí" hoặc "300.000 đ/giờ" (tránh "Miễn phí/giờ"). */
+/** Học phí buổi 60 phút: "300.000 đ/giờ"; 0 = mentor chưa chọn giá trong khung (chưa nhận đặt lịch). */
 export function formatRate(value: number | string | null | undefined): string {
-  return Number(value || 0) === 0 ? "Miễn phí" : `${formatMoney(value)}/giờ`;
+  return Number(value || 0) === 0 ? "Chưa đặt giá" : `${formatMoney(value)}/giờ`;
 }
 
 // US-37 (PRD-PROF-6) — mọi giờ lưu UTC, hiển thị theo múi giờ trong hồ sơ của người xem (mặc định giờ Việt Nam).

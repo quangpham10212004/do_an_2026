@@ -85,12 +85,15 @@ export const ATTENDANCE_CHOICES: Record<"MENTEE" | "MENTOR", AttendanceAnswer[]>
 
 export const ATTENDANCE_RESOLUTION_LABELS: Record<AttendanceResolution, string> = {
   BOTH_HELD: "cả hai xác nhận đã diễn ra",
-  HELD_ONE_SIDE: "một bên xác nhận đã diễn ra, bên kia không phản hồi trong 48 giờ",
-  NO_ANSWER: "không bên nào phản hồi trong 48 giờ",
+  HELD_ONE_SIDE: "một bên xác nhận đã diễn ra, bên kia không phản hồi trong 24 giờ",
+  NO_ANSWER: "không bên nào phản hồi hay khiếu nại trong 24 giờ",
   MENTEE_NO_SHOW_REPORTED: "mentor báo mentee vắng mặt, mentee không phản hồi",
   MENTOR_NO_SHOW_REPORTED: "mentee báo mentor vắng mặt, mentor không phản hồi",
   CONFLICT: "hai bên xác nhận khác nhau",
   CANCELLED_ON_CALL: "huỷ trong buổi gọi",
+  JOIN_LOG_MENTEE_ABSENT: "nhật ký phòng học: mentee không vào phòng",
+  JOIN_LOG_MENTOR_ABSENT: "nhật ký phòng học: mentor không vào phòng",
+  BOTH_ABSENT: "nhật ký phòng học: cả hai không vào phòng",
   DISPUTE_RESOLVED: "quản trị viên kết luận tranh chấp",
 };
 
