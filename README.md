@@ -27,7 +27,10 @@ for p in 8081 8082 8083 8084 8085 8090 8091; do curl -s localhost:$p/health; ech
 Kiểm thử:
 
 ```bash
-python3 scripts/e2e_acceptance.py          # kiểm thử chấp nhận theo Definition of Done
+python3 scripts/e2e_acceptance.py          # kiểm thử chấp nhận theo Definition of Done (69 kiểm tra)
+for f in scripts/e2e_p0_*.py scripts/e2e_s[0-9]*_*.py scripts/e2e_v2_*.py; do python3 $f || break; done
+                                           # toàn bộ e2e theo sprint + bản chốt v2.0 (20 script, 652 kiểm tra;
+                                           # cần INTERNAL_API_KEY trong môi trường, AI chạy rule-based)
 python3 scripts/benchmark_matching.py      # hiệu năng AI Matching
 (cd mentoring-service && mvn test)         # unit test (tương tự các service Java khác)
 (cd matching-service && pip install -r requirements-dev.txt && pytest -q tests)
@@ -52,7 +55,9 @@ browser → frontend (Next.js 14 + TypeScript :3000, proxy /api/<service>/**)
             ├─ mentoring-service  Spring Boot :8083  — yêu cầu, lịch, đánh giá, thông báo   (Thắng)
             ├─ ai-service         FastAPI     :8091  — AI Interview (Thắng), CV + chatbot (Quang)
             │                                          DeepSeek API + engine rule-based
-            └─ payment-service    Spring Boot :8084  — thanh toán sandbox, referral        (Thắng)
+            └─ payment-service    Spring Boot :8084  — ví VND, nạp ví (sandbox/MoMo/VNPay),
+                                                       thu nhập mentor, referral theo mentor (Thắng)
+Phòng học video: Jitsi Meet tự host (`docker compose --profile jitsi up -d`), JWT do mentoring-service cấp
 PostgreSQL 16 — 7 CSDL, 1 DB/service (matching_db dùng pgvector, cổng 5439; matching-service đọc
 profile_db read-only) · Redis · Docker Compose · GitHub Actions
 ```
@@ -78,7 +83,9 @@ frontend/                 Next.js 14 + TypeScript (src/app = trang, src/features
 
 - AI Matching **nhất quán cuối cùng**: hồ sơ mới/sửa có thể chưa có trong kết quả tới ~60 giây
   (`INDEX_SYNC_INTERVAL`).
-- Thanh toán là **sandbox**; không có API Gateway riêng (frontend proxy làm cổng vào).
+- Thanh toán là **sandbox / cổng thử nghiệm** (MoMo test, VNPay sandbox) — chưa thử cổng thật; học phí chỉ trả từ ví.
+- Phòng học Jitsi mới kiểm chứng phần JWT + nhật ký vào phòng; video/chat chưa chạy thử cùng frontend trên trình duyệt.
+- Không có API Gateway riêng (frontend proxy làm cổng vào).
 - `.env.example` và code có **bí mật mặc định cho dev** (`JWT_SECRET`, `INTERNAL_API_KEY`, mật khẩu CSDL; service
   log WARN lúc khởi động nếu còn dùng giá trị dev trong code) —
   bắt buộc thay khi triển khai thật.
