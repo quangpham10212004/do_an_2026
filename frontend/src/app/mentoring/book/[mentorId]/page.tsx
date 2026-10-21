@@ -18,9 +18,10 @@ interface BookingForm {
   sessionType: SessionType;
   agenda: string;
   preReadLink: string;
+  referralCode: string;
 }
 
-const INITIAL: BookingForm = { scheduledAt: null, durationMinutes: 60, sessionType: "CAREER_ADVICE", agenda: "", preReadLink: "" };
+const INITIAL: BookingForm = { scheduledAt: null, durationMinutes: 60, sessionType: "CAREER_ADVICE", agenda: "", preReadLink: "", referralCode: "" };
 
 /** US-03 / US-05 — form đặt lịch phiên mentoring (PRD-SES-1, PRD-SES-2). */
 function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }) {
@@ -63,6 +64,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
         agenda,
         preReadLink: form.preReadLink.trim() || undefined,
         kind: trial ? "TRIAL" : "REGULAR",
+        referralCode: !trial && form.referralCode.trim() ? form.referralCode.trim().toUpperCase() : undefined,
       });
       // Ví đủ tiền → học phí đã được tạm giữ (AWAITING_MENTOR, chờ mentor xác nhận); thiếu tiền → trang nạp ví / thanh toán
       if (session.status === "PENDING") router.push(`/payment/${session.id}`);
@@ -116,6 +118,12 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
                   placeholder="Bạn muốn trao đổi gì trong phiên này? Ví dụ: review kiến trúc REST API của dự án quản lý kho"
                   onChange={(e) => setForm({ ...form, agenda: e.target.value })} />
               </Field>
+              {!trial && (
+                <Field label="Mã giới thiệu" id="referral" hint="Không bắt buộc. Chỉ dùng được ở buổi học đầu tiên với mentor này, không được giảm giá; người giới thiệu nhận thưởng sau khi buổi học hoàn thành.">
+                  <Input id="referral" value={form.referralCode} maxLength={20} placeholder="VD: K7M2X9QA" className="font-mono uppercase"
+                    onChange={(e) => setForm({ ...form, referralCode: e.target.value })} />
+                </Field>
+              )}
               <Field label="Tài liệu đọc trước" id="preRead" hint="Không bắt buộc."
                 error={linkValid ? undefined : "Link phải bắt đầu bằng http:// hoặc https://"}>
                 <Input id="preRead" type="url" value={form.preReadLink} maxLength={500} placeholder="https://github.com/…"

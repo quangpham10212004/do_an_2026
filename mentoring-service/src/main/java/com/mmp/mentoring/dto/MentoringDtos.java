@@ -66,12 +66,14 @@ public final class MentoringDtos {
             @Size(max = 500) String preReadLink,
             @Size(max = 300) String topic,
             /** Bản chốt v2.0 §10 — REGULAR (mặc định) | TRIAL (buổi trải nghiệm 15 phút, phí cố định). */
-            @jakarta.validation.constraints.Pattern(regexp = "REGULAR|TRIAL") String kind) {
+            @jakarta.validation.constraints.Pattern(regexp = "REGULAR|TRIAL") String kind,
+            /** Bản chốt v2.0 §11 — mã giới thiệu của mentor này, chỉ ở yêu cầu đặt buổi thường đầu tiên (không giảm giá). */
+            @Size(max = 20) String referralCode) {
 
         /** Tương thích lời gọi cũ (buổi thường). */
         public BookSessionInput(UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, Integer durationMinutes,
                                 SessionType sessionType, String agenda, String preReadLink, String topic) {
-            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null);
+            this(menteeId, mentorId, scheduledAt, durationMinutes, sessionType, agenda, preReadLink, topic, null, null);
         }
 
         public boolean trial() {
@@ -139,7 +141,7 @@ public final class MentoringDtos {
 
     /** Dạng rút gọn cho payment-service gọi nội bộ. */
     public record SessionInternalView(UUID id, UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt,
-                                      int durationMinutes, BigDecimal price, String status) {
+                                      int durationMinutes, BigDecimal price, String status, String kind) {
     }
 
     public record PaymentSucceededInput(@NotNull UUID transactionId) {

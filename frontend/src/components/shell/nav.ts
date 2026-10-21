@@ -101,6 +101,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       items: [
         { href: "/admin/transactions", label: "Giao dịch", icon: Receipt },
         { href: "/admin/payouts", label: "Rút tiền", icon: Banknote },
+        { href: "/admin/wallet", label: "Ví người dùng", icon: Wallet },
       ],
     },
     {

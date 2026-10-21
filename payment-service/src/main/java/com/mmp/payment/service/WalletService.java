@@ -183,6 +183,7 @@ public class WalletService {
                 t.setAmount(session.price());
                 t.applyFee(split.rate(), split.fee(), split.mentorEarning());
                 t.setProvider(Transaction.PROVIDER_WALLET);
+                t.setSessionKind(session.trial() ? "TRIAL" : "REGULAR");
                 Transaction first = transactions.saveAndFlush(t);
                 WalletRules.Allocation a = ledger.debitForSession(session.menteeId(), first.getId(), session.id(), session.price(),
                         OffsetDateTime.now());
@@ -190,7 +191,7 @@ public class WalletService {
                 first.setProviderReference("wallet_" + first.getId().toString().replace("-", "").substring(0, 20));
                 first.setStatus(Transaction.Status.SUCCESS);
                 Transaction flushed = transactions.saveAndFlush(first);
-                referralService.onSuccessfulTransaction(flushed);
+                // Bản chốt v2.0 §11: thưởng giới thiệu theo mentor đánh giá sau 7 ngày (MentorReferralService), không còn điểm khi thanh toán lần đầu
                 earnings.recordPending(flushed);
                 return flushed;
             });

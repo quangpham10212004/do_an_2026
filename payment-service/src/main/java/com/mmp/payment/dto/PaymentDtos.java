@@ -119,6 +119,30 @@ public final class PaymentDtos {
             List<ReferralResponse> referrals, List<RewardResponse> rewards) {
     }
 
+    // ---------- Bản chốt v2.0 §11: giới thiệu theo mentor ----------
+
+    public record MentorReferralCodeView(UUID mentorId, String mentorName, String code, String shareUrl) {
+    }
+
+    /** status: REGISTERED | UNDER_REVIEW | QUALIFIED | REJECTED | CAPPED. */
+    public record MentorReferralView(UUID id, UUID ownerId, UUID mentorId, UUID refereeId, UUID sessionId, String status,
+                                     String rejectReason, BigDecimal rewardAmount, OffsetDateTime createdAt, OffsetDateTime decidedAt) {
+    }
+
+    public record MyMentorReferrals(BigDecimal reward, int pendingDays, int monthlyCap, int qualifiedThisMonth, BigDecimal earned,
+                                    List<MentorReferralCodeView> codes, List<MentorReferralView> referrals) {
+    }
+
+    public record ReferralCodeRequest(@NotNull UUID mentorId) {
+    }
+
+    public record ReferralApplyRequest(@NotBlank String code, @NotNull UUID refereeId, @NotNull UUID mentorId, UUID sessionId) {
+    }
+
+    public record ReferralDecision(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "APPROVE|REJECT") String decision,
+                                   @NotBlank @Size(max = 1000) String reason) {
+    }
+
     // ---------- Bản chốt v2.0 §8: ví ----------
 
     /** cash = tiền nạp khả dụng; promo = khuyến mãi còn hạn; held = học phí đang tạm giữ (chưa có trạng thái cuối). */

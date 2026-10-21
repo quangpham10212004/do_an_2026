@@ -22,9 +22,12 @@ public class InternalDevController {
 
     private final EarningService earnings;
     private final WalletService wallet;
+    private final com.mmp.payment.service.MentorReferralService mentorReferrals;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    public InternalDevController(EarningService earnings, WalletService wallet, org.springframework.jdbc.core.JdbcTemplate jdbc) {
+    public InternalDevController(EarningService earnings, WalletService wallet, org.springframework.jdbc.core.JdbcTemplate jdbc,
+                                 com.mmp.payment.service.MentorReferralService mentorReferrals) {
+        this.mentorReferrals = mentorReferrals;
         this.earnings = earnings;
         this.wallet = wallet;
         this.jdbc = jdbc;
@@ -46,9 +49,20 @@ public class InternalDevController {
             int[] r = wallet.runExpiry(now);
             return Map.of("job", job, "status", "DONE", "expiredLots", r[0], "dormantWallets", r[1], "reminders", wallet.sendReminders(now));
         }
+        if ("referral-eval".equals(job)) {
+            return Map.of("job", job, "status", "DONE", "decided", mentorReferrals.evaluateDue(OffsetDateTime.now()));
+        }
         if (!"earning-release".equals(job)) throw ApiException.notFound("JOB_NOT_FOUND", "Không có job " + job);
         int released = earnings.releaseDue(OffsetDateTime.now());
         return Map.of("job", job, "status", "DONE", "released", released);
+    }
+
+    /** Lùi giờ kết thúc của buổi {@code days} ngày (kiểm thử đồng hồ 7 ngày của thưởng giới thiệu). */
+    @PostMapping("/earnings/{sessionId}/age")
+    public Map<String, Object> ageEarning(@PathVariable UUID sessionId, @RequestBody Map<String, Integer> body) {
+        int days = body.getOrDefault("days", 0);
+        int n = jdbc.update("UPDATE earning_schedules SET ended_at = ended_at - make_interval(days => ?) WHERE session_id = ?", days, sessionId);
+        return Map.of("sessionId", sessionId, "schedules", n, "days", days);
     }
 
     /** Lùi mốc thời gian của ví để e2e kiểm tra hết hạn khuyến mãi / ví ngủ / cửa sổ hoàn tiền nạp mà không phải chờ thật. */

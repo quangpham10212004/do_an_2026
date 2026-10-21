@@ -73,7 +73,11 @@ app:
     release-delay: ${EARNING_RELEASE_DELAY:PT72H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE (bản chốt v2.0 §9)
     release-interval: PT5M           # chu kỳ job giải phóng
   referral:
-    # FR-6.6 — quy tắc cộng điểm & chống gian lận cơ bản
+    reward-amount: ${REFERRAL_REWARD:30000}       # Bản chốt v2.0 §11 — thưởng bằng TIỀN KHUYẾN MÃI cho người giới thiệu
+    pending: ${REFERRAL_PENDING:P7D}           # chờ 7 ngày kể từ khi buổi hoàn thành, huỷ nếu buổi bị hoàn tiền
+    monthly-cap: ${REFERRAL_MONTHLY_CAP:5}     # tối đa 5 lượt thưởng / tháng / người giới thiệu
+    anomaly-uses-24h: 3                        # > 3 lượt dùng mã trong 24 giờ → chuyển admin xem xét
+    # FR-6.6 (v1.x, chỉ cho luồng thẻ trực tiếp đã tắt) — quy tắc cộng điểm & chống gian lận cơ bản
     reward-points: 100
     min-qualifying-amount: 50000
     max-qualified-per-referrer-per-day: 5

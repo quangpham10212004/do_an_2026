@@ -191,6 +191,97 @@ paths:
       responses:
         "200": { description: OK }
 
+  /api/payment/referrals/codes:
+    post:
+      summary: >
+        Bản chốt v2.0 §11 (MENTEE) Lấy (hoặc tạo lần đầu) mã giới thiệu của cặp (tôi, mentor). Chỉ cấp khi tôi đã hoàn thành >= 1 buổi thường đã
+        trả tiền với mentor đó (409 REFERRAL_NOT_ELIGIBLE). Mỗi cặp một mã (8 ký tự).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mentorId]
+              properties:
+                mentorId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentorId: { type: string, format: uuid }
+                  mentorName: { type: string }
+                  code: { type: string }
+                  shareUrl: { type: string }
+        "409": { description: REFERRAL_NOT_ELIGIBLE }
+  /api/payment/admin/mentor-referrals:
+    get:
+      summary: Bản chốt v2.0 §11 (ADMIN) Lượt giới thiệu theo mentor (lọc theo status; UNDER_REVIEW = bất thường chờ xem xét)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [REGISTERED, UNDER_REVIEW, QUALIFIED, REJECTED, CAPPED] } }
+      responses:
+        "200": { description: Danh sách MentorReferral }
+  /api/payment/admin/mentor-referrals/{id}/decide:
+    post:
+      summary: "Bản chốt v2.0 §11 (ADMIN) Xét lượt UNDER_REVIEW — APPROVE → REGISTERED (vào luồng thưởng bình thường), REJECT → REJECTED; bắt buộc lý do"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string }
+      responses:
+        "200": { description: MentorReferral }
+        "409": { description: REFERRAL_NOT_UNDER_REVIEW }
+  /internal/referrals/validate:
+    post:
+      summary: Bản chốt v2.0 §11 (nội bộ — mentoring) Kiểm tra mã giới thiệu trước khi tạo buổi; 400 với mã lỗi cụ thể nếu không dùng được
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, refereeId, mentorId]
+              properties:
+                code: { type: string }
+                refereeId: { type: string, format: uuid }
+                mentorId: { type: string, format: uuid }
+      responses:
+        "200": { description: "{ valid: true }" }
+        "400": { description: REFERRAL_CODE_NOT_FOUND / REFERRAL_CODE_WRONG_MENTOR / SELF_REFERRAL / ALREADY_REFERRED }
+  /internal/referrals/apply:
+    post:
+      summary: >
+        Bản chốt v2.0 §11 (nội bộ — mentoring) Ghi nhận mã được dùng ở buổi thường đầu tiên (sessionId bắt buộc). Bất thường (> 3 lượt dùng mã
+        của cùng người giới thiệu trong 24 giờ) → UNDER_REVIEW. Thưởng 30.000đ khuyến mãi sau khi buổi COMPLETED + 7 ngày không hoàn tiền,
+        tối đa 5 lượt / tháng (job hằng giờ).
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, refereeId, mentorId, sessionId]
+              properties:
+                code: { type: string }
+                refereeId: { type: string, format: uuid }
+                mentorId: { type: string, format: uuid }
+                sessionId: { type: string, format: uuid }
+      responses:
+        "201": { description: MentorReferral }
   /api/payment/wallet:
     get:
       summary: Bản chốt v2.0 §8 (MENTEE) Số dư ví — tiền nạp khả dụng, khuyến mãi còn hạn, học phí đang tạm giữ, điều kiện hoàn tiền nạp

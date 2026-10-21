@@ -205,6 +205,8 @@ export interface BookSessionInput {
   topic?: string;
   /** Bản chốt v2.0 §10 — REGULAR (mặc định) | TRIAL (15 phút, phí cố định). */
   kind?: "REGULAR" | "TRIAL";
+  /** Bản chốt v2.0 §11 — mã giới thiệu của mentor, chỉ ở buổi thường đầu tiên. */
+  referralCode?: string;
 }
 
 /**
@@ -387,4 +389,16 @@ export interface ActionItemUpdate {
   dueDate?: string;
   clearDueDate?: boolean;
   done?: boolean;
+}
+
+/** Bản chốt v2.0 §6 — phòng học Jitsi: JWT chỉ cấp cho người tham gia, trong khung giờ phòng mở. */
+export interface RoomInfo {
+  provider: "jitsi";
+  domain: string;
+  roomName: string;
+  jwt: string;
+  opensAt: IsoDateTime;
+  closesAt: IsoDateTime;
+  graceMinutes: number;
+  moderator: boolean;
 }

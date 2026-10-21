@@ -59,7 +59,7 @@ class SessionTrialTest {
     }
 
     BookSessionInput trial(int minutes) {
-        return new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), minutes, SessionType.CAREER_ADVICE, AGENDA, null, null, "TRIAL");
+        return new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), minutes, SessionType.CAREER_ADVICE, AGENDA, null, null, "TRIAL", null);
     }
 
     private static String code(Runnable r) {

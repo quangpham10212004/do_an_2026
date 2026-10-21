@@ -8,9 +8,10 @@ import type {
   Receipt,
   EarningRow,
   EarningSummary,
-  MyReferral,
   PageResponse,
   PaymentStats,
+  MentorReferral,
+  MyMentorReferrals,
   Referral,
   TopupRefundRequest,
   Transaction,
@@ -49,7 +50,8 @@ export const paymentApi = {
   transaction: (id: Uuid) => api<Transaction>(`/api/payment/transactions/${id}`),
   transactions: () => api<Transaction[]>("/api/payment/transactions"),
   sessionTransactions: (sessionId: Uuid) => api<Transaction[]>(`/api/payment/sessions/${sessionId}/transactions`),
-  myReferral: () => api<MyReferral>("/api/payment/referrals/me"),
+  /** Bản chốt v2.0 §11 — mã giới thiệu theo mentor + lượt giới thiệu + tiền thưởng. */
+  myReferral: () => api<MyMentorReferrals>("/api/payment/referrals/me"),
   /** US-25 — thu nhập của mentor đang đăng nhập. */
   earningSummary: () => api<EarningSummary>("/api/payment/earnings/summary"),
   earnings: () => api<EarningRow[]>("/api/payment/earnings"),
@@ -101,6 +103,9 @@ export const paymentApi = {
   grantPromo: (userId: Uuid, amount: number, reason: string) =>
     api<{ lotId: Uuid }>(`/api/payment/wallet/admin/${userId}/promo`, { method: "POST", body: { amount, reason } }),
   adminReferrals: () => api<Referral[]>("/api/payment/admin/referrals"),
+  adminMentorReferrals: (status = "") => api<MentorReferral[]>(`/api/payment/admin/mentor-referrals?status=${status}`),
+  decideMentorReferral: (id: Uuid, decision: "APPROVE" | "REJECT", reason: string) =>
+    api<MentorReferral>(`/api/payment/admin/mentor-referrals/${id}/decide`, { method: "POST", body: { decision, reason } }),
 };
 
 /** UUID v4 cho Idempotency-Key (crypto.randomUUID khi có, fallback getRandomValues). */

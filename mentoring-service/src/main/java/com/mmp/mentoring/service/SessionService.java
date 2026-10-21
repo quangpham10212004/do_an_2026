@@ -154,6 +154,14 @@ public class SessionService {
             }
             trials.requireBelowOpenLimit(in.menteeId(), now);
         }
+        String referralCode = MentoringRequestService.trimToNull(in.referralCode());
+        if (referralCode != null) {
+            // Bản chốt v2.0 §11: mã chỉ dùng ở yêu cầu đặt buổi THƯỜNG đầu tiên với mentor (người chưa từng học với mentor đó)
+            if (trial || sessionRepo.countRegularWithMentor(in.menteeId(), in.mentorId()) > 0) {
+                throw ApiException.badRequest("REFERRAL_NOT_FIRST_BOOKING", "Mã giới thiệu chỉ dùng được ở buổi học đầu tiên với mentor này");
+            }
+            paymentClient.validateReferral(referralCode, in.menteeId(), in.mentorId());
+        }
         checkSlot(mentor, start, duration, now);
         BigDecimal price = trial ? trials.fee() : BookingRules.price(mentor.hourlyRate(), duration);
         if (price.signum() == 0) {
@@ -185,6 +193,7 @@ public class SessionService {
             return persisted;
         });
 
+        if (referralCode != null) paymentClient.applyReferral(referralCode, saved.getMenteeId(), saved.getMentorId(), saved.getId());
         // Tạm giữ học phí từ ví ngay; ví thiếu tiền → phiên giữ PENDING (khung giờ được giữ paymentHold phút để nạp thêm)
         PaymentClient.WalletPayResult paid = paymentClient.payFromWallet(saved.getMenteeId(), saved.getId());
         if (!paid.paid()) {
@@ -673,7 +682,7 @@ public class SessionService {
 
     private static SessionInternalView toInternal(MentoringSession s) {
         return new SessionInternalView(s.getId(), s.getMenteeId(), s.getMentorId(), s.getScheduledAt(), s.getDurationMinutes(),
-                s.getPrice(), s.getStatus().name());
+                s.getPrice(), s.getStatus().name(), s.getKind().name());
     }
 
 }

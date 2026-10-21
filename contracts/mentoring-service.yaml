@@ -462,7 +462,10 @@ paths:
         lock theo mentor. Dữ kiện mentor lấy từ profile-service GET /internal/mentor/{id} (status,
         onLeaveUntil, bufferMinutes, minNoticeHours, exceptions — thiếu thì dùng mặc định).
         Bản chốt v2.0 §4–5: buổi thường cố định 60 phút (durationMinutes khác 60 → 400 INVALID_DURATION), giá = giá mentor đang áp dụng
-        (mentor chưa có giá → 409 PRICE_NOT_SET), không còn buổi miễn phí. Sau khi tạo phiên (PENDING, giữ khung giờ),
+        (mentor chưa có giá → 409 PRICE_NOT_SET), không còn buổi miễn phí. `kind: TRIAL` = buổi trải nghiệm 15 phút, 30.000đ cố định, không cần
+        yêu cầu mentoring được chấp nhận (409 TRIAL_NOT_ALLOWED nếu đã được nhận; TRIAL_DISABLED / TRIAL_ALREADY_USED / TRIAL_LIMIT).
+        `referralCode` (chỉ buổi thường đầu tiên với mentor; không giảm giá): 400 REFERRAL_NOT_FIRST_BOOKING / REFERRAL_CODE_NOT_FOUND /
+        REFERRAL_CODE_WRONG_MENTOR / SELF_REFERRAL / ALREADY_REFERRED. Sau khi tạo phiên (PENDING, giữ khung giờ),
         mentoring-service nhờ payment-service tạm giữ học phí từ ví của mentee: đủ tiền → phiên chuyển AWAITING_MENTOR (chờ mentor
         xác nhận trong confirmDeadline); thiếu tiền → phiên giữ PENDING tối đa 15 phút để mentee nạp thêm rồi
         POST /api/payment/wallet/pay, quá hạn → EXPIRED.
@@ -497,6 +500,45 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Session }
+  /api/mentoring/sessions/{id}/room:
+    get:
+      summary: >
+        Bản chốt v2.0 §6 (MENTEE / MENTOR của buổi) Phòng học video + chat trong hệ thống (Jitsi Meet tự host). Cấp JWT (HS256; iss = app id,
+        aud = jitsi, sub = domain XMPP, room = tên phòng) cho đúng hai người tham gia của buổi CONFIRMED / AWAITING_ATTENDANCE, trong khung
+        giờ phòng mở: 10 phút trước giờ bắt đầu đến 30 phút sau giờ kết thúc (409 ROOM_CLOSED ngoài khung; 409 ROOM_NOT_AVAILABLE khi buổi
+        chưa được mentor xác nhận). Lần đầu mỗi bên lấy token được ghi vào nhật ký vào phòng (mentor_joined_at / mentee_joined_at) — căn cứ
+        duy nhất xác định vắng mặt. Mentor là moderator.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string, example: jitsi }
+                  domain: { type: string, example: "localhost:8443" }
+                  roomName: { type: string }
+                  jwt: { type: string }
+                  opensAt: { type: string, format: date-time }
+                  closesAt: { type: string, format: date-time }
+                  graceMinutes: { type: integer, example: 10, description: "Thời gian chờ bên vắng mặt (trải nghiệm: 5)" }
+                  moderator: { type: boolean }
+        "403": { description: Không phải người tham gia }
+        "409": { description: ROOM_CLOSED / ROOM_NOT_AVAILABLE }
+  /api/mentoring/sessions/{id}/report-absent:
+    post:
+      summary: >
+        Bản chốt v2.0 §6 (người tham gia) Báo bên kia vắng mặt: chỉ khi đã hết thời gian chờ (10 phút kể từ giờ bắt đầu; trải nghiệm 5 phút),
+        mình đã vào phòng và bên kia chưa (409 GRACE_NOT_ELAPSED / YOU_NOT_JOINED / OTHER_SIDE_JOINED). Ghi câu trả lời tham dự và nhắc bên kia;
+        kết luận cuối cùng dựa trên nhật ký vào phòng khi buổi kết thúc: chỉ một bên vào → bên kia vắng (JOIN_LOG_*_ABSENT; mentor vắng → hoàn
+        100% + 1 lỗi vi phạm; mentee vắng → không hoàn); không ai vào → cả hai vắng (BOTH_ABSENT: CANCELLED, hoàn 100%, không lỗi); cả hai vào →
+        tự hoàn thành sau 24 giờ nếu không khiếu nại. Trả lời "MENTOR_NO_SHOW" / "MENTEE_NO_SHOW" mâu thuẫn nhật ký → 409 ABSENCE_CONTRADICTS_LOG.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Session }
+        "409": { description: GRACE_NOT_ELAPSED / YOU_NOT_JOINED / OTHER_SIDE_JOINED / SESSION_NOT_ACTIVE }
   /api/mentoring/sessions/{id}/confirm:
     post:
       summary: >

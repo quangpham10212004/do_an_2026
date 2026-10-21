@@ -24,10 +24,11 @@ import { formatDateTime, formatMoney, formatInZone, getDisplayTimeZone } from "@
 import { errorMessage } from "@/lib/api";
 import type { AttendanceAnswer, CancelPreview, MentoringSession, SessionStatus, SessionUser } from "@/types";
 
-/** US-04 — nút "Tham gia" hiện từ 15 phút trước giờ bắt đầu tới khi phiên kết thúc. */
-const JOIN_EARLY_MS = 15 * 60 * 1000;
+/** Bản chốt v2.0 §6 — phòng học mở 10 phút trước giờ bắt đầu, đóng 30 phút sau giờ kết thúc. */
+const JOIN_EARLY_MS = 10 * 60 * 1000;
+const JOIN_LATE_MS = 30 * 60 * 1000;
 function canJoin(s: MentoringSession, now = Date.now()): boolean {
-  return now >= new Date(s.scheduledAt).getTime() - JOIN_EARLY_MS && now <= new Date(s.endsAt).getTime();
+  return now >= new Date(s.scheduledAt).getTime() - JOIN_EARLY_MS && now <= new Date(s.endsAt).getTime() + JOIN_LATE_MS;
 }
 
 const FILTERS: [SessionStatus | "", string][] = [
@@ -256,12 +257,12 @@ function Sessions({ user }: { user: SessionUser }) {
                           {isMentor ? "Hãy xác nhận trước" : "Mentor cần xác nhận trước"} {formatDateTime(s.confirmDeadline)}; quá hạn buổi tự huỷ và học phí được hoàn 100%.
                         </div>
                       )}
-                      {s.status === "CONFIRMED" && s.meetingLink && !canJoin(s) && future && (
-                        <div className="text-small text-ink-subtle">Nút “Tham gia” mở từ 15 phút trước giờ bắt đầu.</div>
+                      {s.status === "CONFIRMED" && !canJoin(s) && future && (
+                        <div className="text-small text-ink-subtle">Nút “Vào phòng học” mở từ 10 phút trước giờ bắt đầu.</div>
                       )}
                     </div>
-                    {s.status === "CONFIRMED" && s.meetingLink && canJoin(s) && (
-                      <a className="btn btn-primary" href={s.meetingLink} target="_blank" rel="noreferrer"><Video aria-hidden="true" />Tham gia</a>
+                    {(s.status === "CONFIRMED" || s.status === "AWAITING_ATTENDANCE") && canJoin(s) && (
+                      <ButtonLink variant="primary" href={`/mentoring/sessions/${s.id}/room`} icon={Video}>Vào phòng học</ButtonLink>
                     )}
                   </div>
                   {(s.agenda || s.preReadLink) && (

@@ -11,7 +11,7 @@ export interface RefundEntry {
   actorId: Uuid | null;
   createdAt: IsoDateTime;
 }
-export type ReferralStatus = "REGISTERED" | "QUALIFIED" | "REJECTED";
+export type ReferralStatus = "REGISTERED" | "UNDER_REVIEW" | "QUALIFIED" | "REJECTED" | "CAPPED";
 export type ReferralRejectReason = "REFERRER_IS_SESSION_MENTOR" | "DAILY_LIMIT_EXCEEDED";
 
 export interface Transaction {
@@ -239,4 +239,37 @@ export interface TopupRefundRequest {
   adminReason: string | null;
   createdAt: IsoDateTime;
   decidedAt: IsoDateTime | null;
+}
+
+// ---------- Bản chốt v2.0 §11: giới thiệu theo mentor ----------
+
+export interface MentorReferralCode {
+  mentorId: Uuid;
+  mentorName: string;
+  code: string;
+  shareUrl: string;
+}
+
+export interface MentorReferral {
+  id: Uuid;
+  ownerId: Uuid;
+  mentorId: Uuid;
+  refereeId: Uuid;
+  sessionId: Uuid;
+  status: ReferralStatus;
+  rejectReason: string | null;
+  rewardAmount: number | null;
+  createdAt: IsoDateTime;
+  decidedAt: IsoDateTime | null;
+}
+
+/** GET /api/payment/referrals/me — mã theo mentor, lượt giới thiệu, tiền thưởng (khuyến mãi). */
+export interface MyMentorReferrals {
+  reward: number;
+  pendingDays: number;
+  monthlyCap: number;
+  qualifiedThisMonth: number;
+  earned: number;
+  codes: MentorReferralCode[];
+  referrals: MentorReferral[];
 }

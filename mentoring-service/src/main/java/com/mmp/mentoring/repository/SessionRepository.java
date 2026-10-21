@@ -61,6 +61,11 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     @Query("SELECT s FROM MentoringSession s WHERE s.status = 'PENDING' AND s.createdAt < :before")
     List<MentoringSession> findExpiredPending(@Param("before") OffsetDateTime before);
 
+    /** Bản chốt v2.0 §11 — số buổi thường đã / đang có của một cặp (không tính buổi đã huỷ / hết hạn). */
+    @Query("SELECT COUNT(s) FROM MentoringSession s WHERE s.menteeId = :menteeId AND s.mentorId = :mentorId AND s.kind = 'REGULAR' "
+            + "AND s.status NOT IN ('CANCELLED', 'EXPIRED')")
+    long countRegularWithMentor(@Param("menteeId") UUID menteeId, @Param("mentorId") UUID mentorId);
+
     /** Bản chốt v2.0 §10 — số buổi trải nghiệm chưa diễn ra (đang giữ chỗ) của một mentee. */
     @Query("SELECT COUNT(s) FROM MentoringSession s WHERE s.menteeId = :menteeId AND s.kind = 'TRIAL' "
             + "AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now")

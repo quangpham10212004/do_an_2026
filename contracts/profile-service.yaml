@@ -165,6 +165,7 @@ components:
               enum: [JUNIOR, SENIOR, EXPERT]
               description: Bản chốt v2.0 — cấp độ do admin gán lúc duyệt phỏng vấn; null = chưa gán
             tierAssignedAt: { type: string, format: date-time, nullable: true }
+            trialEnabled: { type: boolean, description: "Bản chốt v2.0 §10 — nhận buổi trải nghiệm 15 phút (mặc định true)" }
             medianResponseHours:
               type: number
               nullable: true
@@ -385,6 +386,26 @@ paths:
                         min: { type: integer, example: 100000 }
                         max: { type: integer, example: 200000 }
 
+  /api/profile/mentor/{userId}/trial:
+    put:
+      summary: Bản chốt v2.0 §10 — mentor bật / tắt nhận buổi trải nghiệm 15 phút (chủ hồ sơ MENTOR hoặc ADMIN)
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Hồ sơ sau khi lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorProfile" }
+        "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
   /api/profile/mentor/{userId}/rate:
     put:
       summary: >

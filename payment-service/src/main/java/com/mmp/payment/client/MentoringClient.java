@@ -29,7 +29,16 @@ public class MentoringClient {
     }
 
     public record SessionInfo(UUID id, UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt,
-                              int durationMinutes, BigDecimal price, String status) {
+                              int durationMinutes, BigDecimal price, String status, String kind) {
+
+        /** Tương thích test cũ (không có kind → buổi thường). */
+        public SessionInfo(UUID id, UUID menteeId, UUID mentorId, OffsetDateTime scheduledAt, int durationMinutes, BigDecimal price, String status) {
+            this(id, menteeId, mentorId, scheduledAt, durationMinutes, price, status, "REGULAR");
+        }
+
+        public boolean trial() {
+            return "TRIAL".equals(kind);
+        }
     }
 
     public SessionInfo getSession(UUID sessionId) {

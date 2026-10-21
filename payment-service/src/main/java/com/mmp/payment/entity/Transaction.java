@@ -101,6 +101,10 @@ public class Transaction {
     @Column(name = "paid_cash", nullable = false)
     private BigDecimal paidCash = BigDecimal.ZERO;
 
+    /** REGULAR | TRIAL — buổi trải nghiệm không tính để được cấp mã giới thiệu. */
+    @Column(name = "session_kind", nullable = false)
+    private String sessionKind = "REGULAR";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -153,6 +157,8 @@ public class Transaction {
     public void release() {
         this.status = Status.SUCCESS;
     }
+    public String getSessionKind() { return sessionKind; }
+    public void setSessionKind(String sessionKind) { this.sessionKind = sessionKind; }
     public String getKind() { return kind; }
     public boolean isTopup() { return KIND_TOPUP.equals(kind); }
     public BigDecimal getPaidPromo() { return paidPromo; }

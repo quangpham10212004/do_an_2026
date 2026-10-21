@@ -22,10 +22,12 @@ public class InternalPaymentController {
     private final ReferralService referralService;
     private final EarningService earningService;
     private final WalletService walletService;
+    private final com.mmp.payment.service.MentorReferralService mentorReferrals;
 
     public InternalPaymentController(PaymentService paymentService, ReferralService referralService, EarningService earningService,
-                                     WalletService walletService) {
+                                     WalletService walletService, com.mmp.payment.service.MentorReferralService mentorReferrals) {
         this.walletService = walletService;
+        this.mentorReferrals = mentorReferrals;
         this.paymentService = paymentService;
         this.referralService = referralService;
         this.earningService = earningService;
@@ -72,6 +74,21 @@ public class InternalPaymentController {
     @PostMapping("/wallet/pay")
     public TransactionResponse walletPay(@Valid @RequestBody WalletPayInternalRequest req) {
         return walletService.pay(new com.mmp.payment.security.AuthUser(req.userId(), null, "MENTEE", true), req.sessionId(), null);
+    }
+
+    /** Bản chốt v2.0 §11 — mentoring kiểm tra mã giới thiệu trước khi tạo buổi: 400 (mã lỗi cụ thể) nếu không dùng được. */
+    @PostMapping("/referrals/validate")
+    public Map<String, Object> validateReferral(@Valid @RequestBody ReferralApplyRequest req) {
+        mentorReferrals.validate(req.code(), req.refereeId(), req.mentorId());
+        return Map.of("valid", true);
+    }
+
+    /** Bản chốt v2.0 §11 — mentoring ghi nhận mã được dùng ở buổi thường đầu tiên (sessionId bắt buộc). */
+    @PostMapping("/referrals/apply")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MentorReferralView applyReferral(@Valid @RequestBody ReferralApplyRequest req) {
+        if (req.sessionId() == null) throw com.mmp.payment.exception.ApiException.badRequest("SESSION_REQUIRED", "Thiếu sessionId");
+        return mentorReferrals.apply(req.code(), req.refereeId(), req.mentorId(), req.sessionId());
     }
 
     /** Bản chốt v2.0 §2.1 — admin khoá / mở khoá tài khoản: đóng băng / mở ví. Idempotent. */

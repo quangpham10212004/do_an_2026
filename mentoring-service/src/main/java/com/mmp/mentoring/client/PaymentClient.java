@@ -50,6 +50,31 @@ public class PaymentClient {
         }
     }
 
+    /** Bản chốt v2.0 §11 — kiểm tra mã giới thiệu trước khi tạo buổi; mã không dùng được → ném ApiException 400 với mã lỗi của payment-service. */
+    public void validateReferral(String code, UUID refereeId, UUID mentorId) {
+        try {
+            restClient.post().uri("/internal/referrals/validate")
+                    .body(Map.of("code", code, "refereeId", refereeId.toString(), "mentorId", mentorId.toString())).retrieve().toBodilessEntity();
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"code\"\\s*:\\s*\"([A-Z_]+)\"").matcher(body);
+            throw ApiException.badRequest(m.find() ? m.group(1) : "INVALID_REFERRAL_CODE", "Mã giới thiệu không dùng được");
+        } catch (RestClientException e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "REFERRAL_UNAVAILABLE", "Không kiểm tra được mã giới thiệu, hãy thử lại hoặc bỏ mã");
+        }
+    }
+
+    /** Ghi nhận mã được dùng cho buổi (best-effort: lỗi chỉ ghi log, không làm hỏng việc đặt lịch đã tạo). */
+    public void applyReferral(String code, UUID refereeId, UUID mentorId, UUID sessionId) {
+        try {
+            restClient.post().uri("/internal/referrals/apply")
+                    .body(Map.of("code", code, "refereeId", refereeId.toString(), "mentorId", mentorId.toString(), "sessionId", sessionId.toString()))
+                    .retrieve().toBodilessEntity();
+        } catch (RestClientException e) {
+            org.slf4j.LoggerFactory.getLogger(PaymentClient.class).warn("Could not apply referral code for session {}: {}", sessionId, e.getMessage());
+        }
+    }
+
     /** Admin khoá / mở khoá tài khoản → đóng băng / mở ví (best-effort, idempotent). */
     public void freezeWallet(UUID userId, boolean frozen) {
         try {
