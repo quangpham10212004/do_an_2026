@@ -88,6 +88,11 @@ public final class MentoringDtos {
     public record CancelSessionInput(@Size(max = 300) String reason) {
     }
 
+    /** Bản chốt v2.0 §6 — phòng học Jitsi: domain + tên phòng + JWT (chỉ người tham gia, trong khung giờ phòng mở). */
+    public record RoomView(String provider, String domain, String roomName, String jwt, OffsetDateTime opensAt,
+                           OffsetDateTime closesAt, int graceMinutes, boolean moderator) {
+    }
+
     /** Bản chốt v2.0 §5 — mentor từ chối buổi đang chờ xác nhận (hoàn 100% cho mentee). */
     public record DeclineSessionInput(@Size(max = 300) String reason) {
     }

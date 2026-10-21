@@ -104,6 +104,23 @@ public class InternalDevController {
         return Map.of("id", id, "status", view.status());
     }
 
+    /**
+     * Bản chốt v2.0 §6 — mô phỏng nhật ký vào phòng học (e2e không có trình duyệt thật): ghi mentor_joined_at / mentee_joined_at
+     * cho buổi (mặc định = giờ bắt đầu + 1 phút). Chỉ đặt cờ true; false = xoá nhật ký bên đó.
+     */
+    @PostMapping("/sessions/{id}/joined")
+    public Map<String, Object> markJoined(@PathVariable UUID id, @RequestBody Map<String, Boolean> in) {
+        MentoringSession s = tx.execute(st -> {
+            MentoringSession ss = sessionRepo.findById(id)
+                    .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
+            OffsetDateTime at = ss.getScheduledAt().plusMinutes(1);
+            if (in.containsKey("mentor")) ss.setMentorJoinedAt(Boolean.TRUE.equals(in.get("mentor")) ? at : null);
+            if (in.containsKey("mentee")) ss.setMenteeJoinedAt(Boolean.TRUE.equals(in.get("mentee")) ? at : null);
+            return ss;
+        });
+        return Map.of("id", s.getId(), "mentorJoined", s.getMentorJoinedAt() != null, "menteeJoined", s.getMenteeJoinedAt() != null);
+    }
+
     /** Đưa hạn xác nhận của buổi AWAITING_MENTOR về {@code minutesAgo} phút trước (kiểm thử hết hạn xác nhận). */
     @PostMapping("/sessions/{id}/confirm-deadline")
     public Map<String, Object> shiftConfirmDeadline(@PathVariable UUID id, @RequestBody Map<String, Integer> in) {

@@ -122,42 +122,35 @@ def attend(user, sid, answer):
 def us13(ctx):
     print("US-13 — Thanh toán: phí nền tảng, Idempotency-Key, hoàn tiền")
     mentor, mentee = ctx["mentor"], ctx["mentee"]
-    s = book(mentee, mentor, at(8, 9), duration=90)
-    check("US-13", "Phiên 90 phút × 200.000đ/giờ = 300.000đ", float(s["price"]) == 300000, s["price"])
+    s = book(mentee, mentor, at(8, 9), duration=60)
+    check("US-13", "Phiên 60 phút × 300.000đ = 300.000đ (giá theo buổi)", float(s["price"]) == 300000, s["price"])
+    # Bản chốt v2.0: thẻ trả thẳng từng phiên (/charge + Idempotency-Key) đã tắt — học phí chỉ trả từ ví
     status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/charge", {"sessionId": s["id"], "card": CARD},
-                                           token=mentee["accessToken"]))
-    check("US-13", "Thiếu Idempotency-Key → 400 IDEMPOTENCY_KEY_REQUIRED", status == 400 and code == "IDEMPOTENCY_KEY_REQUIRED",
-          (status, code))
-    key = str(uuid.uuid4())
-    t1 = charge(s["id"], CARD, mentee["accessToken"], idempotency_key=key)
+                                           token=mentee["accessToken"], headers={"Idempotency-Key": str(uuid.uuid4())}))
+    check("US-13", "Thanh toán thẻ trực tiếp đã tắt → 409 USE_WALLET", status == 409 and code == "USE_WALLET", (status, code))
+    t1 = charge(s["id"], CARD, mentee["accessToken"])
     check("US-13", "300.000đ → fee = 45.000, mentorEarning = 255.000 (AC)",
-          t1["status"] == "SUCCESS" and float(t1["fee"]) == 45000 and float(t1["mentorEarning"]) == 255000
+          t1["status"] == "SUCCESS" and t1["provider"] == "WALLET" and float(t1["fee"]) == 45000 and float(t1["mentorEarning"]) == 255000
           and abs(float(t1["feeRate"]) - 0.15) < 1e-9, t1)
-    t2 = charge(s["id"], CARD, mentee["accessToken"], idempotency_key=key)
+    status, code = error_code(lambda: call("POST", f"{PAYMENT}/api/payment/wallet/pay", {"sessionId": s["id"]}, token=mentee["accessToken"]))
     all_tx = txs(mentee, s["id"])
-    check("US-13", "2 lần charge cùng Idempotency-Key → 1 giao dịch, lần 2 trả kết quả lần 1 (AC)",
-          t2["id"] == t1["id"] and len(all_tx) == 1, (t2["id"], len(all_tx)))
-    other = book(mentee, mentor, at(9, 9))
-    status, code = error_code(lambda: charge(other["id"], CARD, mentee["accessToken"], idempotency_key=key))
-    check("US-13", "Dùng lại key cho phiên khác → 409 IDEMPOTENCY_KEY_REUSED", status == 409 and code == "IDEMPOTENCY_KEY_REUSED",
-          (status, code))
-    status, code = error_code(lambda: charge(s["id"], CARD, mentee["accessToken"]))
-    check("US-13", "Key mới cho phiên đã trả → 409 (phiên đã CONFIRMED / ALREADY_PAID), không charge lần 2",
-          status == 409 and code in ("SESSION_NOT_PAYABLE", "ALREADY_PAID") and len(txs(mentee, s["id"])) == 1, (status, code))
+    check("US-13", "Trả lần 2 cho phiên đã tạm giữ → 409, vẫn 1 giao dịch học phí (không trả hai lần)",
+          status == 409 and len(all_tx) == 1, (status, code, len(all_tx)))
     check("US-13", "Mentor thấy fee/mentorEarning trong giao dịch của mình",
           any(t["id"] == t1["id"] and float(t["mentorEarning"]) == 255000
               for t in call("GET", f"{PAYMENT}/api/payment/transactions", token=mentor["accessToken"])))
 
-    # Mentee huỷ < 72h phiên 300.000đ → không có dòng refund (AC)
-    late = book(mentee, mentor, at(2, 15), duration=90)
+    # Mentee huỷ < 4h phiên 300.000đ → không có dòng refund (AC)
+    late = book(mentee, mentor, at(2, 15), duration=60)
     charge(late["id"], CARD, mentee["accessToken"])
+    dev(f"sessions/{late['id']}/shift", {"startsInMinutes": 180})   # còn 3 giờ → hoàn 0%
     c = call("POST", f"{MENTORING}/api/mentoring/sessions/{late['id']}/cancel", {"reason": "Ban"}, token=mentee["accessToken"])
     t = txs(mentee, late["id"])[0]
-    check("US-13", "Mentee huỷ < 72h phiên 300.000đ → không tạo dòng refund, giao dịch vẫn SUCCESS (AC)",
+    check("US-13", "Mentee huỷ < 4h phiên 300.000đ → không tạo dòng refund, giao dịch vẫn SUCCESS (AC)",
           c["refundPercent"] == 0 and t["status"] == "SUCCESS" and t["refunds"] == [] and float(t["refundedAmount"]) == 0, t)
 
     # Hoàn một phần qua endpoint nội bộ (percent / amount), tổng ≤ giá
-    part = book(mentee, mentor, at(10, 9), duration=90)
+    part = book(mentee, mentor, at(10, 9), duration=60)
     charge(part["id"], CARD, mentee["accessToken"])
     r1 = call("POST", f"{PAYMENT}/internal/payments/refund", {"sessionId": part["id"], "reason": "TEST", "percent": 50}, internal=True)
     check("US-13", "Hoàn 50% → PARTIALLY_REFUNDED, 1 dòng refund 150.000, fee/amount giữ nguyên",
@@ -187,7 +180,7 @@ def us13(ctx):
 
 
 def paid_session(ctx, day):
-    s = book(ctx["mentee"], ctx["mentor"], at(day, 9), duration=90)
+    s = book(ctx["mentee"], ctx["mentor"], at(day, 9), duration=60)
     charge(s["id"], CARD, ctx["mentee"]["accessToken"])
     return s
 
@@ -222,9 +215,9 @@ def us12(ctx):
 
     # AC: không ai trả lời → COMPLETED sau 24 giờ
     s = paid_session(ctx, 21)
-    dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 47 * 60})
+    dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 23 * 60})
     dev("jobs/attendance")
-    check("US-12", "Sau 47 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
+    check("US-12", "Sau 23 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
     ended(s["id"], 24 * 60 + 1)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
@@ -388,7 +381,7 @@ def main(selected):
     t0 = time.time()
     print(f"E2E Sprint 2 mentoring/payment run {RUN}\n")
     admin = call("POST", f"{AUTH}/api/auth/login", {"email": "admin@mmp.local", "password": "Admin@123"})
-    mentor = approved_mentor(admin["accessToken"], "main", 200000)
+    mentor = approved_mentor(admin["accessToken"], "main", 300000)
     ctx = {"admin": admin, "mentor": mentor, "mentee": accepted_mentee(mentor, "main"), "matching_url": MATCHING}
     for story, fn in STORIES.items():
         if not selected or story in selected:

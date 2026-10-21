@@ -61,6 +61,16 @@ app:
     full-refund-before: ${CANCEL_FULL_REFUND_BEFORE:PT24H}
     half-refund-before: ${CANCEL_HALF_REFUND_BEFORE:PT4H}
     trial-full-refund-before: ${CANCEL_TRIAL_FULL_REFUND_BEFORE:PT2H}   # buổi trải nghiệm: ≥ 2h hoàn 100%, muộn hơn 0%
+  room:                            # Bản chốt v2.0 §6 — phòng học Jitsi Meet tự host (docker compose --profile jitsi up)
+    domain: ${JITSI_PUBLIC_DOMAIN:localhost:8443}        # domain trình duyệt dùng để tải external_api.js / vào phòng
+    xmpp-domain: ${JITSI_XMPP_DOMAIN:meet.jitsi}          # claim `sub` của JWT (XMPP_DOMAIN của Jitsi)
+    app-id: ${JITSI_APP_ID:mentorhub}                     # claim `iss` (JWT_APP_ID)
+    jwt-secret: ${JITSI_JWT_SECRET:dev-only-jitsi-secret-change-me-0123456789abcdef}   # JWT_APP_SECRET — bắt buộc đổi khi triển khai
+    opens-before: ${ROOM_OPENS_BEFORE:PT10M}              # phòng mở 10 phút trước giờ bắt đầu ...
+    closes-after: ${ROOM_CLOSES_AFTER:PT30M}              # ... đóng 30 phút sau giờ kết thúc
+    grace: ${ROOM_GRACE:PT10M}                            # chờ bên vắng mặt 10 phút (buổi trải nghiệm: trial-grace)
+    trial-grace: ${ROOM_TRIAL_GRACE:PT5M}
+    require-join-log: ${ROOM_REQUIRE_JOIN_LOG:true}       # không ai vào phòng → cả hai vắng (hoàn 100%, không lỗi vi phạm)
   trial:                           # Bản chốt v2.0 §10 — buổi trải nghiệm 15 phút
     fee: ${TRIAL_FEE:30000}                 # phí cố định toàn nền tảng
     max-open-per-mentee: ${TRIAL_MAX_OPEN:3}   # tối đa 3 buổi chưa diễn ra

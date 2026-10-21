@@ -43,12 +43,15 @@ public class AttendanceService {
     private final TransactionTemplate tx;
     private final Duration window;
     private final ZoneId zone;
+    private final boolean requireJoinLog;
 
     public AttendanceService(SessionRepository sessionRepo, PaymentOutboxService outbox, StrikeService strikes,
                              NotificationService notifications, DisputeHook disputeHook, DisputeRepository disputeRepo,
                              TransactionTemplate tx,
                              @Value("${app.attendance.window:PT24H}") Duration window,
-                             @Value("${app.timezone}") String timezone) {
+                             @Value("${app.timezone}") String timezone,
+                             @Value("${app.room.require-join-log:true}") boolean requireJoinLog) {
+        this.requireJoinLog = requireJoinLog;
         this.sessionRepo = sessionRepo;
         this.outbox = outbox;
         this.strikes = strikes;
@@ -83,6 +86,11 @@ public class AttendanceService {
             MentoringSession ss = sessionRepo.findForUpdate(sessionId)
                     .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
             AttendanceRules.Side side = sideOf(user, ss, adminAsMentor);
+            // Bản chốt v2.0 §6 — nhật ký vào phòng là căn cứ duy nhất: không báo vắng người đã có mặt trong phòng
+            if ((answer == Attendance.MENTOR_NO_SHOW && ss.getMentorJoinedAt() != null)
+                    || (answer == Attendance.MENTEE_NO_SHOW && ss.getMenteeJoinedAt() != null)) {
+                throw ApiException.conflict("ABSENCE_CONTRADICTS_LOG", "Nhật ký phòng học cho thấy bên đó đã vào phòng");
+            }
             if (!AttendanceRules.allowed(side, answer)) {
                 throw ApiException.badRequest("INVALID_ATTENDANCE_ANSWER", side == AttendanceRules.Side.MENTEE
                         ? "Mentee chỉ chọn được: phiên đã diễn ra, mentor vắng mặt hoặc huỷ trong buổi gọi"
@@ -161,10 +169,34 @@ public class AttendanceService {
         return n;
     }
 
-    /** Chạy cả 2 bước của job (SessionScheduler mỗi phút; endpoint dev cho e2e). */
+    /**
+     * Bản chốt v2.0 §6 — buổi đã kết thúc: nhật ký vào phòng quyết định vắng mặt (chỉ một bên vào → bên kia vắng; không ai vào → cả hai
+     * vắng, hoàn 100%, không lỗi vi phạm). Cả hai đã vào → không có vắng mặt, để cơ chế xác nhận / tự hoàn thành 24 giờ. Buổi đã có
+     * tranh chấp thì bỏ qua (admin quyết định).
+     */
+    public int resolveByJoinLog(OffsetDateTime now) {
+        int n = 0;
+        for (String id : sessionRepo.findIdsEndedBefore(Status.AWAITING_ATTENDANCE.name(), now)) {
+            Step step = tx.execute(s -> sessionRepo.findForUpdate(UUID.fromString(id))
+                    .filter(ss -> ss.getStatus() == Status.AWAITING_ATTENDANCE && !disputeRepo.existsBySessionId(ss.getId()))
+                    .map(ss -> {
+                        Optional<AttendanceRules.Resolution> r = RoomRules.byJoinLog(ss.getMenteeJoinedAt() != null,
+                                ss.getMentorJoinedAt() != null, requireJoinLog);
+                        r.ifPresent(res -> apply(ss, res, now));
+                        return new Step(ss, r);
+                    }).orElse(null));
+            if (step == null || step.resolution().isEmpty()) continue;
+            n++;
+            afterResolution(step.session(), step.resolution().get());
+        }
+        return n;
+    }
+
+    /** Chạy cả 3 bước của job (SessionScheduler mỗi phút; endpoint dev cho e2e). */
     public void runJob() {
         OffsetDateTime now = OffsetDateTime.now();
         int ended = markEnded(now);
+        resolveByJoinLog(now);
         int resolved = resolveExpired(now);
         if (ended + resolved > 0) log.info("Attendance job: {} ended → AWAITING_ATTENDANCE, {} resolved", ended, resolved);
     }
@@ -181,7 +213,7 @@ public class AttendanceService {
             case NO_SHOW_MENTEE -> s.setRefundPercent(0);
             case CANCELLED -> {
                 s.setCancelledBy("SYSTEM");
-                s.setCancelReason("CANCELLED_ON_CALL");
+                s.setCancelReason("BOTH_ABSENT".equals(r.code()) ? "BOTH_ABSENT" : "CANCELLED_ON_CALL");
                 s.setCancelledAt(now);
                 s.setRefundPercent(refund);
             }
@@ -235,12 +267,23 @@ public class AttendanceService {
                 notifications.notifyUser(s.getMentorId(), "SESSION_DISPUTED", "Phiên mentoring đang tranh chấp", msg, LINK);
             }
             case CANCELLED -> {
-                String msg = "Phiên lúc " + when + " được ghi nhận huỷ trong buổi gọi."
+                String msg = "Phiên lúc " + when + ("BOTH_ABSENT".equals(s.getAttendanceResolution())
+                        ? " không có ai vào phòng học nên được huỷ (cả hai vắng mặt)." : " được ghi nhận huỷ trong buổi gọi.")
                         + (refunded(s) ? " Mentee được hoàn 100% học phí." : "");
                 notifications.notifyUser(s.getMenteeId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ", msg, LINK);
                 notifications.notifyUser(s.getMentorId(), "SESSION_CANCELLED", "Phiên mentoring bị huỷ", msg, LINK);
             }
             default -> { }
+        }
+    }
+
+    /** Bản chốt v2.0 §6 — ghi câu trả lời "bên kia vắng mặt" do /room báo (đã kiểm tra nhật ký + thời gian chờ). */
+    void recordAbsenceClaim(MentoringSession s, boolean byMentor) {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (byMentor) {
+            if (s.getMentorAttendance() == null) s.answerAsMentor(Attendance.MENTEE_NO_SHOW, now);
+        } else if (s.getMenteeAttendance() == null) {
+            s.answerAsMentee(Attendance.MENTOR_NO_SHOW, now);
         }
     }
 

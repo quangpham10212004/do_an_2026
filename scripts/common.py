@@ -153,6 +153,11 @@ def charge(session_id, card, token, amount=None, idempotency_key=None):
     không trả học phí. Script kiểm tra chính luồng ví/xác nhận (e2e_v2_*.py) gọi thẳng API, không qua helper này.
     """
     session = call("GET", f"{MENTORING}/internal/sessions/{session_id}", internal=True)
+    if session["status"] in ("AWAITING_MENTOR", "CONFIRMED"):
+        # Ví đã đủ tiền nên học phí đã được tạm giữ ngay lúc đặt lịch → chỉ cần mentor xác nhận (nếu chưa)
+        if session["status"] == "AWAITING_MENTOR":
+            call("POST", f"{MENTORING}/internal/dev/sessions/{session_id}/mentor-confirm", {}, internal=True)
+        return call("GET", f"{PAYMENT}/api/payment/sessions/{session_id}/transactions", token=token)[0]
     price = int(float(session["price"]))
     wallet = call("GET", f"{PAYMENT}/api/payment/wallet", token=token)
     short = price - int(float(wallet["cash"])) - int(float(wallet["promo"]))

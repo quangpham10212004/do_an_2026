@@ -90,7 +90,7 @@ def pay(mentee, session):
     return charge(session["id"], CARD, mentee["accessToken"])   # US-13: kèm Idempotency-Key
 
 
-def slots(mentee, mentor, duration=30, days=7, exclude=None):
+def slots(mentee, mentor, duration=60, days=7, exclude=None):
     url = f"{MENTORING}/api/mentoring/mentors/{mentor['userId']}/available-slots?durationMinutes={duration}&days={days}"
     if exclude:
         url += f"&excludeSessionId={exclude}"
@@ -111,17 +111,17 @@ def main():
     # ---------------- US-03 ----------------
     print("US-03 — Form đặt lịch")
     status, code = error_code(lambda: book(mentee, mentor, at(5, 9), duration=75))
-    check("US-03", "Thời lượng ngoài 30/45/60/90/120 bị từ chối", status == 400 and code == "INVALID_DURATION", (status, code))
+    check("US-03", "Thời lượng khác 60 phút bị từ chối (bản chốt v2.0: cố định 60 phút)", status == 400 and code == "INVALID_DURATION", (status, code))
     status, code = error_code(lambda: book(mentee, mentor, at(5, 9), agenda="qua ngan"))
     check("US-03", "Agenda < 20 ký tự bị từ chối", status == 400 and code == "INVALID_AGENDA", (status, code))
     status, code = error_code(lambda: call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": mentee["userId"], "mentorId": mentor["userId"], "scheduledAt": at(5, 9).isoformat(), "durationMinutes": 60},
         token=mentee["accessToken"]))
     check("US-03", "Thiếu sessionType/agenda bị từ chối (400)", status == 400, (status, code))
-    s45 = book(mentee, mentor, at(5, 9), duration=45, preReadLink="https://github.com/example/repo")
-    check("US-03", "Phiên 45 phút lưu sessionType/agenda/preReadLink, giá = 150.000đ",
-          s45["durationMinutes"] == 45 and s45["sessionType"] == "CODE_REVIEW" and s45["agenda"] == AGENDA
-          and s45["preReadLink"] == "https://github.com/example/repo" and float(s45["price"]) == 150000, s45)
+    s45 = book(mentee, mentor, at(5, 9), duration=60, preReadLink="https://github.com/example/repo")
+    check("US-03", "Phiên 60 phút lưu sessionType/agenda/preReadLink, giá = 200.000đ (giá chốt theo buổi)",
+          s45["durationMinutes"] == 60 and s45["sessionType"] == "CODE_REVIEW" and s45["agenda"] == AGENDA
+          and s45["preReadLink"] == "https://github.com/example/repo" and float(s45["price"]) == 200000, s45)
 
     # ---------------- US-05 ----------------
     print("\nUS-05 — Kiểm tra đặt lịch")
@@ -129,13 +129,13 @@ def main():
     status, code = error_code(lambda: book(mentee, mentor, soon))
     check("US-05", "Đặt trước < minNoticeHours (mặc định 12h) bị từ chối", status == 400 and code == "TOO_SOON", (status, code))
     s10 = book(mentee, mentor, at(6, 10))
-    free = slots(mentee, mentor, duration=30, days=7)
-    check("US-05", "Phiên 10:00–11:00 + buffer 15': 11:00 bị loại, 11:30 còn trống",
-          at(6, 11) not in free and at(6, 11, 30) in free and at(6, 9) in free, [f.isoformat() for f in free if f.date() == at(6, 0).date()][:12])
+    free = slots(mentee, mentor, duration=60, days=7)
+    check("US-05", "Phiên 10:00–11:00 + buffer 15': 11:00 và 9:00 bị loại, 11:30 và 8:30 còn trống",
+          at(6, 11) not in free and at(6, 11, 30) in free and at(6, 9) not in free and at(6, 8, 30) in free, [f.isoformat() for f in free if f.date() == at(6, 0).date()][:12])
     other = accepted_mentee(mentor, "other")
-    status, code = error_code(lambda: book(other, mentor, at(6, 11), duration=30))
+    status, code = error_code(lambda: book(other, mentor, at(6, 11), duration=60))
     check("US-05", "Mentee khác đặt 11:00 (trong buffer) bị từ chối 409", status == 409 and code == "MENTOR_NOT_AVAILABLE", (status, code))
-    check("US-05", "Mentee khác đặt 11:30 được", book(other, mentor, at(6, 11, 30), duration=30)["status"] == "PENDING")
+    check("US-05", "Mentee khác đặt 11:30 được", book(other, mentor, at(6, 11, 30), duration=60)["status"] == "PENDING")
 
     # ---------------- US-04 ----------------
     print("\nUS-04 — Link phòng họp")
@@ -158,42 +158,33 @@ def main():
     early = book(mentee, mentor, at(8, 15))
     pay(mentee, early)
     p = call("GET", f"{MENTORING}/api/mentoring/sessions/{early['id']}/cancel-preview", token=mentee["accessToken"])
-    check("US-01", "Preview mentee huỷ ≥ 72h: 100%, 200.000đ", p["refundPercent"] == 100 and float(p["refundAmount"]) == 200000, p)
+    check("US-01", "Preview mentee huỷ ≥ 24h: 100%, 200.000đ", p["refundPercent"] == 100 and float(p["refundAmount"]) == 200000, p)
     p = call("GET", f"{MENTORING}/api/mentoring/sessions/{s10['id']}/cancel-preview", token=mentee["accessToken"])
-    late_expected = (at(6, 10) - datetime.now(VN)) < timedelta(hours=72)
-    check("US-01", "Preview mentee huỷ < 72h: 0%" if late_expected else "Preview (phiên ≥ 72h) 100%",
-          (p["refundPercent"] == 0 and float(p["refundAmount"]) == 0) if late_expected else p["refundPercent"] == 100, p)
+    check("US-01", "Preview mentee huỷ phiên còn > 24h (10:00 ngày +6): 100%", p["refundPercent"] == 100, p)
     near = book(mentee, mentor, at(2, 16))
     pay(mentee, near)
+    call("POST", f"{MENTORING}/internal/dev/sessions/{near['id']}/shift", {"startsInMinutes": 180}, internal=True)   # còn 3 giờ → không hoàn
     cancelled = call("POST", f"{MENTORING}/api/mentoring/sessions/{near['id']}/cancel", {"reason": "Ban viec"}, token=mentee["accessToken"])
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{near['id']}/transactions", token=mentee["accessToken"])
-    check("US-01", "Mentee huỷ < 72h: CANCELLED, cancelledBy=MENTEE, refundPercent=0, giao dịch vẫn SUCCESS",
+    check("US-01", "Mentee huỷ < 4h: CANCELLED, cancelledBy=MENTEE, refundPercent=0, giao dịch vẫn SUCCESS",
           cancelled["cancelledBy"] == "MENTEE" and cancelled["refundPercent"] == 0 and cancelled["cancelReason"] == "Ban viec"
           and any(t["status"] == "SUCCESS" for t in txs), (cancelled, txs))
     call("POST", f"{MENTORING}/api/mentoring/sessions/{early['id']}/cancel", token=mentee["accessToken"])
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{early['id']}/transactions", token=mentee["accessToken"])
-    check("US-01", "Mentee huỷ ≥ 72h: giao dịch REFUNDED", any(t["status"] == "REFUNDED" for t in txs), txs)
+    check("US-01", "Mentee huỷ ≥ 24h: giao dịch REFUNDED", any(t["status"] == "REFUNDED" for t in txs), txs)
 
     by_mentor = book(mentee, mentor, at(9, 15))
     pay(mentee, by_mentor)
     p = call("GET", f"{MENTORING}/api/mentoring/sessions/{by_mentor['id']}/cancel-preview", token=mentor["accessToken"])
-    check("US-01", "Preview mentor huỷ: 100% + 20 điểm", p["cancelledBy"] == "MENTOR" and p["refundPercent"] == 100
-          and p["rewardPoints"] == 20, p)
+    check("US-01", "Preview mentor huỷ: 100%, không còn điểm xin lỗi (v2.0)", p["cancelledBy"] == "MENTOR" and p["refundPercent"] == 100
+          and p["rewardPoints"] == 0, p)
     before_points = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=mentee["accessToken"])["pointsBalance"]
     c = call("POST", f"{MENTORING}/api/mentoring/sessions/{by_mentor['id']}/cancel", {"reason": "Ban dot xuat"}, token=mentor["accessToken"])
     txs = call("GET", f"{PAYMENT}/api/payment/sessions/{by_mentor['id']}/transactions", token=mentee["accessToken"])
     check("US-01", "Mentor huỷ: cancelledBy=MENTOR, hoàn 100% (REFUNDED)",
           c["cancelledBy"] == "MENTOR" and c["refundPercent"] == 100 and any(t["status"] == "REFUNDED" for t in txs), (c, txs))
-    deadline = time.time() + OUTBOX_WAIT
-    points = before_points
-    while time.time() < deadline:
-        ov = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=mentee["accessToken"])
-        points = ov["pointsBalance"]
-        if points >= before_points + 20:
-            break
-        time.sleep(5)
-    check("US-01", f"Mentee nhận 20 điểm MENTOR_CANCEL_APOLOGY (outbox, chờ ≤ {OUTBOX_WAIT}s)",
-          points == before_points + 20 and any(r["reason"] == "MENTOR_CANCEL_APOLOGY" for r in ov["rewards"]), (before_points, points))
+    ov = call("GET", f"{PAYMENT}/api/payment/referrals/me", token=mentee["accessToken"])
+    check("US-01", "Mentor huỷ không còn cộng điểm xin lỗi (bản chốt v2.0 bỏ điểm)", ov["pointsBalance"] == before_points and not any(r["reason"] == "MENTOR_CANCEL_APOLOGY" for r in ov["rewards"]), (before_points, ov["pointsBalance"]))
 
     # ---------------- US-02 ----------------
     print("\nUS-02 — Strike mentor")
@@ -215,11 +206,13 @@ def main():
 
     # ---------------- US-06 ----------------
     print("\nUS-06 — Dời lịch")
-    mentor2 = approved_mentor(admin["accessToken"], "resched", 0)   # phiên miễn phí → CONFIRMED ngay
+    mentor2 = approved_mentor(admin["accessToken"], "resched", 100000)   # v2.0: không còn phiên miễn phí → trả từ ví + mentor xác nhận
     mentee2 = accepted_mentee(mentor2, "resched")
     other2 = accepted_mentee(mentor2, "resched2")
     rs = book(mentee2, mentor2, at(4, 10))
-    check("US-06", "Phiên miễn phí CONFIRMED", rs["status"] == "CONFIRMED", rs["status"])
+    charge(rs["id"], CARD, mentee2["accessToken"])
+    rs = call("GET", f"{MENTORING}/api/mentoring/sessions/{rs['id']}", token=mentee2["accessToken"])
+    check("US-06", "Phiên đã trả từ ví và được mentor xác nhận → CONFIRMED", rs["status"] == "CONFIRMED", rs["status"])
     prop = call("POST", f"{MENTORING}/api/mentoring/sessions/{rs['id']}/reschedule", {"newStart": at(5, 14).isoformat()},
                 token=mentee2["accessToken"])
     check("US-06", "Đề xuất dời lịch PENDING, hết hạn ≤ 24h",
@@ -235,7 +228,7 @@ def main():
     moved = call("POST", f"{MENTORING}/api/mentoring/reschedules/{prop['id']}/accept", token=mentor2["accessToken"])
     check("US-06", "Bên kia chấp nhận → phiên chuyển giờ, giữ thời lượng/giá, rescheduleCount=1",
           datetime.fromisoformat(moved["scheduledAt"]) == at(5, 14) and moved["durationMinutes"] == 60
-          and float(moved["price"]) == 0 and moved["rescheduleCount"] == 1 and moved["pendingReschedule"] is None, moved)
+          and float(moved["price"]) == 100000 and moved["rescheduleCount"] == 1 and moved["pendingReschedule"] is None, moved)
     p2 = call("POST", f"{MENTORING}/api/mentoring/sessions/{rs['id']}/reschedule", {"newStart": at(6, 14).isoformat()},
               token=mentor2["accessToken"])
     d = call("POST", f"{MENTORING}/api/mentoring/reschedules/{p2['id']}/decline", token=mentee2["accessToken"])

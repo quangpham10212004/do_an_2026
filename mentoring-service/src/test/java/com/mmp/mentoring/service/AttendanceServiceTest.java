@@ -39,7 +39,7 @@ class AttendanceServiceTest {
         f = new TestFixtures();
         disputeHook = mock(DisputeHook.class);
         service = new AttendanceService(f.sessionRepo, f.outbox, f.strikes, f.notifications, disputeHook, f.disputeRepo, f.tx,
-                Duration.ofHours(48), "Asia/Ho_Chi_Minh");
+                Duration.ofHours(48), "Asia/Ho_Chi_Minh", true);
         session = new MentoringSession();
         ReflectionTestUtils.setField(session, "id", id);
         session.setMenteeId(menteeId);
@@ -271,5 +271,77 @@ class AttendanceServiceTest {
         service.resolveExpired(OffsetDateTime.now());
         assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTOR);
         verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
+    }
+
+    // ---- Bản chốt v2.0 §6: nhật ký vào phòng ----
+
+    private void shiftEnded(long minutesAgo) {
+        endedMinutesAgo(minutesAgo);
+        session.setStatus(Status.AWAITING_ATTENDANCE);
+        when(f.sessionRepo.findIdsEndedBefore(eq(Status.AWAITING_ATTENDANCE.name()), any())).thenReturn(List.of(id.toString()));
+    }
+
+    @Test
+    void onlyTheMentorJoinedMeansTheMenteeWasAbsent() {
+        shiftEnded(5);
+        session.setMentorJoinedAt(session.getScheduledAt().plusMinutes(1));
+
+        assertThat(service.resolveByJoinLog(OffsetDateTime.now())).isEqualTo(1);
+
+        assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTEE);
+        assertThat(session.getAttendanceResolution()).isEqualTo("JOIN_LOG_MENTEE_ABSENT");
+        verify(f.strikes, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void onlyTheMenteeJoinedMeansTheMentorWasAbsentRefundedWithAStrike() {
+        shiftEnded(5);
+        session.setMenteeJoinedAt(session.getScheduledAt().plusMinutes(1));
+
+        service.resolveByJoinLog(OffsetDateTime.now());
+
+        assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTOR);
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
+        verify(f.strikes).record(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_NO_SHOW);
+    }
+
+    @Test
+    void nobodyJoiningMeansBothAbsentRefundedWithoutStrike() {
+        shiftEnded(5);
+
+        service.resolveByJoinLog(OffsetDateTime.now());
+
+        assertThat(session.getStatus()).isEqualTo(Status.CANCELLED);
+        assertThat(session.getAttendanceResolution()).isEqualTo("BOTH_ABSENT");
+        assertThat(session.getCancelReason()).isEqualTo("BOTH_ABSENT");
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
+        verify(f.strikes, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void bothJoinedLeavesTheSessionToTheNormalConfirmationFlow() {
+        shiftEnded(5);
+        session.setMenteeJoinedAt(session.getScheduledAt().plusMinutes(1));
+        session.setMentorJoinedAt(session.getScheduledAt().plusMinutes(2));
+
+        assertThat(service.resolveByJoinLog(OffsetDateTime.now())).isZero();
+        assertThat(session.getStatus()).isEqualTo(Status.AWAITING_ATTENDANCE);
+    }
+
+    @Test
+    void disputedSessionsAreLeftToTheAdmin() {
+        shiftEnded(5);
+        when(f.disputeRepo.existsBySessionId(id)).thenReturn(true);
+        assertThat(service.resolveByJoinLog(OffsetDateTime.now())).isZero();
+        assertThat(session.getStatus()).isEqualTo(Status.AWAITING_ATTENDANCE);
+    }
+
+    @Test
+    void cannotReportSomeoneAbsentWhoHasJoinedTheRoom() {
+        shiftEnded(5);
+        session.setMentorJoinedAt(session.getScheduledAt().plusMinutes(1));
+        assertThat(code(() -> service.answer(mentee, id, Attendance.MENTOR_NO_SHOW))).isEqualTo("ABSENCE_CONTRADICTS_LOG");
     }
 }

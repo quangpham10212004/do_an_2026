@@ -53,7 +53,7 @@ def at(days, hour, minute=0):
     return (datetime.now(VN) + timedelta(days=days)).replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
-def approved_mentor(admin_token, name, hourly_rate=200000, capacity=5):
+def approved_mentor(admin_token, name, hourly_rate=300000, capacity=5):
     m = register("MENTOR", name)
     t = m["accessToken"]
     call("PUT", f"{PROFILE}/api/profile/mentor/{m['userId']}", {
@@ -94,13 +94,13 @@ def accepted_mentee(mentor, name):
     return me
 
 
-def book(mentee, mentor, start, duration=90):
+def book(mentee, mentor, start, duration=60):
     return call("POST", f"{MENTORING}/api/mentoring/sessions", {
         "menteeId": mentee["userId"], "mentorId": mentor["userId"], "scheduledAt": start.isoformat(),
         "durationMinutes": duration, "sessionType": "CODE_REVIEW", "agenda": AGENDA}, token=mentee["accessToken"])
 
 
-def paid(mentee, mentor, start, duration=90):
+def paid(mentee, mentor, start, duration=60):
     s = book(mentee, mentor, start, duration)
     charge(s["id"], CARD, mentee["accessToken"])
     return s
