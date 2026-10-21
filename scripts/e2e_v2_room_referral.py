@@ -279,7 +279,7 @@ def main():
     victim = mentee_with_request(mentor, "victim")
     sv = confirmed(victim, mentor, at(20, 10))
     held_before = float(wallet(victim)["held"])
-    call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "LOCKED"}, token=admin["accessToken"])
+    call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "LOCKED", "reason": "E2E: vi pham chinh sach"}, token=admin["accessToken"])
     time.sleep(4)
     check("Buổi chưa diễn ra bị huỷ bởi hệ thống, hoàn 100%", session(victim, sv["id"])["status"] == "CANCELLED" and session(victim, sv["id"])["refundPercent"] == 100,
           session(victim, sv["id"])["status"])
@@ -288,6 +288,47 @@ def main():
     time.sleep(3)
     login = call("POST", f"{AUTH}/api/auth/login", {"email": f"v2r.mentee.victim.{RUN}@test.local", "password": "Passw0rd!"})
     check("Mở khoá → ví hoạt động lại, tiền đã hoàn nằm trong ví", float(wallet(login)["cash"]) == 2_000_000 and wallet(login)["status"] == "ACTIVE", wallet(login))
+
+    print("\n5. Admin khoá mentor: bắt buộc lý do, giữ thu nhập đang chờ, báo người bị khoá (§2.1)")
+    m5 = approved_mentor(admin["accessToken"], "locked", 300000)
+    me5 = mentee_with_request(m5, "locked-mentee")
+    past = confirmed(me5, m5, at(21, 10))
+    complete(me5, m5, past["id"])
+    future = confirmed(me5, m5, at(22, 10))
+    time.sleep(2)
+    status, code = error_code(lambda: call("PATCH", f"{AUTH}/api/auth/admin/users/{m5['userId']}/status", {"status": "LOCKED"},
+                                           token=admin["accessToken"]))
+    check("Khoá không ghi lý do → 400 LOCK_REASON_REQUIRED", status == 400 and code == "LOCK_REASON_REQUIRED", (status, code))
+    call("PATCH", f"{AUTH}/api/auth/admin/users/{m5['userId']}/status", {"status": "LOCKED", "reason": "E2E: mentor vi pham chinh sach"},
+         token=admin["accessToken"])
+    time.sleep(4)
+    check("Buổi sắp tới của mentor bị huỷ, mentee được hoàn 100%",
+          session(me5, future["id"])["status"] == "CANCELLED" and session(me5, future["id"])["refundPercent"] == 100,
+          session(me5, future["id"])["status"])
+    tx_past = call("GET", f"{PAYMENT}/api/payment/sessions/{past['id']}/transactions", token=me5["accessToken"])[0]
+    lock_disputes = [d for d in call("GET", f"{MENTORING}/api/mentoring/admin/disputes?status=OPEN", token=admin["accessToken"])
+                     if d["sessionId"] == past["id"]]
+    check("Thu nhập đang chờ của buổi đã học bị giữ: tranh chấp hệ thống + giao dịch ON_HOLD",
+          len(lock_disputes) == 1 and lock_disputes[0]["openedByRole"] == "SYSTEM" and tx_past["status"] == "ON_HOLD",
+          (lock_disputes, tx_past["status"]))
+    mails = []
+    for _ in range(20):
+        mails = [r for r in call("GET", f"{AUTH}/internal/dev/email-outbox?userId={m5['userId']}", internal=True)
+                 if r["type"] == "ACCOUNT_LOCKED"]
+        if mails:
+            break
+        time.sleep(0.3)
+    check("Người bị khoá vẫn nhận email báo khoá (không bị bỏ qua như các email khác)",
+          len(mails) == 1 and mails[0]["status"] in ("PENDING", "SENT") and mails[0]["skipReason"] is None, mails)
+    note = [n for n in call("GET", f"{MENTORING}/api/mentoring/notifications?limit=20", token=m5["accessToken"])["items"]
+            if n["type"] == "ACCOUNT_LOCKED"]
+    check("Thông báo khoá ghi rõ lý do", len(note) == 1 and "E2E: mentor vi pham chinh sach" in note[0]["message"], note)
+    if lock_disputes:
+        call("POST", f"{MENTORING}/api/mentoring/admin/disputes/{lock_disputes[0]['id']}/resolve",
+             {"outcome": "NO_REFUND", "note": "Buoi da dien ra binh thuong, giai phong cho mentor"}, token=admin["accessToken"])
+        time.sleep(2)
+        tx_after = call("GET", f"{PAYMENT}/api/payment/sessions/{past['id']}/transactions", token=me5["accessToken"])[0]
+        check("Admin kết luận không hoàn → giao dịch được giải phóng cho mentor (SUCCESS)", tx_after["status"] == "SUCCESS", tx_after["status"])
 
     passed = sum(1 for _, ok in results if ok)
     print(f"\n{passed}/{len(results)} kiểm tra PASS trong {time.time() - t0:.1f}s")

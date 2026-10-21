@@ -114,6 +114,18 @@ public class EarningService {
     }
 
     /** Giải phóng mọi lịch tới hạn; trả về số dòng EARNING_AVAILABLE đã ghi. */
+    /** Bản chốt v2.0 §2.1 — buổi của mentor còn thu nhập đang chờ (theo số dư từng giao dịch), dùng khi khoá mentor. */
+    public java.util.List<UUID> pendingSessions(UUID mentorId) {
+        java.util.Map<UUID, java.util.List<LedgerEntry>> byTx = new java.util.LinkedHashMap<>();
+        for (LedgerEntry e : ledger.findByMentorIdOrderByCreatedAtAsc(mentorId)) {
+            byTx.computeIfAbsent(e.getTransactionId(), k -> new java.util.ArrayList<>()).add(e);
+        }
+        return byTx.values().stream()
+                .filter(entries -> EarningRules.balance(entries).pending().signum() > 0)
+                .map(entries -> entries.get(0).getSessionId())
+                .distinct().toList();
+    }
+
     public int releaseDue(OffsetDateTime now) {
         int n = 0;
         for (UUID transactionId : schedules.findDueTransactionIds(now)) {

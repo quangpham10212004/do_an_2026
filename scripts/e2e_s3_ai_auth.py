@@ -173,7 +173,7 @@ def main():
 
     victim = call("POST", f"{AUTH}/api/auth/register", {"email": f"s3c.lock.{RUN}@test.local", "password": "Passw0rd!",
                                                         "role": "MENTEE", "fullName": "S3C Lock"})
-    call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "LOCKED"}, token=admin)
+    call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "LOCKED", "reason": "E2E: vi pham chinh sach"}, token=admin)
     call("PATCH", f"{AUTH}/api/auth/admin/users/{victim['userId']}/status", {"status": "ACTIVE"}, token=admin)
     actions = [r["action"] for r in audit(admin, targetType="USER", targetId=victim["userId"])["items"]]
     # v2.0: khoá còn huỷ buổi chưa diễn ra + đóng băng ví (ACCOUNT_SESSIONS_CANCELLED), mở khoá gỡ đóng băng (ACCOUNT_UNLOCKED)

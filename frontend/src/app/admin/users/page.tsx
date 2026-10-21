@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Search } from "lucide-react";
-import { Alert, Badge, Button, Card, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table } from "@/components/ui";
+import { Alert, Badge, Button, Card, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table, useDialog } from "@/components/ui";
 import { authApi, type UserFilters } from "@/features/auth/api";
 import { ROLE_LABELS, formatDate } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
@@ -14,6 +14,7 @@ function Users() {
   const [filters, setFilters] = useState<Required<UserFilters>>({ role: "", q: "", page: 0 });
   const [data, setData] = useState<PageResponse<User> | null>(null);
   const [error, setError] = useState("");
+  const [dialog, ask] = useDialog();
   const load = useCallback(
     () => authApi.adminListUsers(filters).then((d) => { setData(d); setError(""); }).catch((e: unknown) => setError(errorMessage(e))),
     [filters],
@@ -24,8 +25,26 @@ function Users() {
 
   async function toggle(u: User) {
     setError("");
+    const locking = u.status === "ACTIVE";
+    let reason: string | undefined;
+    if (locking) {
+      const r = await ask({
+        title: `Khoá tài khoản ${u.email}?`,
+        message: "Buổi chưa diễn ra sẽ bị huỷ và hoàn 100% cho mentee; ví bị đóng băng. Với mentor, thu nhập đang chờ được giữ lại "
+          + "thành tranh chấp để bạn kết luận giải phóng hoặc hoàn cho mentee. Người bị khoá nhận thông báo kèm lý do.",
+        input: { label: "Lý do (ít nhất 10 ký tự)", maxLength: 500 },
+        confirmText: "Khoá tài khoản",
+        danger: true,
+      });
+      if (r === null) return;
+      if (r.trim().length < 10) {
+        setError("Lý do khoá cần ít nhất 10 ký tự.");
+        return;
+      }
+      reason = r.trim();
+    }
     try {
-      await authApi.adminSetStatus(u.id, u.status === "ACTIVE" ? "LOCKED" : "ACTIVE");
+      await authApi.adminSetStatus(u.id, locking ? "LOCKED" : "ACTIVE", reason);
       load();
     } catch (e) {
       setError(errorMessage(e));
@@ -34,6 +53,7 @@ function Users() {
 
   return (
     <>
+      {dialog}
       <PageHeader title="Tài khoản" description="Xem, khoá hoặc mở khoá tài khoản người dùng." />
       <Alert className="mb-6">{error}</Alert>
       <div className="mb-4 flex flex-wrap gap-2">

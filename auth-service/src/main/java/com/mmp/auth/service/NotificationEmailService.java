@@ -93,7 +93,8 @@ public class NotificationEmailService {
         EmailOutbox row = new EmailOutbox(user.getId(), user.getEmail(), in.category().name(), in.type(), subject, body,
                 EmailRules.sendAt(now, zone, prefs.isQuietHours(), in.category(), in.type(), in.sessionStartAt()),
                 in.dedupeKey(), now);
-        if (user.getStatus() == User.Status.LOCKED) {
+        // Tài khoản bị khoá không nhận email — trừ chính thông báo "tài khoản đã bị khoá" (bản chốt v2.0 §2.1)
+        if (user.getStatus() == User.Status.LOCKED && !"ACCOUNT_LOCKED".equals(in.type())) {
             row.skip("ACCOUNT_LOCKED");
         } else if (!EmailRules.enabled(prefs, in.category())) {
             row.skip("PREFERENCE_OFF");

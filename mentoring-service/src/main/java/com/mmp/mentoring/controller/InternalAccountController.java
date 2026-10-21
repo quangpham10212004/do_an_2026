@@ -15,7 +15,7 @@ import java.util.UUID;
 @RequestMapping("/internal/accounts")
 public class InternalAccountController {
 
-    public record LockInput(@NotNull Boolean locked, UUID actorId) {
+    public record LockInput(@NotNull Boolean locked, UUID actorId, @jakarta.validation.constraints.Size(max = 500) String reason) {
     }
 
     private final AccountLockService accounts;
@@ -26,6 +26,6 @@ public class InternalAccountController {
 
     @PostMapping("/{userId}/lock")
     public AccountLockService.Result lock(@PathVariable UUID userId, @Valid @RequestBody LockInput in) {
-        return accounts.onLockChanged(userId, in.locked(), in.actorId());
+        return accounts.onLockChanged(userId, in.locked(), in.actorId(), in.reason());
     }
 }

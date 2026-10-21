@@ -126,13 +126,15 @@ class AuditServiceTest {
         UserAdminService admin = new UserAdminService(users, mock(RefreshTokenRepository.class), audit, mock(com.mmp.auth.client.MentoringClient.class));
         UUID adminId = UUID.randomUUID();
 
-        admin.updateStatus(adminId, u.getId(), "LOCKED");
+        assertThat(org.junit.jupiter.api.Assertions.assertThrows(com.mmp.auth.exception.ApiException.class,
+                () -> admin.updateStatus(adminId, u.getId(), "LOCKED", "  ngan ")).getCode()).isEqualTo("LOCK_REASON_REQUIRED");
+        admin.updateStatus(adminId, u.getId(), "LOCKED", "Spam tin nhan nhieu lan");
         verify(audit).recordAdmin(adminId, "USER_LOCKED", "USER", u.getId().toString(),
                 Map.of("status", "ACTIVE", "email", "mentee@example.com"),
-                Map.of("status", "LOCKED", "email", "mentee@example.com"));
+                Map.of("status", "LOCKED", "email", "mentee@example.com", "reason", "Spam tin nhan nhieu lan"));
 
-        admin.updateStatus(adminId, u.getId(), "LOCKED"); // không đổi trạng thái => không ghi thêm
-        admin.updateStatus(adminId, u.getId(), "ACTIVE");
+        admin.updateStatus(adminId, u.getId(), "LOCKED", "Spam tin nhan nhieu lan"); // không đổi trạng thái => không ghi thêm
+        admin.updateStatus(adminId, u.getId(), "ACTIVE", null);
         ArgumentCaptor<String> action = ArgumentCaptor.forClass(String.class);
         verify(audit, times(2)).recordAdmin(eq(adminId), action.capture(), eq("USER"), anyString(), anyMap(), anyMap());
         assertThat(action.getAllValues()).containsExactly("USER_LOCKED", "USER_UNLOCKED");

@@ -55,7 +55,10 @@ public class EmailClient {
             Map.entry("PAYOUT_PAID", "ACCOUNT"),
             // Bản chốt v2.0 D15 — nhắc trước 30 / 7 ngày: khuyến mãi sắp hết hạn, ví sắp "ngủ" (tiền của người dùng → luôn gửi)
             Map.entry("WALLET_PROMO_EXPIRING", "ACCOUNT"),
-            Map.entry("WALLET_DORMANT_SOON", "ACCOUNT"));
+            Map.entry("WALLET_DORMANT_SOON", "ACCOUNT"),
+            // Bản chốt v2.0 §2.1 — khoá / mở khoá tài khoản (auth-service vẫn gửi ACCOUNT_LOCKED cho tài khoản đang bị khoá)
+            Map.entry("ACCOUNT_LOCKED", "ACCOUNT"),
+            Map.entry("ACCOUNT_UNLOCKED", "ACCOUNT"));
 
     private final RestClient restClient;
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 2, 30, TimeUnit.SECONDS,

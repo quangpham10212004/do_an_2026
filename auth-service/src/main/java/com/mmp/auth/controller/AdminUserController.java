@@ -36,6 +36,6 @@ public class AdminUserController {
 
     @PatchMapping("/{userId}/status")
     public UserResponse updateStatus(@PathVariable UUID userId, @Valid @RequestBody UpdateStatusRequest req) {
-        return userAdminService.updateStatus(CurrentUser.get().userId(), userId, req.status());
+        return userAdminService.updateStatus(CurrentUser.get().userId(), userId, req.status(), req.reason());
     }
 }

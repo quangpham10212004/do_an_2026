@@ -85,6 +85,15 @@ public class PaymentClient {
         }
     }
 
+    /**
+     * Bản chốt v2.0 §2.1 — các buổi của mentor còn thu nhập đang chờ (chưa chuyển khả dụng, chưa bị thu hồi hết).
+     * Lỗi gọi payment → {@link RestClientException} để bên gọi đếm vào {@code failed}.
+     */
+    public java.util.List<UUID> pendingEarningSessions(UUID mentorId) {
+        UUID[] ids = restClient.get().uri("/internal/earnings/pending-sessions?mentorId={id}", mentorId).retrieve().body(UUID[].class);
+        return ids == null ? java.util.List.of() : java.util.List.of(ids);
+    }
+
     /** Hoàn tiền toàn bộ cho phiên đã thanh toán. Trả về false nếu phiên không có giao dịch thành công. */
     public boolean refund(UUID sessionId, String reason) {
         return refund(sessionId, reason, 100);

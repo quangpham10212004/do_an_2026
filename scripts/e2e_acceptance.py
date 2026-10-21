@@ -396,7 +396,7 @@ def main():
 
     # ---------------- Admin lock ----------------
     print("\nAdmin")
-    call("PATCH", f"{AUTH}/api/auth/admin/users/{bad['userId']}/status", {"status": "LOCKED"}, token=admin_token)
+    call("PATCH", f"{AUTH}/api/auth/admin/users/{bad['userId']}/status", {"status": "LOCKED", "reason": "E2E: vi pham chinh sach"}, token=admin_token)
     ok, _ = expect_error(lambda: call("POST", f"{AUTH}/api/auth/login", {"email": bad["email"], "password": "Passw0rd!"}), 403)
     check(1, "Admin khoá tài khoản → không đăng nhập được (FR-1.5)", ok)
 
