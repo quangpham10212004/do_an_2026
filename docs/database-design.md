@@ -74,9 +74,9 @@ erDiagram
         text cv_file_url
         text_array portfolio_links
         numeric hourly_rate "VND/buổi 60 phút; v2.0: nằm trong khung của tier"
-        text tier "v2.0 ⚒ JUNIOR|SENIOR|EXPERT, NULL khi chưa duyệt"
-        timestamptz tier_assigned_at "v2.0 ⚒ — xin nâng cấp sau 90 ngày"
-        boolean trial_enabled "v2.0 ⚒ nhận buổi trải nghiệm, mặc định true"
+        text tier "v2.0 JUNIOR|SENIOR|EXPERT, NULL khi chưa duyệt (V9)"
+        timestamptz tier_assigned_at "v2.0 — mốc cho xin nâng cấp sau 90 ngày (chưa hiện thực)"
+        boolean trial_enabled "v2.0 nhận buổi trải nghiệm, mặc định true (V10)"
         int capacity
         int active_mentee_count "đồng bộ từ mentoring"
         boolean is_available
@@ -107,7 +107,7 @@ erDiagram
 |---|---|
 | `mentor_profiles` | Hồ sơ mentor + dữ liệu phục vụ matching (trạng thái xác thực, sức chứa, rating) |
 | `mentee_profiles` | Hồ sơ mentee |
-| `mentor_profiles.tier` *(v2.0 ⚒)* | Cấp độ do admin gán lúc duyệt phỏng vấn; khung giá lấy từ cấu hình `pricing.tiers` (JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k, bước 10.000đ); `hourly_rate` bị kẹp về khung khi đổi cấp |
+| `mentor_profiles.tier` *(v2.0)* | Cấp độ do admin gán lúc duyệt phỏng vấn; khung giá lấy từ cấu hình `pricing.tiers` (JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k, bước 10.000đ); `hourly_rate` bị kẹp về khung khi đổi cấp |
 | `mentor_availability` | Khung giờ rảnh lặp lại hằng tuần (giờ Việt Nam); `CHECK (end_time > start_time)` |
 | Role `matching_reader` | Chỉ có `SELECT` trên 3 bảng trên — hiện thực hoá ngoại lệ kiến trúc read-only |
 
@@ -179,11 +179,13 @@ erDiagram
         timestamptz scheduled_at
         int duration_minutes "v2.0: 60 (thường) hoặc 15 (trải nghiệm)"
         numeric price "v2.0: chốt lúc gửi yêu cầu đặt"
-        text kind "v2.0 ⚒ REGULAR|TRIAL"
-        timestamptz mentor_joined_at "v2.0 ⚒ nhật ký vào phòng"
-        timestamptz mentee_joined_at "v2.0 ⚒"
+        text kind "v2.0 REGULAR|TRIAL"
+        timestamptz confirm_deadline "v2.0 hạn mentor xác nhận (24h, muộn nhất 1h trước giờ học)"
+        timestamptz mentor_joined_at "v2.0 nhật ký vào phòng"
+        timestamptz mentee_joined_at "v2.0"
         text topic
-        text status "PENDING|CONFIRMED|AWAITING_ATTENDANCE|COMPLETED|CANCELLED|EXPIRED|NO_SHOW_*|DISPUTED"
+        text session_type "… MOCK_INTERVIEW (US-58)"
+        text status "PENDING|AWAITING_MENTOR|CONFIRMED|AWAITING_ATTENDANCE|COMPLETED|CANCELLED|EXPIRED|NO_SHOW_*|DISPUTED"
         boolean reminder_sent
     }
     reviews {
@@ -209,11 +211,13 @@ erDiagram
 | Bảng | Mô tả |
 |---|---|
 | `mentoring_requests` | Yêu cầu mentoring; số yêu cầu `ACCEPTED` phân biệt theo mentee = số mentee đang được hướng dẫn (so với `capacity`) |
-| `sessions` | Phiên mentoring. `PENDING` = chờ thanh toán. Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch |
+| `sessions` | Phiên mentoring. `PENDING` = chờ tạm giữ học phí từ ví (giữ chỗ 15 phút); `AWAITING_MENTOR` = đã tạm giữ, chờ mentor xác nhận trước `confirm_deadline` (quá hạn → `EXPIRED`, hoàn 100%). Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch. Cột v2.0 thêm ở V20 |
 | `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE); v2.0: không có đánh giá cho `kind = TRIAL` |
-| `sessions.kind`, `*_joined_at` *(v2.0 ⚒)* | Loại buổi và nhật ký vào phòng — căn cứ duy nhất xác định vắng mặt (chờ 10 phút; trải nghiệm 5 phút) |
-| `trial_uses` *(v2.0 ⚒)* | `(mentee_id, mentor_id)` UNIQUE — mỗi cặp một buổi trải nghiệm |
-| `contact_violations` *(v2.0 ⚒)* | Mỗi lần tin nhắn bị che thông tin liên hệ; 3 lần/30 ngày báo admin |
+| `sessions.kind`, `*_joined_at` *(v2.0)* | Loại buổi và nhật ký vào phòng (ghi lần đầu mỗi bên lấy JWT phòng) — căn cứ duy nhất xác định vắng mặt: chỉ một bên vào → bên kia vắng; không ai vào → `CANCELLED` (`BOTH_ABSENT`, hoàn 100%, không strike) |
+| `trial_uses` *(v2.0)* | Khoá chính `(mentee_id, mentor_id)` — mỗi cặp một buổi trải nghiệm; xoá dòng để hoàn lại lượt khi mentee không mất tiền |
+| `contact_violations` *(v2.0)* | Mỗi tin nhắn bị che thông tin liên hệ: `user_id`, `request_id`, `kinds` (PHONE/EMAIL/LINK/SOCIAL); `flagged_at` khi đạt 3 lần/30 ngày và đã báo admin |
+| `mock_intakes` *(US-58)* | Thông tin mentee điền khi đặt phỏng vấn thử (`session_id` PK): dạng phỏng vấn, cấp độ, vị trí, công ty, ngày phỏng vấn, link JD |
+| `mock_scorecards` *(US-58)* | Phiếu đánh giá mentor (`session_id` PK): 4 tiêu chí 0–10 + live coding, `overall` theo trọng số, `verdict`, đúng 3 `fixes` (thành việc cần làm của mentee), lời nhắn riêng. Cột `scorecard_reminder_12h_at/36h_at` trên `sessions` cho job nhắc |
 | `notifications` | Thông báo trong ứng dụng, gửi cho 1 người hoặc cho cả role ADMIN; ai-service tạo thông báo qua `POST /internal/notifications` |
 
 ---
@@ -343,48 +347,88 @@ erDiagram
 | `transactions` | Giao dịch thanh toán; `uq_transactions_session_success` — unique partial index đảm bảo mỗi phiên tối đa 1 giao dịch `SUCCESS` |
 | `referral_codes` | Mỗi người dùng 1 mã (tạo lần đầu khi xem trang giới thiệu) |
 | `referrals` | Quan hệ người giới thiệu → người được giới thiệu; `CHECK (referrer_id <> referee_id)`, `referee_id` UNIQUE |
-| `reward_ledger` | Sổ cái điểm thưởng dạng append-only; số dư = `SUM(points)` — **v2.0 ⚒ thay bằng `wallet_entries` (kind `PROMO`)**, `reward_ledger` giữ lại để truy vết |
+| `reward_ledger` | Sổ cái điểm thưởng dạng append-only (v1.x); v2.0 không còn ghi mới (bỏ điểm xin lỗi; thưởng giới thiệu là tiền khuyến mãi trong ví) — giữ lại để truy vết |
+| `referral_codes`, `referrals` | v1.x (mã theo người dùng, ghi nhận lúc đăng ký) — v2.0 thay bằng `mentor_referral_codes` / `mentor_referrals` (§6.1) |
 
-### 6.1 Ví VND *(v2.0 ⚒)*
+### 6.1 Ví VND & giới thiệu theo mentor *(v2.0 — V7, V8)*
 
 ```mermaid
 erDiagram
     wallets ||--o{ wallet_entries : "bút toán"
+    wallets ||--o{ wallet_promo_lots : "lô khuyến mãi"
+    wallet_promo_lots ||--o{ wallet_allocations : "đã trừ cho"
+    transactions ||--o{ wallet_allocations : "trả bằng lô"
+    mentor_referral_codes ||--o{ mentor_referrals : "được dùng"
     wallets {
         uuid user_id PK
         text status "ACTIVE|DORMANT|FROZEN"
         timestamptz last_activity_at "12 tháng không giao dịch → DORMANT"
+        timestamptz dormant_notified_at
     }
     wallet_entries {
         uuid id PK
-        uuid user_id FK
-        text kind "TOPUP|HOLD|RELEASE_TO_EARNING|REFUND_TO_WALLET|REFUND_TO_SOURCE|PROMO_GRANT|PROMO_EXPIRE|ADJUST"
+        uuid user_id
+        text kind "TOPUP|HOLD|REFUND_TO_WALLET|TOPUP_REFUND|PROMO_GRANT|PROMO_EXPIRE|ADJUST"
         text bucket "CASH|PROMO"
-        numeric amount "có dấu; số dư = SUM theo bucket"
-        text state "AVAILABLE|HELD|FROZEN"
-        uuid session_id "NULL nếu không gắn buổi"
-        uuid topup_tx_id "nguồn nạp, dùng khi hoàn về nguồn"
-        timestamptz expires_at "chỉ PROMO: +12 tháng"
+        numeric amount "có dấu, khác 0"
+        uuid session_id
+        uuid transaction_id FK
+        uuid lot_id FK "chỉ PROMO"
         text idempotency_key UK
+    }
+    wallet_promo_lots {
+        uuid id PK
+        uuid user_id
+        numeric granted
+        numeric remaining
+        timestamptz expires_at "cấp + 12 tháng"
+        text reason "REFERRAL|ADMIN|..."
+        text ref "UNIQUE (user_id, reason, ref)"
+        timestamptz notified_30d_at
+        timestamptz notified_7d_at
+    }
+    wallet_allocations {
+        uuid transaction_id PK,FK
+        uuid lot_id PK,FK
+        numeric amount
+        numeric refunded
     }
     topup_refund_requests {
         uuid id PK
         uuid user_id
-        numeric amount "<= min(CASH khả dụng, tiền nạp 7 ngày)"
+        numeric amount
         text status "PENDING|DONE|REJECTED"
+        text kind "AUTO|EXCEPTION"
         text admin_reason
+    }
+    mentor_referral_codes {
+        uuid id PK
+        uuid owner_id
+        uuid mentor_id
+        text code UK
+    }
+    mentor_referrals {
+        uuid id PK
+        uuid code_id FK
+        uuid owner_id
+        uuid mentor_id
+        uuid referee_id
+        uuid session_id UK
+        text status "REGISTERED|UNDER_REVIEW|QUALIFIED|REJECTED|CAPPED"
+        numeric reward_amount
     }
 ```
 
 | Đối tượng | Mô tả |
 |---|---|
-| `wallet_entries` | Sổ cái append-only; **không có cột số dư**. Số dư khả dụng = `SUM(amount)` theo `bucket` và `state`. `idempotency_key` UNIQUE chống ghi trùng (IPN, retry) |
-| `HOLD` | Chuyển khả dụng → tạm giữ; trừ `PROMO` trước, thiếu thì trừ `CASH`; mỗi bucket là một dòng để hoàn đúng nguồn |
-| `REFUND_TO_WALLET` | Hoàn tiền buổi học về đúng bucket đã trừ (khuyến mãi đã hết hạn thì cấp lại hạn 30 ngày) |
-| `REFUND_TO_SOURCE` | Hoàn tiền nạp qua cổng; chỉ `CASH`, trong 7 ngày từ lần nạp gần nhất, tối đa 2 yêu cầu/tháng |
-| `PROMO_EXPIRE` | Job hằng ngày: khoản `PROMO` quá `expires_at` bị trừ; ví không hoạt động 12 tháng → `DORMANT` |
-| `wallets.status = FROZEN` | Admin khoá tài khoản: không đặt, không hoàn ra nguồn |
-| `referral_codes` | v2.0: khoá `(owner_id, mentor_id)` thay vì một mã mỗi người; `referrals.qualifying_session_id` + `eligible_at = completed_at + 7 ngày` |
+| `wallet_entries` | Sổ cái append-only (trigger chặn UPDATE/DELETE); **không có cột số dư** — số dư = `SUM(amount)` theo `bucket`. `idempotency_key` UNIQUE chống ghi trùng (IPN, retry). Tiền đang tạm giữ suy ra từ giao dịch phiên chưa kết luận |
+| `wallet_promo_lots` | Mỗi lần cấp khuyến mãi là một lô, hết hạn 12 tháng; trả học phí trừ lô sắp hết hạn trước; `notified_30d_at/7d_at` cho thông báo nhắc trong ứng dụng |
+| `wallet_allocations` | Lô khuyến mãi nào đã trả cho giao dịch nào — hoàn tiền buổi học trả lại đúng lô (`refunded`) |
+| `transactions` *(cột v2.0)* | `kind` SESSION/TOPUP; `paid_promo` + `paid_cash` (phần trả bằng khuyến mãi / tiền nạp) để hoàn đúng nguồn; `session_kind` REGULAR/TRIAL. Nạp ví dùng lại luồng IPN/đối soát của cổng (US-56) |
+| `topup_refund_requests` | Hoàn tiền nạp về nguồn: `AUTO` trong 7 ngày, tối đa = min(tiền nạp khả dụng, tiền nạp 7 ngày), 2 yêu cầu/tháng; ngoài ra `EXCEPTION` chờ admin |
+| `wallets.status` | `DORMANT` sau 12 tháng không giao dịch (tự kích hoạt lại); `FROZEN` khi admin khoá tài khoản — chặn trả học phí, hoàn về nguồn và rút thu nhập |
+| `mentor_referral_codes` | Mỗi cặp `(owner_id, mentor_id)` một mã 8 ký tự, chỉ cấp khi owner đã hoàn thành ≥ 1 buổi thường đã trả với mentor |
+| `mentor_referrals` | Một lượt dùng mã (buổi thường đầu tiên của referee với mentor; `UNIQUE (referee_id, mentor_id)`, `CHECK owner_id <> referee_id`). Job `referral-eval`: buổi COMPLETED qua 7 ngày không hoàn tiền → `QUALIFIED` + lô khuyến mãi 30.000đ; quá 5 lượt/tháng → `CAPPED`; bất thường → `UNDER_REVIEW` chờ admin |
 | `mentor_ledger` | Giữ nguyên (US-25); `release-delay` 72 giờ và khiếu nại giữ thu nhập |
 
 ---

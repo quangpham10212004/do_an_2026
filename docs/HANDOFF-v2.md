@@ -19,19 +19,21 @@ Nhánh: `feature/v2-wallet-and-pricing` (từ `main`). Nguồn nghiệp vụ: `d
 
 ## 2. Việc còn lại (giao cho người làm tiếp)
 
-### 2.1 Sửa e2e cũ (kỳ vọng lệch bản chốt v2)
-Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env | cut -d= -f2) python scripts/<file>.py`
+### 2.1 Sửa e2e cũ — ✅ xong (22/10/2026)
+Toàn bộ 20 script e2e pass trên stack Docker (AI rule-based như CI): **652/652** — `e2e_acceptance` 69/69.
+Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env | cut -d= -f2) python3 scripts/<file>.py`
 
-- `e2e_acceptance.py`: crash `KeyError: 'code'` (referral cũ → dùng `/api/payment/referrals/codes` theo mentor); còn kiểm điểm referral và nhánh interview DEEPEN/PIVOT.
-- `e2e_p0_mentoring.py`: crash `KeyError: 'pointsBalance'` — điểm xin lỗi đã bỏ; xoá các check liên quan.
-- `e2e_s2_mentoring.py`: US-12 "mentee tự báo mình vắng" nay trả 409 `ABSENCE_CONTRADICTS_LOG` (không còn 400 `INVALID_ATTENDANCE_ANSWER`) → sửa kỳ vọng hoặc dựng tình huống mentee chưa vào phòng.
-- `e2e_s2_profile_matching.py`: 2 lỗi (`excludedBy` chỉ còn `maxRate`; test `freeOnly` đã bỏ filter).
-- `e2e_s3_ai_auth.py`: lỗi lưu engine/prompt version/fallback (có thể lỗi từ trước) và thứ tự audit khoá/mở khoá (nay có thêm `ACCOUNT_SESSIONS_CANCELLED`).
-- `e2e_s4_ai_auth.py`: US-39 nay trả 409 `USE_WALLET` thay vì 403 `EMAIL_NOT_VERIFIED` → kiểm tra xác thực email ở đường trả từ ví.
-- `e2e_s4_mentoring.py`: US-34 nhắc 1 giờ không bắn (đối chiếu `SessionScheduler` với mốc nhắc 15 phút mới).
-- `e2e_s2_cv`, `e2e_p0_auth_ai`, `e2e_s3_mentoring`, `e2e_s3_profile_matching`: chạy lại và xem dòng tổng (lần chạy trước lọc grep nên không thấy kết quả).
-- Đã pass: `p0_profile_matching` 28/28, `s4_profile_matching` 34/34, `s5_ai_auth` 41/41, `s5_mentoring` 30/30.
-- Kiểm `scripts/seed_demo.py` còn chạy được (approval không có tier thì suy từ rate).
+- Script cũ dời phiên về quá khứ phải ghi nhật ký vào phòng (`/internal/dev/sessions/{id}/joined`), nếu không job kết luận
+  `BOTH_ABSENT` trước khi luồng xác nhận tham dự chạy. Kịch bản "một bên báo vắng" nay do nhật ký quyết định; mâu thuẫn còn lại
+  là `HELD` vs `CANCELLED_ON_CALL`.
+- Huỷ muộn hoàn 0% nay là < 4 giờ (dời phiên bằng `startsInMinutes`); thu nhập giải phóng sau 72 giờ.
+- `e2e_acceptance` DoD 10 viết lại theo referral theo mentor (mã sau buổi đã học xong → dùng ở buổi đầu → +30.000đ sau 7 ngày).
+- `e2e_s4_ai_auth` US-39 kiểm tra chặn email chưa xác thực ở `wallet/topups` và `wallet/pay`.
+- `e2e_s3_ai_auth` "engine RULE_BASED" chỉ pass khi **không** có `DEEPSEEK_API_KEY` (máy có key sẽ FAIL — không phải lỗi).
+- `seed_demo.py`: chạy lại được; mentor Python đổi giá 0 → 150.000 (giá 0 không đặt được và PUT lại sẽ 400 `RATE_OUT_OF_TIER`).
+- Sửa kèm: `EmailClient` còn map `SESSION_REMINDER_1H` → nhắc 15 phút không có email; đã đổi sang `SESSION_REMINDER_15M`.
+- Merge `main` (US-58 phỏng vấn thử): migration mentoring `V19__wallet_booking_trial_room` đổi thành **`V20`** vì `V19__mock_interviews`
+  đã có trên main. CSDL dev đã chạy nhánh này với V19 cũ → `docker compose down -v` cho mentoring-db (hoặc sửa `flyway_schema_history`).
 
 ### 2.2 Chưa cài đặt
 - Interview: "xin nâng hạng sau 90 ngày" (một phần FR-7.6).
@@ -39,11 +41,9 @@ Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env
 - Trang admin xem `contact_violations` (hiện chỉ báo qua notification).
 - Frontend: ghi chú cho người dùng rằng liên hệ luôn bị che.
 
-### 2.3 Docs
-- `docs/SRD-Mentor-Mentee-Platform.md`: tick ✅ FR-5.8–5.12, 6.4–6.6, 6.10 và các DoD trial/room/referral/lock (bước 4–8 chưa tick).
-- `docs/api-reference.md`: ghi đúng đường dẫn thật (`/api/mentoring/sessions/{id}/room`, `/report-absent`, `/api/payment/referrals/codes`, `/internal/wallet/*`, `/internal/referrals/*`).
-- `docs/database-design.md`: thêm `wallet_entries`, promo lots/allocations, `mentor_referrals`, `contact_violations`, cột mới của `sessions`/`transactions`.
-- `README.md`: cập nhật số liệu.
+### 2.3 Docs — ✅ xong (22/10/2026)
+SRD (FR-5.8–5.12, 6.4–6.6, 6.10, D13–D20, DoD v2.0), `api-reference.md` (đường dẫn thật), `database-design.md`
+(ví, lô khuyến mãi, `mentor_referrals`, `contact_violations`, `mock_*`), `README.md`.
 
 ### 2.4 Chưa kiểm chứng
 - Jitsi video/chat chưa chạy trong trình duyệt (compose profile Jitsi chưa thử cùng frontend). Chỉ JWT + nhật ký vào phòng được test.

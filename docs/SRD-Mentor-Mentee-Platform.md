@@ -57,10 +57,10 @@ Năng lực mentor được xác thực qua **AI Interview** trước khi kích 
 - AI Interview (xác thực năng lực mentor, admin duyệt cuối cùng)
 - CV Parsing + Chatbot enrichment (làm rõ mục tiêu mentee dựa trên CV)
 - Mentoring workflow (gửi yêu cầu, chấp nhận, đặt lịch, nhắc lịch, đánh giá, lịch sử, buổi trải nghiệm 15 phút có phí)
-- Cấp độ mentor + khung học phí (v2.0, ⚒)
-- Ví VND: nạp bằng cổng thử nghiệm (sandbox/MoMo test/VNPay sandbox), tạm giữ, hoàn tiền, hạn dùng số dư, hoa hồng, thu nhập mentor (v2.0, ⚒)
-- Phòng học video + chat trong hệ thống (Jitsi Meet tự host) và nhật ký tham dự (v2.0, ⚒)
-- Referral theo cặp mentor, thưởng bằng tiền khuyến mãi, có chống gian lận cơ bản (v2.0, ⚒)
+- Cấp độ mentor + khung học phí (v2.0)
+- Ví VND: nạp bằng cổng thử nghiệm (sandbox/MoMo test/VNPay sandbox), tạm giữ, hoàn tiền, hạn dùng số dư, hoa hồng, thu nhập mentor (v2.0)
+- Phòng học video + chat trong hệ thống (Jitsi Meet tự host) và nhật ký tham dự (v2.0)
+- Referral theo cặp mentor, thưởng bằng tiền khuyến mãi, có chống gian lận cơ bản (v2.0)
 
 **Ngoài phạm vi đồ án (định hướng mở rộng):**
 - Chatbot trợ lý học tập độc lập, đa mục đích
@@ -140,14 +140,14 @@ ai-service) — khi không cấu hình API key, hệ thống tự dùng engine r
 | D10 | Referral hợp lệ *(v2.0)* | Mã gắn với **cặp (người giới thiệu, mentor M)**; người được giới thiệu chưa từng học với M dùng mã ở yêu cầu đặt buổi thường đầu tiên với M (không giảm giá); thưởng **30.000đ tiền khuyến mãi** sau khi buổi hoàn thành, đã thanh toán và qua 7 ngày không bị hoàn tiền; tối đa 5 lượt thưởng/tháng/người | Chống gian lận cơ bản (FR-6.6) |
 | D11 | Frontend gọi backend | Route handler Next.js làm proxy `/api/<service>/**` | Cùng origin (không cần CORS), không bao giờ expose `/internal/*` |
 | D12 | Vị trí mã nguồn AI hội thoại | Service riêng **ai-service** (Python/FastAPI) sở hữu **trọn vẹn** engine, luồng nghiệp vụ và dữ liệu (CSDL riêng `ai_db`, API `/api/ai/**`); không service Java nào còn logic AI *(v1.2 — trước đó luồng & dữ liệu nằm ở mentoring-service)* | Hệ sinh thái AI chủ yếu ở Python; gom cả luồng về Python bỏ được vòng gọi HTTP hai chiều và việc gửi kèm toàn bộ lịch sử hội thoại mỗi lượt; đổi model/prompt/lược đồ dữ liệu không đụng tới code Java; AI Interview và CV enrichment dùng chung client LLM & cơ chế fallback |
-| D13 *(v2.0, ⚒)* | Kênh trả học phí | **Ví VND là kênh duy nhất**; cổng sandbox/MoMo/VNPay chỉ để nạp ví. Số dư = tổng các bút toán (không có cột số dư sửa trực tiếp); mỗi thao tác tiền có khoá idempotency | Một mô hình tiền duy nhất, dễ đối soát và kiểm thử; hoàn tiền/tạm giữ không phụ thuộc cổng |
-| D14 *(v2.0, ⚒)* | Loại tiền trong ví | **Tiền nạp** (tiền thật) và **tiền khuyến mãi** (thưởng giới thiệu, admin cấp). Trả học phí trừ khuyến mãi trước; hoàn tiền buổi học về đúng nguồn đã trừ; tiền khuyến mãi không hoàn ra nguồn nạp | Đúng bản chốt "tiền khuyến mãi chỉ dùng trong nền tảng" |
-| D15 *(v2.0, ⚒)* | Thời hạn số dư | Tiền khuyến mãi hết hạn sau 12 tháng kể từ lúc cấp (dùng khoản sắp hết trước). Tiền nạp không bị tịch thu: ví không phát sinh giao dịch 12 tháng → "ngủ", người dùng tự kích hoạt lại. Nhắc trước 30 và 7 ngày | Có thời hạn mà không chiếm tiền thật của người học |
-| D16 *(v2.0, ⚒)* | Hoàn tiền nạp về nguồn | Chỉ tiền nạp, trong 7 ngày từ lần nạp gần nhất, tối đa = min(tiền nạp khả dụng, tiền nạp trong 7 ngày); tối đa 2 yêu cầu/tháng; ngoài ra do admin xử lý | Đúng bản chốt; chặn dùng ví như tài khoản rút tiền |
-| D17 *(v2.0, ⚒)* | Cấp độ & giá | Cấp Junior/Senior/Expert do admin duyệt từ điểm phỏng vấn (60/75/88); giá trong khung 100–200k / 200–400k / 400–700k, bước 10.000đ; giá chốt lúc gửi yêu cầu đặt; đổi cấp thì giá được kẹp về khung mới, buổi đã đặt không đổi | Đúng bản chốt "khung giá theo năng lực" |
-| D18 *(v2.0, ⚒)* | Phòng học & vắng mặt | Jitsi Meet tự host, JWT do mentoring-service cấp; nhật ký vào phòng là căn cứ duy nhất xác định vắng mặt (chờ 10 phút; trải nghiệm 5 phút); tự hoàn thành sau 24 giờ | Quy tắc vắng mặt kiểm chứng được, không dựa lời hai bên |
-| D19 *(v2.0, ⚒)* | Huỷ buổi | Mentee huỷ ≥24h hoàn 100%, 4–24h hoàn 50%, <4h hoặc vắng hoàn 0%; mentor huỷ/vắng hoàn 100% + 1 lỗi vi phạm; bỏ điểm xin lỗi và cơ chế buổi miễn phí | Đúng bản chốt "chính sách huỷ" |
-| D20 *(v2.0, ⚒)* | Hoa hồng & thu nhập | Hoa hồng 15% một mức (kể cả buổi trải nghiệm); thu nhập mentor chờ 72 giờ; khiếu nại giữ thu nhập đến khi admin kết luận | Đúng bản chốt; một mức duy nhất để đơn giản hoá kế toán |
+| D13 *(v2.0)* | Kênh trả học phí | **Ví VND là kênh duy nhất**; cổng sandbox/MoMo/VNPay chỉ để nạp ví. Số dư = tổng các bút toán (không có cột số dư sửa trực tiếp); mỗi thao tác tiền có khoá idempotency | Một mô hình tiền duy nhất, dễ đối soát và kiểm thử; hoàn tiền/tạm giữ không phụ thuộc cổng |
+| D14 *(v2.0)* | Loại tiền trong ví | **Tiền nạp** (tiền thật) và **tiền khuyến mãi** (thưởng giới thiệu, admin cấp). Trả học phí trừ khuyến mãi trước; hoàn tiền buổi học về đúng nguồn đã trừ; tiền khuyến mãi không hoàn ra nguồn nạp | Đúng bản chốt "tiền khuyến mãi chỉ dùng trong nền tảng" |
+| D15 *(v2.0)* | Thời hạn số dư | Tiền khuyến mãi hết hạn sau 12 tháng kể từ lúc cấp (dùng khoản sắp hết trước). Tiền nạp không bị tịch thu: ví không phát sinh giao dịch 12 tháng → "ngủ", người dùng tự kích hoạt lại. Nhắc trước 30 và 7 ngày | Có thời hạn mà không chiếm tiền thật của người học |
+| D16 *(v2.0)* | Hoàn tiền nạp về nguồn | Chỉ tiền nạp, trong 7 ngày từ lần nạp gần nhất, tối đa = min(tiền nạp khả dụng, tiền nạp trong 7 ngày); tối đa 2 yêu cầu/tháng; ngoài ra do admin xử lý | Đúng bản chốt; chặn dùng ví như tài khoản rút tiền |
+| D17 *(v2.0)* | Cấp độ & giá | Cấp Junior/Senior/Expert do admin duyệt từ điểm phỏng vấn (60/75/88); giá trong khung 100–200k / 200–400k / 400–700k, bước 10.000đ; giá chốt lúc gửi yêu cầu đặt; đổi cấp thì giá được kẹp về khung mới, buổi đã đặt không đổi | Đúng bản chốt "khung giá theo năng lực" |
+| D18 *(v2.0)* | Phòng học & vắng mặt | Jitsi Meet tự host, JWT do mentoring-service cấp; nhật ký vào phòng là căn cứ duy nhất xác định vắng mặt (chờ 10 phút; trải nghiệm 5 phút); tự hoàn thành sau 24 giờ | Quy tắc vắng mặt kiểm chứng được, không dựa lời hai bên |
+| D19 *(v2.0)* | Huỷ buổi | Mentee huỷ ≥24h hoàn 100%, 4–24h hoàn 50%, <4h hoặc vắng hoàn 0%; mentor huỷ/vắng hoàn 100% + 1 lỗi vi phạm; bỏ điểm xin lỗi và cơ chế buổi miễn phí | Đúng bản chốt "chính sách huỷ" |
+| D20 *(v2.0)* | Hoa hồng & thu nhập | Hoa hồng 15% một mức (kể cả buổi trải nghiệm); thu nhập mentor chờ 72 giờ; khiếu nại giữ thu nhập đến khi admin kết luận | Đúng bản chốt; một mức duy nhất để đơn giản hoá kế toán |
 
 ---
 
@@ -206,11 +206,11 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-5.5 | Nhắc lịch/thông báo | Thông báo trong ứng dụng + email; nhắc lịch trước **24 giờ và 15 phút**, nhắc lại khi dời/huỷ lịch | ✅ |
 | FR-5.6 | Đánh giá sau phiên | Rating 1–5 + nhận xét, 1 lần/phiên, cập nhật rating mentor | ✅ |
 | FR-5.7 | Lịch sử mentoring | Danh sách phiên theo trạng thái | ✅ |
-| FR-5.8 | Buổi trải nghiệm | 15 phút, phí cố định 30.000đ, mỗi cặp 1 lần, trả từ ví, hoa hồng như buổi thường, không chấm sao (D20) | ⚒ |
-| FR-5.9 | Phòng học trực tuyến | Phòng video + chat trong hệ thống (Jitsi, JWT); chỉ người tham gia hợp lệ vào được, rớt mạng vào lại được | ⚒ |
-| FR-5.10 | Tham dự & vắng mặt | Nhật ký vào phòng; chờ 10 phút (trải nghiệm 5 phút) rồi báo vắng; tự hoàn thành sau 24 giờ; hai bên báo ngược nhau → tranh chấp (D18) | ⚒ |
+| FR-5.8 | Buổi trải nghiệm | 15 phút, phí cố định 30.000đ, mỗi cặp 1 lần, trả từ ví, hoa hồng như buổi thường, không chấm sao (D20) | ✅ |
+| FR-5.9 | Phòng học trực tuyến | Phòng video + chat trong hệ thống (Jitsi, JWT); chỉ người tham gia hợp lệ vào được, rớt mạng vào lại được | ✅ JWT + quyền vào phòng · video/chat chưa kiểm trên trình duyệt |
+| FR-5.10 | Tham dự & vắng mặt | Nhật ký vào phòng; chờ 10 phút (trải nghiệm 5 phút) rồi báo vắng; tự hoàn thành sau 24 giờ; hai bên báo ngược nhau → tranh chấp (D18) | ✅ |
 | FR-5.11 | Chính sách huỷ | Ba bậc theo thời điểm (D19); mentor huỷ/vắng hoàn 100% + lỗi vi phạm, 3 lỗi/30 ngày → PAUSED; mentee huỷ trước khi mentor xác nhận → 100% | ✅ |
-| FR-5.12 | Chặn liên hệ ngoài nền tảng | Tin nhắn luôn che số điện thoại, email, mạng xã hội, đường dẫn ngoài; 3 vi phạm/30 ngày báo admin | ✅ một phần · ⚒ che vô điều kiện |
+| FR-5.12 | Chặn liên hệ ngoài nền tảng | Tin nhắn luôn che số điện thoại, email, mạng xã hội, đường dẫn ngoài; 3 vi phạm/30 ngày báo admin | ✅ · ⚒ trang admin xem vi phạm |
 
 ### 3.6 Module: Ví, thanh toán & Referral (payment-service)
 
@@ -219,13 +219,13 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-6.1 | Nạp ví | Qua cổng sandbox/MoMo test/VNPay sandbox; 50.000đ–5.000.000đ/lần, trần tiền nạp khả dụng 20.000.000đ; giao dịch lỗi/trùng IPN không đổi số dư (D13) | ✅ |
 | FR-6.2 | Tạm giữ & xác nhận | Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước, D14); phiên CONFIRMED khi mentor xác nhận; có job đối soát | ✅ |
 | FR-6.3 | Trạng thái & hoàn tiền buổi học | Hoàn theo chính sách huỷ (D19) về đúng nguồn đã trừ; mỗi lần hoàn là một dòng, tổng ≤ số đã trả | ✅ |
-| FR-6.4 | Mã giới thiệu | Mã riêng cho từng cặp (người giới thiệu, mentor) — chỉ cấp khi đã hoàn thành ≥ 1 buổi thường đã trả tiền với mentor đó | ⚒ (hiện: 1 mã/người) |
-| FR-6.5 | Ghi nhận referral | Người mới dùng mã ở yêu cầu đặt buổi thường đầu tiên với mentor đó; không áp dụng cho tự giới thiệu, người đã học với mentor, mã sai | ⚒ |
-| FR-6.6 | Thưởng referral | 30.000đ **tiền khuyến mãi**, sau 7 ngày kể từ khi buổi hoàn thành mà không bị hoàn tiền; tối đa 5 lượt/tháng; bất thường chuyển admin (D10) | ⚒ (hiện: 100 điểm) |
+| FR-6.4 | Mã giới thiệu | Mã riêng cho từng cặp (người giới thiệu, mentor) — chỉ cấp khi đã hoàn thành ≥ 1 buổi thường đã trả tiền với mentor đó | ✅ |
+| FR-6.5 | Ghi nhận referral | Người mới dùng mã ở yêu cầu đặt buổi thường đầu tiên với mentor đó; không áp dụng cho tự giới thiệu, người đã học với mentor, mã sai | ✅ |
+| FR-6.6 | Thưởng referral | 30.000đ **tiền khuyến mãi**, sau 7 ngày kể từ khi buổi hoàn thành mà không bị hoàn tiền; tối đa 5 lượt/tháng; bất thường chuyển admin (D10) | ✅ |
 | FR-6.7 | Hoàn tiền nạp | Theo D16 (7 ngày, min(...), tối đa 2 yêu cầu/tháng); admin xử lý ngoại lệ có lý do | ✅ |
 | FR-6.8 | Hạn dùng số dư | Khuyến mãi hết hạn 12 tháng; ví "ngủ" sau 12 tháng không giao dịch; nhắc 30 và 7 ngày (D15) | ✅ |
 | FR-6.9 | Hoa hồng & thu nhập mentor | 15%; chờ 72 giờ; khiếu nại giữ thu nhập; yêu cầu nhận tiền ≥ 200.000đ, cần tài khoản ngân hàng, admin xác nhận (D20) | ✅ |
-| FR-6.10 | Đóng băng ví | Admin khoá tài khoản → huỷ buổi chưa diễn ra, hoàn 100%, đóng băng ví đến khi mở khoá | ⚒ |
+| FR-6.10 | Đóng băng ví | Admin khoá tài khoản → huỷ buổi chưa diễn ra, hoàn 100%, đóng băng ví đến khi mở khoá | ✅ |
 
 ### 3.7 Module: AI Interview (ai-service `app/interview`)
 
@@ -251,7 +251,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 
 ---
 
-### 3.9 Module: Cấp độ mentor & khung học phí (profile-service, ai-service) — v2.0 ⚒
+### 3.9 Module: Cấp độ mentor & khung học phí (profile-service, ai-service) — v2.0
 
 | ID | Yêu cầu | Mô tả | Trạng thái |
 |---|---|---|---|
@@ -331,7 +331,7 @@ Vector nằm ở `matching_db` của chính matching-service. Mọi thao tác gh
 ## 6. Tiêu chí nghiệm thu (Definition of Done)
 
 Mỗi tiêu chí được kiểm chứng tự động bằng `scripts/e2e_acceptance.py` (kết quả lần chạy cuối:
-**66/66 kiểm tra PASS** (lần chạy 06/10/2026), chi tiết tại [testing-report.md](testing-report.md)).
+**69/69 kiểm tra PASS** (lần chạy 22/10/2026, sau khi cập nhật theo bản chốt v2.0; toàn bộ 20 script e2e: 652/652), chi tiết tại [testing-report.md](testing-report.md)).
 
 - [x] Người dùng đăng ký/đăng nhập được với 3 vai trò mentee/mentor/admin
 - [x] Mentee tạo được Career Profile; matching-service lập chỉ mục embedding sau khi lưu — **nhất quán cuối cùng**: e2e chờ tối đa 30 giây qua `GET /api/matching/index-status` (giới hạn trên khi thông báo bị mất: 1 chu kỳ `INDEX_SYNC_INTERVAL` = 60 giây), xem [testing-report.md](testing-report.md) §3
@@ -342,22 +342,22 @@ Mỗi tiêu chí được kiểm chứng tự động bằng `scripts/e2e_accept
 - [x] Danh sách đề xuất đã loại các mentor không thoả lịch rảnh/sức chứa (không chỉ dựa thuần vector)
 - [x] Mentee gửi yêu cầu → mentor chấp nhận → đặt lịch → thanh toán sandbox → booking được xác nhận *(v1.x — trả trực tiếp qua cổng; v2.0 thay bằng tiêu chí ví bên dưới)*
 - [x] Sau phiên, mentee đánh giá được mentor
-- [x] Referral code hoạt động: người giới thiệu được ghi nhận và cộng điểm khi có giao dịch hợp lệ
+- [x] Referral code hoạt động: người giới thiệu được ghi nhận và được thưởng khi có giao dịch hợp lệ *(v2.0: mã theo mentor, thưởng 30.000đ khuyến mãi)*
 - [x] Toàn bộ hệ thống chạy được bằng `docker compose up` trên máy demo
 
-**Tiêu chí bổ sung v2.0 (chưa đạt — ⚒):**
+**Tiêu chí bổ sung v2.0** (kiểm chứng bằng `scripts/e2e_v2_*.py` và các script e2e cũ đã cập nhật theo bản chốt):
 
 - [x] Mentee nạp ví qua cổng thử nghiệm; giao dịch lỗi hoặc IPN trùng không đổi số dư
 - [x] Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước); thiếu tiền thì giữ chỗ 15 phút rồi nhả khung giờ
-- [ ] Buổi hoàn thành: chia học phí mentor/nền tảng (15%); thu nhập khả dụng sau 72 giờ; khiếu nại giữ thu nhập
+- [x] Buổi hoàn thành: chia học phí mentor/nền tảng (15%); thu nhập khả dụng sau 72 giờ; khiếu nại giữ thu nhập
 - [x] Huỷ buổi theo 3 bậc (≥24h 100%, 4–24h 50%, <4h 0%); mentor huỷ/vắng hoàn 100% + lỗi vi phạm
 - [x] Hoàn tiền nạp về nguồn trong 7 ngày đúng công thức min(...); không hoàn khuyến mãi hay tiền tạm giữ
 - [x] Số dư: khuyến mãi hết hạn 12 tháng, ví "ngủ" sau 12 tháng, thông báo nhắc 30/7 ngày
 - [x] Admin gán cấp Junior/Senior/Expert khi duyệt; mentor chỉ chọn giá trong khung; buổi đã đặt giữ giá
-- [ ] Buổi trải nghiệm 15 phút 30.000đ, mỗi cặp một lần
-- [ ] Phòng học Jitsi: chỉ người tham gia vào được; nhật ký vào phòng quyết định vắng mặt; tự hoàn thành sau 24 giờ
-- [ ] Referral theo cặp mentor: thưởng 30.000đ khuyến mãi sau 7 ngày, tối đa 5 lượt/tháng; tự giới thiệu/đã học với mentor bị từ chối
-- [ ] Admin khoá mentee: buổi chưa diễn ra bị huỷ, hoàn 100%, ví đóng băng
+- [x] Buổi trải nghiệm 15 phút 30.000đ, mỗi cặp một lần
+- [x] Phòng học Jitsi: chỉ người tham gia vào được; nhật ký vào phòng quyết định vắng mặt; tự hoàn thành sau 24 giờ
+- [x] Referral theo cặp mentor: thưởng 30.000đ khuyến mãi sau 7 ngày, tối đa 5 lượt/tháng; tự giới thiệu/đã học với mentor bị từ chối
+- [x] Admin khoá mentee: buổi chưa diễn ra bị huỷ, hoàn 100%, ví đóng băng
 
 ---
 
