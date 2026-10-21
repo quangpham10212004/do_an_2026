@@ -166,8 +166,8 @@ def test_abandoned_counts_as_attempt():
 
 def test_resume_deadline_follows_last_activity():
     started = NOW - timedelta(hours=100)
-    assert attempts.resume_deadline(started, None) == started + timedelta(hours=72)
-    assert attempts.resume_deadline(started, NOW - timedelta(hours=1)) == NOW + timedelta(hours=71)
+    assert attempts.resume_deadline(started, None) == started + timedelta(hours=24)
+    assert attempts.resume_deadline(started, NOW - timedelta(hours=1)) == NOW + timedelta(hours=23)
 
 
 def test_short_and_long_answers_are_rejected(client, db, fake_profile, fake_mentoring, mentor_id):
@@ -181,10 +181,10 @@ def test_short_and_long_answers_are_rejected(client, db, fake_profile, fake_ment
     assert interview["resumeDeadline"] is not None
 
 
-def test_interview_idle_72h_is_abandoned_and_counts(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
+def test_interview_idle_24h_is_abandoned_and_counts(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
     interview = start(client, mentor_id).json()
     internal = {"X-Internal-Token": config.INTERNAL_API_KEY}
-    aged = client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=73", headers=internal)
+    aged = client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=25", headers=internal)
     assert aged.status_code == 200, aged.text
     headers = auth(mentor_id, "MENTOR")
     res = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": WEAK_ANSWER}, headers=headers)
@@ -195,9 +195,9 @@ def test_interview_idle_72h_is_abandoned_and_counts(client, db, fake_profile, fa
     assert again["id"] != interview["id"] and again["status"] == "IN_PROGRESS"
 
 
-def test_interview_resumable_within_72h(client, db, fake_profile, fake_mentoring, mentor_id):
+def test_interview_resumable_within_24h(client, db, fake_profile, fake_mentoring, mentor_id):
     interview = start(client, mentor_id).json()
-    client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=71",
+    client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=23",
                 headers={"X-Internal-Token": config.INTERNAL_API_KEY})
     resumed = start(client, mentor_id).json()
     assert resumed["id"] == interview["id"] and resumed["status"] == "IN_PROGRESS"

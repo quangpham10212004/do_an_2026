@@ -60,7 +60,7 @@ public class DisputeService {
     public DisputeService(DisputeRepository disputeRepo, SessionRepository sessionRepo, PaymentOutboxService outbox,
                           NotificationService notifications, ProfileClient profileClient, MentorSuspensionService suspension,
                           AuditClient audit, TransactionTemplate tx,
-                          @Value("${app.disputes.open-window:P7D}") Duration openWindow,
+                          @Value("${app.disputes.open-window:P4D}") Duration openWindow,
                           @Value("${app.disputes.first-response-sla:PT48H}") Duration firstResponseSla,
                           @Value("${app.timezone}") String timezone) {
         this.disputeRepo = disputeRepo;

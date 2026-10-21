@@ -67,7 +67,7 @@ public class SessionService {
                           @Value("${app.timezone}") String timezone,
                           @Value("${app.booking.min-lead-time}") Duration minLeadTime,
                           @Value("${app.booking.max-advance}") Duration maxAdvance,
-                          @Value("${app.attendance.window:PT48H}") Duration attendanceWindow) {
+                          @Value("${app.attendance.window:PT24H}") Duration attendanceWindow) {
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.reviewRepo = reviewRepo;

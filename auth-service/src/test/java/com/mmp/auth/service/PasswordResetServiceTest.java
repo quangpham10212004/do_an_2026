@@ -77,13 +77,13 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void storesOnlySha256OfA32ByteTokenValidFor30Minutes() {
+    void storesOnlySha256OfA32ByteTokenValidFor15Minutes() {
         String token = requestAndCaptureToken();
         assertThat(java.util.Base64.getUrlDecoder().decode(token)).hasSize(32);
         ArgumentCaptor<PasswordResetToken> saved = ArgumentCaptor.forClass(PasswordResetToken.class);
         verify(resetTokens).save(saved.capture());
         assertThat(saved.getValue().getTokenHash()).isEqualTo(TokenService.sha256(token)).isNotEqualTo(token);
-        assertThat(saved.getValue().getExpiresAt()).isEqualTo(OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC).plusMinutes(30));
+        assertThat(saved.getValue().getExpiresAt()).isEqualTo(OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC).plusMinutes(15));
         verify(resetTokens).invalidateAllForUser(eq(user.getId()), any());
     }
 

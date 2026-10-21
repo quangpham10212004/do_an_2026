@@ -10,7 +10,7 @@ Chạy khi hệ thống đang chạy (docker compose up, profile khác prod) —
 Để không phải chờ thật, script dùng endpoint dev (X-Internal-Token, không tồn tại ở profile prod):
 - mentoring-service: POST /internal/dev/sessions/{id}/shift, /internal/dev/requests/{id}/inactivity,
   /internal/dev/jobs/{attendance|payment-outbox|inactivity}
-- payment-service: POST /internal/dev/earnings/{sessionId}/due (đưa lịch giải phóng 48 giờ tới hạn ngay),
+- payment-service: POST /internal/dev/earnings/{sessionId}/due (đưa lịch giải phóng 72 giờ tới hạn ngay),
   /internal/dev/jobs/earning-release
 """
 import sys
@@ -174,25 +174,25 @@ def us25(ctx):
 
     completed(mentee, mentor, s["id"])
     row = earning_row(mentor, s["id"])
-    check("US-25", "Phiên COMPLETED → payment nhận final-state, releaseAt = giờ kết thúc + 48h",
+    check("US-25", "Phiên COMPLETED → payment nhận final-state, releaseAt = giờ kết thúc + 72h",
           row and row["finalState"] == "COMPLETED" and row["releaseAt"] is not None, row)
     pay_dev("jobs/earning-release")
     row = earning_row(mentor, s["id"])
-    check("US-25", "Chưa đủ 48 giờ → job không giải phóng (vẫn PENDING)", float(row["pending"]) == 255000 and float(row["available"]) == 0, row)
+    check("US-25", "Chưa đủ 72 giờ → job không giải phóng (vẫn PENDING)", float(row["pending"]) == 255000 and float(row["available"]) == 0, row)
     pay_dev(f"earnings/{s['id']}/due")
     pay_dev("jobs/earning-release")
     row = earning_row(mentor, s["id"])
-    check("US-25", "Đủ 48 giờ → EARNING_AVAILABLE 255.000, pending = 0 (PENDING→AVAILABLE)",
+    check("US-25", "Đủ 72 giờ → EARNING_AVAILABLE 255.000, pending = 0 (PENDING→AVAILABLE)",
           types(row) == ["EARNING_PENDING", "EARNING_AVAILABLE"] and float(row["available"]) == 255000 and float(row["pending"]) == 0, row)
     pay_dev("jobs/earning-release")
     check("US-25", "Job chạy lại idempotent (không ghi thêm dòng)", len(earning_row(mentor, s["id"])["entries"]) == 2)
 
-    # Không ai trả lời trong 48 giờ → COMPLETED với giờ kết thúc 48h+ trước → giải phóng ngay khi nhận final-state
+    # Không ai trả lời trong 24 giờ → COMPLETED; giờ kết thúc 24h+72h+ trước → giải phóng ngay khi nhận final-state
     s2 = paid(mentee, mentor, at(7, 9))
-    ended(s2["id"], 48 * 60 + 5)
+    ended(s2["id"], 96 * 60 + 5)
     dev("jobs/payment-outbox")
     row2 = earning_row(mentor, s2["id"])
-    check("US-25", "Phiên kết thúc > 48 giờ (NO_ANSWER → COMPLETED) → AVAILABLE ngay khi báo final-state",
+    check("US-25", "Phiên kết thúc > 96 giờ (NO_ANSWER → COMPLETED) → AVAILABLE ngay khi báo final-state",
           row2 and row2["finalState"] == "COMPLETED" and float(row2["available"]) == 255000, row2)
 
     # REVERSAL theo tỉ lệ khi hoàn tiền
@@ -210,7 +210,7 @@ def us25(ctx):
           row4 and float(row4["reversed"]) == 255000 and float(row4["pending"]) == 0 and float(row4["available"]) == 0
           and "EARNING_AVAILABLE" not in types(row4), row4)
 
-    # Mentee huỷ muộn (< 72h, hoàn 0%) → mentor được trả: final-state CANCELLED, giải phóng sau 48 giờ
+    # Mentee huỷ muộn (< 72h, hoàn 0%) → mentor được trả: final-state CANCELLED, giải phóng sau 72 giờ
     s5 = paid(mentee, mentor, at(2, 15))
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s5['id']}/cancel", {"reason": "Ban"}, token=mentee["accessToken"])
     dev("jobs/payment-outbox")
@@ -218,7 +218,7 @@ def us25(ctx):
     pay_dev(f"earnings/{s5['id']}/due")
     pay_dev("jobs/earning-release")
     row5b = earning_row(mentor, s5["id"])
-    check("US-25", "Mentee huỷ muộn (0%) → final-state CANCELLED, sau 48 giờ AVAILABLE 255.000",
+    check("US-25", "Mentee huỷ muộn (0%) → final-state CANCELLED, sau 72 giờ AVAILABLE 255.000",
           row5 and row5["finalState"] == "CANCELLED" and float(row5["available"]) == 0 and float(row5b["available"]) == 255000,
           (row5, row5b))
 
@@ -271,7 +271,7 @@ def us32(ctx):
     pay_dev(f"earnings/{s['id']}/due")
     pay_dev("jobs/earning-release")
     row = earning_row(mentor, s["id"])
-    check("US-32", "Tranh chấp đang mở chặn giải phóng thu nhập (đủ 48h vẫn pending, ON_HOLD)",
+    check("US-32", "Tranh chấp đang mở chặn giải phóng thu nhập (đủ 72h vẫn pending, ON_HOLD)",
           row["transactionStatus"] == "ON_HOLD" and float(row["available"]) == 0 and float(row["pending"]) == 255000, row)
 
     status, code = error_code(lambda: call("GET", f"{MENTORING}/api/mentoring/admin/disputes", token=mentor["accessToken"]))

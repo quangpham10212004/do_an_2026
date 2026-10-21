@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** Kiểm thử các job nền: nhắc lịch 24 giờ / 1 giờ (US-34), phiên quá hạn thanh toán → EXPIRED, job xác nhận tham dự (US-12). */
+/** Kiểm thử các job nền: nhắc lịch 24 giờ / 15 phút (US-34), phiên quá hạn thanh toán → EXPIRED, job xác nhận tham dự (US-12). */
 class SessionSchedulerTest {
 
     private SessionRepository repo;
@@ -80,14 +80,14 @@ class SessionSchedulerTest {
 
     @Test
     void oneHourReminderAfterTheDailyOne() {
-        MentoringSession s = session(MentoringSession.Status.CONFIRMED, OffsetDateTime.now().plusMinutes(50));
+        MentoringSession s = session(MentoringSession.Status.CONFIRMED, OffsetDateTime.now().plusMinutes(10));
         ReflectionTestUtils.setField(s, "reminder24hSentAt", OffsetDateTime.now().minusHours(20));
         when(repo.findNeedingReminder(any(), any())).thenReturn(List.of(s));
         when(repo.claimReminder1h(any(), any())).thenReturn(1);
 
         scheduler.sendReminders();
 
-        verify(notifications, times(2)).notifyUser(any(), eq("SESSION_REMINDER_1H"), anyString(), anyString(), anyString(), any());
+        verify(notifications, times(2)).notifyUser(any(), eq("SESSION_REMINDER_15M"), anyString(), anyString(), anyString(), any());
     }
 
     @Test

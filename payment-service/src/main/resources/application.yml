@@ -60,7 +60,7 @@ app:
     api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
     link-ttl: PT15M                # vnp_ExpireDate; ngắn hơn thời gian giữ chỗ 30 phút của phiên để kịp thử lại
   earnings:                        # US-25 — sổ thu nhập mentor
-    release-delay: ${EARNING_RELEASE_DELAY:PT48H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE
+    release-delay: ${EARNING_RELEASE_DELAY:PT72H}   # thu nhập chuyển AVAILABLE sau trạng thái cuối COMPLETED/NO_SHOW_MENTEE (bản chốt v2.0 §9)
     release-interval: PT5M           # chu kỳ job giải phóng
   referral:
     # FR-6.6 — quy tắc cộng điểm & chống gian lận cơ bản

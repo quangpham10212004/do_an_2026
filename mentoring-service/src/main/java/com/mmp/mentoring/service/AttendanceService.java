@@ -47,7 +47,7 @@ public class AttendanceService {
     public AttendanceService(SessionRepository sessionRepo, PaymentOutboxService outbox, StrikeService strikes,
                              NotificationService notifications, DisputeHook disputeHook, DisputeRepository disputeRepo,
                              TransactionTemplate tx,
-                             @Value("${app.attendance.window:PT48H}") Duration window,
+                             @Value("${app.attendance.window:PT24H}") Duration window,
                              @Value("${app.timezone}") String timezone) {
         this.sessionRepo = sessionRepo;
         this.outbox = outbox;

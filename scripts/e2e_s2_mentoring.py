@@ -219,15 +219,15 @@ def us12(ctx):
     call("POST", f"{MENTORING}/api/mentoring/sessions/{s['id']}/review", {"rating": 5}, token=mentee["accessToken"])
     check("US-12", "Phiên COMPLETED đánh giá được", get_session(mentee, s["id"])["reviewed"])
 
-    # AC: không ai trả lời → COMPLETED sau 48 giờ
+    # AC: không ai trả lời → COMPLETED sau 24 giờ
     s = paid_session(ctx, 21)
     dev(f"sessions/{s['id']}/shift", {"endedMinutesAgo": 47 * 60})
     dev("jobs/attendance")
     check("US-12", "Sau 47 giờ chưa ai trả lời → vẫn AWAITING_ATTENDANCE", get_session(mentee, s["id"])["status"] == "AWAITING_ATTENDANCE")
-    ended(s["id"], 48 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
-    check("US-12", "Không ai trả lời → COMPLETED 48 giờ sau giờ kết thúc, mentor được trả (giao dịch SUCCESS) (AC)",
+    check("US-12", "Không ai trả lời → COMPLETED 24 giờ sau giờ kết thúc, mentor được trả (giao dịch SUCCESS) (AC)",
           v["status"] == "COMPLETED" and v["attendanceResolution"] == "NO_ANSWER" and t["status"] == "SUCCESS", (v["status"], t["status"]))
 
     # AC: trả lời mâu thuẫn → DISPUTED ngay, giao dịch ON_HOLD, không hoàn/không trả
@@ -248,11 +248,11 @@ def us12(ctx):
     check("US-12", "Admin nhận thông báo SESSION_DISPUTED (hook US-32)",
           any(n["type"] == "SESSION_DISPUTED" and s["id"] in n["message"] for n in admin_notes))
 
-    # Mentee báo mentor vắng, mentor im lặng 48 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
+    # Mentee báo mentor vắng, mentor im lặng 24 giờ → NO_SHOW_MENTOR, hoàn 100% + strike
     s = paid_session(ctx, 23)
     ended(s["id"], 5)
     attend(mentee, s["id"], "MENTOR_NO_SHOW")
-    ended(s["id"], 48 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     if t["status"] != "REFUNDED":
@@ -268,7 +268,7 @@ def us12(ctx):
     s = paid_session(ctx, 24)
     ended(s["id"], 5)
     attend(mentor, s["id"], "MENTEE_NO_SHOW")
-    ended(s["id"], 48 * 60 + 1)
+    ended(s["id"], 24 * 60 + 1)
     v = get_session(mentee, s["id"])
     t = txs(mentee, s["id"])[0]
     check("US-12", "Mentor báo mentee vắng + mentee im lặng → NO_SHOW_MENTEE, không hoàn (SUCCESS)",
@@ -341,20 +341,20 @@ def us14(ctx):
 
 
 def us15(ctx):
-    print("US-15 — Yêu cầu hết hạn sau 72 giờ")
+    print("US-15 — Yêu cầu hết hạn sau 24 giờ")
     mentor = approved_mentor(ctx["admin"]["accessToken"], "expiry", 150000)
     accepted_mentee(mentor, "expiry-active")   # mentor có 1 mentee đang hướng dẫn
     before = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
     me = mentee_with_profile("expiry")
     r = send_request(me, mentor)
-    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 71})
+    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 23})
     dev("jobs/request-expiry")
     mine = {x["id"]: x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])}
-    check("US-15", "PENDING 71 giờ → vẫn PENDING", mine[r["id"]]["status"] == "PENDING", mine[r["id"]]["status"])
-    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 73})
+    check("US-15", "PENDING 23 giờ → vẫn PENDING", mine[r["id"]]["status"] == "PENDING", mine[r["id"]]["status"])
+    dev(f"requests/{r['id']}/shift", {"createdHoursAgo": 25})
     dev("jobs/request-expiry")
     mine = {x["id"]: x for x in call("GET", f"{MENTORING}/api/mentoring/requests", token=me["accessToken"])}
-    check("US-15", "PENDING quá 72 giờ không phản hồi → EXPIRED (kèm expiredAt)",
+    check("US-15", "PENDING quá 24 giờ không phản hồi → EXPIRED (kèm expiredAt)",
           mine[r["id"]]["status"] == "EXPIRED" and mine[r["id"]]["expiredAt"], mine[r["id"]])
     after = call("GET", f"{PROFILE}/internal/mentor/{mentor['userId']}", internal=True)["activeMenteeCount"]
     check("US-15", "active_mentee_count của mentor không đổi", before == after == 1, (before, after))

@@ -51,7 +51,7 @@ public class EarningService {
 
     public EarningService(LedgerRepository ledger, EarningScheduleRepository schedules, TransactionRepository transactions,
                           TransactionTemplate tx, AuditClient audit,
-                          @Value("${app.earnings.release-delay:PT48H}") Duration releaseDelay) {
+                          @Value("${app.earnings.release-delay:PT72H}") Duration releaseDelay) {
         this.ledger = ledger;
         this.schedules = schedules;
         this.transactions = transactions;
