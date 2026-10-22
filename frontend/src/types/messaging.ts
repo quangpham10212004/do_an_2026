@@ -1,4 +1,4 @@
-import type { Uuid } from "./common";
+import type { IsoDateTime, Uuid } from "./common";
 
 // US-33 (PRD-MSG-1..4) — nhắn tin trong yêu cầu / quan hệ mentoring (mentoring-service).
 
@@ -57,4 +57,17 @@ export interface MessageReport {
   senderName: string | null;
   /** Chỉ có ở chi tiết khi hồ sơ còn OPEN. */
   thread: ChatMessage[] | null;
+}
+
+export type ContactKind = "PHONE" | "EMAIL" | "LINK" | "SOCIAL";
+
+/** Bản chốt v2.0 §12 — tin nhắn bị che liên hệ, gộp theo người gửi. */
+export interface ContactViolationSummary {
+  userId: Uuid;
+  userName: string | null;
+  count: number;
+  kinds: ContactKind[];
+  lastAt: IsoDateTime;
+  /** Đã đạt 3 lần / 30 ngày và đã báo admin. */
+  flagged: boolean;
 }

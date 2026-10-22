@@ -42,8 +42,11 @@ public class UserAdminService {
                 result.getTotalElements(), result.getTotalPages());
     }
 
+    static final int LOCK_REASON_MIN = 10;
+
     @Transactional
-    public UserResponse updateStatus(UUID actingAdminId, UUID userId, String status) {
+    public UserResponse updateStatus(UUID actingAdminId, UUID userId, String status, String reason) {
+        String why = reason == null || reason.isBlank() ? null : reason.strip();
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "Không tìm thấy người dùng"));
         User.Status newStatus = User.Status.valueOf(status);
@@ -54,6 +57,9 @@ public class UserAdminService {
             if (user.getRole() == User.Role.ADMIN) {
                 throw ApiException.badRequest("CANNOT_LOCK_ADMIN", "Không thể khoá tài khoản quản trị viên");
             }
+            if (why == null || why.length() < LOCK_REASON_MIN) {
+                throw ApiException.badRequest("LOCK_REASON_REQUIRED", "Khoá tài khoản cần ghi lý do (ít nhất " + LOCK_REASON_MIN + " ký tự)");
+            }
             refreshTokenRepository.revokeAllForUser(user.getId());
         }
         User.Status oldStatus = user.getStatus();
@@ -63,8 +69,9 @@ public class UserAdminService {
             auditService.recordAdmin(actingAdminId, newStatus == User.Status.LOCKED ? "USER_LOCKED" : "USER_UNLOCKED",
                     "USER", user.getId().toString(),
                     java.util.Map.of("status", oldStatus.name(), "email", user.getEmail()),
-                    java.util.Map.of("status", newStatus.name(), "email", user.getEmail()));
-            notifyMentoringAfterCommit(user.getId(), newStatus == User.Status.LOCKED, actingAdminId);
+                    why == null ? java.util.Map.of("status", newStatus.name(), "email", user.getEmail())
+                            : java.util.Map.of("status", newStatus.name(), "email", user.getEmail(), "reason", why));
+            notifyMentoringAfterCommit(user.getId(), newStatus == User.Status.LOCKED, actingAdminId, why);
         }
         return UserResponse.from(user);
     }
@@ -73,16 +80,16 @@ public class UserAdminService {
      * Bản chốt v2.0 §2.1 — sau khi trạng thái tài khoản đã commit mới nhờ mentoring-service huỷ buổi chưa diễn ra (hoàn 100%) và
      * đóng băng / mở ví. Ngoài transaction (hoặc khi test không có transaction) gọi ngay.
      */
-    private void notifyMentoringAfterCommit(UUID userId, boolean locked, UUID actorId) {
+    private void notifyMentoringAfterCommit(UUID userId, boolean locked, UUID actorId, String reason) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    mentoringClient.accountLockChanged(userId, locked, actorId);
+                    mentoringClient.accountLockChanged(userId, locked, actorId, reason);
                 }
             });
         } else {
-            mentoringClient.accountLockChanged(userId, locked, actorId);
+            mentoringClient.accountLockChanged(userId, locked, actorId, reason);
         }
     }
 

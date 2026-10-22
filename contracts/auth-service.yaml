@@ -367,13 +367,17 @@ paths:
               required: [status]
               properties:
                 status: { type: string, enum: [ACTIVE, LOCKED] }
+                reason:
+                  type: string
+                  maxLength: 500
+                  description: Bản chốt v2.0 §2 — bắt buộc khi LOCKED (≥ 10 ký tự); ghi vào audit và gửi cho người bị khoá
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
-        "400": { description: CANNOT_LOCK_SELF / CANNOT_LOCK_ADMIN }
+        "400": { description: CANNOT_LOCK_SELF / CANNOT_LOCK_ADMIN / LOCK_REASON_REQUIRED }
 
   # ---------------- US-30 (PRD-ADM-5): nhật ký kiểm toán ----------------
   /internal/audit:

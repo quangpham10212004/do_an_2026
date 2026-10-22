@@ -52,7 +52,13 @@ public class EmailClient {
             Map.entry("MENTOR_REJECTED", "ACCOUNT"),
             Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"),
             // US-42 — payment-service gửi qua /internal/notifications khi admin đã chuyển tiền rút
-            Map.entry("PAYOUT_PAID", "ACCOUNT"));
+            Map.entry("PAYOUT_PAID", "ACCOUNT"),
+            // Bản chốt v2.0 D15 — nhắc trước 30 / 7 ngày: khuyến mãi sắp hết hạn, ví sắp "ngủ" (tiền của người dùng → luôn gửi)
+            Map.entry("WALLET_PROMO_EXPIRING", "ACCOUNT"),
+            Map.entry("WALLET_DORMANT_SOON", "ACCOUNT"),
+            // Bản chốt v2.0 §2.1 — khoá / mở khoá tài khoản (auth-service vẫn gửi ACCOUNT_LOCKED cho tài khoản đang bị khoá)
+            Map.entry("ACCOUNT_LOCKED", "ACCOUNT"),
+            Map.entry("ACCOUNT_UNLOCKED", "ACCOUNT"));
 
     private final RestClient restClient;
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 2, 30, TimeUnit.SECONDS,

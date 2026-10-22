@@ -218,6 +218,28 @@ def main():
         "durationMinutes": 60, "sessionType": "CODE_REVIEW", "agenda": AGENDA}, token=me6["accessToken"]))
     check("Đặt sát giờ (< 3 giờ) → TOO_SOON hoặc khung không rảnh", status in (400, 409), (status, code))
 
+    print("\n8. Khuyến mãi sắp hết hạn: nhắc trong ứng dụng + email (D15)")
+    me7 = register("MENTEE", "promo")
+    call("POST", f"{PAYMENT}/api/payment/wallet/admin/{me7['userId']}/promo", {"amount": 30000, "reason": "e2e nhắc hết hạn"}, token=at_)
+    call("POST", f"{PAYMENT}/internal/dev/wallet/{me7['userId']}/shift", {"promoDaysBack": 345}, internal=True)   # còn ~20 ngày
+    call("POST", f"{PAYMENT}/internal/dev/jobs/wallet-maintenance", {}, internal=True)
+    notes = call("GET", f"{MENTORING}/api/mentoring/notifications?limit=20", token=me7["accessToken"])["items"]
+    exp = [n for n in notes if n["type"] == "WALLET_PROMO_EXPIRING"]
+    check("Còn ≤ 30 ngày → thông báo WALLET_PROMO_EXPIRING, số tiền dạng 30.000đ",
+          len(exp) == 1 and "30.000đ" in exp[0]["message"], [n["message"] for n in exp])
+    mails = []
+    for _ in range(20):   # email gửi bất đồng bộ (mentoring → auth outbox)
+        mails = [r for r in call("GET", f"{AUTH}/internal/dev/email-outbox?userId={me7['userId']}", internal=True)
+                 if r["type"] == "WALLET_PROMO_EXPIRING"]
+        if mails:
+            break
+        time.sleep(0.3)
+    check("Nhắc hết hạn khuyến mãi cũng được gửi email (nhóm ACCOUNT, luôn gửi)", len(mails) == 1, mails)
+    call("POST", f"{PAYMENT}/internal/dev/jobs/wallet-maintenance", {}, internal=True)
+    notes = call("GET", f"{MENTORING}/api/mentoring/notifications?limit=20", token=me7["accessToken"])["items"]
+    check("Chạy lại job không nhắc lần hai trong cùng mốc 30 ngày",
+          len([n for n in notes if n["type"] == "WALLET_PROMO_EXPIRING"]) == 1)
+
     passed = sum(1 for _, ok in results if ok)
     print(f"\n{passed}/{len(results)} kiểm tra PASS trong {time.time() - t0:.1f}s")
     for name, ok in results:

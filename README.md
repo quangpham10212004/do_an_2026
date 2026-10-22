@@ -29,7 +29,7 @@ Kiểm thử:
 ```bash
 python3 scripts/e2e_acceptance.py          # kiểm thử chấp nhận theo Definition of Done (69 kiểm tra)
 for f in scripts/e2e_p0_*.py scripts/e2e_s[0-9]*_*.py scripts/e2e_v2_*.py; do python3 $f || break; done
-                                           # toàn bộ e2e theo sprint + bản chốt v2.0 (20 script, 652 kiểm tra;
+                                           # toàn bộ e2e theo sprint + bản chốt v2.0 (20 script, 663 kiểm tra;
                                            # cần INTERNAL_API_KEY trong môi trường, AI chạy rule-based)
 python3 scripts/benchmark_matching.py      # hiệu năng AI Matching
 (cd mentoring-service && mvn test)         # unit test (tương tự các service Java khác)
@@ -84,7 +84,7 @@ frontend/                 Next.js 14 + TypeScript (src/app = trang, src/features
 - AI Matching **nhất quán cuối cùng**: hồ sơ mới/sửa có thể chưa có trong kết quả tới ~60 giây
   (`INDEX_SYNC_INTERVAL`).
 - Thanh toán là **sandbox / cổng thử nghiệm** (MoMo test, VNPay sandbox) — chưa thử cổng thật; học phí chỉ trả từ ví.
-- Phòng học Jitsi mới kiểm chứng phần JWT + nhật ký vào phòng; video/chat chưa chạy thử cùng frontend trên trình duyệt.
+- Phòng học Jitsi dùng chứng chỉ tự ký: mở https://localhost:8443 một lần để trình duyệt chấp nhận; media cần UDP 10000.
 - Không có API Gateway riêng (frontend proxy làm cổng vào).
 - `.env.example` và code có **bí mật mặc định cho dev** (`JWT_SECRET`, `INTERNAL_API_KEY`, mật khẩu CSDL; service
   log WARN lúc khởi động nếu còn dùng giá trị dev trong code) —

@@ -65,8 +65,8 @@ export default function MenteePreferences({ profile, onChange }: { profile: Ment
                 {(Object.keys(TIME_OF_DAY_LABELS) as TimeOfDay[]).map((t) => <option key={t} value={t}>{TIME_OF_DAY_LABELS[t]}</option>)}
               </Select>
             </Field>
-            <Field label="Ngân sách tối đa (đ/giờ)" id="pref-budget" hint="Nhập 0 nếu chỉ muốn mentor miễn phí.">
-              <Input id="pref-budget" type="number" min={0} max={100000000} step={10000} value={budget} placeholder="Không giới hạn" onChange={(e) => setBudget(e.target.value)} />
+            <Field label="Ngân sách tối đa (đ/giờ)" id="pref-budget" hint="Để trống nếu không giới hạn. Học phí từ 100.000 đ/buổi 60 phút.">
+              <Input id="pref-budget" type="number" min={100000} max={100000000} step={10000} value={budget} placeholder="Không giới hạn" onChange={(e) => setBudget(e.target.value)} />
             </Field>
           </div>
           <Field label="Ngôn ngữ">

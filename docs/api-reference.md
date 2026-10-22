@@ -39,7 +39,7 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 | POST | `/api/auth/me/change-password` | Auth | `{currentPassword, newPassword}` → 204, thu hồi mọi refresh token | 1.4 |
 | GET | `/api/auth/admin/users?role=&q=&page=&size=` | Admin | Danh sách người dùng phân trang | 1.5 |
 | GET | `/api/auth/admin/users/stats` | Admin | `{total, mentors, mentees}` | 1.5 |
-| PATCH | `/api/auth/admin/users/{userId}/status` | Admin | `{status: ACTIVE\|LOCKED}` | 1.5 |
+| PATCH | `/api/auth/admin/users/{userId}/status` | Admin | `{status: ACTIVE\|LOCKED, reason?}` — v2.0: khoá bắt buộc `reason` ≥ 10 ký tự (400 `LOCK_REASON_REQUIRED`), ghi audit và gửi cho người bị khoá | 1.5 |
 
 `AuthResponse = { userId, email, fullName, role, emailVerified, accessToken, refreshToken, expiresIn, referralApplied?, emailVerificationToken? }`
 
@@ -167,7 +167,7 @@ Ví dụ response:
 | POST | `/api/mentoring/sessions/{id}/cancel` | Người tham gia | v2.0: trả `refundPercent` theo 3 bậc (24h/4h) | 5.11 |
 | GET | `/api/mentoring/sessions/{id}/mock` · PUT `/sessions/{id}/scorecard` · GET `/mock-interviews/history` | Người tham gia | Phỏng vấn thử với mentor (US-58): intake, phiếu đánh giá, lịch sử | — |
 
-Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội (`contactsMasked = true`); mỗi lần che ghi vào `contact_violations`, ≥ 3 lần / 30 ngày → thông báo admin (FR-5.12). *Chưa có trang/endpoint admin xem danh sách vi phạm.*
+Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội (`contactsMasked = true`); mỗi lần che ghi vào `contact_violations`, ≥ 3 lần / 30 ngày → thông báo admin (FR-5.12). Admin xem gộp theo người gửi: `GET /api/mentoring/admin/contact-violations?days=30` → `[{userId, userName, count, kinds, lastAt, flagged}]` (trang `/admin/contact-violations`).
 
 ### 5.2 Nội bộ
 
@@ -176,7 +176,7 @@ Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tà
 | GET | `/internal/sessions/{id}` | Internal | `{id, menteeId, mentorId, scheduledAt, durationMinutes, price, status}` |
 | POST | `/internal/sessions/{id}/payment-succeeded` | Internal | `{transactionId}` → xác nhận phiên (FR-6.2) |
 | POST | `/internal/notifications` | Internal | `{recipientId? , recipientRole?, type, title, message, link?}` → tạo thông báo (ai-service gọi) |
-| POST | `/internal/accounts/{userId}/lock` | Internal (auth-service) | `{locked, actorId?}` — khoá: huỷ buổi chưa diễn ra (hoàn 100%) + đóng băng ví; mở khoá: mở ví. Idempotent (FR-6.10) |
+| POST | `/internal/accounts/{userId}/lock` | Internal (auth-service) | `{locked, actorId?, reason?}` — khoá: huỷ buổi chưa diễn ra (hoàn 100%) + đóng băng ví; khoá mentor: mở tranh chấp hệ thống giữ thu nhập đang chờ của buổi đã học; báo người bị khoá (`ACCOUNT_LOCKED` / `ACCOUNT_UNLOCKED`). Trả `{cancelledSessions, heldEarnings, failed}`. Idempotent (FR-6.10) |
 | GET | `/internal/relationships?mentorId=&menteeId=` | Internal | `{mentorId, menteeId, related}` — `related = true` khi có yêu cầu mentoring của mentee gửi mentor ở trạng thái `PENDING` hoặc `ACCEPTED` (ai-service dùng để quyết định mentor có được tải CV) |
 
 ## 6. payment-service (8084) — Thắng
@@ -217,6 +217,7 @@ Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tà
 | POST | `/internal/wallet/pay` | Internal (mentoring) | `{userId, sessionId}` — tạm giữ ngay sau khi đặt lịch; 402 `INSUFFICIENT_FUNDS` | 6.2 |
 | POST | `/internal/payments/refund` | Internal | `{sessionId, percent?, amount?, reason?}` — giao dịch WALLET hoàn về ví đúng nguồn (khuyến mãi / tiền nạp) | 6.3 |
 | POST | `/internal/wallet/freeze` | Internal | `{userId, frozen}` (admin khoá/mở khoá) | 6.10 |
+| GET | `/internal/earnings/pending-sessions?mentorId=` | Internal (mentoring) | Các buổi của mentor còn thu nhập đang chờ — dùng khi khoá mentor | 6.10 |
 
 `POST /api/payment/charge` (trả trực tiếp từng phiên) bị tắt mặc định (409 `USE_WALLET`): học phí chỉ trả từ ví (`/wallet/pay`, hoặc mentoring tự gọi `/internal/wallet/pay` ngay sau khi đặt lịch).
 Mã giới thiệu được dùng qua trường `referralCode` của `POST /api/mentoring/sessions` (mentoring gọi `/internal/referrals/validate` rồi `/apply`).

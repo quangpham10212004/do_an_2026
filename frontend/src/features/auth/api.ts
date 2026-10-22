@@ -56,6 +56,7 @@ export const authApi = {
     Object.entries(filters).forEach(([k, v]) => v.trim() && query.set(k, v.trim()));
     return api<PageResponse<AuditEntry>>(`/api/auth/admin/audit?${query.toString()}`);
   },
-  adminSetStatus: (userId: Uuid, status: AccountStatus) =>
-    api<User>(`/api/auth/admin/users/${userId}/status`, { method: "PATCH", body: { status } }),
+  /** Bản chốt v2.0 §2 — khoá cần lý do (≥ 10 ký tự). */
+  adminSetStatus: (userId: Uuid, status: AccountStatus, reason?: string) =>
+    api<User>(`/api/auth/admin/users/${userId}/status`, { method: "PATCH", body: { status, reason } }),
 };

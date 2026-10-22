@@ -87,6 +87,7 @@ public final class AuthDtos {
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {
     }
 
-    public record UpdateStatusRequest(@NotNull @Pattern(regexp = "ACTIVE|LOCKED") String status) {
+    /** Bản chốt v2.0 §2 — khoá tài khoản bắt buộc ghi lý do (≥ 10 ký tự); mở khoá thì lý do tuỳ chọn. */
+    public record UpdateStatusRequest(@NotNull @Pattern(regexp = "ACTIVE|LOCKED") String status, @Size(max = 500) String reason) {
     }
 }

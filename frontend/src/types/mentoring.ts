@@ -28,6 +28,10 @@ export type AttendanceResolution =
   | "MENTOR_NO_SHOW_REPORTED"
   | "CONFLICT"
   | "CANCELLED_ON_CALL"
+  /** Bản chốt v2.0 §6 — kết luận theo nhật ký vào phòng. */
+  | "JOIN_LOG_MENTEE_ABSENT"
+  | "JOIN_LOG_MENTOR_ABSENT"
+  | "BOTH_ABSENT"
   /** US-32 — phiên DISPUTED / chờ xác nhận thành COMPLETED do tranh chấp kết luận không hoàn tiền. */
   | "DISPUTE_RESOLVED";
 /** US-03 — thời lượng phiên được phép (phút). */

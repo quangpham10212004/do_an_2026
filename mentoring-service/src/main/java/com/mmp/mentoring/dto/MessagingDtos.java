@@ -54,4 +54,12 @@ public final class MessagingDtos {
                                     OffsetDateTime createdAt, OffsetDateTime resolvedAt, MessageView reportedMessage,
                                     String senderName, List<MessageView> thread) {
     }
+
+    /**
+     * Bản chốt v2.0 §12 — tổng hợp tin nhắn bị che thông tin liên hệ theo người gửi trong {@code days} ngày gần nhất.
+     * {@code kinds}: PHONE / EMAIL / LINK / SOCIAL; {@code flagged}: đã đạt ngưỡng 3 lần / 30 ngày và đã báo admin.
+     */
+    public record ContactViolationSummary(UUID userId, String userName, int count, List<String> kinds,
+                                          OffsetDateTime lastAt, boolean flagged) {
+    }
 }

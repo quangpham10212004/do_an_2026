@@ -78,6 +78,9 @@ class RoomServiceTest {
         RoomView menteeView = service.join(mentee, id);
 
         Claims claims = parse(mentorView.jwt());
+        // Jitsi prosody chỉ nhận token có header typ = JWT
+        assertThat(Jwts.parser().verifyWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8))).build()
+                .parseSignedClaims(mentorView.jwt()).getHeader().getType()).isEqualTo("JWT");
         assertThat(claims.getIssuer()).isEqualTo("mentorhub");
         assertThat(claims.getSubject()).isEqualTo("meet.jitsi");
         assertThat(claims.get("room", String.class)).isEqualTo(RoomService.roomName(id)).isEqualTo(mentorView.roomName());

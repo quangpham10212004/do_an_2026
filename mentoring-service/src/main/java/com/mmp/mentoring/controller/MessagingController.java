@@ -81,6 +81,13 @@ public class MessagingController {
         return messaging.adminList(status);
     }
 
+    /** Bản chốt v2.0 §12 — người gửi tin nhắn chứa thông tin liên hệ (đã bị che), nhiều lần nhất trước. */
+    @GetMapping("/admin/contact-violations")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<ContactViolationSummary> contactViolations(@RequestParam(defaultValue = "30") int days) {
+        return messaging.adminContactViolations(days);
+    }
+
     @GetMapping("/admin/message-reports/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public MessageReportView reportDetail(@PathVariable UUID id) {

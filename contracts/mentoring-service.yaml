@@ -1486,6 +1486,31 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/MessageReport" } }
+  /api/mentoring/admin/contact-violations:
+    get:
+      summary: >
+        Bản chốt v2.0 §12 (ADMIN) — người gửi có tin nhắn bị che thông tin liên hệ trong `days` ngày gần nhất, gộp theo người gửi,
+        nhiều lần nhất trước (tối đa 200 dòng). flagged = đã đạt 3 lần / 30 ngày và đã báo admin (CONTACT_VIOLATIONS).
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [userId, count, kinds, lastAt, flagged]
+                  properties:
+                    userId: { type: string, format: uuid }
+                    userName: { type: string, nullable: true }
+                    count: { type: integer }
+                    kinds: { type: array, items: { type: string, enum: [PHONE, EMAIL, LINK, SOCIAL] } }
+                    lastAt: { type: string, format: date-time }
+                    flagged: { type: boolean }
+        "400": { description: INVALID_DAYS }
   /api/mentoring/admin/message-reports/{id}:
     get:
       summary: US-33 — chi tiết hồ sơ; kèm toàn bộ cuộc trò chuyện nguyên văn CHỈ khi hồ sơ còn OPEN (ghi audit MESSAGE_THREAD_VIEWED).

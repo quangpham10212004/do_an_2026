@@ -36,11 +36,12 @@ public class MentoringClient {
                 .build();
     }
 
-    public void accountLockChanged(UUID userId, boolean locked, UUID actorId) {
+    public void accountLockChanged(UUID userId, boolean locked, UUID actorId, String reason) {
         try {
             Map<String, Object> body = new java.util.HashMap<>();
             body.put("locked", locked);
             body.put("actorId", actorId == null ? null : actorId.toString());
+            body.put("reason", reason);
             restClient.post().uri("/internal/accounts/{id}/lock", userId).body(body).retrieve().toBodilessEntity();
         } catch (Exception e) {
             log.warn("Could not notify mentoring-service that account {} was {}: {}", userId, locked ? "locked" : "unlocked", e.getMessage());

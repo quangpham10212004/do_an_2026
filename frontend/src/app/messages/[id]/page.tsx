@@ -129,7 +129,8 @@ function Thread({ id }: { id: string }) {
       <FlashAlerts flash={{ ok, error }} />
       {view.contactsMasked && (
         <Alert tone="info">
-          Số điện thoại và email được ẩn cho tới khi có phiên trả phí đầu tiên được xác nhận. Giữ giao dịch trên MentorHub để được bảo vệ khi có sự cố.
+          Số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội luôn được ẩn trong tin nhắn. Hãy học qua phòng học và
+          thanh toán trên MentorHub để được bảo vệ khi có sự cố — chia sẻ liên hệ nhiều lần sẽ được báo cho quản trị viên.
         </Alert>
       )}
       <Card>

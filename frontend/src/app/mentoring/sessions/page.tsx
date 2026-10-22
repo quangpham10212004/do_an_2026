@@ -43,14 +43,14 @@ const FILTERS: [SessionStatus | "", string][] = [
   ["EXPIRED", "Hết hạn"],
 ];
 
-/** US-12 — đang trong 48 giờ xác nhận tham dự (job có thể chưa kịp chuyển CONFIRMED → AWAITING_ATTENDANCE). */
+/** US-12 — đang trong 24 giờ xác nhận tham dự (bản chốt v2.0) (job có thể chưa kịp chuyển CONFIRMED → AWAITING_ATTENDANCE). */
 function attendanceOpen(s: MentoringSession, now = Date.now()): boolean {
   const ended = now >= new Date(s.endsAt).getTime();
   const beforeDeadline = now < new Date(s.attendanceDeadline).getTime();
   return (s.status === "AWAITING_ATTENDANCE" || (s.status === "CONFIRMED" && ended)) && beforeDeadline;
 }
 
-/** US-12 — hỏi mỗi bên phiên có diễn ra không (trong 48 giờ sau giờ kết thúc). */
+/** US-12 — hỏi mỗi bên phiên có diễn ra không (trong 24 giờ sau giờ kết thúc). */
 function AttendancePrompt({ session, isMentor, ask, act }: {
   session: MentoringSession;
   isMentor: boolean;
@@ -73,8 +73,8 @@ function AttendancePrompt({ session, isMentor, ask, act }: {
       const ok = await ask({
         title: `Xác nhận: ${ATTENDANCE_LABELS[answer]}?`,
         message: answer === "CANCELLED_ON_CALL"
-          ? "Phiên sẽ được huỷ và mentee được hoàn 100% nếu bên kia đồng ý hoặc không phản hồi trong 48 giờ. Nếu bên kia trả lời khác, phiên chuyển sang tranh chấp."
-          : "Nếu bên kia không phản hồi trong 48 giờ, phiên được ghi nhận vắng mặt. Nếu bên kia trả lời khác, phiên chuyển sang tranh chấp và khoản thanh toán được tạm giữ.",
+          ? "Phiên sẽ được huỷ và mentee được hoàn 100% nếu bên kia đồng ý hoặc không phản hồi trong 24 giờ. Nếu bên kia trả lời khác, phiên chuyển sang tranh chấp."
+          : "Vắng mặt được đối chiếu với nhật ký vào phòng học: chỉ báo được khi bên kia chưa từng vào phòng. Nếu bên kia trả lời khác, phiên chuyển sang tranh chấp và khoản thanh toán được tạm giữ.",
         confirmText: "Gửi xác nhận",
         danger: true,
       });
@@ -96,14 +96,19 @@ function AttendancePrompt({ session, isMentor, ask, act }: {
   );
 }
 
+/** Bản chốt v2.0 §6 — vắng mặt kết luận từ nhật ký vào phòng. */
+function logNote(s: MentoringSession): string {
+  return s.attendanceResolution?.startsWith("JOIN_LOG_") ? " (theo nhật ký phòng học)" : "";
+}
+
 /** Dòng giải thích kết quả của phiên đã kết luận (US-12) hoặc đã huỷ / hết hạn. */
 function outcomeText(s: MentoringSession): string | null {
   const paid = Number(s.price) > 0;
   switch (s.status) {
     case "NO_SHOW_MENTOR":
-      return `Mentor vắng mặt${paid ? " · mentee được hoàn 100%" : ""}`;
+      return `Mentor vắng mặt${paid ? " · mentee được hoàn 100%" : ""}${logNote(s)}`;
     case "NO_SHOW_MENTEE":
-      return "Mentee vắng mặt · không hoàn tiền";
+      return `Mentee vắng mặt · không hoàn tiền${logNote(s)}`;
     case "DISPUTED":
       return `Hai bên xác nhận khác nhau${paid ? " · khoản thanh toán đang được tạm giữ chờ quản trị viên xử lý" : " · chờ quản trị viên xử lý"}`;
     case "EXPIRED":
@@ -117,7 +122,8 @@ function outcomeText(s: MentoringSession): string | null {
       const who = s.cancelReason === "CANCELLED_ON_CALL" ? "Huỷ trong buổi gọi"
         : `Huỷ bởi ${s.cancelledBy === "MENTEE" ? "mentee" : s.cancelledBy === "MENTOR" ? "mentor" : "hệ thống"}`;
       const refund = s.refundPercent !== null && paid ? ` · hoàn ${s.refundPercent}% về ví` : "";
-      const reason = s.cancelReason && !["PAYMENT_TIMEOUT", "CANCELLED_ON_CALL"].includes(s.cancelReason) ? ` · ${s.cancelReason}` : "";
+      const reason = !s.cancelReason || ["PAYMENT_TIMEOUT", "CANCELLED_ON_CALL"].includes(s.cancelReason) ? ""
+        : s.cancelReason === "BOTH_ABSENT" ? " · cả hai không vào phòng học" : ` · ${s.cancelReason}`;
       return who + refund + reason;
     }
     default:

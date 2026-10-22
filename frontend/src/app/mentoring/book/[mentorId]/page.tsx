@@ -216,7 +216,8 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
               {busy ? "Đang kiểm tra lịch…" : "Đặt lịch và tạm giữ học phí từ ví"}
             </Button>
             {!form.scheduledAt && <p className="text-center text-small text-ink-muted">Chọn một khung giờ để tiếp tục.</p>}
-            <p className="text-small text-ink-muted">Học phí được tạm giữ từ ví ngay khi đặt. Mentor xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, bạn được hoàn 100%. Huỷ trước 24 giờ: hoàn 100%, 4–24 giờ: 50%, dưới 4 giờ: không hoàn.</p>
+            <p className="text-small text-ink-muted">Học phí được tạm giữ từ ví ngay khi đặt. Mentor xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, bạn được hoàn 100%.{" "}
+              {trial ? "Buổi trải nghiệm: huỷ trước 2 giờ hoàn 100%, dưới 2 giờ không hoàn." : "Huỷ trước 24 giờ: hoàn 100%, 4–24 giờ: 50%, dưới 4 giờ: không hoàn."}</p>
           </CardBody>
         </Card>
       </form>

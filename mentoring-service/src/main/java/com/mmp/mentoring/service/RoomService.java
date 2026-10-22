@@ -102,6 +102,7 @@ public class RoomService {
         OffsetDateTime closesAt = session.endsAt().plus(closesAfter);
         String room = roomName(session.getId());
         String jwt = Jwts.builder()
+                .header().type("JWT").and()   // prosody (token auth) từ chối token thiếu typ: "JWT error: Invalid typ"
                 .issuer(appId)
                 .subject(xmppDomain)
                 .claim("aud", "jitsi")

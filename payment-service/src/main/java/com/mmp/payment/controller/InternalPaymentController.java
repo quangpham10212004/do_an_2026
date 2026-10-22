@@ -91,6 +91,12 @@ public class InternalPaymentController {
         return mentorReferrals.apply(req.code(), req.refereeId(), req.mentorId(), req.sessionId());
     }
 
+    /** Bản chốt v2.0 §2.1 — mentoring giữ thu nhập đang chờ khi khoá mentor: các buổi còn thu nhập chưa khả dụng. */
+    @GetMapping("/earnings/pending-sessions")
+    public java.util.List<UUID> pendingEarningSessions(@RequestParam UUID mentorId) {
+        return earningService.pendingSessions(mentorId);
+    }
+
     /** Bản chốt v2.0 §2.1 — admin khoá / mở khoá tài khoản: đóng băng / mở ví. Idempotent. */
     @PostMapping("/wallet/freeze")
     public Map<String, Object> freeze(@Valid @RequestBody FreezeRequest req) {

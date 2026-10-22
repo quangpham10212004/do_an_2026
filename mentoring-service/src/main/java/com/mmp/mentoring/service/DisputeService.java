@@ -143,6 +143,34 @@ public class DisputeService {
         return Optional.of(saved);
     }
 
+    /**
+     * Bản chốt v2.0 §2.1 — mentor bị khoá: thu nhập đang chờ của buổi đã diễn ra bị giữ (tranh chấp do hệ thống mở, giao dịch ON_HOLD)
+     * tới khi admin kết luận: không hoàn = giải phóng cho mentor, hoàn toàn bộ / một phần = trả lại mentee. Bỏ qua nếu buổi đã có
+     * tranh chấp đang mở (thu nhập đã bị giữ).
+     */
+    public Optional<Dispute> openForLockedMentor(MentoringSession s, String reason) {
+        String description = "Tài khoản mentor bị khoá" + (reason == null ? "" : " (" + abbreviate(reason, 200) + ")")
+                + ": thu nhập của buổi được giữ tới khi quản trị viên kết luận giải phóng cho mentor hoặc hoàn tiền cho mentee.";
+        Dispute saved;
+        try {
+            saved = tx.execute(st -> {
+                if (disputeRepo.existsBySessionIdAndStatusIn(s.getId(), OPEN)) return null;
+                Dispute d = disputeRepo.saveAndFlush(new Dispute(s.getId(), null, Dispute.OpenedByRole.SYSTEM, Dispute.Type.OTHER,
+                        description, List.of()));
+                if (paid(s)) outbox.enqueueHold(s.getId(), "MENTOR_LOCKED");
+                return d;
+            });
+        } catch (DataIntegrityViolationException e) {
+            return Optional.empty();
+        }
+        if (saved == null) return Optional.empty();
+        if (paid(s)) outbox.flushSession(s.getId());
+        afterOpen(saved, s, "SYSTEM");
+        audit.record(null, "SYSTEM", "DISPUTE_OPENED", "DISPUTE", saved.getId().toString(), null,
+                AuditClient.fields("sessionId", s.getId(), "type", saved.getType(), "reason", "MENTOR_LOCKED", "paymentHold", paid(s)));
+        return Optional.of(saved);
+    }
+
     private void afterOpen(Dispute d, MentoringSession s, String byRole) {
         String when = s.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
         String hold = paid(s) ? " Khoản thanh toán của phiên được tạm giữ cho tới khi quản trị viên xử lý." : "";

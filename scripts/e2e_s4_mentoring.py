@@ -49,7 +49,7 @@ def us33(ctx):
     cid = req["id"]
 
     first = msg(mentee, cid, "call me 0912345678")
-    check("US-33", "Tin trả về đã che SĐT trước phiên trả phí", first["body"] == "call me 09•••••••78", first["body"])
+    check("US-33", "Tin trả về đã che SĐT", first["body"] == "call me 09•••••••78", first["body"])
     msg(mentee, cid, "Em gửi thêm thông tin về mục tiêu")
     msg(mentee, cid, "Mong anh phản hồi sớm")
     status, code = error_code(lambda: msg(mentee, cid, "Tin thứ 4"))
@@ -63,6 +63,13 @@ def us33(ctx):
           len(view["messages"]) == 3 and view["messages"][0]["body"] == "call me 09•••••••78" and view["contactsMasked"],
           [m["body"] for m in view["messages"]])
     check("US-33", "Mở luồng = đã đọc (unread 0)", unread(mentor) == 0)
+    # Bản chốt v2.0 §12 — tin bị che được ghi vào contact_violations, admin xem gộp theo người gửi
+    status, _ = error_code(lambda: call("GET", f"{MENTORING}/api/mentoring/admin/contact-violations", token=mentee["accessToken"]))
+    check("US-33", "Danh sách vi phạm liên hệ chỉ dành cho admin (403)", status == 403, status)
+    cv = call("GET", f"{MENTORING}/api/mentoring/admin/contact-violations?days=30", token=admin["accessToken"])
+    row = next((v for v in cv if v["userId"] == mentee["userId"]), None)
+    check("US-33", "Admin thấy mentee có 1 tin bị che SĐT (chưa tới ngưỡng báo)",
+          row is not None and row["count"] == 1 and row["kinds"] == ["PHONE"] and row["flagged"] is False, row)
     check("US-33", "Mentee còn 0 lượt trước khi được chấp nhận", thread(mentee, cid)["remainingBeforeAccept"] == 0)
 
     reply = msg(mentor, cid, "Chào em, anh nhận lời nhé")
