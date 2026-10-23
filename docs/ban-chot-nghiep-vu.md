@@ -247,6 +247,8 @@ nếu người dùng bỏ mã.
   gói, chỉ lấy buổi làm quen và chính sách dời lịch.
 - Thanh toán tiền thật, lớp học nhóm, ứng dụng di động.
 - Bộ lọc "miễn phí" trong đề xuất mentor (không còn buổi miễn phí).
+- Phỏng vấn giọng nói (mục 16): ghi âm/ghi hình và phát lại cho admin, luyện phỏng vấn có phí ngoài lượt miễn phí, đưa buổi luyện
+  vào lịch sử của mentoring-service, đánh giá chất lượng tiếng Việt của OpenAI Realtime so với ElevenLabs.
 
 ---
 
@@ -258,6 +260,8 @@ nếu người dùng bỏ mã.
 | `password-reset.ttl` | PT15M | auth |
 | `interview.resume-window` / `cooldown` / `max-attempts` | PT24H / P7D / 3 | ai |
 | `interview.tier-thresholds` | 60 / 75 / 88 | ai |
+| `VOICE_INTERVIEW_TOPICS` / `VOICE_SESSION_MINUTES` / `PRACTICE_FREE_LIMIT` | 4 / 30 / 1 | ai |
+| `OPENAI_REALTIME_MODEL` / `OPENAI_REALTIME_VOICE` / `OPENAI_TRANSCRIBE_MODEL` | `gpt-realtime` / `marin` / `gpt-4o-transcribe` | ai |
 | `pricing.tiers` | JUNIOR 100k–200k · SENIOR 200k–400k · EXPERT 400k–700k, bước 10k | profile |
 | `booking.min-lead-time` / `max-advance` | PT3H / P60D | mentoring |
 | `booking.insufficient-balance-hold` | PT15M | mentoring |
@@ -291,3 +295,66 @@ nếu người dùng bỏ mã.
 | 8 | Đổi thông số (mục 14) + luôn che thông tin liên hệ | tất cả | S |
 | 9 | Admin khoá mentee + đóng băng ví | auth, mentoring, payment | S |
 | 10 | Cập nhật SRD, business-domain, database-design, api-reference, contracts theo bản này | docs | M |
+| 11 | Phỏng vấn giọng nói cho mentor + luyện phỏng vấn với AI cho mentee (mục 16; migration ai `010_voice_interviews.sql`) | ai, frontend, contracts | M |
+
+---
+
+## 16. Phỏng vấn giọng nói và luyện phỏng vấn với AI (v2.1 — chốt 23/10/2026)
+
+Giọng nói chạy bằng **OpenAI Realtime** (speech-to-speech, WebRTC trực tiếp từ trình duyệt). AI giọng nói **chỉ dẫn dắt
+cuộc hỏi**; chấm điểm vẫn do engine hiện có (DeepSeek / rule-based) trên bản chép lời. Lý do chọn: SRD D21.
+
+### 16.1 Phỏng vấn xác thực mentor bằng giọng nói
+
+| Nội dung | Chốt | Hiện tại |
+|---|---|---|
+| Chọn chế độ | trên `/interview` mentor chọn **chat** (như cũ) hoặc **giọng nói**; trang thử nghiệm `/interview/voice` bị gỡ | ⚒ |
+| Quy tắc chung với chat | 3 lượt, chờ 7 ngày khi không đạt, xin nâng cấp sau 90 ngày, admin duyệt, cùng rubric và trọng số | ✔ dùng lại |
+| Tiếp tục khi gián đoạn | **không** áp dụng 24 giờ — buổi giọng nói là một lần ngồi. Rớt cuộc gọi trong **30 phút** đầu thì vào lại cùng buổi (client secret mới); quá 30 phút chưa gửi bản chép lời → `ABANDONED`, **tính một lượt** | ⚒ |
+| Số chủ đề | 4 chủ đề (`VOICE_INTERVIEW_TOPICS`). **AI soạn** (DeepSeek, một lần lúc bắt đầu, chốt 23/10/2026): 3 chủ đề kỹ thuật cốt lõi của lĩnh vực — đúng một chủ đề đào sâu dự án của chính mentor nếu CV / giới thiệu có dự án — cùng độ khó cho mọi mentor; chủ đề "năng lực hướng dẫn" **luôn lấy từ ngân hàng câu hỏi** để điểm giữa các mentor so sánh được. Không có DeepSeek / AI soạn lỗi → ngân hàng câu hỏi theo lĩnh vực | ⚒ |
+| Phản hồi cho mentor | như chat: chỉ thấy nhận xét từng câu sau khi admin quyết định | ✔ |
+| Admin | trang duyệt có nhãn "Giọng nói", xem các lượt (đã gộp theo chủ đề) như hiện nay | ⚒ |
+| Ghi âm | **không** lưu âm thanh ở bản này (bước tiếp theo) | — |
+
+### 16.2 Luyện phỏng vấn với AI (mentee)
+
+| Nội dung | Chốt | Hiện tại |
+|---|---|---|
+| Ai dùng | mentee; chọn loại (BACKEND / FRONTEND / SYSTEM_DESIGN / BEHAVIORAL), cấp độ (INTERN / FRESHER / JUNIOR), vị trí ứng tuyển (2–120 ký tự), công ty (tuỳ chọn, ≤ 120 ký tự) | ⚒ |
+| Lượt miễn phí | **1 lượt mỗi mentee, trọn đời** (`PRACTICE_FREE_LIMIT = 1`) | ⚒ |
+| Câu hỏi | **AI soạn riêng** (DeepSeek, một lần lúc bắt đầu) từ loại, cấp độ, vị trí, công ty, mục tiêu trong hồ sơ và CV đã xác nhận: đúng một câu về dự án trong CV (nếu có), ít nhất một câu gắn mục tiêu / công việc nhắm tới (nếu có). Không có DeepSeek / AI soạn lỗi → `practice_bank` theo loại × cấp độ | ⚒ |
+| Thế nào là "đã dùng" | buổi luyện chuyển `COMPLETED` (đã nộp bản chép lời và chấm xong) **hoặc** `ABANDONED` (bỏ dở quá 30 phút). Buổi đang làm chưa tính | ⚒ |
+| Tiếp tục | buổi `IN_PROGRESS` dưới **30 phút** → vào lại cùng buổi với client secret mới; quá 30 phút → `ABANDONED` (đã dùng lượt). Mỗi mentee tối đa **một** buổi `IN_PROGRESS` | ⚒ |
+| Hết lượt | 409 `PRACTICE_FREE_USED` + nút "Đặt phỏng vấn thử với mentor" (luồng phỏng vấn thử với mentor đã có, US-58). Luyện có phí: **chưa chốt** (câu hỏi mở) | ⚒ |
+| Kết quả | trả **ngay** cho mentee: nhận xét từng câu, 3 điểm mạnh, 3 điểm cần cải thiện (danh sách việc cần làm dạng văn bản), điểm tổng 0–100 | ⚒ |
+| Báo cáo nói | số từ đệm ("ừm", "à", "ờ", "uh", "um", "kiểu như", "thì là"), số từ trung bình mỗi câu trả lời, số câu trả lời dưới 20 từ | ⚒ |
+| Người duyệt | không có; buổi luyện không ảnh hưởng hồ sơ, matching hay lịch sử mentoring | — |
+
+### 16.3 Đồng ý xử lý âm thanh
+
+- Âm thanh được OpenAI (Mỹ) xử lý → trước khi bắt đầu, người dùng **bắt buộc tick** ô đồng ý; thiếu → 400 `VOICE_CONSENT_REQUIRED`.
+- Giá trị đồng ý lưu trên chính bản ghi (`consent_external_ai`). Hệ thống chỉ lưu **bản chép lời**, không lưu âm thanh.
+- Câu hỏi chỉ dựa vào CV khi CV đó đã được người dùng **xác nhận** và **đồng ý gửi AI bên ngoài** (US-19); khi đó các trường
+  đã xác nhận (vai trò, kỹ năng, dự án, học vấn) được gửi tới DeepSeek để soạn câu hỏi và nằm trong lời dặn gửi OpenAI.
+- Chưa cấu hình `OPENAI_API_KEY`: production báo 503 `VOICE_UNAVAILABLE`, không tạo buổi, không tính lượt; giao diện hiện
+  "Phỏng vấn giọng nói chưa được bật".
+
+### 16.4 So sánh mentor và mentee
+
+| | Phỏng vấn xác thực mentor | Luyện phỏng vấn của mentee |
+|---|---|---|
+| Mục đích | xác thực năng lực, gán cấp độ | luyện nói trong một buổi phỏng vấn thật |
+| Vai AI đóng | người xác thực của MentorHub | người phỏng vấn tuyển dụng cho vị trí và cấp độ mentee chọn |
+| Câu hỏi | AI soạn theo lĩnh vực (+ 1 câu về dự án của mentor), "năng lực hướng dẫn" cố định từ `question_bank`; dự phòng `question_bank` | AI soạn theo loại × cấp độ + CV + mục tiêu; BEHAVIORAL hỏi theo STAR; dự phòng `practice_bank` |
+| Rubric (mỗi tiêu chí 0–10) | kỹ thuật 40 · chiều sâu 30 · giao tiếp 15 · hướng dẫn 15 | kỹ thuật 35 · giải quyết vấn đề & chiều sâu 25 · diễn đạt rõ ràng 25 · cấu trúc (STAR / cách tiếp cận) 15 |
+| Phản hồi | ẩn đến khi admin quyết định | hiện ngay + báo cáo nói |
+| Con người | admin quyết định | không; gợi ý đặt phỏng vấn thử với mentor |
+| Giới hạn | 3 lượt, chờ 7 ngày | 1 lượt miễn phí trọn đời |
+| Bỏ dở | > 30 phút → `ABANDONED`, tính một lượt | > 30 phút → `ABANDONED`, đã dùng lượt miễn phí |
+
+### 16.5 Ngoài phạm vi (câu hỏi mở)
+
+- Ghi âm/ghi hình buổi phỏng vấn và phát lại cho admin.
+- Luyện phỏng vấn có phí ngoài lượt miễn phí (giá, kênh trả bằng ví).
+- Đưa buổi luyện vào lịch sử của mentoring-service.
+- Đánh giá chất lượng tiếng Việt của OpenAI Realtime so với ElevenLabs.

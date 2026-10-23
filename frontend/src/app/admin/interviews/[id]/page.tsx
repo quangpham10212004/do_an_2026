@@ -6,6 +6,7 @@ import { Check, RotateCcw, X } from "lucide-react";
 import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, Select, StatusBadge, Textarea, type Flash } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
+import { PlanCard } from "@/features/ai/VoiceViews";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { Interview, InterviewEligibility, MentorTier, Recommendation, ReviewDecision } from "@/types";
@@ -120,7 +121,7 @@ function InterviewReview({ id }: { id: string }) {
         back={{ href: "/admin/interviews", label: "Duyệt mentor" }}
         title={`AI Interview · ${interview.mentorName || "Mentor"}`}
         description={`${interview.domain} · ${interview.skills.join(", ")}`}
-        actions={<>{upgradeFrom && <Badge tone="accent">Xin nâng cấp từ {upgradeFrom}</Badge>}<StatusBadge status={interview.status} /></>}
+        actions={<>{upgradeFrom && <Badge tone="accent">Xin nâng cấp từ {upgradeFrom}</Badge>}{interview.mode === "VOICE" && <Badge>Giọng nói</Badge>}<StatusBadge status={interview.status} /></>}
       />
       <FlashAlerts flash={msg} className="mb-6" />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -161,6 +162,7 @@ function InterviewReview({ id }: { id: string }) {
             </Card>
           )}
           <AssessmentCard interview={interview} />
+          {interview.plan && <PlanCard plan={interview.plan} description="AI soạn từ hồ sơ và CV của mentor (nếu mentor đồng ý gửi AI bên ngoài); chủ đề mentoring luôn lấy từ ngân hàng câu hỏi." />}
           <AttemptsCard mentorId={interview.mentorId} />
         </div>
       </div>

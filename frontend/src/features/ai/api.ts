@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, MentorTier, ReviewDecision, Uuid } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, MentorTier, ReviewDecision, Uuid, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -20,6 +20,20 @@ export const aiApi = {
   reviewInterview: (id: Uuid, decision: ReviewDecision, note: string, tier?: MentorTier | null) =>
     api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note, ...(tier ? { tier } : {}) } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
+  // FR-7.7 — phỏng vấn giọng nói: cùng điều kiện với chat; gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
+  // 400 VOICE_CONSENT_REQUIRED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.
+  startVoiceInterview: (selfAnswerAcknowledged: boolean, consentExternalAi: boolean) =>
+    api<VoiceInterviewStart>("/api/ai/interviews/voice", { method: "POST", body: { selfAnswerAcknowledged, consentExternalAi } }),
+  // Bản ghi → chấm như chat → PENDING_REVIEW. 400 EMPTY_TRANSCRIPT
+  submitVoiceTranscript: (id: Uuid, items: VoiceTranscriptItem[]) =>
+    api<Interview>(`/api/ai/interviews/${id}/voice-transcript`, { method: "POST", body: { items } }),
+  // FR-10.x — mentee luyện phỏng vấn với AI (1 buổi miễn phí; 409 PRACTICE_FREE_USED)
+  practiceEligibility: () => api<PracticeEligibility>("/api/ai/practice-interviews/eligibility"),
+  startPractice: (input: StartPracticeInput) => api<PracticeStart>("/api/ai/practice-interviews", { method: "POST", body: input }),
+  completePractice: (id: Uuid, items: VoiceTranscriptItem[]) =>
+    api<Practice>(`/api/ai/practice-interviews/${id}/complete`, { method: "POST", body: { items } }),
+  myPractices: () => api<Practice[]>("/api/ai/practice-interviews/me"),
+  practice: (id: Uuid) => api<Practice>(`/api/ai/practice-interviews/${id}`),
   // CV + chatbot enrichment
   // US-19: consentExternalAi bắt buộc — false => chỉ engine rule-based cho CV này (parse + chatbot)
   uploadCv: (menteeId: Uuid, file: File, consentExternalAi: boolean) => {

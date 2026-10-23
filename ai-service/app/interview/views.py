@@ -1,15 +1,18 @@
 """Response model của AI Interview (JSON camelCase — CONVENTIONS.md mục 3)."""
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import asyncpg
 
-from app.interview import attempts
+from app import config
+from app.interview import attempts, planner
+from app.interview.planner import PlanTopicView
 from pydantic import Field
 
 from app.interview.models import Recommendation, Strategy
 from app.interview import rubric
 from app.interview.rubric import RubricScores, is_flagged
+from app.interview.voice import VoiceSessionView
 from app.schemas import CamelModel
 
 
@@ -45,6 +48,9 @@ class InterviewView(CamelModel):
     # Bản chốt v2.0 §3 — VERIFICATION (xác thực lần đầu) | UPGRADE (mentor đã duyệt xin nâng cấp, from_tier = cấp lúc xin)
     kind: str = "VERIFICATION"
     from_tier: str | None = None
+    # FR-7.7 — CHAT (hỏi-đáp bằng chữ) | VOICE (OpenAI Realtime; max_turns = số chủ đề trong kế hoạch)
+    mode: str = "CHAT"
+    consent_external_ai: bool = False
     engine: str
     max_turns: int
     current_turn: int
@@ -61,10 +67,12 @@ class InterviewView(CamelModel):
     # US-23: có lượt bị gắn cờ (PROMPT_INJECTION / COPIED_ANSWER) — chỉ admin
     flagged: bool = False
     self_answer_acknowledged: bool = False
+    # v2.1 — kế hoạch câu hỏi do AI soạn (chỉ admin; buổi chat / trước 011 => None)
+    plan: list[PlanTopicView] | None = None
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
-    # US-43 (PRD-AIV-3): hạn tiếp tục buổi đang làm (hoạt động gần nhất + 72 giờ); quá hạn => ABANDONED
+    # US-43 (PRD-AIV-3): hạn tiếp tục buổi đang làm (hoạt động gần nhất + 24 giờ; giọng nói: bắt đầu + 30 phút)
     resume_deadline: datetime | None = None
     # US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định
     feedback_visible: bool = False
@@ -93,6 +101,14 @@ class EligibilityView(CamelModel):
     kind: str = "VERIFICATION"
     current_tier: str | None = None
     upgrade_available_at: datetime | None = None
+    # FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được)
+    voice_available: bool = False
+
+
+class VoiceInterviewStart(CamelModel):
+    """FR-7.7 — POST /api/ai/interviews/voice. voice = null khi chưa cấu hình OPENAI_API_KEY (chỉ ngoài prod)."""
+    interview: InterviewView
+    voice: VoiceSessionView | None = None
 
 
 class UnlockInput(CamelModel):
@@ -158,6 +174,13 @@ def turn_view(turn: asyncpg.Record, reveal_scores: bool, for_admin: bool = False
 DECIDED_STATUSES = ("APPROVED", "REJECTED", "RETAKE_REQUESTED")
 
 
+def _resume_deadline(interview: asyncpg.Record, turns: list[asyncpg.Record]) -> datetime:
+    if interview["mode"] == "VOICE":  # một lần ngồi: kết nối lại được trong VOICE_SESSION_MINUTES phút
+        return interview["created_at"] + timedelta(minutes=config.VOICE_SESSION_MINUTES)
+    return attempts.resume_deadline(interview["created_at"],
+                                    max((t["answered_at"] for t in turns if t["answered_at"]), default=None))
+
+
 def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_admin: bool,
                    mentor_name: str | None = None) -> InterviewView:
     """
@@ -172,7 +195,8 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
     return InterviewView(
         id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name, domain=interview["domain"],
         skills=list(interview["skills"] or []), status=interview["status"], kind=interview["kind"],
-        from_tier=interview["from_tier"], engine=interview["engine"],
+        from_tier=interview["from_tier"], mode=interview["mode"], consent_external_ai=interview["consent_external_ai"],
+        engine=interview["engine"],
         max_turns=interview["max_turns"], current_turn=interview["current_turn"], current_question=current,
         turns=turn_views, overall_score=_r1(interview["overall_score"]),
         suggested_tier=rubric.suggest_tier(interview["overall_score"]) if for_admin else None, summary=interview["summary"],
@@ -180,9 +204,8 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         recommendation=interview["recommendation"], review_note=interview["review_note"],
         flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
         self_answer_acknowledged=interview["self_answer_acknowledged"],
+        plan=planner.plan_view(interview["plan"]) if for_admin else None,
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"],
-        resume_deadline=(attempts.resume_deadline(interview["created_at"],
-                                                  max((t["answered_at"] for t in turns if t["answered_at"]), default=None))
-                         if in_progress else None),
+        resume_deadline=None if not in_progress else _resume_deadline(interview, turns),
         feedback_visible=reveal)

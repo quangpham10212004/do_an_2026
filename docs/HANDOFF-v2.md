@@ -69,3 +69,38 @@ Chưa làm (cần chốt): referral bất thường "trùng tài khoản nhận 
 - Windows: chạy payment-service jar cần `-Duser.timezone=Asia/Ho_Chi_Minh`; build dùng `mvn clean` để tránh compile gia tăng bỏ sót import.
 - Endpoint `/internal/dev/**` (dịch thời gian, ép job) chỉ dùng cho e2e — không bật ở production.
 - Gọi nội bộ cần header `X-Internal-Token` = `INTERNAL_API_KEY` trong `.env`.
+
+## 4. Phỏng vấn giọng nói (v2.1)
+
+Nhánh: `feature/voice-interview-prototype` (xếp chồng trên PR #15 `feature/v2-tier-upgrade`). Chốt 23/10/2026. Nghiệp vụ:
+`ban-chot-nghiep-vu.md` §16; yêu cầu: SRD FR-7.7, FR-10.1–10.7, D21; kỹ thuật: `ai-features.md` §2.11–2.12.
+
+**Trạng thái: ⚒ đang hiện thực** (chưa nghiệm thu).
+- Mentor: chọn chat hoặc giọng nói trên `/interview`; `POST /api/ai/interviews/voice` + `POST /api/ai/interviews/{id}/voice-transcript`,
+  cột `interviews.mode` / `interviews.consent_external_ai`. Route thử nghiệm `/api/ai/voice-interviews/session|grade` và trang
+  `/interview/voice` bị gỡ.
+- Mentee: "Luyện phỏng vấn với AI" — 1 lượt miễn phí trọn đời, kết quả + báo cáo nói hiện ngay; `/api/ai/practice-interviews/**`,
+  bảng `practice_interviews`. Migration ai `010_voice_interviews.sql`.
+- Câu hỏi do AI soạn (phương án A, 23/10): DeepSeek soạn kế hoạch một lần lúc bắt đầu từ hồ sơ / mục tiêu / CV đã xác nhận +
+  đồng ý gửi AI bên ngoài, lưu `plan` (migration `011_interview_plans.sql`); không có `DEEPSEEK_API_KEY` → ngân hàng câu hỏi.
+  `app/interview/planner.py`, `tests/test_interview_planner.py`. Chưa kiểm với DeepSeek thật (chỉ client giả lập).
+
+**Bật**: điền `OPENAI_API_KEY` vào `.env` rồi `docker compose up -d ai-service` (tuỳ chọn: `OPENAI_REALTIME_MODEL=gpt-realtime`,
+`OPENAI_REALTIME_VOICE=marin`, `OPENAI_TRANSCRIBE_MODEL=gpt-4o-transcribe`, `VOICE_INTERVIEW_TOPICS=4`, `VOICE_SESSION_MINUTES=30`,
+`PRACTICE_FREE_LIMIT=1`). Trình duyệt chỉ cho dùng micro trên **HTTPS hoặc `localhost`**. Không có key: production 503
+`VOICE_UNAVAILABLE`; dev vẫn tạo buổi và trả `voice: null` (giao diện hiện "Phỏng vấn giọng nói chưa được bật").
+
+**Kiểm thử**:
+- Unit / luồng: `cd ai-service && pytest -q tests` (gồm `test_voice_interview.py`). **Lưu ý**: pytest xoá dữ liệu ở `AI_DB_URL`
+  (mặc định trỏ vào ai-db của docker) — chạy với một Postgres dùng một lần.
+- Không cần key / micro: ngoài production gọi endpoint bắt đầu (nhận `voice: null`) rồi gửi bản chép lời tổng hợp
+  `{items: [{role: "marker", topicNo: 1}, {role: "assistant", text: "..."}, {role: "user", text: "..."}, ...]}` tới
+  `voice-transcript` (mentor → `PENDING_REVIEW`) hoặc `complete` (mentee → kết quả ngay). Lần luyện thứ hai → 409 `PRACTICE_FREE_USED`.
+- Có key + micro: mở `/interview` (mentor, chọn giọng nói) hoặc trang luyện phỏng vấn (mentee) trên `http://localhost:3000`.
+
+**Chưa kiểm chứng**:
+- Cuộc gọi giọng nói thật (cần `OPENAI_API_KEY` + micro) — CI và e2e chỉ dùng bản chép lời tổng hợp.
+- Chất lượng tiếng Việt của Realtime (nghe hiểu, chép lời, giọng đọc) — chưa đánh giá, chưa so với ElevenLabs.
+- Chưa ghi âm / phát lại cho admin (bước tiếp theo); chưa có luyện phỏng vấn có phí.
+- Chi phí thực tế mỗi buổi — xem bảng giá OpenAI hiện hành.
+

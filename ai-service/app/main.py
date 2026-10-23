@@ -13,7 +13,8 @@ from app.enrichment.service import purge_expired_cvs_forever, retry_profile_sync
 from app.interview import service as interview_service
 from app.errors import AiError
 from app.llm.deepseek import get_client
-from app.routers import cv, enrichment, interview
+from app.practice import service as practice_service
+from app.routers import cv, enrichment, interview, practice
 
 observability.setup_logging("ai-service")  # US-46: log JSON có requestId
 log = logging.getLogger(__name__)
@@ -31,11 +32,14 @@ async def lifespan(_: FastAPI):
     retry_job = asyncio.create_task(retry_profile_sync_forever())
     # US-43 (PRD-AIV-3) — quét buổi phỏng vấn bỏ dở quá 72 giờ
     abandon_job = asyncio.create_task(interview_service.abandon_stale_forever())
+    # FR-10.x — buổi luyện phỏng vấn giọng nói quá 30 phút chưa nộp bản ghi
+    practice_job = asyncio.create_task(practice_service.abandon_stale_forever())
     # US-45 (PRD-CV-6) — xoá file + văn bản gốc của CV quá 12 tháng
     retention_job = asyncio.create_task(purge_expired_cvs_forever())
     yield
     retry_job.cancel()
     abandon_job.cancel()
+    practice_job.cancel()
     retention_job.cancel()
     await close_clients()
     await close_pool()
@@ -93,3 +97,4 @@ app.include_router(interview.router)
 app.include_router(interview.dev_router)  # US-43 — chỉ dev/e2e, tự chặn ở APP_ENV=prod
 app.include_router(cv.router)
 app.include_router(enrichment.router)
+app.include_router(practice.router)

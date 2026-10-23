@@ -4,6 +4,8 @@ import tempfile
 
 # Test luôn chạy không có DEEPSEEK_API_KEY thật (engine rule-based); client DeepSeek được test bằng MockTransport.
 os.environ["DEEPSEEK_API_KEY"] = ""
+# Phỏng vấn giọng nói: mặc định không có OPENAI_API_KEY (voice = null); test cần key tự monkeypatch + MockTransport.
+os.environ["OPENAI_API_KEY"] = ""
 os.environ.setdefault("AI_DB_URL", "postgresql://postgres:postgres@localhost:5438/ai_db")
 os.environ["CV_STORAGE_DIR"] = tempfile.mkdtemp(prefix="cv-test-")
 
@@ -17,7 +19,7 @@ from app.main import app  # noqa: E402
 
 from app import migrations  # noqa: E402
 
-TABLES = "interview_attempt_unlocks, interview_turns, interviews, enrichment_messages, enrichment_conversations, cv_documents"
+TABLES = "practice_interviews, interview_attempt_unlocks, interview_turns, interviews, enrichment_messages, enrichment_conversations, cv_documents"
 
 
 async def _reset_schema() -> None:

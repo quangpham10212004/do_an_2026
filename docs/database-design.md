@@ -241,6 +241,9 @@ erDiagram
         text status "IN_PROGRESS|PENDING_REVIEW|APPROVED|REJECTED|RETAKE_REQUESTED|ABANDONED"
         text kind "v2.0 VERIFICATION|UPGRADE (xin nâng cấp, 009)"
         text from_tier "v2.0 cấp lúc xin nâng cấp"
+        text mode "v2.1 CHAT|VOICE (010)"
+        jsonb plan "v2.1 kế hoạch câu hỏi AI soạn, buổi giọng nói (011)"
+        boolean consent_external_ai "v2.1 đồng ý OpenAI xử lý âm thanh (010)"
         int max_turns
         int current_turn
         text engine "DEEPSEEK|RULE_BASED"
@@ -291,14 +294,34 @@ erDiagram
         text question
         text answer
     }
+    practice_interviews {
+        uuid id PK
+        uuid mentee_id
+        text interview_type "BACKEND|FRONTEND|SYSTEM_DESIGN|BEHAVIORAL"
+        text level "INTERN|FRESHER|JUNIOR"
+        text target_role "2..120 ký tự"
+        text target_company "null, <=120"
+        text status "IN_PROGRESS|COMPLETED|ABANDONED"
+        text_array topics
+        jsonb transcript
+        jsonb result
+        real overall_score "0..100"
+        text engine
+        jsonb plan "kế hoạch câu hỏi AI soạn (011)"
+        boolean consent_external_ai
+        timestamptz created_at
+        timestamptz completed_at
+    }
 ```
 
 | Bảng | Mô tả |
 |---|---|
 | `interviews` | Buổi AI Interview + kết quả tổng hợp + quyết định admin; `engine` ghi engine đã dùng để các lượt sau nhất quán |
+| `interviews.mode` *(v2.1 ⚒, migration ai `010_voice_interviews.sql`)* | `TEXT NOT NULL DEFAULT 'CHAT' CHECK (mode IN ('CHAT','VOICE'))`. Buổi `VOICE`: `max_turns` = số chủ đề đã lập; bản chép lời được gộp thành mỗi chủ đề một dòng `interview_turns`; quá 30 phút chưa có bản chép lời → `ABANDONED` (job dọn buổi bỏ dở hiện có). Cột `interviews.consent_external_ai BOOLEAN NOT NULL DEFAULT false` (cùng migration) = mentor đã đồng ý cho OpenAI xử lý âm thanh (bắt buộc với `VOICE`) |
 | `interview_turns` | Từng lượt hỏi-đáp; `UNIQUE (interview_id, turn_no)` chống ghi trùng; ghi câu trả lời bằng `UPDATE ... WHERE answer IS NULL` |
 | `cv_documents` | CV đã upload: văn bản trích xuất + kết quả parse (`JSONB`); file PDF nằm trên volume `cv-storage` |
 | `enrichment_conversations` / `enrichment_messages` | Hội thoại chatbot làm rõ mục tiêu và từng lượt hỏi-đáp theo slot; `profile_synced` = đã đẩy goal sang profile-service (job nền thử lại nếu chưa) |
+| `practice_interviews` *(v2.1 ⚒, migration ai `010_voice_interviews.sql`)* | Buổi mentee luyện phỏng vấn giọng nói với AI (FR-10.x): `topics` = chủ đề đã lập từ `practice_bank`, `transcript` = bản chép lời (`TranscriptItem[]`), `result` = nhận xét từng câu + 3 điểm mạnh + 3 điểm cần cải thiện + báo cáo nói, `overall_score` 0–100, `consent_external_ai` = đã đồng ý cho OpenAI xử lý âm thanh. Lượt miễn phí bị dùng khi có buổi `COMPLETED` hoặc `ABANDONED`; tối đa một buổi `IN_PROGRESS` mỗi mentee, buổi `IN_PROGRESS` quá 30 phút → `ABANDONED`. `UNIQUE (mentee_id) WHERE status = 'IN_PROGRESS'` chặn bấm bắt đầu hai lần; chỉ mục `(mentee_id, created_at DESC)` cho danh sách. `plan` = kế hoạch câu hỏi AI soạn lúc bắt đầu (migration `011_interview_plans.sql`, mỗi chủ đề kèm nguồn BANK/CV/GOAL/AI). Không lưu âm thanh |
 
 ---
 

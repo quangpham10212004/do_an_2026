@@ -3,17 +3,24 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Timer } from "lucide-react";
-import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, DescriptionList, Loading, PageHeader, StatusBadge, Table, Textarea } from "@/components/ui";
+import { Mic, PhoneOff, Timer } from "lucide-react";
+import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, DescriptionList, Loading, PageHeader, Segmented, StatusBadge, Table, Textarea } from "@/components/ui";
 import { AssessmentCard, InterviewTranscript, RUBRIC } from "@/features/ai/InterviewViews";
+import { TopicPlan, VOICE_DISABLED, VoiceCallCard, VoiceConsent } from "@/features/ai/VoiceViews";
 import { aiApi } from "@/features/ai/api";
+import { useRealtimeVoice } from "@/features/ai/useRealtimeVoice";
 import { STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { Interview, InterviewEligibility } from "@/types";
+import type { Interview, InterviewEligibility, InterviewMode, VoiceSession, VoiceTranscriptItem } from "@/types";
 
 /** US-22 (PRD-AIV-1, PRD-AIV-4): màn hình giới thiệu trước khi bắt đầu + quy tắc số lần phỏng vấn. */
-function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligibility | null; busy: boolean; onStart: () => void }) {
+function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligibility | null; busy: boolean; onStart: (mode: InterviewMode, consent: boolean) => void }) {
   const [ack, setAck] = useState(false);
+  // FR-7.7 — chat hoặc giọng nói: cùng số câu hỏi, rubric, quy tắc số lần và duyệt của admin
+  const [mode, setMode] = useState<InterviewMode>("CHAT");
+  const [consent, setConsent] = useState(false);
+  const voice = mode === "VOICE";
+  const voiceOff = eligibility != null && !eligibility.voiceAvailable;
   const blocked = eligibility != null && !eligibility.canStart;
   const max = eligibility?.maxAttempts ?? 3;
   const upgrade = eligibility?.kind === "UPGRADE";
@@ -22,8 +29,21 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
       <CardHeader title={upgrade ? "Xin nâng cấp" : "Trước khi bắt đầu"}
         description={upgrade ? `Bạn đang ở cấp ${eligibility?.currentTier ?? "—"}. Đọc kỹ cách chấm điểm và quy tắc xin nâng cấp.` : "Đọc kỹ cách chấm điểm và quy tắc số lần phỏng vấn."} />
       <CardBody className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <Segmented<InterviewMode> value={mode} onChange={setMode}
+            options={[{ id: "CHAT", label: "Trả lời bằng chữ" }, { id: "VOICE", label: "Nói chuyện bằng giọng nói" }]} />
+          {voice && (
+            <p className="text-small text-ink-muted">
+              Bạn trò chuyện trực tiếp với người phỏng vấn AI qua micro. Buổi giọng nói làm trong <strong>một lần</strong>: rớt mạng thì kết nối lại được
+              trong 30 phút; quá 30 phút chưa kết thúc thì buổi bị huỷ và tính là một lần. Cần trình duyệt có micro (Chrome, Edge, Safari mới).
+            </p>
+          )}
+          {voice && voiceOff && <Alert tone="warning">{VOICE_DISABLED}. Hãy chọn trả lời bằng chữ.</Alert>}
+        </div>
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
-          <li>Gồm <strong>{eligibility?.questionCount ?? 5} câu hỏi</strong>, khoảng <strong>15–20 phút</strong>. Câu sau được điều chỉnh theo câu trả lời trước.</li>
+          {voice
+            ? <li>Gồm khoảng <strong>4 chủ đề</strong>, khoảng <strong>15 phút</strong>. Người phỏng vấn hỏi đào sâu khi câu trả lời còn chung chung.</li>
+            : <li>Gồm <strong>{eligibility?.questionCount ?? 5} câu hỏi</strong>, khoảng <strong>15–20 phút</strong>. Câu sau được điều chỉnh theo câu trả lời trước.</li>}
           <li>Mỗi câu trả lời được chấm theo 4 tiêu chí, thang 0–10:</li>
         </ul>
         <div className="overflow-hidden rounded-md border border-border">
@@ -58,9 +78,13 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
         {eligibility?.reason === "UPGRADE_COOLDOWN" && <Alert tone="info">Bạn có thể xin nâng cấp từ {formatDateTime(eligibility.upgradeAvailableAt)}.</Alert>}
         {eligibility?.reason === "TIER_MAX" && <Alert tone="info">Bạn đã ở cấp cao nhất (Expert).</Alert>}
         <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={blocked} label="Tôi tự trả lời, không có sự trợ giúp từ bên ngoài" />
+        {voice && <VoiceConsent checked={consent} onChange={setConsent} disabled={blocked || voiceOff} />}
       </CardBody>
       <CardFooter>
-        <Button variant="primary" onClick={onStart} loading={busy} disabled={!ack || blocked}>{busy ? "Đang chuẩn bị câu hỏi…" : upgrade ? "Bắt đầu buổi xin nâng cấp" : "Bắt đầu phỏng vấn"}</Button>
+        <Button variant="primary" icon={voice ? Mic : undefined} onClick={() => onStart(mode, consent)} loading={busy}
+          disabled={!ack || blocked || (voice && (!consent || voiceOff))}>
+          {busy ? "Đang chuẩn bị câu hỏi…" : upgrade ? "Bắt đầu buổi xin nâng cấp" : "Bắt đầu phỏng vấn"}
+        </Button>
       </CardFooter>
     </Card>
   );
@@ -110,7 +134,9 @@ function Interview() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode>("");
   const [eligibility, setEligibility] = useState<InterviewEligibility | null>(null);
+  const [session, setSession] = useState<VoiceSession | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const call = useRealtimeVoice(submitTranscript);
 
   useEffect(() => {
     aiApi.myInterview().then(setInterview).catch(() => setInterview(null));
@@ -120,14 +146,55 @@ function Interview() {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [interview]);
 
-  async function start() {
+  async function start(mode: InterviewMode = "CHAT", consent = false) {
     setBusy(true);
     setError("");
     try {
-      setInterview(await aiApi.startInterview(true));
+      if (mode === "VOICE") await startVoice(consent);
+      else setInterview(await aiApi.startInterview(true));
     } catch (err) {
       setError(err instanceof ApiError && err.code === "PROFILE_REQUIRED" ? <>{errorMessage(err)} <Link href="/profile">Tạo hồ sơ</Link></> : errorMessage(err));
       aiApi.interviewEligibility().then(setEligibility).catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** FR-7.7 — tạo buổi giọng nói (hoặc nhận lại buổi đang dở < 30 phút với client secret mới) rồi gọi WebRTC. */
+  async function startVoice(consent: boolean) {
+    const res = await aiApi.startVoiceInterview(true, consent);
+    if (res.interview.id !== interview?.id) call.reset(); // buổi mới => bản ghi mới; kết nối lại => giữ bản ghi cũ
+    setInterview(res.interview);
+    setSession(res.voice);
+    if (!res.voice) {
+      setError(`${VOICE_DISABLED} trên máy chủ này.`);
+      return;
+    }
+    await call.connect(res.voice);
+  }
+
+  async function reconnect() {
+    setBusy(true);
+    setError("");
+    try {
+      await startVoice(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitTranscript(items: VoiceTranscriptItem[]) {
+    if (!interview) return;
+    setBusy(true);
+    setError("");
+    try {
+      setInterview(await aiApi.submitVoiceTranscript(interview.id, items));
+      aiApi.interviewEligibility().then(setEligibility).catch(() => {});
+    } catch (err) {
+      setError(errorMessage(err));
+      call.setPhase("dropped"); // ví dụ EMPTY_TRANSCRIPT: kết nối lại để trả lời tiếp
     } finally {
       setBusy(false);
     }
@@ -151,6 +218,7 @@ function Interview() {
 
   if (interview === undefined) return <Loading />;
   const inProgress = interview?.status === "IN_PROGRESS";
+  const voiceMode = interview?.mode === "VOICE";
   const upgrade = interview?.kind === "UPGRADE";
   const minChars = interview?.answerMinChars ?? 50;
   const maxChars = interview?.answerMaxChars ?? 3000;
@@ -167,7 +235,7 @@ function Interview() {
         description={upgrade || (!interview && eligibility?.kind === "UPGRADE")
           ? "Phỏng vấn lại để xin lên cấp cao hơn. Trong lúc chờ duyệt bạn vẫn nhận mentee theo cấp hiện tại."
           : "Buổi phỏng vấn tự động giúp xác thực năng lực trước khi tài khoản mentor được kích hoạt."}
-        actions={interview && <StatusBadge status={interview.status} />}
+        actions={interview && <>{voiceMode && <Badge>Giọng nói</Badge>}<StatusBadge status={interview.status} /></>}
       />
       <Alert className="mb-6">{error}</Alert>
 
@@ -175,6 +243,25 @@ function Interview() {
 
       {interview && (
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          {inProgress && voiceMode ? (
+            <VoiceCallCard entries={call.entries} phase={call.phase} topics={session?.topics ?? []} error={call.error}
+              footer={
+                call.phase === "live" ? <Button variant="danger" icon={PhoneOff} onClick={call.finish}>Kết thúc và nộp bài</Button>
+                  : call.phase === "connecting" ? <Button loading disabled>Đang kết nối…</Button>
+                  : call.phase === "ended" || busy ? <Button loading disabled>Đang chấm điểm…</Button>
+                  : (
+                    <>
+                      <span className="text-small text-ink-muted">
+                        {interview.resumeDeadline && <>Kết nối lại được tới {formatDateTime(interview.resumeDeadline)}. </>}
+                        Quá hạn, buổi phỏng vấn bị huỷ và tính là một lần.
+                      </span>
+                      <Button variant="primary" icon={Mic} className="ml-auto" onClick={reconnect}>
+                        {call.entries.length ? "Kết nối lại" : "Bắt đầu nói chuyện"}
+                      </Button>
+                    </>
+                  )
+              } />
+          ) : (
           <Card>
             <CardHeader title="Hội thoại" actions={inProgress && <Badge tone="accent">Câu {interview.currentTurn}/{interview.maxTurns}</Badge>} />
             <CardBody>
@@ -203,18 +290,20 @@ function Interview() {
               </form>
             )}
           </Card>
+          )}
           <div className="flex min-w-0 flex-col gap-6">
+            {inProgress && voiceMode && session && <TopicPlan topics={session.topics} />}
             {interview.status === "PENDING_REVIEW" && (
               <Alert tone="info" title="Đang chờ quản trị viên xem xét">
                 Nhận xét từng câu sẽ hiện sau khi quản trị viên quyết định.{upgrade && <> Trong lúc chờ bạn vẫn nhận mentee theo cấp {interview.fromTier}.</>}
               </Alert>
             )}
             {interview.status === "ABANDONED" && upgrade && (
-              <Alert>Buổi xin nâng cấp quá 24 giờ không hoạt động nên bị huỷ. Bạn vẫn giữ cấp {interview.fromTier}.</Alert>
+              <Alert>Buổi xin nâng cấp quá {voiceMode ? "30 phút chưa kết thúc" : "24 giờ không hoạt động"} nên bị huỷ. Bạn vẫn giữ cấp {interview.fromTier}.</Alert>
             )}
             {interview.status === "ABANDONED" && !upgrade && (
               <Alert action={retry("Bắt đầu buổi mới", eligibility != null && !eligibility.canStart)}>
-                Buổi phỏng vấn quá 72 giờ không hoạt động nên bị huỷ và tính là một lần phỏng vấn.
+                {voiceMode ? "Buổi phỏng vấn giọng nói quá 30 phút chưa kết thúc" : "Buổi phỏng vấn quá 72 giờ không hoạt động"} nên bị huỷ và tính là một lần phỏng vấn.
               </Alert>
             )}
             {interview.status === "APPROVED" && (upgrade

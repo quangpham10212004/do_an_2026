@@ -49,6 +49,11 @@ export interface Interview {
   /** Bản chốt v2.0 §3 — UPGRADE = mentor đã duyệt xin nâng cấp; fromTier = cấp lúc xin. */
   kind?: InterviewKind;
   fromTier?: MentorTier | null;
+  /** FR-7.7 — CHAT | VOICE (phỏng vấn giọng nói, OpenAI Realtime). */
+  mode?: InterviewMode;
+  consentExternalAi?: boolean;
+  /** v2.1 — kế hoạch câu hỏi của buổi giọng nói kèm nguồn (chỉ admin); null = chat hoặc buổi cũ */
+  plan?: PlanTopic[] | null;
   engine: "DEEPSEEK" | "RULE_BASED";
   maxTurns: number;
   currentTurn: number;
@@ -80,6 +85,7 @@ export interface Interview {
 }
 
 export type InterviewKind = "VERIFICATION" | "UPGRADE";
+export type InterviewMode = "CHAT" | "VOICE";
 
 /** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
 export interface InterviewEligibility {
@@ -96,6 +102,126 @@ export interface InterviewEligibility {
   currentTier?: MentorTier | null;
   /** Mốc được xin nâng cấp (90 ngày sau lần xếp cấp / lần xin gần nhất); null = được xin ngay. */
   upgradeAvailableAt?: IsoDateTime | null;
+  /** FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được). */
+  voiceAvailable?: boolean;
+}
+
+/** Phỏng vấn giọng nói (OpenAI Realtime): client secret ngắn hạn, trình duyệt kết nối WebRTC trực tiếp tới OpenAI. */
+export interface VoiceSession {
+  clientSecret: string;
+  expiresAt: number;
+  model: string;
+  topics: string[];
+}
+
+/** marker = model gọi begin_topic(topicNo); assistant / user = một lượt nói đã chép lời. */
+export interface VoiceTranscriptItem {
+  role: "marker" | "assistant" | "user";
+  text?: string;
+  topicNo?: number;
+}
+
+/** FR-7.7 — POST /api/ai/interviews/voice. voice = null khi server chưa có OPENAI_API_KEY (chỉ ngoài prod). */
+export interface VoiceInterviewStart {
+  interview: Interview;
+  voice: VoiceSession | null;
+}
+
+// FR-10.x — Luyện phỏng vấn với AI (mentee)
+export type PracticeType = "BACKEND" | "FRONTEND" | "SYSTEM_DESIGN" | "BEHAVIORAL";
+export type PracticeLevel = "INTERN" | "FRESHER" | "JUNIOR";
+export type PracticeStatus = "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+
+/** Rubric luyện phỏng vấn (0–10 mỗi tiêu chí), trọng số 35/25/25/15. */
+export interface PracticeRubric {
+  technical: number;
+  problemSolving: number;
+  communication: number;
+  structure: number;
+}
+
+export interface PracticeTurn {
+  topicNo: number;
+  topic: string;
+  question: string;
+  answer: string;
+  score: number;
+  rubric: PracticeRubric;
+  feedback: string;
+  flags: string[];
+}
+
+export interface SpeakingReport {
+  fillerCount: number;
+  fillers: Record<string, number>;
+  answerCount: number;
+  avgWordsPerAnswer: number;
+  shortAnswers: number;
+  unanswered: number;
+}
+
+export interface PracticeResult {
+  overallScore: number;
+  summary: string;
+  strengths: string[];
+  improvements: string[];
+  turns: PracticeTurn[];
+  speaking: SpeakingReport;
+  engine: "DEEPSEEK" | "RULE_BASED";
+  model: string | null;
+  promptVersion: string;
+  fallbackUsed: boolean;
+}
+
+/** v2.1 — nguồn của câu hỏi: ngân hàng câu hỏi, CV, mục tiêu / công việc nhắm tới, hoặc AI soạn theo lĩnh vực. */
+export type PlanSource = "BANK" | "CV" | "GOAL" | "AI";
+
+export interface PlanTopic {
+  name: string;
+  question: string;
+  source: PlanSource;
+}
+
+export interface Practice {
+  id: Uuid;
+  menteeId: Uuid;
+  interviewType: PracticeType;
+  level: PracticeLevel;
+  targetRole: string;
+  targetCompany: string | null;
+  status: PracticeStatus;
+  topics: string[];
+  /** v2.1 — kế hoạch câu hỏi kèm nguồn; null khi đang làm (không lộ câu hỏi trước) */
+  plan?: PlanTopic[] | null;
+  engine: "DEEPSEEK" | "RULE_BASED";
+  consentExternalAi: boolean;
+  overallScore: number | null;
+  result: PracticeResult | null;
+  createdAt: IsoDateTime;
+  completedAt: IsoDateTime | null;
+  resumeDeadline: IsoDateTime | null;
+}
+
+export interface PracticeEligibility {
+  freeLimit: number;
+  used: number;
+  canStart: boolean;
+  reason: "PRACTICE_FREE_USED" | "IN_PROGRESS" | null;
+  inProgressId: Uuid | null;
+  voiceAvailable: boolean;
+}
+
+export interface PracticeStart {
+  practice: Practice;
+  voice: VoiceSession | null;
+}
+
+export interface StartPracticeInput {
+  interviewType: PracticeType;
+  level: PracticeLevel;
+  targetRole: string;
+  targetCompany?: string | null;
+  consentExternalAi: boolean;
 }
 
 export interface InterviewStats {
