@@ -265,9 +265,15 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
-      # PROTOTYPE — phỏng vấn giọng nói (OpenAI Realtime); để trống => tắt
+      # Phỏng vấn giọng nói (OpenAI Realtime); để trống key => dev trả voice = null, APP_ENV=prod => 503
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-realtime}
+      OPENAI_REALTIME_VOICE: ${OPENAI_REALTIME_VOICE:-marin}
+      OPENAI_TRANSCRIBE_MODEL: ${OPENAI_TRANSCRIBE_MODEL:-gpt-4o-transcribe}
+      VOICE_INTERVIEW_TOPICS: ${VOICE_INTERVIEW_TOPICS:-4}
+      VOICE_SESSION_MINUTES: ${VOICE_SESSION_MINUTES:-30}
+      PRACTICE_FREE_LIMIT: ${PRACTICE_FREE_LIMIT:-1}
     volumes:
       - cv-storage:/data/cv
     depends_on:

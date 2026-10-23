@@ -3,6 +3,7 @@
 Đồ án tốt nghiệp — nền tảng học tập và kết nối mentor-mentee trong lĩnh vực lập trình, kiến trúc
 microservices với 3 tính năng AI: **AI Matching** (embedding + pgvector), **AI Interview** xác thực
 mentor, **CV Parsing + Chatbot enrichment** làm rõ mục tiêu mentee (DeepSeek API hoặc engine rule-based chạy offline).
+Từ v2.1 (⚒ đang làm): **phỏng vấn bằng giọng nói** qua OpenAI Realtime — mentor chọn chat hoặc giọng nói khi phỏng vấn xác thực, mentee được 1 lượt **luyện phỏng vấn với AI** miễn phí (cần `OPENAI_API_KEY`).
 
 | | |
 |---|---|

@@ -55,6 +55,7 @@ function Interviews() {
                     <td className="font-medium">
                       {i.mentorName || <span className="font-mono">{i.mentorId.slice(0, 8)}</span>}
                       {i.kind === "UPGRADE" && <> <Badge tone="accent">Xin nâng cấp từ {i.fromTier}</Badge></>}
+                      {i.mode === "VOICE" && <> <Badge>Giọng nói</Badge></>}
                     </td>
                     <td>{i.domain}</td>
                     <td><StatusBadge status={i.status} /></td>

@@ -56,16 +56,26 @@ docker compose down -v      # dừng và xoá toàn bộ volume (CSDL, file CV) 
 | `DEEPSEEK_API_KEY` | trống | ai-service: có giá trị → AI Interview & CV enrichment dùng DeepSeek (lỗi thì tự fallback); trống → engine rule-based |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Địa chỉ API DeepSeek (định dạng OpenAI) |
 | `DEEPSEEK_MODEL` | `deepseek-flash` | Model DeepSeek, ví dụ `deepseek-v4-pro` |
+| `OPENAI_API_KEY` | trống | ai-service (v2.1): có giá trị → bật phỏng vấn giọng nói (mentor) và luyện phỏng vấn với AI (mentee) qua OpenAI Realtime; trống → production trả 503 `VOICE_UNAVAILABLE`, môi trường dev trả `voice: null` |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Địa chỉ API OpenAI (ai-service xin client secret ngắn hạn, key thật không tới trình duyệt) |
+| `OPENAI_REALTIME_MODEL` / `OPENAI_REALTIME_VOICE` | `gpt-realtime` / `marin` | Model và giọng của phiên Realtime |
+| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe` | Model chép lời câu trả lời của người dùng |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@mmp.local` / `Admin@123` | Tài khoản admin tạo sẵn |
 | `FRONTEND_URL` | `http://localhost:3000` | Dùng trong liên kết xác thực email và liên kết giới thiệu |
 | `INDEX_SYNC_INTERVAL` | `60` | matching-service: chu kỳ (giây) `IndexSyncJob` đối soát chỉ mục embedding với `profile_db` — cũng là độ trễ tối đa (xấp xỉ) để hồ sơ xuất hiện trong matching khi thông báo reindex bị mất |
 
 Các tham số khác (đặt trong `environment` của service tương ứng trong `docker-compose.yml`):
 `INTERVIEW_MAX_TURNS` (5), `ENRICHMENT_MAX_TURNS` (4), `DEEPSEEK_MAX_TOKENS` (4000),
-`DEEPSEEK_TIMEOUT_SECONDS` (60), `PROFILE_SYNC_RETRY_SECONDS` (120) — ai-service; `EMBEDDING_MODEL`,
+`DEEPSEEK_TIMEOUT_SECONDS` (60), `PROFILE_SYNC_RETRY_SECONDS` (120), `VOICE_INTERVIEW_TOPICS` (4),
+`VOICE_SESSION_MINUTES` (30), `PRACTICE_FREE_LIMIT` (1) — ai-service; `EMBEDDING_MODEL`,
 `INDEX_SYNC_INTERVAL` (60), `INDEX_SYNC_BATCH` (200), `INDEX_SYNC_ENABLED` (true) — matching-service;
 `ACCESS_TOKEN_TTL` (PT30M), `REFRESH_TOKEN_TTL` (P7D), `EXPOSE_VERIFICATION_TOKEN` (true — hiển thị
 liên kết xác thực email trên giao diện vì demo không có SMTP).
+
+> **Phỏng vấn giọng nói cần micro**: trình duyệt chỉ cấp quyền micro (`getUserMedia`) trên **HTTPS** hoặc
+> **`http://localhost`**. Demo trên máy khác qua `http://<IP>:3000` sẽ không bật được micro — đặt frontend sau HTTPS
+> (reverse proxy có chứng chỉ) hoặc dùng `localhost`. Âm thanh đi thẳng từ trình duyệt tới OpenAI qua WebRTC, nên máy demo
+> cần Internet ra `api.openai.com`; người dùng phải tick đồng ý trước khi bắt đầu.
 
 ## 4. Tài khoản demo
 
@@ -166,6 +176,8 @@ cd frontend && npm install && npm run dev
 | AI Interview / tải CV lỗi 502 hoặc `/health` của 8091 báo `dbConnected: false` | ai-service hoặc ai-db chưa chạy | `docker compose ps ai-service ai-db`, `docker compose logs ai-service` |
 | Hội thoại enrichment xong nhưng `profileSynced = false` | profile-service tạm thời lỗi | Job nền của ai-service thử lại mỗi 2 phút; xem `docker compose logs ai-service profile-service` |
 | Đã điền `DEEPSEEK_API_KEY` nhưng `/health` của 8091 vẫn `llmEnabled: false` | Container chưa nhận biến mới | `docker compose up -d ai-service` sau khi sửa `.env` |
+| Phỏng vấn giọng nói báo "chưa được bật" / 503 `VOICE_UNAVAILABLE` | Thiếu `OPENAI_API_KEY` hoặc container chưa nhận biến mới | Điền key vào `.env`, `docker compose up -d ai-service` |
+| Không bật được micro khi phỏng vấn giọng nói | Trang mở qua `http://<IP>` (không phải HTTPS / localhost) hoặc trình duyệt chặn quyền micro | Mở bằng `http://localhost:3000` hoặc qua HTTPS; cấp quyền micro cho trang |
 | Cổng bị chiếm | Ứng dụng khác dùng 3000/5433/8081… | Tắt ứng dụng đó hoặc đổi cổng host trong `docker-compose.yml` |
 
 ## 8. Nâng cấp phiên bản & migration CSDL

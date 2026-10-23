@@ -250,6 +250,21 @@ lượt đó tự dùng rule-based.
 | GET | `/api/ai/admin/interviews?status=` | Admin | Danh sách theo trạng thái | 7.5 |
 | POST | `/api/ai/admin/interviews/{id}/review` | Admin | `{decision: APPROVE\|REJECT, note?}` → đồng bộ trạng thái xác thực sang profile-service | 7.5 |
 | GET | `/api/ai/admin/stats` | Admin | `{interviewsInProgress, interviewsPendingReview, mentorsApproved, mentorsRejected}` | — |
+| POST | `/api/ai/interviews/voice` | Mentor | ⚒ v2.1 — `{selfAnswerAcknowledged: true, consentExternalAi: true}` → `{interview: InterviewView, voice: {clientSecret, expiresAt, model, topics}}`. Cùng kiểm tra điều kiện như `POST /api/ai/interviews` (`SELF_ANSWER_ACK_REQUIRED`, `PROFILE_REQUIRED`, `INTERVIEW_PENDING_REVIEW`, chờ / khoá / nâng cấp); 400 `VOICE_CONSENT_REQUIRED`. Tạo buổi `IN_PROGRESS`, `mode = VOICE`, `max_turns` = số chủ đề. Đang có buổi giọng nói < 30 phút → trả lại buổi đó kèm client secret mới. Đang có buổi chat `IN_PROGRESS` (hoặc ngược lại) → 409 `INTERVIEW_IN_PROGRESS`. Thiếu `OPENAI_API_KEY`: production 503 `VOICE_UNAVAILABLE` (không tạo gì), ngoài production `voice: null`; OpenAI lỗi → 502 `VOICE_UNAVAILABLE`. `GET /api/ai/interviews/eligibility` thêm `voiceAvailable` | 7.7 |
+| POST | `/api/ai/interviews/{id}/voice-transcript` | Mentor (Owner) | ⚒ v2.1 — `{items: TranscriptItem[]}` (`{role: marker\|assistant\|user, text?, topicNo?}`); chỉ buổi `IN_PROGRESS`, `mode = VOICE`. Gộp theo chủ đề → mỗi chủ đề một `interview_turns`, chấm bằng engine + rubric hiện có, rồi như hoàn thành chat: `PENDING_REVIEW`, đồng bộ xác thực (bỏ qua với `UPGRADE`), thông báo admin + mentor. 400 `EMPTY_TRANSCRIPT` nếu chưa hỏi chủ đề nào; 409 `INTERVIEW_NOT_VOICE` (buổi chat), `INTERVIEW_ABANDONED`, `INTERVIEW_NOT_IN_PROGRESS` (gửi lần hai) | 7.7 |
+
+Route thử nghiệm `POST /api/ai/voice-interviews/session` và `POST /api/ai/voice-interviews/grade` (và trang `/interview/voice`)
+**đã gỡ ở v2.1**, thay bằng hai endpoint trên và lựa chọn "giọng nói" trên `/interview`.
+
+### 7.1b Luyện phỏng vấn với AI *(v2.1 ⚒ — mentee)*
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| GET | `/api/ai/practice-interviews/eligibility` | Mentee | `{freeLimit: 1, used: 0\|1, canStart, reason: null\|PRACTICE_FREE_USED\|IN_PROGRESS, inProgressId, voiceAvailable}` | 10.1 |
+| POST | `/api/ai/practice-interviews` | Mentee | `{interviewType, level, targetRole, targetCompany?, consentExternalAi: true}` → `{practice: PracticeView, voice: {clientSecret, expiresAt, model, topics}}`. `interviewType` ∈ BACKEND/FRONTEND/SYSTEM_DESIGN/BEHAVIORAL, `level` ∈ INTERN/FRESHER/JUNIOR, `targetRole` 2–120 ký tự, `targetCompany` ≤ 120. Buổi `IN_PROGRESS` < 30 phút → trả lại buổi đó kèm client secret mới. 409 `PRACTICE_FREE_USED` (kèm `ctaLabel` "Đặt phỏng vấn thử với mentor", `ctaHref` `/matching`); 400 `VOICE_CONSENT_REQUIRED`; thiếu `OPENAI_API_KEY` như trên (503 `VOICE_UNAVAILABLE` / `voice: null`) | 10.1–10.3 |
+| POST | `/api/ai/practice-interviews/{id}/complete` | Mentee (Owner) | `{items: TranscriptItem[]}` → `PracticeView` có `result` (nhận xét từng câu, 3 điểm mạnh, 3 điểm cần cải thiện, điểm 0–100, báo cáo nói); chỉ buổi `IN_PROGRESS`. 400 `EMPTY_TRANSCRIPT`; 404 `PRACTICE_NOT_FOUND`; 409 `PRACTICE_NOT_IN_PROGRESS` | 10.4–10.6 |
+| GET | `/api/ai/practice-interviews/me` | Mentee | Danh sách buổi luyện của mình, mới nhất trước | 10.7 |
+| GET | `/api/ai/practice-interviews/{id}` | Owner / Admin | Chi tiết một buổi luyện | 10.7 |
 
 ### 7.2 CV Parsing + Chatbot enrichment
 

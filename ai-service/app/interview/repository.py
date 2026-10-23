@@ -10,7 +10,8 @@ from app.interview.models import TurnEvaluation, TurnRecord
 
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
-                       created_at, completed_at, reviewed_at, self_answer_acknowledged, kind, from_tier"""
+                       created_at, completed_at, reviewed_at, self_answer_acknowledged, kind, from_tier,
+                       mode, consent_external_ai"""
 
 
 async def find(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -38,26 +39,37 @@ async def count_by_status(conn: Db) -> dict[str, int]:
 
 
 async def insert(conn: Db, mentor_id: UUID, domain: str, skills: list[str], max_turns: int,
-                 engine: str, kind: str = "VERIFICATION", from_tier: str | None = None) -> asyncpg.Record:
+                 engine: str, kind: str = "VERIFICATION", from_tier: str | None = None,
+                 mode: str = "CHAT", consent_external_ai: bool = False) -> asyncpg.Record:
     """Chỉ gọi sau khi mentor đã xác nhận tự trả lời (US-22) => self_answer_acknowledged = true."""
     return await conn.fetchrow(
-        f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged, kind, from_tier)
-            VALUES ($1, $2, $3, $4, $5, true, $6, $7) RETURNING {INTERVIEW_COLUMNS}""",
-        mentor_id, domain, skills, max_turns, engine, kind, from_tier)
+        f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged, kind, from_tier,
+                                    mode, consent_external_ai)
+            VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9) RETURNING {INTERVIEW_COLUMNS}""",
+        mentor_id, domain, skills, max_turns, engine, kind, from_tier, mode, consent_external_ai)
 
 
-async def abandon_stale(conn: Db, before: datetime, mentor_id: UUID | None = None) -> list[asyncpg.Record]:
+async def lock_in_progress(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
+    """Khoá dòng buổi đang IN_PROGRESS trong transaction (chống gửi bản ghi giọng nói hai lần)."""
+    return await conn.fetchrow(
+        f"SELECT {INTERVIEW_COLUMNS} FROM interviews WHERE id = $1 AND status = 'IN_PROGRESS' FOR UPDATE", interview_id)
+
+
+async def abandon_stale(conn: Db, before: datetime, mentor_id: UUID | None = None,
+                        voice_before: datetime | None = None) -> list[asyncpg.Record]:
     """
     US-43 (PRD-AIV-3) — đánh dấu ABANDONED các buổi IN_PROGRESS không có hoạt động (bắt đầu / trả lời) từ trước
-    `before`. mentor_id = chỉ của một mentor (kiểm tra lười khi mentor mở trang); None = quét toàn bộ (job nền).
+    `before`. FR-7.7 — buổi giọng nói là một lần ngồi: bắt đầu trước `voice_before` mà chưa gửi bản ghi => ABANDONED.
+    mentor_id = chỉ của một mentor (kiểm tra lười khi mentor mở trang); None = quét toàn bộ (job nền).
     Trả về (id, mentor_id) các buổi vừa đánh dấu.
     """
     return await conn.fetch(
         """UPDATE interviews i SET status = 'ABANDONED', abandoned_at = now()
             WHERE i.status = 'IN_PROGRESS' AND ($2::uuid IS NULL OR i.mentor_id = $2)
-              AND GREATEST(i.created_at, COALESCE((SELECT max(t.answered_at) FROM interview_turns t
-                                                    WHERE t.interview_id = i.id), i.created_at)) < $1
-        RETURNING i.id, i.mentor_id""", before, mentor_id)
+              AND CASE WHEN i.mode = 'VOICE' THEN i.created_at < COALESCE($3::timestamptz, $1)
+                       ELSE GREATEST(i.created_at, COALESCE((SELECT max(t.answered_at) FROM interview_turns t
+                                                             WHERE t.interview_id = i.id), i.created_at)) < $1 END
+        RETURNING i.id, i.mentor_id""", before, mentor_id, voice_before)
 
 
 async def last_answered_at(conn: Db, interview_id: UUID) -> datetime | None:
@@ -93,10 +105,10 @@ async def turns_of(conn: Db, interview_id: UUID) -> list[asyncpg.Record]:
 
 
 async def insert_turn(conn: Db, interview_id: UUID, turn_no: int, topic: str, strategy: str,
-                      question: str) -> None:
-    await conn.execute(
+                      question: str) -> UUID:
+    return await conn.fetchval(
         """INSERT INTO interview_turns (interview_id, turn_no, topic, strategy, question)
-           VALUES ($1, $2, $3, $4, $5)""",
+           VALUES ($1, $2, $3, $4, $5) RETURNING id""",
         interview_id, turn_no, topic, strategy, question)
 
 

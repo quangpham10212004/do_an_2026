@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   BadgeCheck,
   BookOpen,
   CalendarDays,
@@ -66,6 +67,7 @@ export const NAV: Record<Role, NavGroup[]> = {
         { href: "/profile", label: "Hồ sơ", icon: UserRound },
         { href: "/cv-enrichment", label: "CV & mục tiêu", icon: FileText },
         { href: "/mock-interviews", label: "Phỏng vấn thử", icon: Mic },
+        { href: "/practice-interview", label: "Luyện phỏng vấn với AI", icon: AudioLines },
         { href: "/learning", label: "Learning Hub", icon: BookOpen },
       ],
     },

@@ -6,8 +6,8 @@
 | **Nhóm thực hiện** | Phạm Ngọc Quang (B22DCDT243), Đinh Quyết Thắng (B22DCCN809), Phạm Ninh Phương Thảo (B22DCCN803) |
 | **Lớp** | E22CNPM03 |
 | **GVHD** | Đào Ngọc Phong |
-| **Phiên bản** | 2.0 — theo bản chốt phạm vi và thông số 21/10/2026 ([ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md)) |
-| **Ngày** | 21/10/2026 |
+| **Phiên bản** | 2.1 — theo bản chốt phạm vi và thông số 21/10/2026 + bổ sung phỏng vấn giọng nói 23/10/2026 ([ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md)) |
+| **Ngày** | 23/10/2026 |
 
 ### Lịch sử phiên bản
 
@@ -20,6 +20,7 @@
 | **1.2** | 20/09/2026 | Chuyển **toàn bộ** AI Interview và CV Parsing + Chatbot enrichment (luồng nghiệp vụ + dữ liệu) từ mentoring-service (Java) sang ai-service (Python); ai-service có CSDL riêng `ai_db` và API công khai `/api/ai/**` (cập nhật quyết định D12) |
 | **1.3** | 06/10/2026 | `R-1`: chuyển quyền sở hữu chỉ mục embedding từ profile-service sang matching-service, CSDL riêng `matching_db` (cổng 5439), đồng bộ best-effort + `IndexSyncJob`; tiêu chí DoD 2 chuyển sang nhất quán cuối cùng (quyết định D8 *quyền sở hữu embedding*; chi tiết [adr.md](adr.md)) |
 | **2.0** | 21/10/2026 | Chốt lại phạm vi và thông số vận hành theo bản chốt của nhóm: thanh toán **qua ví VND** (nạp bằng cổng thử nghiệm, tạm giữ khi đặt lịch, hoàn tiền theo nguồn, hạn dùng số dư), **cấp độ mentor Junior/Senior/Expert + khung giá**, **buổi trải nghiệm 15 phút có phí**, **phòng học video trong hệ thống** (xác định vắng mặt bằng nhật ký vào phòng), chính sách huỷ 3 bậc, giới thiệu theo cặp mentor và thưởng bằng tiền khuyến mãi. Mục mới ghi trạng thái **⚒ kế hoạch** đến khi hiện thực xong (D13–D20, FR-5.8+, FR-6.7+, mục 3.9) |
+| **2.1** | 23/10/2026 | **Phỏng vấn bằng giọng nói** (OpenAI Realtime qua WebRTC, chấm bằng engine hiện có): mentor chọn chat hoặc giọng nói cho phỏng vấn xác thực (FR-7.7); module mới **Luyện phỏng vấn với AI** cho mentee — 1 lượt miễn phí trọn đời, kết quả + báo cáo nói hiển thị ngay (mục 3.10, FR-10.1–10.7); quyết định D21 (speech-to-speech thay vì STT→LLM→TTS); bảng `practice_interviews`, cột `interviews.mode` (migration ai `010_voice_interviews.sql`). Trạng thái **⚒** đến khi hiện thực và kiểm thử xong |
 
 > Tài liệu liên quan: [Kiến trúc](architecture.md) · [Thiết kế CSDL](database-design.md) ·
 > [Đặc tả API](api-reference.md) · [Tính năng AI](ai-features.md) ·
@@ -61,6 +62,7 @@ Năng lực mentor được xác thực qua **AI Interview** trước khi kích 
 - Ví VND: nạp bằng cổng thử nghiệm (sandbox/MoMo test/VNPay sandbox), tạm giữ, hoàn tiền, hạn dùng số dư, hoa hồng, thu nhập mentor (v2.0)
 - Phòng học video + chat trong hệ thống (Jitsi Meet tự host) và nhật ký tham dự (v2.0)
 - Referral theo cặp mentor, thưởng bằng tiền khuyến mãi, có chống gian lận cơ bản (v2.0)
+- Phỏng vấn bằng giọng nói: mentor chọn chế độ giọng nói cho AI Interview; mentee luyện phỏng vấn với AI (1 lượt miễn phí, có báo cáo nói) (v2.1 ⚒)
 
 **Ngoài phạm vi đồ án (định hướng mở rộng):**
 - Chatbot trợ lý học tập độc lập, đa mục đích
@@ -68,7 +70,8 @@ Năng lực mentor được xác thực qua **AI Interview** trước khi kích 
 - Rút tiền tự do của người học, xác minh danh tính (KYC), chống gian lận chuyên sâu
 - Hoa hồng thay đổi theo số buổi giữa một cặp, gói đăng ký định kỳ / gói combo buổi
 - Lớp học nhóm, ứng dụng di động
-- AI phân tích giọng nói từ phỏng vấn
+- Ghi âm/ghi hình buổi phỏng vấn giọng nói và phát lại cho admin; phân tích âm thanh chuyên sâu (ngữ điệu, phát âm) — v2.1 chỉ có báo cáo nói tính từ bản chép lời
+- Luyện phỏng vấn với AI có phí (ngoài lượt miễn phí), đánh giá chất lượng tiếng Việt của OpenAI Realtime so với ElevenLabs (câu hỏi mở)
 - Gửi email thật qua SMTP, tích hợp cổng thanh toán thật (VNPay/Stripe)
 
 ### 1.4 Đối tượng sử dụng tài liệu
@@ -88,6 +91,9 @@ Thành viên nhóm phát triển, giảng viên hướng dẫn, hội đồng b�
 | Re-rank | Xếp hạng lại ứng viên còn lại bằng điểm kết hợp nhiều tiêu chí |
 | AI Interview | Buổi phỏng vấn tự động nhiều lượt để đánh giá năng lực mentor |
 | Chatbot enrichment | Hội thoại ngắn giúp mentee làm rõ mục tiêu học tập dựa trên CV |
+| Speech-to-speech (Realtime) | Model nghe giọng nói và trả lời bằng giọng nói trực tiếp (OpenAI Realtime), không qua chuỗi STT → LLM → TTS |
+| Client secret | Khoá tạm thời, ngắn hạn do ai-service xin từ OpenAI cho một phiên giọng nói; API key thật không bao giờ tới trình duyệt |
+| Luyện phỏng vấn với AI | Buổi phỏng vấn giọng nói mô phỏng nhà tuyển dụng để mentee luyện nói (FR-10.x), không liên quan xác thực mentor |
 | Slot | Loại thông tin chatbot cần làm rõ (mục tiêu, mảng tập trung, thời gian…) |
 | Engine rule-based | Cài đặt AI bằng thuật toán luật, tất định, chạy offline không cần LLM |
 | Sandbox | Môi trường thanh toán giả lập, không xử lý tiền thật |
@@ -102,6 +108,8 @@ Thành viên nhóm phát triển, giảng viên hướng dẫn, hội đồng b�
 Hệ thống độc lập, kiến trúc microservices gồm 7 service backend + 1 frontend, triển khai bằng
 Docker Compose. Phụ thuộc bên ngoài tuỳ chọn: DeepSeek API cho AI Interview và CV enrichment (gọi từ
 ai-service) — khi không cấu hình API key, hệ thống tự dùng engine rule-based nên vẫn chạy offline.
+Từ v2.1 có thêm phụ thuộc tuỳ chọn **OpenAI Realtime** cho phỏng vấn giọng nói (`OPENAI_API_KEY`); trống thì chế độ giọng nói
+bị tắt (production trả 503 `VOICE_UNAVAILABLE`), mọi tính năng khác không đổi.
 
 ### 2.2 Đối tượng người dùng
 - **Mentee**: sinh viên/người đi làm muốn học lập trình có định hướng, cần mentor.
@@ -148,12 +156,13 @@ ai-service) — khi không cấu hình API key, hệ thống tự dùng engine r
 | D18 *(v2.0)* | Phòng học & vắng mặt | Jitsi Meet tự host, JWT do mentoring-service cấp; nhật ký vào phòng là căn cứ duy nhất xác định vắng mặt (chờ 10 phút; trải nghiệm 5 phút); tự hoàn thành sau 24 giờ | Quy tắc vắng mặt kiểm chứng được, không dựa lời hai bên |
 | D19 *(v2.0)* | Huỷ buổi | Mentee huỷ ≥24h hoàn 100%, 4–24h hoàn 50%, <4h hoặc vắng hoàn 0%; mentor huỷ/vắng hoàn 100% + 1 lỗi vi phạm; bỏ điểm xin lỗi và cơ chế buổi miễn phí | Đúng bản chốt "chính sách huỷ" |
 | D20 *(v2.0)* | Hoa hồng & thu nhập | Hoa hồng 15% một mức (kể cả buổi trải nghiệm); thu nhập mentor chờ 72 giờ; khiếu nại giữ thu nhập đến khi admin kết luận | Đúng bản chốt; một mức duy nhất để đơn giản hoá kế toán |
+| D21 *(v2.1)* | Công nghệ phỏng vấn giọng nói | **Speech-to-speech — OpenAI Realtime** (`gpt-realtime`, giọng `marin`) qua WebRTC trực tiếp từ trình duyệt, ai-service chỉ cấp client secret ngắn hạn; **không** dùng chuỗi STT → LLM → TTS (ví dụ ElevenLabs). Model chỉ điều khiển cuộc hỏi (tool `begin_topic`, `end_interview`); chấm điểm vẫn do engine hiện có (DeepSeek / rule-based) trên bản chép lời | Độ trễ mỗi lượt thấp hơn, ngắt lời tự nhiên, model nghe được ngập ngừng/tốc độ nói, chỉ một kết nối từ trình duyệt thay vì một pipeline phía server qua 3 nhà cung cấp. **Đánh đổi**: phụ thuộc một nhà cung cấp, âm thanh được xử lý ở nhà cung cấp tại Mỹ (cần đồng ý rõ ràng), chi phí tính theo phút. Bộ chấm chỉ cần danh sách bản chép lời nên có thể thay Realtime bằng stack nối tầng (ElevenLabs Agents hoặc LiveKit/Pipecat) về sau mà không đụng phần chấm điểm |
 
 ---
 
 ## 3. Yêu cầu chức năng
 
-Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [testing-report.md](testing-report.md)).
+Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [testing-report.md](testing-report.md)); ⚒ đang hiện thực (chưa nghiệm thu).
 
 ### 3.1 Module: Quản lý người dùng & phân quyền (auth-service)
 
@@ -237,6 +246,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-7.4 | Tổng hợp đánh giá | Điểm 0–100, tóm tắt, điểm mạnh, điểm yếu, khuyến nghị APPROVE/REJECT/NEEDS_REVIEW | ✅ |
 | FR-7.5 | Admin review | Admin đọc toàn bộ hội thoại, duyệt hoặc từ chối kèm nhận xét; mentor bị từ chối được phỏng vấn lại | ✅ |
 | FR-7.6 | Đề xuất cấp độ | Từ điểm 0–100: <60 không đạt, 60–74 Junior, 75–87 Senior, ≥88 Expert; admin chọn cấp khác đề xuất hoặc từ chối, bắt buộc ghi lý do; gián đoạn tiếp tục trong 24 giờ; làm lại sau 7 ngày, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày (không tính vào 3 lượt, chỉ lên cấp cao hơn, không đạt thì giữ cấp cũ và vẫn nhận mentee) | ✅ |
+| FR-7.7 | Phỏng vấn bằng giọng nói | Trên `/interview` mentor chọn **chat** (như cũ) hoặc **giọng nói**. Cùng quy tắc: 3 lượt, chờ 7 ngày, xin nâng cấp sau 90 ngày (`kind = UPGRADE`), admin duyệt; riêng "tiếp tục trong 24 giờ" không áp dụng — buổi giọng nói là một lần ngồi. Bắt buộc tick đồng ý âm thanh được OpenAI xử lý (400 `VOICE_CONSENT_REQUIRED`, lưu `consent_external_ai`). `POST /api/ai/interviews/voice` tạo buổi `mode = VOICE` (`max_turns` = số chủ đề, mặc định 4) và trả client secret; gọi lại khi buổi đang làm < 30 phút → cùng buổi, client secret mới (nối lại khi rớt cuộc gọi); > 30 phút chưa có bản chép lời → ABANDONED (tính một lượt). Hết buổi trình duyệt gửi bản chép lời (`POST /api/ai/interviews/{id}/voice-transcript`) → gộp theo chủ đề thành `interview_turns`, chấm bằng engine + rubric hiện có, rồi đi đúng luồng hoàn thành của chat (PENDING_REVIEW, đồng bộ xác thực, thông báo). Mentor chỉ xem nhận xét từng câu sau khi admin quyết định; trang admin có nhãn "Giọng nói". Không ghi âm (để bản sau) | ⚒ |
 
 ### 3.8 Module: CV Parsing + Chatbot Enrichment (ai-service `app/cv`, `app/enrichment`)
 
@@ -262,6 +272,25 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-9.5 | Đổi mentor | Huỷ buổi cũ theo chính sách huỷ, đặt buổi mới theo giá mentor mới, không bù chênh lệch | ✅ |
 
 Bộ lọc "miễn phí" trong đề xuất mentor bị gỡ (không còn buổi miễn phí).
+
+### 3.10 Module: Luyện phỏng vấn với AI (ai-service) — v2.1
+
+Mentee luyện **nói** trong một buổi phỏng vấn mô phỏng bằng giọng nói. Khác hẳn phỏng vấn xác thực mentor (FR-7.x): không
+xếp cấp, không có admin duyệt, kết quả trả ngay cho mentee. Quy tắc chi tiết: [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) §16.
+
+| ID | Yêu cầu | Mô tả | Trạng thái |
+|---|---|---|---|
+| FR-10.1 | Lượt miễn phí | Mỗi mentee **1 lượt miễn phí trọn đời** (`PRACTICE_FREE_LIMIT = 1`); lượt bị dùng khi buổi `COMPLETED` hoặc `ABANDONED`. `GET /api/ai/practice-interviews/eligibility` → `{freeLimit, used, canStart, reason, inProgressId}`; hết lượt → 409 `PRACTICE_FREE_USED` kèm lời mời "Đặt phỏng vấn thử với mentor". Luyện có phí ngoài lượt miễn phí: ngoài phạm vi | ⚒ |
+| FR-10.2 | Khởi tạo buổi luyện | Mentee chọn loại phỏng vấn (BACKEND, FRONTEND, SYSTEM_DESIGN, BEHAVIORAL), cấp độ (INTERN, FRESHER, JUNIOR), vị trí ứng tuyển (2–120 ký tự), công ty (tuỳ chọn, ≤ 120) và tick đồng ý âm thanh được OpenAI xử lý (400 `VOICE_CONSENT_REQUIRED`). `POST /api/ai/practice-interviews` chọn chủ đề từ ngân hàng `practice_bank` theo loại × cấp và trả client secret | ⚒ |
+| FR-10.3 | Phỏng vấn bằng giọng nói | AI đóng vai **người phỏng vấn tuyển dụng** cho vị trí và cấp độ mentee chọn; đánh dấu chủ đề bằng tool `begin_topic`, kết thúc bằng `end_interview`; câu BEHAVIORAL hỏi theo STAR. Tối đa một buổi IN_PROGRESS mỗi mentee; buổi < 30 phút được tiếp tục (cùng buổi, client secret mới), quá 30 phút → ABANDONED (tính là đã dùng lượt miễn phí) | ⚒ |
+| FR-10.4 | Chấm điểm | Rubric riêng, mỗi tiêu chí 0–10: kỹ thuật 35% · giải quyết vấn đề & chiều sâu 25% · diễn đạt rõ ràng 25% · cấu trúc (STAR hoặc cách tiếp cận) 15%. DeepSeek (prompt `practice-v1`) khi có `DEEPSEEK_API_KEY`, ngược lại rule-based theo khái niệm kỳ vọng của từng chủ đề; cùng cơ chế chống prompt injection như phỏng vấn mentor | ⚒ |
+| FR-10.5 | Kết quả trả ngay | `POST /api/ai/practice-interviews/{id}/complete` (chủ buổi, buổi IN_PROGRESS) trả ngay: nhận xét từng câu, 3 điểm mạnh, 3 điểm cần cải thiện (hiển thị như danh sách việc cần làm, chỉ là văn bản), điểm tổng 0–100. 400 `EMPTY_TRANSCRIPT` nếu chưa hỏi chủ đề nào | ⚒ |
+| FR-10.6 | Báo cáo nói | Số từ đệm ("ừm", "à", "ờ", "uh", "um", "kiểu như", "thì là"), số từ trung bình mỗi câu trả lời, số câu trả lời dưới 20 từ — tính từ bản chép lời, không phân tích âm thanh | ⚒ |
+| FR-10.7 | Lịch sử & bước tiếp theo | `GET /api/ai/practice-interviews/me` (mới nhất trước), `GET /api/ai/practice-interviews/{id}` (chủ buổi hoặc admin); trang kết quả có nút "Đặt phỏng vấn thử với mentor" dẫn tới luồng phỏng vấn thử với mentor đã có (US-58) | ⚒ |
+
+Quy tắc chung của chế độ giọng nói (FR-7.7, FR-10.x): `OPENAI_API_KEY` trống → ở production (`APP_ENV=prod`) endpoint bắt đầu
+trả 503 `VOICE_UNAVAILABLE` và không tạo gì; ngoài production vẫn tạo buổi và trả `voice: null` để kiểm thử gửi bản chép lời
+tổng hợp, giao diện hiện "Phỏng vấn giọng nói chưa được bật".
 
 ---
 
@@ -311,6 +340,7 @@ asyncio task trong service Python (`IndexSyncJob` đồng bộ chỉ mục embed
 | Vector Database | pgvector (HNSW, cosine) trong `matching_db` — CSDL riêng của matching-service (image `pgvector/pgvector:pg16`) |
 | Embedding model | sentence-transformers `all-MiniLM-L6-v2` (384 chiều) |
 | LLM (tuỳ chọn) | DeepSeek API (định dạng OpenAI, JSON Output mode), mặc định model `deepseek-flash` |
+| Giọng nói (tuỳ chọn, v2.1) | OpenAI Realtime (`gpt-realtime`, giọng `marin`, chép lời `gpt-4o-transcribe`) qua WebRTC từ trình duyệt (D21) |
 | Xử lý PDF | pypdf (ai-service) |
 | Xác thực | JJWT (HS256), BCrypt, PyJWT |
 | Cache/Rate limit | Redis 7 (đếm số lần đăng nhập sai) |
@@ -358,6 +388,16 @@ Mỗi tiêu chí được kiểm chứng tự động bằng `scripts/e2e_accept
 - [x] Phòng học Jitsi: chỉ người tham gia vào được; nhật ký vào phòng quyết định vắng mặt; tự hoàn thành sau 24 giờ
 - [x] Referral theo cặp mentor: thưởng 30.000đ khuyến mãi sau 7 ngày, tối đa 5 lượt/tháng; tự giới thiệu/đã học với mentor bị từ chối
 - [x] Admin khoá mentee: buổi chưa diễn ra bị huỷ, hoàn 100%, ví đóng băng
+
+**Tiêu chí bổ sung v2.1 — phỏng vấn giọng nói** (chưa nghiệm thu):
+
+- [ ] Mentor chọn chế độ giọng nói; bản chép lời được gộp theo chủ đề, chấm bằng engine + rubric hiện có và chuyển PENDING_REVIEW như chat; admin thấy nhãn "Giọng nói"
+- [ ] Không tick đồng ý → 400 `VOICE_CONSENT_REQUIRED`; thiếu `OPENAI_API_KEY` ở production → 503 `VOICE_UNAVAILABLE`, không tạo buổi
+- [ ] Buổi giọng nói đang làm < 30 phút được nối lại với client secret mới; quá 30 phút không có bản chép lời → ABANDONED, tính một lượt
+- [ ] Mentee luyện phỏng vấn 1 lần miễn phí; lần thứ hai → 409 `PRACTICE_FREE_USED` kèm lời mời đặt phỏng vấn thử với mentor
+- [ ] Kết quả luyện phỏng vấn hiện ngay: nhận xét từng câu, 3 điểm mạnh, 3 điểm cần cải thiện, điểm 0–100, báo cáo nói
+- [ ] Chấm luyện phỏng vấn chạy được bằng rule-based khi không có `DEEPSEEK_API_KEY` (CI)
+- [ ] Thử thật trên trình duyệt có micro với `OPENAI_API_KEY` (HTTPS hoặc localhost)
 
 ---
 
@@ -409,7 +449,7 @@ Bản đầy đủ theo từng endpoint: [api-reference.md](api-reference.md); s
 | learning-service | 24 | courses, enroll, progress, materials, roadmaps, admin CRUD |
 | mentoring-service | 21 | requests, sessions, reviews, notifications, admin stats, internal sessions, internal notifications, internal relationships |
 | payment-service | 10 | charge, transactions, referrals, admin stats/transactions/referrals, internal referrals/refund |
-| ai-service | 15 | interviews (+ admin interviews, admin stats), CV upload/parse/file/mine/delete, enrichment conversations |
+| ai-service | 15 | interviews (+ admin interviews, admin stats), CV upload/parse/file/mine/delete, enrichment conversations. *v2.1 ⚒ thêm 7: `interviews/voice`, `interviews/{id}/voice-transcript`, 5 endpoint `practice-interviews` (chưa tính vào tổng bên dưới)* |
 | **Tổng** | **100** (+ 7 `/health` = 107, khớp `contracts/*.yaml` và mã nguồn) | |
 
 ### 9.1 Sơ đồ gọi API giữa các service
@@ -428,6 +468,8 @@ browser ──► frontend (Next.js 14 + TypeScript, proxy /api/<service>/**)
                │              │                                    DELETE /internal/profile/{id}/cv-file]
                │              ├──────────────► mentoring-service [POST /internal/notifications,
                │              │                                    GET /internal/relationships]
-               │              └──────────────► DeepSeek API (tuỳ chọn)
+               │              ├──────────────► DeepSeek API (tuỳ chọn)
+               │              └──────────────► OpenAI Realtime [POST /realtime/client_secrets] (tuỳ chọn, v2.1)
                └─► payment-service ──────────► mentoring-service [GET /internal/sessions/{id}, POST .../payment-succeeded]
+browser ◄══ WebRTC (âm thanh + kênh dữ liệu oai-events) ══► OpenAI Realtime   [v2.1, dùng client secret ngắn hạn]
 ```

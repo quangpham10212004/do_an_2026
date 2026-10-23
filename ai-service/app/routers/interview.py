@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.interview import service, voice
 from app.interview.views import (AnswerInput, EligibilityView, InterviewStats, InterviewView, ReviewInterviewInput,
-                                 StartInterviewInput, UnlockInput)
+                                 StartInterviewInput, UnlockInput, VoiceInterviewStart)
 from app import config
 from app.security import AuthUser, require_internal, require_role, require_user
 
@@ -41,15 +41,18 @@ async def answer(interview_id: UUID, body: AnswerInput,
     return await service.answer(user, interview_id, body.answer, body.pasted_large_text)
 
 
-# PROTOTYPE — phỏng vấn giọng nói (OpenAI Realtime); chưa lưu CSDL, chưa nối với luồng duyệt.
-@router.post("/voice-interviews/session", response_model=voice.VoiceSessionView, response_model_by_alias=True)
-async def voice_session(user: AuthUser = Depends(require_role("MENTOR"))) -> voice.VoiceSessionView:
-    return await voice.create_session(user)
+# FR-7.7 — phỏng vấn giọng nói (OpenAI Realtime): cùng điều kiện bắt đầu và cùng luồng hoàn thành với chat.
+@router.post("/interviews/voice", response_model=VoiceInterviewStart, response_model_by_alias=True)
+async def start_voice(body: voice.VoiceConsentInput | None = None,
+                      user: AuthUser = Depends(require_role("MENTOR"))) -> VoiceInterviewStart:
+    body = body or voice.VoiceConsentInput()
+    return await service.start_voice(user, body.self_answer_acknowledged, body.consent_external_ai)
 
 
-@router.post("/voice-interviews/grade", response_model=voice.VoiceGradeView, response_model_by_alias=True)
-async def voice_grade(body: voice.GradeInput, user: AuthUser = Depends(require_role("MENTOR"))) -> voice.VoiceGradeView:
-    return await voice.grade(user, body.items)
+@router.post("/interviews/{interview_id}/voice-transcript", response_model=InterviewView, response_model_by_alias=True)
+async def voice_transcript(interview_id: UUID, body: voice.TranscriptInput,
+                           user: AuthUser = Depends(require_role("MENTOR"))) -> InterviewView:
+    return await service.submit_voice_transcript(user, interview_id, body.items)
 
 
 @router.get("/admin/interviews", response_model=list[InterviewView], response_model_by_alias=True)

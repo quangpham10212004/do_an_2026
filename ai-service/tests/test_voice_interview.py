@@ -1,22 +1,87 @@
-"""PROTOTYPE — phỏng vấn giọng nói: tạo phiên OpenAI Realtime, gộp bản ghi theo chủ đề, chấm bằng engine hiện có."""
+"""FR-7.7 — AI Interview của mentor bằng giọng nói: cùng điều kiện bắt đầu và cùng luồng hoàn thành với chat."""
 import asyncio
 import json
 import uuid
 
+import asyncpg
 import httpx
 import pytest
 
 from app import config
 from app.interview import voice
 from app.interview.voice import TranscriptItem
-from app.security import AuthUser
 from tests.conftest import auth
-from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER
+from tests.test_interview_attempts import finish, reject
+from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, start
+from tests.test_interview_upgrade import approved  # noqa: F401 — fixture mentor đã duyệt 100 ngày trước
 
 
 def items(*raw):
     return [TranscriptItem(**r) for r in raw]
 
+
+@pytest.fixture
+def mentor_id():
+    return uuid.uuid4()
+
+
+def start_voice(client, mentor_id, ack=True, consent=True):
+    return client.post("/api/ai/interviews/voice", json={"selfAnswerAcknowledged": ack, "consentExternalAi": consent},
+                       headers=auth(mentor_id, "MENTOR"))
+
+
+TRANSCRIPT = {"items": [
+    {"role": "assistant", "text": "Xin chào, buổi phỏng vấn gồm 4 chủ đề."},
+    {"role": "marker", "topicNo": 1}, {"role": "assistant", "text": "Câu hỏi 1"}, {"role": "user", "text": STRONG_ANSWER},
+    {"role": "assistant", "text": "Câu đào sâu 1"}, {"role": "user", "text": "Toi dung ETag va versioning."},
+    {"role": "marker", "topicNo": 2}, {"role": "assistant", "text": "Câu hỏi 2"}, {"role": "user", "text": WEAK_ANSWER},
+    {"role": "marker", "topicNo": 3}, {"role": "assistant", "text": "Câu hỏi 3"},
+]}
+
+
+def post_transcript(client, mentor_id, interview_id, body=TRANSCRIPT):
+    return client.post(f"/api/ai/interviews/{interview_id}/voice-transcript", json=body,
+                       headers=auth(mentor_id, "MENTOR"))
+
+
+async def _count(sql, *args):
+    conn = await asyncpg.connect(config.AI_DB_URL)
+    try:
+        return await conn.fetchval(sql, *args)
+    finally:
+        await conn.close()
+
+
+async def _age(interview_id, minutes):
+    conn = await asyncpg.connect(config.AI_DB_URL)
+    try:
+        await conn.execute("UPDATE interviews SET created_at = created_at - make_interval(mins => $2) WHERE id = $1::uuid",
+                           interview_id, minutes)
+    finally:
+        await conn.close()
+
+
+class FakeOpenAI:
+    def __init__(self, status=200):
+        self.status = status
+        self.requests: list[httpx.Request] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.status != 200:
+            return httpx.Response(self.status, json={"error": {"message": "nope"}})
+        return httpx.Response(200, json={"value": f"ek_{len(self.requests)}", "expires_at": 1792000000, "session": {}})
+
+
+@pytest.fixture
+def openai(monkeypatch) -> FakeOpenAI:
+    fake = FakeOpenAI()
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(voice, "TRANSPORT", httpx.MockTransport(fake.handler))
+    return fake
+
+
+# ---------- gộp bản ghi & lời dặn ----------
 
 def test_group_by_topic_keeps_follow_ups_inside_their_topic():
     grouped = voice.group_by_topic(items(
@@ -48,61 +113,164 @@ def test_group_by_topic_merges_a_repeated_marker_and_drops_topics_never_asked():
 
 def test_instructions_carry_the_plan_and_the_no_help_rules():
     mentor = {"domain": "backend", "skills": ["Java"], "yearsExperience": 8}
-    topics = voice.plan_topics(mentor)
+    topics = voice.plan_topics("backend", ["Java"])
     text = voice.build_instructions(mentor, topics)
     assert len(topics) == config.VOICE_INTERVIEW_TOPICS
     assert all(t.question in text for t in topics)
     assert "begin_topic" in text and "end_interview" in text and "KHÔNG gợi ý đáp án" in text
 
 
-def test_session_needs_an_openai_key(client, fake_profile, monkeypatch):
-    monkeypatch.setattr(config, "OPENAI_API_KEY", "")
-    res = client.post("/api/ai/voice-interviews/session", headers=auth(uuid.uuid4(), "MENTOR"))
+def test_prototype_routes_are_gone(client, fake_profile):
+    for path in ("/api/ai/voice-interviews/session", "/api/ai/voice-interviews/grade"):
+        assert client.post(path, json={}, headers=auth(uuid.uuid4(), "MENTOR")).status_code in (404, 405)
+
+
+# ---------- bắt đầu ----------
+
+def test_voice_requires_consent_and_self_answer(client, db, fake_profile, mentor_id):
+    res = start_voice(client, mentor_id, consent=False)
+    assert res.status_code == 400 and res.json()["error"]["code"] == "VOICE_CONSENT_REQUIRED"
+    res = start_voice(client, mentor_id, ack=False)
+    assert res.status_code == 400 and res.json()["error"]["code"] == "SELF_ANSWER_ACK_REQUIRED"
+    assert asyncio.run(_count("SELECT COUNT(*) FROM interviews")) == 0
+
+
+def test_without_openai_key_outside_prod_the_interview_is_created_with_voice_null(client, db, fake_profile, mentor_id):
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["voice"] is None
+    iv = body["interview"]
+    assert iv["mode"] == "VOICE" and iv["status"] == "IN_PROGRESS" and iv["consentExternalAi"] is True
+    assert iv["maxTurns"] == config.VOICE_INTERVIEW_TOPICS and iv["turns"] == [] and iv["resumeDeadline"]
+    assert client.get("/api/ai/interviews/eligibility", headers=auth(mentor_id, "MENTOR")).json()["voiceAvailable"] is False
+
+
+def test_without_openai_key_in_prod_returns_503_and_creates_nothing(client, db, fake_profile, mentor_id, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "prod")
+    res = start_voice(client, mentor_id)
     assert res.status_code == 503 and res.json()["error"]["code"] == "VOICE_UNAVAILABLE"
+    assert asyncio.run(_count("SELECT COUNT(*) FROM interviews")) == 0
 
 
-def test_session_mints_a_client_secret_without_leaking_the_key(fake_profile, monkeypatch):
-    monkeypatch.setattr(config, "OPENAI_API_KEY", "sk-test")
-    seen = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["path"], seen["auth"] = request.url.path, request.headers["Authorization"]
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"value": "ek_123", "expires_at": 1792000000, "session": {}})
-
-    user = AuthUser(user_id=uuid.uuid4(), email="m@test.local", role="MENTOR")
-    view = asyncio.run(voice.create_session(user, httpx.MockTransport(handler)))
-    assert view.client_secret == "ek_123" and len(view.topics) == config.VOICE_INTERVIEW_TOPICS
-    assert seen["path"] == "/v1/realtime/client_secrets" and seen["auth"] == "Bearer sk-test"
-    session = seen["body"]["session"]
-    assert session["type"] == "realtime" and {t["name"] for t in session["tools"]} == {"begin_topic", "end_interview"}
+def test_client_secret_is_minted_without_leaking_the_key(client, db, fake_profile, openai, mentor_id):
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 200, res.text
+    v = res.json()["voice"]
+    assert v["clientSecret"] == "ek_1" and len(v["topics"]) == config.VOICE_INTERVIEW_TOPICS and v["model"] == config.OPENAI_REALTIME_MODEL
+    assert "sk-test" not in res.text
+    req = openai.requests[0]
+    assert req.url.path == "/v1/realtime/client_secrets" and req.headers["Authorization"] == "Bearer sk-test"
+    session = json.loads(req.content)["session"]
+    assert {t["name"] for t in session["tools"]} == {"begin_topic", "end_interview"}
     assert session["audio"]["input"]["transcription"]["model"] == config.OPENAI_TRANSCRIBE_MODEL
 
 
-def test_session_reports_openai_errors_as_502(fake_profile, monkeypatch):
-    monkeypatch.setattr(config, "OPENAI_API_KEY", "sk-test")
-    user = AuthUser(user_id=uuid.uuid4(), email="m@test.local", role="MENTOR")
-    with pytest.raises(Exception) as e:
-        asyncio.run(voice.create_session(user, httpx.MockTransport(lambda r: httpx.Response(401, json={}))))
-    assert e.value.code == "VOICE_UNAVAILABLE" and e.value.status == 502
+def test_openai_error_is_502_and_no_attempt_is_used(client, db, fake_profile, openai, mentor_id):
+    openai.status = 401
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 502 and res.json()["error"]["code"] == "VOICE_UNAVAILABLE"
+    assert asyncio.run(_count("SELECT COUNT(*) FROM interviews")) == 0
 
 
-def test_grade_scores_each_topic_with_the_existing_engine(client, fake_profile):
-    body = {"items": [
-        {"role": "marker", "topicNo": 1}, {"role": "assistant", "text": "Câu hỏi 1"}, {"role": "user", "text": STRONG_ANSWER},
-        {"role": "marker", "topicNo": 2}, {"role": "assistant", "text": "Câu hỏi 2"}, {"role": "user", "text": WEAK_ANSWER},
-        {"role": "marker", "topicNo": 3}, {"role": "assistant", "text": "Câu hỏi 3"},
-    ]}
-    res = client.post("/api/ai/voice-interviews/grade", json=body, headers=auth(uuid.uuid4(), "MENTOR"))
+def test_calling_again_within_30_minutes_reconnects_to_the_same_interview(client, db, fake_profile, openai, mentor_id):
+    first = start_voice(client, mentor_id).json()
+    again = start_voice(client, mentor_id).json()
+    assert again["interview"]["id"] == first["interview"]["id"]
+    assert again["voice"]["clientSecret"] == "ek_2" and again["voice"]["topics"] == first["voice"]["topics"]
+    # Đang có buổi giọng nói dở thì không mở song song buổi chat.
+    res = start(client, mentor_id)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_IN_PROGRESS"
+
+
+def test_voice_after_30_minutes_without_transcript_is_abandoned_and_counts(client, db, fake_profile, fake_audit, mentor_id):
+    first = start_voice(client, mentor_id).json()["interview"]
+    asyncio.run(_age(first["id"], config.VOICE_SESSION_MINUTES + 1))
+    e = client.get("/api/ai/interviews/eligibility", headers=auth(mentor_id, "MENTOR")).json()
+    assert e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2
+    assert fake_audit.records[-1]["action"] == "INTERVIEW_ABANDONED"
+    res = post_transcript(client, mentor_id, first["id"])
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_ABANDONED"
+    second = start_voice(client, mentor_id).json()["interview"]
+    assert second["id"] != first["id"]
+
+
+def test_voice_follows_the_chat_cooldown_and_lock(client, db, fake_profile, fake_mentoring, mentor_id):
+    admin = auth(uuid.uuid4(), "ADMIN")
+    reject(client, finish(client, mentor_id)["id"], admin)
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_COOLDOWN" and res.json()["error"]["retryAfter"]
+    asyncio.run(_count("""UPDATE interviews SET status = 'REJECTED', reviewed_at = now() - interval '30 days',
+                                                created_at = now() - interval '30 days'
+                           WHERE mentor_id = $1 RETURNING 1""", mentor_id))
+    for _ in range(2):  # thêm 2 buổi bị từ chối => đủ 3 lần => khoá
+        asyncio.run(_count("""INSERT INTO interviews (mentor_id, domain, max_turns, engine, status, reviewed_at, created_at)
+                              VALUES ($1, 'backend', 5, 'RULE_BASED', 'REJECTED', now() - interval '20 days',
+                                      now() - interval '20 days') RETURNING 1""", mentor_id))
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_LOCKED"
+
+
+def test_voice_while_pending_review_is_blocked(client, db, fake_profile, fake_mentoring, mentor_id):
+    finish(client, mentor_id)
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_PENDING_REVIEW"
+
+
+def test_approved_mentor_voice_is_an_upgrade_and_follows_the_90_days(client, db, approved, fake_mentoring, mentor_id):  # noqa: F811
+    approved.mentor["tierAssignedAt"] = "2026-10-20T00:00:00Z"
+    res = start_voice(client, mentor_id)
+    assert res.status_code == 409 and res.json()["error"]["code"] == "UPGRADE_COOLDOWN"
+    approved.mentor["tierAssignedAt"] = "2025-01-01T00:00:00Z"
+    iv = start_voice(client, mentor_id).json()["interview"]
+    assert iv["kind"] == "UPGRADE" and iv["fromTier"] == "JUNIOR" and iv["mode"] == "VOICE"
+    done = post_transcript(client, mentor_id, iv["id"]).json()
+    assert done["status"] == "PENDING_REVIEW"
+    assert approved.verifications == []  # xin nâng cấp: không hạ về PENDING_REVIEW
+    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
+
+
+# ---------- bản ghi → PENDING_REVIEW ----------
+
+def test_transcript_goes_through_the_chat_completion_path(client, db, fake_profile, fake_mentoring, mentor_id):
+    iv = start_voice(client, mentor_id).json()["interview"]
+    res = post_transcript(client, mentor_id, iv["id"])
     assert res.status_code == 200, res.text
-    out = res.json()
-    assert out["engine"] == "RULE_BASED" and len(out["turns"]) == 3
-    assert out["turns"][0]["score"] > out["turns"][1]["score"]
-    assert out["turns"][2]["answer"] == voice.NO_ANSWER
-    assert 0 <= out["assessment"]["overallScore"] <= 100 and out["assessment"]["recommendation"]
+    done = res.json()
+    assert done["status"] == "PENDING_REVIEW" and done["mode"] == "VOICE"
+    assert done["overallScore"] is not None and done["summary"] and done["recommendation"]
+    assert len(done["turns"]) == 3 and done["currentTurn"] == 3
+    # PRD-AIV-5: mentor chưa thấy điểm từng câu khi admin chưa quyết định.
+    assert all(t["score"] is None and t["feedback"] is None for t in done["turns"])
+    assert done["turns"][0]["question"] == "Câu hỏi 1 / Câu đào sâu 1"
+    assert done["turns"][0]["answer"] == STRONG_ANSWER + " Toi dung ETag va versioning."
+    assert done["turns"][2]["answer"] == voice.NO_ANSWER
+    assert (mentor_id, "PENDING_REVIEW") in fake_profile.verifications
+    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
+    assert (str(mentor_id), "INTERVIEW_COMPLETED") in fake_mentoring.notifications
+
+    admin_view = client.get(f"/api/ai/interviews/{iv['id']}", headers=auth(uuid.uuid4(), "ADMIN")).json()
+    turns = admin_view["turns"]
+    assert turns[0]["score"] > turns[1]["score"] and all(t["rubric"] for t in turns)
+    assert turns[0]["engine"] == "RULE_BASED" and turns[0]["promptVersion"]
+    assert admin_view["mode"] == "VOICE"
+    # Gửi lại => buổi đã kết thúc.
+    again = post_transcript(client, mentor_id, iv["id"])
+    assert again.status_code == 409 and again.json()["error"]["code"] == "INTERVIEW_NOT_IN_PROGRESS"
 
 
-def test_grade_rejects_a_transcript_without_topics(client, fake_profile):
-    res = client.post("/api/ai/voice-interviews/grade", json={"items": [{"role": "user", "text": "xin chào"}]},
-                      headers=auth(uuid.uuid4(), "MENTOR"))
+def test_transcript_without_any_topic_is_rejected(client, db, fake_profile, mentor_id):
+    iv = start_voice(client, mentor_id).json()["interview"]
+    res = post_transcript(client, mentor_id, iv["id"], {"items": [{"role": "user", "text": "xin chào"},
+                                                                 {"role": "marker", "topicNo": 9},
+                                                                 {"role": "assistant", "text": "Câu ngoài kế hoạch"}]})
     assert res.status_code == 400 and res.json()["error"]["code"] == "EMPTY_TRANSCRIPT"
+
+
+def test_transcript_rules_owner_and_mode(client, db, fake_profile, fake_mentoring, mentor_id):
+    iv = start_voice(client, mentor_id).json()["interview"]
+    assert post_transcript(client, uuid.uuid4(), iv["id"]).status_code == 403
+    chat_mentor = uuid.uuid4()
+    chat = start(client, chat_mentor).json()
+    res = post_transcript(client, chat_mentor, chat["id"])
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_NOT_VOICE"
