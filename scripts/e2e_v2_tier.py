@@ -4,7 +4,8 @@ E2E bản chốt v2.0 — cấp độ mentor và khung giá (docs/ban-chot-nghie
 
     python3 scripts/e2e_v2_tier.py
 
-Mentor làm phỏng vấn → admin duyệt kèm cấp → khung giá, chọn giá trong khung, đổi cấp kẹp giá, bộ lọc "miễn phí" đã gỡ.
+Mentor làm phỏng vấn → admin duyệt kèm cấp → khung giá, chọn giá trong khung, đổi cấp kẹp giá, mốc xin nâng cấp 90 ngày,
+bộ lọc "miễn phí" đã gỡ.
 """
 import sys
 import time
@@ -81,6 +82,18 @@ def main():
     call("PUT", f"{PROFILE}/internal/mentor/{uid}/tier", {"tier": "JUNIOR"}, internal=True)
     p = call("GET", f"{PROFILE}/api/profile/mentor/{uid}", token=mt)
     check("Hạ cấp JUNIOR → giá kẹp về trần khung (200.000)", p["tier"] == "JUNIOR" and float(p["hourlyRate"]) == 200000, (p["tier"], p["hourlyRate"]))
+
+    # Xin nâng cấp sau 90 ngày (§3) — vừa đổi cấp nên chưa tới mốc; EXPERT thì không xin được nữa.
+    e = call("GET", f"{AI}/api/ai/interviews/eligibility", token=mt)
+    check("Mentor đã duyệt: buổi tiếp theo là xin nâng cấp, chờ 90 ngày kể từ lần xếp cấp",
+          e["kind"] == "UPGRADE" and e["currentTier"] == "JUNIOR" and e["reason"] == "UPGRADE_COOLDOWN"
+          and not e["canStart"] and e["upgradeAvailableAt"], e)
+    status, code = status_code(lambda: call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=mt))
+    check("Xin nâng cấp trước 90 ngày → 409 UPGRADE_COOLDOWN", status == 409 and code == "UPGRADE_COOLDOWN", (status, code))
+    call("PUT", f"{PROFILE}/internal/mentor/{uid}/tier", {"tier": "EXPERT"}, internal=True)
+    status, code = status_code(lambda: call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=mt))
+    check("EXPERT → 409 TIER_MAX", status == 409 and code == "TIER_MAX", (status, code))
+    call("PUT", f"{PROFILE}/internal/mentor/{uid}/tier", {"tier": "JUNIOR"}, internal=True)
 
     status, _ = status_code(lambda: call("GET", f"{MATCHING}/api/matching/mentors?menteeId={uid}&freeOnly=true", token=mt))
     check("Tham số freeOnly không còn được nhận (bị bỏ qua, không lỗi 500)", status != 500, status)

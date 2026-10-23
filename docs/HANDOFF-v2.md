@@ -36,9 +36,9 @@ Chạy: `PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=$(grep '^INTERNAL_API_KEY' .env
   đã có trên main. CSDL dev đã chạy nhánh này với V19 cũ → `docker compose down -v` cho mentoring-db (hoặc sửa `flyway_schema_history`).
 
 ### 2.2 Chưa cài đặt
-- Interview: "xin nâng hạng sau 90 ngày" (một phần FR-7.6) — **chưa làm, cần chốt nghiệp vụ** (đã ghi vào Open questions của PRD):
-  phỏng vấn nâng cấp bị từ chối có giữ mentor ở trạng thái APPROVED + cấp cũ không (luồng REJECT hiện tại hạ `verification` về
-  REJECTED); có tính vào giới hạn 3 lượt không; điểm thấp hơn có được hạ cấp không; mentor vẫn nhận đặt lịch trong lúc chờ duyệt?
+- ✅ (23/10) Interview: xin nâng cấp sau 90 ngày (FR-7.6) — chốt: không đạt thì giữ APPROVED + cấp cũ; không tính vào 3 lượt /
+  chờ 7 ngày; chỉ duyệt lên cấp cao hơn (400 `TIER_NOT_HIGHER`); vẫn nhận đặt lịch trong lúc chờ duyệt. Buổi `kind = UPGRADE`
+  (migration ai 009), mốc 90 ngày = max(`tier_assigned_at`, lần xin gần nhất đã có kết quả). `test_interview_upgrade.py`, `e2e_v2_tier`.
 - ✅ Email nhắc khuyến mãi sắp hết hạn / ví sắp ngủ (`WALLET_PROMO_EXPIRING`, `WALLET_DORMANT_SOON` → nhóm ACCOUNT, luôn gửi; số tiền
   dạng `30.000đ`) — `e2e_v2_booking` mục 8.
 - ✅ Trang admin `/admin/contact-violations` + `GET /api/mentoring/admin/contact-violations?days=` (gộp theo người gửi, số lần,

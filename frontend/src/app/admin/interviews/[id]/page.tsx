@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Check, RotateCcw, X } from "lucide-react";
-import { Alert, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, Select, StatusBadge, Textarea, type Flash } from "@/components/ui";
+import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, Select, StatusBadge, Textarea, type Flash } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 import { errorMessage } from "@/lib/api";
@@ -77,6 +77,9 @@ function InterviewReview({ id }: { id: string }) {
     aiApi.interview(id).then((i) => { setInterview(i); setTier(i.suggestedTier ?? ""); }).catch((e) => { setMsg({ error: errorMessage(e) }); setInterview(null); });
   }, [id]);
 
+  // Bản chốt v2.0 §3 — buổi xin nâng cấp: chỉ được duyệt lên cấp cao hơn cấp lúc xin.
+  const upgradeFrom = interview?.kind === "UPGRADE" ? interview.fromTier ?? null : null;
+
   async function decide(decision: ReviewDecision) {
     setMsg({});
     try {
@@ -86,6 +89,10 @@ function InterviewReview({ id }: { id: string }) {
       }
       if (decision === "APPROVE" && interview) {
         const suggested = interview.suggestedTier;
+        if (upgradeFrom && tier && TIERS.indexOf(tier) <= TIERS.indexOf(upgradeFrom)) {
+          setMsg({ error: `Xin nâng cấp chỉ được duyệt lên cấp cao hơn ${upgradeFrom}. Giữ cấp hiện tại thì chọn Từ chối.` });
+          return;
+        }
         if (!tier) {
           setMsg({ error: "Điểm dưới ngưỡng đạt — chọn cấp độ rõ ràng nếu vẫn duyệt." });
           return;
@@ -96,7 +103,9 @@ function InterviewReview({ id }: { id: string }) {
         }
       }
       setInterview(await aiApi.reviewInterview(id, decision, note, decision === "APPROVE" ? (tier || null) : null));
-      setMsg({ ok: decision === "APPROVE" ? "Đã kích hoạt mentor." : decision === "REJECT" ? "Đã từ chối mentor." : "Đã yêu cầu mentor phỏng vấn lại (không tính vào số lần)." });
+      setMsg({ ok: upgradeFrom
+        ? (decision === "APPROVE" ? `Đã nâng mentor lên cấp ${tier}.` : decision === "REJECT" ? `Mentor giữ cấp ${upgradeFrom}.` : "Đã yêu cầu mentor làm lại buổi xin nâng cấp.")
+        : (decision === "APPROVE" ? "Đã kích hoạt mentor." : decision === "REJECT" ? "Đã từ chối mentor." : "Đã yêu cầu mentor phỏng vấn lại (không tính vào số lần).") });
     } catch (e) {
       setMsg({ error: errorMessage(e) });
     }
@@ -111,7 +120,7 @@ function InterviewReview({ id }: { id: string }) {
         back={{ href: "/admin/interviews", label: "Duyệt mentor" }}
         title={`AI Interview · ${interview.mentorName || "Mentor"}`}
         description={`${interview.domain} · ${interview.skills.join(", ")}`}
-        actions={<StatusBadge status={interview.status} />}
+        actions={<>{upgradeFrom && <Badge tone="accent">Xin nâng cấp từ {upgradeFrom}</Badge>}<StatusBadge status={interview.status} /></>}
       />
       <FlashAlerts flash={msg} className="mb-6" />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -123,10 +132,14 @@ function InterviewReview({ id }: { id: string }) {
           {interview.status === "PENDING_REVIEW" && (
             <Card>
               <CardHeader title="Quyết định của quản trị viên"
-                description="Đọc kỹ câu trả lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được duyệt." />
+                description={upgradeFrom
+                  ? `Mentor đang hoạt động ở cấp ${upgradeFrom}. Duyệt = lên cấp cao hơn; từ chối hoặc yêu cầu làm lại thì mentor giữ cấp ${upgradeFrom}.`
+                  : "Đọc kỹ câu trả lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được duyệt."} />
               <CardBody className="flex flex-col gap-3">
                 <Field label="Cấp độ mentor" id="review-tier"
-                  hint={interview.suggestedTier
+                  hint={upgradeFrom && interview.suggestedTier && TIERS.indexOf(interview.suggestedTier) <= TIERS.indexOf(upgradeFrom)
+                    ? `AI đề xuất ${interview.suggestedTier} từ điểm ${interview.overallScore}, không cao hơn cấp hiện tại — giữ cấp thì chọn Từ chối.`
+                    : interview.suggestedTier
                     ? `AI đề xuất ${interview.suggestedTier} từ điểm ${interview.overallScore}. Chọn cấp khác thì cần ghi lý do.`
                     : "Điểm dưới ngưỡng đạt (60) nên không có đề xuất — chọn cấp rõ ràng và ghi lý do nếu vẫn duyệt."}>
                   <Select id="review-tier" value={tier} onChange={(e) => setTier(e.target.value as MentorTier | "")}>
@@ -143,7 +156,7 @@ function InterviewReview({ id }: { id: string }) {
               <CardFooter>
                 <Button icon={RotateCcw} onClick={() => decide("REQUEST_RETAKE")}>Yêu cầu làm lại{star("REQUEST_RETAKE")}</Button>
                 <Button variant="danger" icon={X} onClick={() => decide("REJECT")}>Từ chối{star("REJECT")}</Button>
-                <Button variant="primary" icon={Check} onClick={() => decide("APPROVE")}>Duyệt và kích hoạt{star("APPROVE")}</Button>
+                <Button variant="primary" icon={Check} onClick={() => decide("APPROVE")}>{upgradeFrom ? "Duyệt nâng cấp" : "Duyệt và kích hoạt"}{star("APPROVE")}</Button>
               </CardFooter>
             </Card>
           )}

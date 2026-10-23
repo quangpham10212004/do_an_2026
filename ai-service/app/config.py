@@ -36,6 +36,8 @@ ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))
 # US-22 (PRD-AIV-4) — số lần phỏng vấn tối đa (lần = buổi đã có kết quả) và thời gian chờ sau khi bị từ chối.
 INTERVIEW_MAX_ATTEMPTS = int(os.getenv("INTERVIEW_MAX_ATTEMPTS", "3"))
 INTERVIEW_COOLDOWN_DAYS = float(os.getenv("INTERVIEW_COOLDOWN_DAYS", "7"))
+# Bản chốt v2.0 §3 — mentor đã duyệt xin nâng cấp sau 90 ngày kể từ lần gán cấp / lần xin nâng cấp gần nhất.
+INTERVIEW_UPGRADE_AFTER_DAYS = float(os.getenv("INTERVIEW_UPGRADE_AFTER_DAYS", "90"))
 # Bản chốt v2.0 §3 — đề xuất cấp độ mentor từ điểm tổng 0–100: < PASS không đạt; PASS..SENIOR-1 JUNIOR;
 # SENIOR..EXPERT-1 SENIOR; ≥ EXPERT là EXPERT. Admin được chọn cấp khác đề xuất (bắt buộc ghi lý do).
 TIER_PASS_FROM = float(os.getenv("TIER_PASS_FROM", "60"))

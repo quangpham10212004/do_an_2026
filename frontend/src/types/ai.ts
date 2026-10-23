@@ -46,6 +46,9 @@ export interface Interview {
   domain: string;
   skills: string[];
   status: InterviewStatus;
+  /** Bản chốt v2.0 §3 — UPGRADE = mentor đã duyệt xin nâng cấp; fromTier = cấp lúc xin. */
+  kind?: InterviewKind;
+  fromTier?: MentorTier | null;
   engine: "DEEPSEEK" | "RULE_BASED";
   maxTurns: number;
   currentTurn: number;
@@ -76,6 +79,8 @@ export interface Interview {
   softTimerSeconds?: number;
 }
 
+export type InterviewKind = "VERIFICATION" | "UPGRADE";
+
 /** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
 export interface InterviewEligibility {
   attemptsUsed: number;
@@ -84,8 +89,13 @@ export interface InterviewEligibility {
   cooldownUntil: IsoDateTime | null;
   locked: boolean;
   canStart: boolean;
-  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | null;
+  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | "TIER_MAX" | "UPGRADE_COOLDOWN" | null;
   questionCount: number;
+  /** Bản chốt v2.0 §3 — mentor đã duyệt: buổi tiếp theo là xin nâng cấp (không theo số lần / chờ 7 ngày). */
+  kind?: InterviewKind;
+  currentTier?: MentorTier | null;
+  /** Mốc được xin nâng cấp (90 ngày sau lần xếp cấp / lần xin gần nhất); null = được xin ngay. */
+  upgradeAvailableAt?: IsoDateTime | null;
 }
 
 export interface InterviewStats {

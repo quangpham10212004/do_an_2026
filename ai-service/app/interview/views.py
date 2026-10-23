@@ -42,6 +42,9 @@ class InterviewView(CamelModel):
     domain: str
     skills: list[str] = []
     status: str
+    # Bản chốt v2.0 §3 — VERIFICATION (xác thực lần đầu) | UPGRADE (mentor đã duyệt xin nâng cấp, from_tier = cấp lúc xin)
+    kind: str = "VERIFICATION"
+    from_tier: str | None = None
     engine: str
     max_turns: int
     current_turn: int
@@ -86,6 +89,10 @@ class EligibilityView(CamelModel):
     can_start: bool
     reason: str | None = None
     question_count: int = 5
+    # Bản chốt v2.0 §3 — mentor đã duyệt: buổi tiếp theo là xin nâng cấp (UPGRADE), không theo số lần / chờ 7 ngày
+    kind: str = "VERIFICATION"
+    current_tier: str | None = None
+    upgrade_available_at: datetime | None = None
 
 
 class UnlockInput(CamelModel):
@@ -164,7 +171,8 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
     current = next((t for t in turn_views if t.answer is None), None) if in_progress else None
     return InterviewView(
         id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name, domain=interview["domain"],
-        skills=list(interview["skills"] or []), status=interview["status"], engine=interview["engine"],
+        skills=list(interview["skills"] or []), status=interview["status"], kind=interview["kind"],
+        from_tier=interview["from_tier"], engine=interview["engine"],
         max_turns=interview["max_turns"], current_turn=interview["current_turn"], current_question=current,
         turns=turn_views, overall_score=_r1(interview["overall_score"]),
         suggested_tier=rubric.suggest_tier(interview["overall_score"]) if for_admin else None, summary=interview["summary"],

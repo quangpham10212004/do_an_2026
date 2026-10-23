@@ -73,7 +73,7 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 | PUT | `/internal/mentor/{id}/tier` | Internal | `{tier}` — đổi cấp, kẹp lại giá nếu ngoài khung | 9.4 |
 | PUT | `/api/profile/mentor/{userId}/trial` | Mentor (chủ hồ sơ) | `{enabled}` — bật/tắt nhận buổi trải nghiệm (mặc định bật) | 5.8 |
 
-AI Interview v2.0: `GET /api/ai/interviews/{id}` (admin) thêm `suggestedTier`; `POST /api/ai/admin/interviews/{id}/review` nhận `{decision, note, tier?}` (khác cấp đề xuất hoặc điểm dưới ngưỡng đạt thì bắt buộc `note` ≥ 10 ký tự; dưới ngưỡng bắt buộc `tier`). *Xin nâng cấp sau 90 ngày: ⚒ chưa hiện thực.*
+AI Interview v2.0: `GET /api/ai/interviews/{id}` (admin) thêm `suggestedTier`; `POST /api/ai/admin/interviews/{id}/review` nhận `{decision, note, tier?}` (khác cấp đề xuất hoặc điểm dưới ngưỡng đạt thì bắt buộc `note` ≥ 10 ký tự; dưới ngưỡng bắt buộc `tier`). Xin nâng cấp (§3): mentor đã APPROVED gọi lại `POST /api/ai/interviews` → buổi `kind: UPGRADE`, `fromTier` = cấp hiện tại; 409 `UPGRADE_COOLDOWN` (+`retryAfter`) khi chưa đủ 90 ngày kể từ lần đổi cấp / lần xin gần nhất, 409 `TIER_MAX` khi đã EXPERT. `GET /api/ai/interviews/eligibility` thêm `kind`, `currentTier`, `upgradeAvailableAt`. Duyệt buổi UPGRADE chỉ lên cấp cao hơn (400 `TIER_NOT_HIGHER`); từ chối / làm lại không đổi trạng thái hay cấp; buổi UPGRADE không tính vào 3 lượt / chờ 7 ngày.
 
 ## 3. matching-service (8090) — Thảo
 

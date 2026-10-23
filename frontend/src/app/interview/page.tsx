@@ -16,9 +16,11 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
   const [ack, setAck] = useState(false);
   const blocked = eligibility != null && !eligibility.canStart;
   const max = eligibility?.maxAttempts ?? 3;
+  const upgrade = eligibility?.kind === "UPGRADE";
   return (
     <Card className="max-w-[820px]">
-      <CardHeader title="Trước khi bắt đầu" description="Đọc kỹ cách chấm điểm và quy tắc số lần phỏng vấn." />
+      <CardHeader title={upgrade ? "Xin nâng cấp" : "Trước khi bắt đầu"}
+        description={upgrade ? `Bạn đang ở cấp ${eligibility?.currentTier ?? "—"}. Đọc kỹ cách chấm điểm và quy tắc xin nâng cấp.` : "Đọc kỹ cách chấm điểm và quy tắc số lần phỏng vấn."} />
       <CardBody className="flex flex-col gap-5">
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
           <li>Gồm <strong>{eligibility?.questionCount ?? 5} câu hỏi</strong>, khoảng <strong>15–20 phút</strong>. Câu sau được điều chỉnh theo câu trả lời trước.</li>
@@ -34,24 +36,52 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
             </tbody>
           </Table>
         </div>
-        <ul className="flex list-disc flex-col gap-1.5 pl-5">
-          <li>Kết quả AI chỉ mang tính hỗ trợ. <strong>Quản trị viên quyết định cuối cùng</strong> trước khi kích hoạt tài khoản.</li>
-          <li>Tối đa {max} lần phỏng vấn. Bị từ chối cần chờ 7 ngày mới được làm lại; bị từ chối {max} lần thì cần quản trị viên mở khoá.</li>
-        </ul>
-        {eligibility && (
+        {upgrade ? (
+          <ul className="flex list-disc flex-col gap-1.5 pl-5">
+            <li>Kết quả AI chỉ mang tính hỗ trợ. <strong>Quản trị viên quyết định</strong> có nâng bạn lên cấp cao hơn hay không.</li>
+            <li>Trong lúc chờ duyệt bạn vẫn xuất hiện trong gợi ý và nhận mentee theo cấp hiện tại.</li>
+            <li>Không đạt thì bạn <strong>giữ nguyên cấp hiện tại</strong> và có thể xin lại sau {UPGRADE_DAYS} ngày. Buổi xin nâng cấp không tính vào số lần phỏng vấn.</li>
+          </ul>
+        ) : (
+          <ul className="flex list-disc flex-col gap-1.5 pl-5">
+            <li>Kết quả AI chỉ mang tính hỗ trợ. <strong>Quản trị viên quyết định cuối cùng</strong> trước khi kích hoạt tài khoản.</li>
+            <li>Tối đa {max} lần phỏng vấn. Bị từ chối cần chờ 7 ngày mới được làm lại; bị từ chối {max} lần thì cần quản trị viên mở khoá.</li>
+          </ul>
+        )}
+        {eligibility && !upgrade && (
           <p className="text-small">
             Đã dùng <strong className="tabular">{eligibility.attemptsUsed}/{eligibility.maxAttempts}</strong> lần, còn lại <strong className="tabular">{eligibility.attemptsLeft}</strong> lần.
           </p>
         )}
         {eligibility?.reason === "COOLDOWN" && <Alert tone="info">Bạn có thể phỏng vấn lại từ {formatDateTime(eligibility.cooldownUntil)}.</Alert>}
         {eligibility?.reason === "LOCKED" && <Alert>Bạn đã bị từ chối {eligibility.maxAttempts} lần. Liên hệ quản trị viên để được mở khoá.</Alert>}
+        {eligibility?.reason === "UPGRADE_COOLDOWN" && <Alert tone="info">Bạn có thể xin nâng cấp từ {formatDateTime(eligibility.upgradeAvailableAt)}.</Alert>}
+        {eligibility?.reason === "TIER_MAX" && <Alert tone="info">Bạn đã ở cấp cao nhất (Expert).</Alert>}
         <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={blocked} label="Tôi tự trả lời, không có sự trợ giúp từ bên ngoài" />
       </CardBody>
       <CardFooter>
-        <Button variant="primary" onClick={onStart} loading={busy} disabled={!ack || blocked}>{busy ? "Đang chuẩn bị câu hỏi…" : "Bắt đầu phỏng vấn"}</Button>
+        <Button variant="primary" onClick={onStart} loading={busy} disabled={!ack || blocked}>{busy ? "Đang chuẩn bị câu hỏi…" : upgrade ? "Bắt đầu buổi xin nâng cấp" : "Bắt đầu phỏng vấn"}</Button>
       </CardFooter>
     </Card>
   );
+}
+
+const UPGRADE_DAYS = 90;
+
+/** Bản chốt v2.0 §3 — mentor đã duyệt: nút xin nâng cấp, hoặc mốc được xin / đã ở cấp cao nhất. */
+function UpgradeHint({ eligibility, onApply }: { eligibility: InterviewEligibility | null; onApply: () => void }) {
+  if (eligibility?.kind !== "UPGRADE") return null;
+  if (eligibility.reason === null) {
+    return (
+      <Alert tone="info" title={`Cấp hiện tại: ${eligibility.currentTier ?? "—"}`} action={<Button variant="primary" onClick={onApply}>Xin nâng cấp</Button>}>
+        Bạn có thể phỏng vấn lại để xin lên cấp cao hơn, mở khung giá cao hơn.
+      </Alert>
+    );
+  }
+  if (eligibility.reason === "UPGRADE_COOLDOWN") {
+    return <Alert tone="info" title={`Cấp hiện tại: ${eligibility.currentTier ?? "—"}`}>Bạn có thể xin nâng cấp từ {formatDateTime(eligibility.upgradeAvailableAt)}.</Alert>;
+  }
+  return null;
 }
 
 /** US-43 (PRD-AIV-2) — đồng hồ gợi ý mỗi câu (chỉ hiển thị, không chặn gửi). */
@@ -121,6 +151,7 @@ function Interview() {
 
   if (interview === undefined) return <Loading />;
   const inProgress = interview?.status === "IN_PROGRESS";
+  const upgrade = interview?.kind === "UPGRADE";
   const minChars = interview?.answerMinChars ?? 50;
   const maxChars = interview?.answerMaxChars ?? 3000;
   const len = answer.trim().length;
@@ -133,7 +164,9 @@ function Interview() {
     <>
       <PageHeader
         title="AI Interview"
-        description="Buổi phỏng vấn tự động giúp xác thực năng lực trước khi tài khoản mentor được kích hoạt."
+        description={upgrade || (!interview && eligibility?.kind === "UPGRADE")
+          ? "Phỏng vấn lại để xin lên cấp cao hơn. Trong lúc chờ duyệt bạn vẫn nhận mentee theo cấp hiện tại."
+          : "Buổi phỏng vấn tự động giúp xác thực năng lực trước khi tài khoản mentor được kích hoạt."}
         actions={interview && <StatusBadge status={interview.status} />}
       />
       <Alert className="mb-6">{error}</Alert>
@@ -172,18 +205,32 @@ function Interview() {
           </Card>
           <div className="flex min-w-0 flex-col gap-6">
             {interview.status === "PENDING_REVIEW" && (
-              <Alert tone="info" title="Đang chờ quản trị viên xem xét">Nhận xét từng câu sẽ hiện sau khi quản trị viên quyết định.</Alert>
+              <Alert tone="info" title="Đang chờ quản trị viên xem xét">
+                Nhận xét từng câu sẽ hiện sau khi quản trị viên quyết định.{upgrade && <> Trong lúc chờ bạn vẫn nhận mentee theo cấp {interview.fromTier}.</>}
+              </Alert>
             )}
-            {interview.status === "ABANDONED" && (
+            {interview.status === "ABANDONED" && upgrade && (
+              <Alert>Buổi xin nâng cấp quá 24 giờ không hoạt động nên bị huỷ. Bạn vẫn giữ cấp {interview.fromTier}.</Alert>
+            )}
+            {interview.status === "ABANDONED" && !upgrade && (
               <Alert action={retry("Bắt đầu buổi mới", eligibility != null && !eligibility.canStart)}>
                 Buổi phỏng vấn quá 72 giờ không hoạt động nên bị huỷ và tính là một lần phỏng vấn.
               </Alert>
             )}
-            {interview.status === "APPROVED" && <Alert tone="success" title="Tài khoản mentor đã được kích hoạt">Bạn sẽ xuất hiện trong kết quả gợi ý cho mentee.</Alert>}
-            {interview.status === "RETAKE_REQUESTED" && (
+            {interview.status === "APPROVED" && (upgrade
+              ? <Alert tone="success" title="Bạn đã được nâng cấp">Cấp mới: {eligibility?.currentTier ?? "—"}. Bạn có thể chọn giá trong khung của cấp mới ở trang hồ sơ.</Alert>
+              : <Alert tone="success" title="Tài khoản mentor đã được kích hoạt">Bạn sẽ xuất hiện trong kết quả gợi ý cho mentee.</Alert>)}
+            {interview.status === "REJECTED" && upgrade && (
+              <Alert title="Chưa được nâng cấp">Bạn giữ cấp {interview.fromTier} và vẫn nhận mentee như bình thường.</Alert>
+            )}
+            {interview.status === "RETAKE_REQUESTED" && upgrade && (
+              <Alert tone="info" action={retry("Làm lại buổi xin nâng cấp")}>Quản trị viên đề nghị bạn làm lại buổi xin nâng cấp. Bạn không phải chờ {UPGRADE_DAYS} ngày.</Alert>
+            )}
+            {interview.status !== "RETAKE_REQUESTED" && <UpgradeHint eligibility={eligibility} onApply={() => setInterview(null)} />}
+            {interview.status === "RETAKE_REQUESTED" && !upgrade && (
               <Alert tone="info" action={retry("Phỏng vấn lại")}>Quản trị viên đề nghị bạn phỏng vấn lại. Lần này không bị tính vào số lần phỏng vấn.</Alert>
             )}
-            {interview.status === "REJECTED" && (
+            {interview.status === "REJECTED" && !upgrade && (
               <Alert title="Hồ sơ chưa được duyệt" action={retry("Phỏng vấn lại", eligibility != null && !eligibility.canStart)}>
                 Cập nhật hồ sơ rồi phỏng vấn lại.
                 {eligibility?.reason === "COOLDOWN" && <> Bạn có thể phỏng vấn lại từ {formatDateTime(eligibility.cooldownUntil)}.</>}
