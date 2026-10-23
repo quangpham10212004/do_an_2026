@@ -351,8 +351,8 @@ sequenceDiagram
 Điểm tổng 0–100 vẫn là đầu ra của AI; v2.0 thêm **đề xuất cấp độ** để admin duyệt: dưới 60 không đạt · 60–74 **Junior** · 75–87 **Senior** · từ 88 **Expert**
 (ngưỡng cấu hình `interview.tier-thresholds`). Admin được chọn cấp khác đề xuất hoặc từ chối, bắt buộc ghi lý do; cấp độ quyết định khung giá
 (Junior 100–200k, Senior 200–400k, Expert 400–700k mỗi buổi 60 phút). Số năm kinh nghiệm chỉ để hiển thị, không tham gia xếp cấp. Tiếp tục khi gián đoạn trong
-**24 giờ** (quá hạn → ABANDONED, tính một lượt); làm lại sau **7 ngày**, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày. Hiện tại: tiếp tục 72 giờ,
-chưa có cấp độ.
+**24 giờ** (quá hạn → ABANDONED, tính một lượt); làm lại sau **7 ngày**, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày (buổi `kind = UPGRADE`: không tính vào 3 lượt, chỉ duyệt lên cấp cao hơn,
+không đạt thì giữ cấp cũ và vẫn nhận mentee).
 
 ### 2.4 Số lượt (FR-7.3)
 **5 lượt** (cấu hình `INTERVIEW_MAX_TURNS`): đủ phủ 3–4 chủ đề chuyên môn + 1 lượt đào sâu, trong đó

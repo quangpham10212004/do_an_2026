@@ -58,14 +58,40 @@ async def _eligibility(db, mentor_id: UUID) -> attempts.Eligibility:
                              timedelta(days=config.INTERVIEW_COOLDOWN_DAYS))
 
 
-def _eligibility_view(e: attempts.Eligibility, latest) -> EligibilityView:
+def _is_upgrade(mentor: dict | None) -> bool:
+    """Mentor đã được duyệt thì buổi tiếp theo là xin nâng cấp (bản chốt v2.0 §3)."""
+    return (mentor or {}).get("verificationStatus") == "APPROVED"
+
+
+async def _upgrade_available_at(db, mentor: dict) -> datetime | None:
+    assigned = mentor.get("tierAssignedAt")
+    return attempts.upgrade_available_at(
+        None if assigned is None else _DATETIME.validate_python(assigned),
+        await repo.last_upgrade_decided_at(db, UUID(str(mentor["userId"]))),
+        timedelta(days=config.INTERVIEW_UPGRADE_AFTER_DAYS))
+
+
+def _upgrade_reason(mentor: dict, available_at: datetime | None) -> str | None:
+    if mentor.get("tier") == rubric.TIERS[-1]:
+        return "TIER_MAX"
+    if available_at is not None and available_at > datetime.now(timezone.utc):
+        return "UPGRADE_COOLDOWN"
+    return None
+
+
+def _eligibility_view(e: attempts.Eligibility, latest, mentor: dict | None,
+                      upgrade_at: datetime | None) -> EligibilityView:
     status = None if latest is None else latest["status"]
+    upgrade = _is_upgrade(mentor)
     reason = ("IN_PROGRESS" if status == "IN_PROGRESS" else "PENDING_REVIEW" if status == "PENDING_REVIEW"
+              else _upgrade_reason(mentor, upgrade_at) if upgrade
               else "ALREADY_APPROVED" if status == "APPROVED" else "LOCKED" if e.locked
               else "COOLDOWN" if e.cooldown_until is not None else None)
     return EligibilityView(attempts_used=e.attempts_used, attempts_left=e.attempts_left, max_attempts=e.max_attempts,
                            cooldown_until=e.cooldown_until, locked=e.locked,
-                           can_start=reason in (None, "IN_PROGRESS"), reason=reason, question_count=MAX_TURNS)
+                           can_start=reason in (None, "IN_PROGRESS"), reason=reason, question_count=MAX_TURNS,
+                           kind="UPGRADE" if upgrade else "VERIFICATION",
+                           current_tier=(mentor or {}).get("tier"), upgrade_available_at=upgrade_at)
 
 
 async def abandon_stale(mentor_id: UUID | None = None) -> int:
@@ -94,7 +120,10 @@ async def eligibility(mentor_id: UUID) -> EligibilityView:
     """US-22 — GET /api/ai/interviews/eligibility (mentor) và bản admin cho 1 mentor bất kỳ."""
     await abandon_stale(mentor_id)
     pool = await get_pool()
-    return _eligibility_view(await _eligibility(pool, mentor_id), await repo.latest_for_mentor(pool, mentor_id))
+    mentor = await profile.find_mentor(mentor_id)
+    upgrade_at = await _upgrade_available_at(pool, mentor) if _is_upgrade(mentor) else None
+    return _eligibility_view(await _eligibility(pool, mentor_id), await repo.latest_for_mentor(pool, mentor_id),
+                             mentor, upgrade_at)
 
 
 async def start(user: AuthUser, self_answer_acknowledged: bool) -> InterviewView:
@@ -114,23 +143,37 @@ async def start(user: AuthUser, self_answer_acknowledged: bool) -> InterviewView
             return await _view(pool, latest, for_admin=False)
         if latest["status"] == "PENDING_REVIEW":
             raise errors.conflict("INTERVIEW_PENDING_REVIEW", "Kết quả phỏng vấn đang chờ admin xem xét")
-        if latest["status"] == "APPROVED":
+    upgrade = _is_upgrade(mentor)
+    if upgrade:
+        # Bản chốt v2.0 §3 — mentor đã duyệt xin nâng cấp: không theo số lần / chờ 7 ngày mà theo mốc 90 ngày.
+        available_at = await _upgrade_available_at(pool, mentor)
+        reason = _upgrade_reason(mentor, available_at)
+        if reason == "TIER_MAX":
+            raise errors.conflict("TIER_MAX", "Bạn đã ở cấp cao nhất (Expert)")
+        if reason == "UPGRADE_COOLDOWN":
+            days = config.INTERVIEW_UPGRADE_AFTER_DAYS
+            raise errors.conflict("UPGRADE_COOLDOWN",
+                                  f"Bạn có thể xin nâng cấp sau {days:g} ngày kể từ lần xếp cấp hoặc lần xin nâng cấp gần nhất",
+                                  extra={"retryAfter": _iso(available_at)})
+    else:
+        if latest is not None and latest["status"] == "APPROVED":
             raise errors.conflict("ALREADY_APPROVED", "Tài khoản mentor đã được kích hoạt")
-    # REJECTED / RETAKE_REQUESTED / chưa có buổi nào — kiểm tra số lần và thời gian chờ (US-22)
-    rule = await _eligibility(pool, user.user_id)
-    if rule.locked:
-        raise errors.conflict("INTERVIEW_LOCKED",
-                              f"Bạn đã bị từ chối {rule.max_attempts} lần. Vui lòng liên hệ quản trị viên để được mở khoá.")
-    if rule.cooldown_until is not None:
-        raise errors.conflict("INTERVIEW_COOLDOWN", "Bạn cần chờ hết thời gian chờ sau lần bị từ chối trước khi phỏng vấn lại",
-                              extra={"retryAfter": _iso(rule.cooldown_until)})
+        # REJECTED / RETAKE_REQUESTED / chưa có buổi nào — kiểm tra số lần và thời gian chờ (US-22)
+        rule = await _eligibility(pool, user.user_id)
+        if rule.locked:
+            raise errors.conflict("INTERVIEW_LOCKED",
+                                  f"Bạn đã bị từ chối {rule.max_attempts} lần. Vui lòng liên hệ quản trị viên để được mở khoá.")
+        if rule.cooldown_until is not None:
+            raise errors.conflict("INTERVIEW_COOLDOWN", "Bạn cần chờ hết thời gian chờ sau lần bị từ chối trước khi phỏng vấn lại",
+                                  extra={"retryAfter": _iso(rule.cooldown_until)})
 
     skills = list(mentor.get("skills") or [])
     ctx = _context(mentor["domain"], skills, mentor, MAX_TURNS)
     first = await interview_engine.first_question(None, ctx)
 
     async with pool.acquire() as conn, conn.transaction():
-        interview = await repo.insert(conn, user.user_id, mentor["domain"], skills, MAX_TURNS, first.engine)
+        interview = await repo.insert(conn, user.user_id, mentor["domain"], skills, MAX_TURNS, first.engine,
+                                      "UPGRADE" if upgrade else "VERIFICATION", mentor.get("tier") if upgrade else None)
         plan = first.value
         await repo.insert_turn(conn, interview["id"], 1, plan.topic, plan.strategy, plan.question)
 
@@ -205,15 +248,20 @@ async def answer(user: AuthUser, interview_id: UUID, text: str, pasted_large_tex
                                           final.recommendation)
 
     if updated["status"] == "PENDING_REVIEW":
-        await profile.update_verification(user.user_id, "PENDING_REVIEW")
+        upgrade = updated["kind"] == "UPGRADE"
+        # Xin nâng cấp: mentor vẫn APPROVED (vẫn trong matching, vẫn nhận đặt lịch) trong lúc chờ duyệt.
+        if not upgrade:
+            await profile.update_verification(user.user_id, "PENDING_REVIEW")
+        who = f"Mentor {updated['from_tier']} xin nâng cấp" if upgrade else "Mentor"
         await mentoring.notify_role(
             "ADMIN", "INTERVIEW_PENDING_REVIEW", "Có kết quả AI Interview cần duyệt",
-            f"Mentor lĩnh vực {updated['domain']} đạt {updated['overall_score']:.1f}/100 điểm "
+            f"{who} lĩnh vực {updated['domain']} đạt {updated['overall_score']:.1f}/100 điểm "
             f"(AI khuyến nghị: {updated['recommendation']}).",
             f"/admin/interviews/{updated['id']}")
         await mentoring.notify_user(
             user.user_id, "INTERVIEW_COMPLETED", "Bạn đã hoàn thành AI Interview",
-            "Kết quả đang chờ quản trị viên xem xét trước khi kích hoạt tài khoản mentor.", "/interview")
+            "Kết quả xin nâng cấp đang chờ quản trị viên xem xét. Trong lúc chờ bạn vẫn nhận mentee theo cấp hiện tại."
+            if upgrade else "Kết quả đang chờ quản trị viên xem xét trước khi kích hoạt tài khoản mentor.", "/interview")
     return await _view(pool, updated, for_admin=False)
 
 
@@ -278,13 +326,35 @@ async def review(admin: AuthUser, interview_id: UUID, decision: ReviewInterviewI
                                  f"Quyết định khác khuyến nghị của AI ({current['recommendation']}) — "
                                  f"vui lòng ghi rõ lý do (ít nhất {MIN_OVERRULE_NOTE} ký tự)")
     tier = _tier_for_approval(choice, current, decision.tier, note)
+    upgrade = current["kind"] == "UPGRADE"
+    from_tier = current["from_tier"]
+    if upgrade:
+        # Cấp hiện tại lấy từ profile (admin có thể đã đổi cấp trong lúc chờ duyệt); chưa có => cấp lúc xin.
+        from_tier = ((await profile.find_mentor(current["mentor_id"])) or {}).get("tier") or from_tier
+        if tier is not None and not attempts.is_higher_tier(tier, from_tier):
+            raise errors.bad_request("TIER_NOT_HIGHER",
+                                     f"Xin nâng cấp chỉ được duyệt lên cấp cao hơn {from_tier} — giữ cấp hiện tại thì chọn Từ chối")
     updated = await repo.review(pool, interview_id, _DECISION_STATUS[choice], admin.user_id, note)
     if updated is None:
         raise errors.conflict("INTERVIEW_NOT_PENDING_REVIEW", "Buổi phỏng vấn không ở trạng thái chờ duyệt")
 
-    await profile.update_verification(updated["mentor_id"], _DECISION_VERIFICATION[choice], tier)
+    # Bản chốt v2.0 §3 — xin nâng cấp bị từ chối / làm lại: mentor giữ APPROVED và cấp cũ, vẫn nhận đặt lịch như bình thường.
+    if not upgrade or choice == "APPROVE":
+        await profile.update_verification(updated["mentor_id"], _DECISION_VERIFICATION[choice], tier)
     suffix = "" if note is None else f" Nhận xét: {note}"
-    if choice == "APPROVE":
+    if upgrade:
+        days = config.INTERVIEW_UPGRADE_AFTER_DAYS
+        notice = {
+            "APPROVE": ("MENTOR_TIER_UPGRADED", f"Bạn đã được nâng lên cấp {tier}",
+                        f"Bạn có thể chọn giá trong khung của cấp {tier}; giá đang thấp hơn khung được nâng lên mức thấp nhất. "
+                        "Buổi đã đặt giữ giá cũ."),
+            "REJECT": ("MENTOR_TIER_UPGRADE_REJECTED", "Chưa được nâng cấp",
+                       f"Bạn giữ cấp {from_tier} và vẫn nhận mentee như bình thường. Có thể xin nâng cấp lại sau {days:g} ngày."),
+            "REQUEST_RETAKE": ("INTERVIEW_RETAKE_REQUESTED", "Quản trị viên đề nghị bạn làm lại buổi xin nâng cấp",
+                               f"Bạn có thể bắt đầu lại ngay, không phải chờ {days:g} ngày. Trong lúc đó bạn giữ cấp {from_tier}."),
+        }[choice]
+        notice = (notice[0], notice[1], notice[2] + suffix)
+    elif choice == "APPROVE":
         notice = ("MENTOR_APPROVED", "Tài khoản mentor đã được kích hoạt",
                   f"Chúc mừng! Bạn được xếp cấp {tier}: có thể chọn mức giá trong khung của cấp, xuất hiện trong kết quả gợi ý và nhận mentee." + suffix)
     elif choice == "REJECT":
@@ -299,7 +369,8 @@ async def review(admin: AuthUser, interview_id: UUID, decision: ReviewInterviewI
                        {"status": current["status"], "recommendation": current["recommendation"],
                         "overallScore": current["overall_score"]},
                        {"status": updated["status"], "decision": choice, "note": note,
-                        "mentorId": str(updated["mentor_id"]), "tier": tier,
+                        "mentorId": str(updated["mentor_id"]), "tier": tier, "kind": updated["kind"],
+                        "fromTier": from_tier,
                         "suggestedTier": rubric.suggest_tier(current["overall_score"]),
                         "agreesWithAi": rubric.agrees(choice, current["recommendation"])})
     return await _view(pool, updated, for_admin=True)

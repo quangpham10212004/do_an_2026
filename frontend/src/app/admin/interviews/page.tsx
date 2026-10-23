@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { ShieldCheck } from "lucide-react";
-import { Alert, Card, EmptyState, Loading, PageHeader, StatusBadge, Table, Tabs } from "@/components/ui";
+import { Alert, Badge, Card, EmptyState, Loading, PageHeader, StatusBadge, Table, Tabs } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { formatDateTime } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
@@ -52,7 +52,10 @@ function Interviews() {
               <tbody>
                 {items.map((i) => (
                   <tr key={i.id}>
-                    <td className="font-medium">{i.mentorName || <span className="font-mono">{i.mentorId.slice(0, 8)}</span>}</td>
+                    <td className="font-medium">
+                      {i.mentorName || <span className="font-mono">{i.mentorId.slice(0, 8)}</span>}
+                      {i.kind === "UPGRADE" && <> <Badge tone="accent">Xin nâng cấp từ {i.fromTier}</Badge></>}
+                    </td>
                     <td>{i.domain}</td>
                     <td><StatusBadge status={i.status} /></td>
                     <td className="num">{i.overallScore != null ? `${i.overallScore.toFixed(1)}/100` : `${i.currentTurn - 1}/${i.maxTurns} câu`}</td>

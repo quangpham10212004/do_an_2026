@@ -75,7 +75,7 @@ erDiagram
         text_array portfolio_links
         numeric hourly_rate "VND/buổi 60 phút; v2.0: nằm trong khung của tier"
         text tier "v2.0 JUNIOR|SENIOR|EXPERT, NULL khi chưa duyệt (V9)"
-        timestamptz tier_assigned_at "v2.0 — mốc cho xin nâng cấp sau 90 ngày (chưa hiện thực)"
+        timestamptz tier_assigned_at "v2.0 — mốc xin nâng cấp: 90 ngày sau lần đổi cấp (hoặc lần xin gần nhất, ai_db)"
         boolean trial_enabled "v2.0 nhận buổi trải nghiệm, mặc định true (V10)"
         int capacity
         int active_mentee_count "đồng bộ từ mentoring"
@@ -238,7 +238,9 @@ erDiagram
         uuid mentor_id
         text domain
         text_array skills
-        text status "IN_PROGRESS|PENDING_REVIEW|APPROVED|REJECTED"
+        text status "IN_PROGRESS|PENDING_REVIEW|APPROVED|REJECTED|RETAKE_REQUESTED|ABANDONED"
+        text kind "v2.0 VERIFICATION|UPGRADE (xin nâng cấp, 009)"
+        text from_tier "v2.0 cấp lúc xin nâng cấp"
         int max_turns
         int current_turn
         text engine "DEEPSEEK|RULE_BASED"

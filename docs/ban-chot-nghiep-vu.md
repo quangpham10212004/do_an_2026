@@ -51,7 +51,7 @@
 | Tiếp tục khi gián đoạn | trong **24 giờ** kể từ lúc bắt đầu; quá hạn → ABANDONED, tính một lượt | ✎ đang 72 giờ |
 | Làm lại khi không đạt | sau **7 ngày** | ✔ |
 | Số lượt | tối đa 3 lượt; hết lượt cần admin mở khoá | ✔ |
-| Xin nâng cấp | mentor đã duyệt được phỏng vấn lại để nâng cấp sau **90 ngày** kể từ lần duyệt gần nhất | ⚒ |
+| Xin nâng cấp | mentor đã duyệt được phỏng vấn lại để nâng cấp sau **90 ngày** kể từ lần đổi cấp hoặc lần xin nâng cấp gần nhất. Không tính vào 3 lượt / chờ 7 ngày; chỉ duyệt lên cấp cao hơn; không đạt → giữ APPROVED + cấp cũ; trong lúc chờ duyệt vẫn nhận đặt lịch (chốt 23/10/2026) | ✔ |
 | Dấu hiệu bất thường | cờ của AI (trả lời quá nhanh, trùng mẫu…) → hàng chờ admin xem xét, không tự từ chối | ✔ (US-23 flags) |
 
 ---
