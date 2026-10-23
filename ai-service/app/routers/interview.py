@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from app.interview import service
+from app.interview import service, voice
 from app.interview.views import (AnswerInput, EligibilityView, InterviewStats, InterviewView, ReviewInterviewInput,
                                  StartInterviewInput, UnlockInput)
 from app import config
@@ -39,6 +39,17 @@ async def get(interview_id: UUID, user: AuthUser = Depends(require_user)) -> Int
 async def answer(interview_id: UUID, body: AnswerInput,
                  user: AuthUser = Depends(require_role("MENTOR"))) -> InterviewView:
     return await service.answer(user, interview_id, body.answer, body.pasted_large_text)
+
+
+# PROTOTYPE — phỏng vấn giọng nói (OpenAI Realtime); chưa lưu CSDL, chưa nối với luồng duyệt.
+@router.post("/voice-interviews/session", response_model=voice.VoiceSessionView, response_model_by_alias=True)
+async def voice_session(user: AuthUser = Depends(require_role("MENTOR"))) -> voice.VoiceSessionView:
+    return await voice.create_session(user)
+
+
+@router.post("/voice-interviews/grade", response_model=voice.VoiceGradeView, response_model_by_alias=True)
+async def voice_grade(body: voice.GradeInput, user: AuthUser = Depends(require_role("MENTOR"))) -> voice.VoiceGradeView:
+    return await voice.grade(user, body.items)
 
 
 @router.get("/admin/interviews", response_model=list[InterviewView], response_model_by_alias=True)

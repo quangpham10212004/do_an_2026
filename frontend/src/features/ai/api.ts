@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, MentorTier, ReviewDecision, Uuid } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, MentorTier, ReviewDecision, Uuid, VoiceGrade, VoiceSession, VoiceTranscriptItem } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -20,6 +20,9 @@ export const aiApi = {
   reviewInterview: (id: Uuid, decision: ReviewDecision, note: string, tier?: MentorTier | null) =>
     api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note, ...(tier ? { tier } : {}) } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
+  // PROTOTYPE — phỏng vấn giọng nói: client secret ngắn hạn của OpenAI Realtime; chấm bản ghi bằng engine hiện có
+  voiceSession: () => api<VoiceSession>("/api/ai/voice-interviews/session", { method: "POST" }),
+  gradeVoice: (items: VoiceTranscriptItem[]) => api<VoiceGrade>("/api/ai/voice-interviews/grade", { method: "POST", body: { items } }),
   // CV + chatbot enrichment
   // US-19: consentExternalAi bắt buộc — false => chỉ engine rule-based cho CV này (parse + chatbot)
   uploadCv: (menteeId: Uuid, file: File, consentExternalAi: boolean) => {

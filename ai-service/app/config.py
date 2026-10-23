@@ -29,6 +29,14 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
 DEEPSEEK_MAX_TOKENS = int(os.getenv("DEEPSEEK_MAX_TOKENS", "4000"))
 DEEPSEEK_TIMEOUT_SECONDS = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "60"))
 
+# PROTOTYPE — phỏng vấn giọng nói qua OpenAI Realtime. Để trống OPENAI_API_KEY => tắt (503 VOICE_UNAVAILABLE).
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_REALTIME_MODEL = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime")
+OPENAI_REALTIME_VOICE = os.getenv("OPENAI_REALTIME_VOICE", "marin")
+OPENAI_TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-transcribe")
+VOICE_INTERVIEW_TOPICS = int(os.getenv("VOICE_INTERVIEW_TOPICS", "4"))
+
 # FR-7.3 / FR-8.4 — số lượt hỏi-đáp cố định của mỗi tính năng.
 INTERVIEW_MAX_TURNS = int(os.getenv("INTERVIEW_MAX_TURNS", "5"))
 ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))

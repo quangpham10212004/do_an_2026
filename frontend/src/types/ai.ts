@@ -98,6 +98,27 @@ export interface InterviewEligibility {
   upgradeAvailableAt?: IsoDateTime | null;
 }
 
+/** PROTOTYPE — phỏng vấn giọng nói (OpenAI Realtime). */
+export interface VoiceSession {
+  clientSecret: string;
+  expiresAt: number;
+  model: string;
+  topics: string[];
+}
+
+/** marker = model gọi begin_topic(topicNo); assistant / user = một lượt nói đã chép lời. */
+export interface VoiceTranscriptItem {
+  role: "marker" | "assistant" | "user";
+  text?: string;
+  topicNo?: number;
+}
+
+export interface VoiceGrade {
+  engine: string;
+  turns: { topic: string; question: string; answer: string; score: number; rubric: RubricScores; feedback: string; flags: string[] }[];
+  assessment: { overallScore: number; summary: string; strengths: string[]; weaknesses: string[]; recommendation: Recommendation };
+}
+
 export interface InterviewStats {
   interviewsInProgress: number;
   interviewsPendingReview: number;
