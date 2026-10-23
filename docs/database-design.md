@@ -243,6 +243,7 @@ erDiagram
         text from_tier "v2.0 cấp lúc xin nâng cấp"
         text mode "v2.1 CHAT|VOICE (010)"
         jsonb plan "v2.1 kế hoạch câu hỏi AI soạn, buổi giọng nói (011)"
+        jsonb transcript "v2.1 nguyên văn buổi giọng nói đã nộp (012)"
         boolean consent_external_ai "v2.1 đồng ý OpenAI xử lý âm thanh (010)"
         int max_turns
         int current_turn
@@ -316,7 +317,7 @@ erDiagram
 
 | Bảng | Mô tả |
 |---|---|
-| `interviews` | Buổi AI Interview + kết quả tổng hợp + quyết định admin; `engine` ghi engine đã dùng để các lượt sau nhất quán |
+| `interviews` | Buổi AI Interview + kết quả tổng hợp + quyết định admin; `engine` ghi engine đã dùng để các lượt sau nhất quán. Buổi giọng nói: `transcript` = nguyên văn cuộc gọi (`TranscriptItem[]`, migration `012_interview_transcript.sql`) vì `interview_turns` chỉ giữ một lượt gộp mỗi chủ đề |
 | `interviews.mode` *(v2.1 ⚒, migration ai `010_voice_interviews.sql`)* | `TEXT NOT NULL DEFAULT 'CHAT' CHECK (mode IN ('CHAT','VOICE'))`. Buổi `VOICE`: `max_turns` = số chủ đề đã lập; bản chép lời được gộp thành mỗi chủ đề một dòng `interview_turns`; quá 30 phút chưa có bản chép lời → `ABANDONED` (job dọn buổi bỏ dở hiện có). Cột `interviews.consent_external_ai BOOLEAN NOT NULL DEFAULT false` (cùng migration) = mentor đã đồng ý cho OpenAI xử lý âm thanh (bắt buộc với `VOICE`) |
 | `interview_turns` | Từng lượt hỏi-đáp; `UNIQUE (interview_id, turn_no)` chống ghi trùng; ghi câu trả lời bằng `UPDATE ... WHERE answer IS NULL` |
 | `cv_documents` | CV đã upload: văn bản trích xuất + kết quả parse (`JSONB`); file PDF nằm trên volume `cv-storage` |

@@ -11,6 +11,7 @@ luyện phỏng vấn của mentee (FR-10.x).
 - Không có OPENAI_API_KEY: APP_ENV=prod => 503 VOICE_UNAVAILABLE (không tạo gì); dev/test => mint() trả None,
   buổi vẫn được tạo để test/e2e gửi bản ghi giả lập.
 """
+import json
 import logging
 from dataclasses import dataclass
 from typing import Literal
@@ -44,6 +45,17 @@ class TranscriptItem(CamelModel):
     role: Literal["marker", "assistant", "user"]
     text: str | None = Field(default=None, max_length=5000)
     topic_no: int | None = None
+
+
+def load_transcript(raw, topics: list[str]) -> list[TranscriptItem] | None:
+    """Cột `transcript` (JSONB, asyncpg trả str) → danh sách mục, mốc chủ đề mang tên chủ đề (text); NULL => None."""
+    if raw is None:
+        return None
+    items = [TranscriptItem.model_validate(i) for i in (json.loads(raw) if isinstance(raw, str) else raw)]
+    for item in items:
+        if item.role == "marker" and item.topic_no is not None and 1 <= item.topic_no <= len(topics):
+            item.text = topics[item.topic_no - 1]
+    return items
 
 
 class TranscriptInput(CamelModel):

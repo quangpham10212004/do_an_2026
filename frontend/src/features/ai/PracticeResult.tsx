@@ -3,7 +3,7 @@
 import { CalendarCheck } from "lucide-react";
 import { Alert, ButtonLink, Card, CardBody, CardHeader, ScoreRing, Stat, Stats, StatusBadge } from "@/components/ui";
 import { MOCK_LEVEL_LABELS, MOCK_TYPE_LABELS } from "@/features/mentoring/mockLabels";
-import { PlanSourceBadge } from "@/features/ai/VoiceViews";
+import { PlanSourceBadge, VoiceTranscriptCard } from "@/features/ai/VoiceViews";
 import type { Practice, PracticeRubric } from "@/types";
 
 /** FR-10.x — rubric luyện phỏng vấn (mỗi tiêu chí 0–10). */
@@ -107,6 +107,8 @@ export function PracticeResultView({ practice }: { practice: Practice }) {
           ))}
         </CardBody>
       </Card>
+
+      {practice.transcript && <VoiceTranscriptCard transcript={practice.transcript} description="Nguyên văn buổi luyện: AI đã hỏi gì và bạn đã trả lời gì." />}
 
       <MockInterviewCta />
     </div>

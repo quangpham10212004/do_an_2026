@@ -245,6 +245,9 @@ def test_transcript_goes_through_the_chat_completion_path(client, db, fake_profi
     assert done["turns"][0]["question"] == "Câu hỏi 1 / Câu đào sâu 1"
     assert done["turns"][0]["answer"] == STRONG_ANSWER + " Toi dung ETag va versioning."
     assert done["turns"][2]["answer"] == voice.NO_ANSWER
+    # Nguyên văn hội thoại được lưu (giữ câu đào sâu, mốc chủ đề) để mentor xem lại AI đã hỏi gì.
+    assert [i["role"] for i in done["transcript"]][:3] == ["assistant", "marker", "assistant"]
+    assert "Câu đào sâu 1" in [i["text"] for i in done["transcript"]]
     assert (mentor_id, "PENDING_REVIEW") in fake_profile.verifications
     assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
     assert (str(mentor_id), "INTERVIEW_COMPLETED") in fake_mentoring.notifications
@@ -253,7 +256,8 @@ def test_transcript_goes_through_the_chat_completion_path(client, db, fake_profi
     turns = admin_view["turns"]
     assert turns[0]["score"] > turns[1]["score"] and all(t["rubric"] for t in turns)
     assert turns[0]["engine"] == "RULE_BASED" and turns[0]["promptVersion"]
-    assert admin_view["mode"] == "VOICE"
+    assert admin_view["mode"] == "VOICE" and admin_view["transcript"] == done["transcript"]
+    assert done["transcript"][1]["text"] == admin_view["plan"][0]["name"]  # mốc chủ đề mang tên chủ đề
     # Gửi lại => buổi đã kết thúc.
     again = post_transcript(client, mentor_id, iv["id"])
     assert again.status_code == 409 and again.json()["error"]["code"] == "INTERVIEW_NOT_IN_PROGRESS"

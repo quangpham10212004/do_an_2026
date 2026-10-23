@@ -317,7 +317,8 @@ async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: lis
                                    ev.prompt_version, ev.fallback_used)
         await repo.set_current_turn(conn, interview_id, len(scored))
         updated = await repo.complete(conn, interview_id, final.overall_score, final.summary, "\n".join(final.strengths),
-                                      "\n".join(final.weaknesses), final.recommendation)
+                                      "\n".join(final.weaknesses), final.recommendation,
+                                      transcript=[i.model_dump(by_alias=True, exclude_none=True) for i in items])
 
     await _on_completed(user.user_id, updated)
     return await _view(pool, updated, for_admin=False)

@@ -54,6 +54,8 @@ export interface Interview {
   consentExternalAi?: boolean;
   /** v2.1 — kế hoạch câu hỏi của buổi giọng nói kèm nguồn (chỉ admin); null = chat hoặc buổi cũ */
   plan?: PlanTopic[] | null;
+  /** v2.1 — buổi giọng nói đã nộp: nguyên văn hội thoại (mốc chủ đề có text = tên chủ đề); null = chat hoặc buổi cũ */
+  transcript?: VoiceTranscriptItem[] | null;
   engine: "DEEPSEEK" | "RULE_BASED";
   maxTurns: number;
   currentTurn: number;
@@ -197,6 +199,8 @@ export interface Practice {
   consentExternalAi: boolean;
   overallScore: number | null;
   result: PracticeResult | null;
+  /** v2.1 — nguyên văn hội thoại (mốc chủ đề có text = tên chủ đề); null khi đang làm */
+  transcript?: VoiceTranscriptItem[] | null;
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
   resumeDeadline: IsoDateTime | null;
