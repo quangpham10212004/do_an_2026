@@ -135,15 +135,38 @@ async def test_system_constraints_are_counted_over_all_mentors(conn):
     await add_mentor(conn, status="PAUSED")
     await add_mentor(conn, slots=())
     await add_mentor(conn, capacity=2, active=2)
-    await add_mentor(conn, domain="Frontend")
+    other = await add_mentor(conn, domain="Frontend")
     await add_mentor(conn, domain=" BACKEND ")  # so lĩnh vực không phân biệt hoa thường/khoảng trắng
     mentee = await add_mentee(conn)
 
     result = await match(mentee)
-    assert ok in ids(result) and len(result["mentors"]) == 2
-    assert result["stats"]["excluded"] == {"notVerified": 2, "unavailable": 1, "noSchedule": 1,
-                                           "fullCapacity": 1, "domainMismatch": 1}
+    assert ok in ids(result) and len(result["mentors"]) == 3
+    assert result["stats"]["excluded"] == {"notVerified": 2, "unavailable": 1, "noSchedule": 1, "fullCapacity": 1}
     assert result["excluded_by"] == {}
+    # Khác lĩnh vực không bị loại mà bị phạt điểm: cùng độ tương đồng thì xếp sau mentor cùng lĩnh vực.
+    assert result["domain_matches"] == 2 and result["mentee_domain"] == "backend"
+    last = result["mentors"][-1]
+    assert str(last["mentor_id"]) == other and last["domain_match"] is False
+    assert last["final_score"] < result["mentors"][0]["final_score"]
+
+
+async def test_mentor_outside_mentee_domain_can_outrank_when_much_closer(conn):
+    """Mentee đổi hướng (hồ sơ ghi backend, mục tiêu nhắc Kafka): mentor khác lĩnh vực nhưng sát mục tiêu vẫn đứng đầu."""
+    same_domain = await add_mentor(conn)
+    other_domain = await add_mentor(conn, domain="data", bio="Chuyên gia Kafka")
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee)
+    assert [str(m["mentor_id"]) for m in result["mentors"]] == [other_domain, same_domain]
+    assert result["mentors"][0]["domain_match"] is False
+
+
+async def test_no_mentor_in_mentee_domain_is_reported(conn):
+    await add_mentor(conn, domain="frontend")
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee)
+    assert len(result["mentors"]) == 1 and result["domain_matches"] == 0
 
 
 async def test_days_and_time_of_day_windows(conn):
@@ -214,7 +237,7 @@ async def test_similar_mentors_applies_preferences_then_relaxes(conn):
     cheap = await add_mentor(conn, rate=100000)
     declined = await add_mentor(conn, rate=100000, bio="Chuyên gia Kafka")
     pricey = await add_mentor(conn, rate=300000)
-    await add_mentor(conn, rate=100000, domain="frontend")          # ràng buộc hệ thống: không bao giờ
+    other_domain = await add_mentor(conn, rate=300000, domain="frontend")  # khác lĩnh vực: bị phạt, xếp sau pricey
     await add_mentor(conn, rate=100000, verification="PENDING_REVIEW")
     mentee = await add_mentee(conn, budget=150000)
     await index_service.reconcile(batch=500)
@@ -227,7 +250,7 @@ async def test_similar_mentors_applies_preferences_then_relaxes(conn):
     assert [str(m["mentor_id"]) for m in result] == [best]
 
     result = await matching_pipeline.similar_mentors(mentee, best, limit=10)
-    assert {str(m["mentor_id"]) for m in result} == {cheap, declined, pricey}
+    assert {str(m["mentor_id"]) for m in result} == {cheap, declined, pricey, other_domain}
 
     assert await matching_pipeline.similar_mentors(str(uuid.uuid4()), best, limit=3) == []
 

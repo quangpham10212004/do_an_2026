@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Check, Plus, Sparkles } from "lucide-react";
-import { Alert, Button, ButtonLink, Chip, Chips, Field, Textarea, useDialog } from "@/components/ui";
+import { Alert, Button, ButtonLink, Checkbox, Chip, Chips, Field, Textarea, useDialog } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
+import { domainLabel } from "@/features/profile/api";
 import { errorMessage } from "@/lib/api";
 import type { Conversation } from "@/types";
 
@@ -29,6 +30,10 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
   const suggested = conversation.suggestedSkills ?? [];
   const [chosen, setChosen] = useState<string[]>(suggested);
   const toggle = (s: string) => setChosen((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
+  // Mục tiêu khác lĩnh vực trong hồ sơ (vd. hồ sơ Frontend, muốn học Product): mặc định đổi luôn, vì matching ưu tiên
+  // mentor cùng lĩnh vực hồ sơ.
+  const suggestedDomain = conversation.suggestedDomain;
+  const [switchDomain, setSwitchDomain] = useState(Boolean(suggestedDomain));
   const trimmed = text.trim();
   const valid = trimmed.length >= MIN_GOAL && trimmed.length <= MAX_GOAL;
 
@@ -67,6 +72,9 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
           <p className="whitespace-pre-wrap">{conversation.confirmedGoal}</p>
           {(conversation.addedSkills ?? []).length > 0 && (
             <Chips>{conversation.addedSkills.map((s) => <Chip key={s}>{s}</Chip>)}</Chips>
+          )}
+          {conversation.confirmedDomain && (
+            <p className="text-small text-ink-muted">Lĩnh vực hồ sơ đã đổi sang {domainLabel(conversation.confirmedDomain)}.</p>
           )}
         </div>
         <div><ButtonLink href="/matching" variant="primary" icon={Sparkles}>Tìm mentor phù hợp</ButtonLink></div>
@@ -107,8 +115,19 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
           </Chips>
         </Field>
       )}
+      {suggestedDomain && (
+        <div className="well flex flex-col gap-2">
+          <p className="text-small">
+            Mục tiêu này thiên về <strong>{domainLabel(suggestedDomain)}</strong>, còn hồ sơ của bạn đang ghi lĩnh vực{" "}
+            <strong>{domainLabel(conversation.profileDomain)}</strong>. Gợi ý mentor ưu tiên lĩnh vực trong hồ sơ.
+          </p>
+          <Checkbox checked={switchDomain} disabled={busy} onChange={(e) => setSwitchDomain(e.target.checked)}
+            label={`Đổi lĩnh vực hồ sơ sang ${domainLabel(suggestedDomain)}`} />
+        </div>
+      )}
       <div className="form-actions">
-        <Button variant="primary" loading={busy} disabled={!valid} onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed, chosen))}>
+        <Button variant="primary" loading={busy} disabled={!valid}
+          onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed, chosen, switchDomain ? suggestedDomain : null))}>
           {busy ? "Đang lưu…" : "Dùng mục tiêu này"}
         </Button>
         {!editing && <Button disabled={busy} onClick={() => setEditing(true)}>Sửa</Button>}

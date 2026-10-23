@@ -9,7 +9,7 @@ import { EXCLUSION_LABELS, NOT_RELEVANT_LABELS, matchingApi } from "@/features/m
 import FindMentorTabs from "@/features/matching/FindMentorTabs";
 import MatchingFilters, { NO_FILTERS, biggestBlocker, describeFilter, dropFilter } from "@/features/matching/MatchingFilters";
 import { mentoringApi } from "@/features/mentoring/api";
-import { profileApi } from "@/features/profile/api";
+import { domainLabel, profileApi } from "@/features/profile/api";
 import { CompletenessCard } from "@/features/profile/ProfileExtras";
 import { formatRate } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
@@ -159,6 +159,8 @@ function MentorMeta({ m }: { m: RankedMentor }) {
       <span className="font-medium text-ink tabular">{formatRate(m.hourlyRate)}</span>
       {/* US-41 (PRD-REV-5) — sao chỉ hiện khi ≥ 3 đánh giá */}
       {m.ratingCount >= 3 ? <Stars value={m.rating} count={m.ratingCount} /> : <span>Mentor mới</span>}
+      {/* Khác lĩnh vực hồ sơ mentee: vẫn gợi ý (mentee có thể đang đổi hướng) nhưng điểm bị giảm */}
+      {m.domainMatch === false && <Badge tone="neutral">{domainLabel(m.domain)}</Badge>}
     </div>
   );
 }
@@ -349,6 +351,12 @@ function Matching({ user }: { user: SessionUser }) {
                 Chỉ tìm thấy {data.mentors.length} mentor: {blocker[1]} mentor bị loại bởi {describeFilter(blocker[0], data.filters)}.
               </Alert>
             )}
+            {data.mentors.length > 0 && data.menteeDomain && data.domainMatches === 0 && (
+              <Alert tone="info" action={<ButtonLink href="/profile" size="sm">Đổi lĩnh vực</ButtonLink>}>
+                Chưa có mentor nào thuộc lĩnh vực {domainLabel(data.menteeDomain)} phù hợp với bạn. Dưới đây là các mentor ở
+                lĩnh vực khác gần nhất với mục tiêu của bạn.
+              </Alert>
+            )}
             {data.mentors.length === 0 ? (
               <Card>
                 <EmptyState icon={Sparkles} title="Chưa tìm thấy mentor phù hợp" action={<ButtonLink href="/mentors" size="sm">Xem tất cả mentor</ButtonLink>}>
@@ -392,7 +400,8 @@ function Matching({ user }: { user: SessionUser }) {
                   {excludedTotal > 0 && ` (${excludedEntries.map(([k, v]) => `${v} ${EXCLUSION_LABELS[k] || k}`).join(", ")})`}, còn {data.pipeline.eligible} mentor
                   thoả bộ lọc. Lấy {data.pipeline.retrieved} mentor gần nhất về nội dung (top-K = {data.pipeline.k}), rồi xếp hạng lại với
                   trọng số tương đồng {data.pipeline.weights.similarity}, đánh giá {data.pipeline.weights.rating}, kinh nghiệm {data.pipeline.weights.experience},
-                  khớp lịch {data.pipeline.weights.scheduleFit}, phản hồi nhanh {data.pipeline.weights.responsiveness}.
+                  khớp lịch {data.pipeline.weights.scheduleFit}, phản hồi nhanh {data.pipeline.weights.responsiveness}. Mentor khác lĩnh vực
+                  trong hồ sơ của bạn vẫn được xét nhưng bị giảm điểm.
                 </p>
               </details>
             </div>

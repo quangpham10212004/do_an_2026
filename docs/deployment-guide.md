@@ -30,11 +30,19 @@ for p in 8081 8082 8083 8084 8085 8090 8091; do curl -s localhost:$p/health; ech
 
 Mở giao diện: <http://localhost:3000>
 
-Nạp dữ liệu demo (7 mentor, 2 mentee):
+Nạp dữ liệu demo (8 mentor, 2 mentee):
 
 ```bash
 python3 scripts/seed_demo.py
 python3 scripts/make_sample_cv.py   # tạo scripts/sample-cv.pdf để demo upload CV
+```
+
+Mentor do các script e2e tạo (`@test.local`) tích luỹ qua mỗi lần chạy và hiện trong gợi ý mentor của tài khoản demo
+(lĩnh vực không còn là ràng buộc cứng). Dọn trước khi demo — mặc định chỉ chạy thử, `--role ALL` để dọn cả mentee e2e:
+
+```bash
+python3 scripts/cleanup_e2e.py            # xem sẽ xoá gì (rollback)
+python3 scripts/cleanup_e2e.py --commit   # xoá thật
 ```
 
 Dừng / xoá dữ liệu:
@@ -90,6 +98,7 @@ liên kết xác thực email trên giao diện vì demo không có SMTP).
 | Mentor | `mentor.react@demo.local` | `Demo@123` | Frontend, đã duyệt |
 | Mentor | `mentor.devops@demo.local` | `Demo@123` | DevOps, đã duyệt |
 | Mentor | `mentor.data@demo.local` | `Demo@123` | Data/AI, đã duyệt |
+| Mentor | `mentor.pm@demo.local` | `Demo@123` | Product / PM (từng làm frontend), đã duyệt |
 | Mentor | `mentor.full@demo.local` | `Demo@123` | Backend Java, **chưa phỏng vấn** — dùng để demo AI Interview & lọc matching |
 
 Thẻ test: `4242 4242 4242 4242` (thành công), `4000 0000 0000 0002` (bị từ chối), hạn dùng bất kỳ ở

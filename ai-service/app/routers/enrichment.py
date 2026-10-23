@@ -35,7 +35,7 @@ async def answer(conversation_id: UUID, body: AnswerInput,
 async def confirm_goal(conversation_id: UUID, body: GoalInput,
                        user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
     """US-21 — "Dùng mục tiêu này" (goal có thể đã sửa): ghi vào hồ sơ; gọi lại không đồng bộ lần hai."""
-    return await service.confirm_goal(user, conversation_id, body.goal, body.skills)
+    return await service.confirm_goal(user, conversation_id, body.goal, body.skills, body.domain)
 
 
 @router.post("/enrichment/conversations/{conversation_id}/discard-goal", response_model=ConversationView,

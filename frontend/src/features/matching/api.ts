@@ -56,7 +56,6 @@ export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   unavailable: "tạm ngưng nhận mentee",
   noSchedule: "chưa có lịch rảnh",
   fullCapacity: "đã đủ số mentee",
-  domainMismatch: "khác lĩnh vực",
 };
 
 export const NOT_RELEVANT_LABELS: Record<NotRelevantReason, string> = {

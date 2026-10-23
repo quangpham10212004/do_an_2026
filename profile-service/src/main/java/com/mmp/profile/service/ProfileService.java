@@ -425,7 +425,7 @@ public class ProfileService {
 
     /**
      * FR-8.5 — nhận goal đã được chatbot làm rõ, cập nhật hồ sơ (goal + gộp kỹ năng
-     * trích từ CV); matching-service lập lại chỉ mục sau đó.
+     * trích từ CV + lĩnh vực nếu mentee chọn đổi); matching-service lập lại chỉ mục sau đó.
      */
     public MenteeProfileResponse applyEnrichment(UUID userId, EnrichmentInput in) {
         MenteeProfile saved = tx.execute(status -> {
@@ -439,6 +439,9 @@ public class ProfileService {
             }
             if (in.cvFileUrl() != null) {
                 p.setCvFileUrl(in.cvFileUrl());
+            }
+            if (in.domain() != null && !in.domain().isBlank()) {
+                p.setDomain(normalizeDomain(in.domain()));
             }
             return menteeRepo.save(p);
         });

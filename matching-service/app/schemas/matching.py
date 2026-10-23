@@ -54,6 +54,8 @@ class RankedMentor(CamelModel):
     rating_used: float = 0.0
     score_parts: dict[str, float] = {}
     headline: str | None = None
+    # False = khác lĩnh vực trong hồ sơ mentee (vẫn được gợi ý, nhưng điểm bị nhân hệ số phạt)
+    domain_match: bool = True
 
 
 class PipelineStats(CamelModel):
@@ -85,6 +87,9 @@ class MatchingResponse(CamelModel):
     pipeline: PipelineStats
     filters: EffectiveFilters = EffectiveFilters()
     excluded_by: dict[str, int] = {}
+    mentee_domain: str | None = None
+    # Số mentor hợp lệ cùng lĩnh vực mentee; 0 = mọi gợi ý đều khác lĩnh vực (giao diện báo cho mentee)
+    domain_matches: int = 0
     # US-36 — id của danh sách vừa hiển thị (gửi kèm phản hồi "Không phù hợp"); None khi rỗng / ghi nhật ký lỗi.
     impression_id: str | None = None
 

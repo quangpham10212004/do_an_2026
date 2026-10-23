@@ -66,12 +66,13 @@ async def update_verification(mentor_id: UUID, status: str, tier: str | None = N
         raise _unavailable(str(e)) from None
 
 
-async def apply_enrichment(mentee_id: UUID, enriched_goal: str, cv_skills: list[str], cv_file_url: str) -> None:
-    """FR-8.5 — gửi goal đã làm rõ sang profile-service để cập nhật hồ sơ & sinh lại embedding."""
-    res = await _client().post(
-        f"/api/profile/mentee/{mentee_id}/enrichment-chat",
-        json={"enrichedGoalText": enriched_goal, "cvSkills": cv_skills, "cvFileUrl": cv_file_url},
-    )
+async def apply_enrichment(mentee_id: UUID, enriched_goal: str, cv_skills: list[str], cv_file_url: str,
+                           domain: str | None = None) -> None:
+    """FR-8.5 — gửi goal đã làm rõ (và lĩnh vực nếu mentee chọn đổi) sang profile-service để cập nhật hồ sơ & sinh lại embedding."""
+    body = {"enrichedGoalText": enriched_goal, "cvSkills": cv_skills, "cvFileUrl": cv_file_url}
+    if domain is not None:
+        body["domain"] = domain
+    res = await _client().post(f"/api/profile/mentee/{mentee_id}/enrichment-chat", json=body)
     res.raise_for_status()
 
 

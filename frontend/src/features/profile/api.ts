@@ -90,6 +90,7 @@ export const DOMAINS: ReadonlyArray<readonly [value: string, label: string]> = [
   ["devops", "DevOps / Cloud"],
   ["data", "Data / AI"],
   ["mobile", "Mobile"],
+  ["product", "Product / PM"],
 ];
 
 export const domainLabel = (value: string | null | undefined): string =>

@@ -34,6 +34,7 @@ class FakeProfile:
         self.verifications: list[tuple[UUID, str]] = []
         self.tiers: list[tuple[UUID, str | None]] = []
         self.enrichments: list[tuple[UUID, str, list[str], str]] = []
+        self.enrichment_domains: list[str | None] = []  # lĩnh vực gửi kèm từng lần apply_enrichment
         self.enrichment_error: Exception | None = None
         self.cleared_cv_files: list[tuple[UUID, str]] = []
         self.clear_error: Exception | None = None
@@ -52,11 +53,12 @@ class FakeProfile:
         self.verifications.append((mentor_id, status))
         self.tiers.append((mentor_id, tier))
 
-    async def apply_enrichment(self, mentee_id, goal, skills, cv_url):
+    async def apply_enrichment(self, mentee_id, goal, skills, cv_url, domain=None):
         if self.enrichment_error is not None:
             error, self.enrichment_error = self.enrichment_error, None
             raise error
         self.enrichments.append((mentee_id, goal, skills, cv_url))
+        self.enrichment_domains.append(domain)
 
     async def clear_cv_file(self, user_id, cv_file_url):
         if self.clear_error is not None:

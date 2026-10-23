@@ -26,9 +26,11 @@ export interface RankedMentor {
   /** Phần đóng góp từng tín hiệu vào finalScore (cộng lại = finalScore). */
   scoreParts: Partial<Record<keyof PipelineWeights, number>>;
   headline: string | null;
+  /** false = khác lĩnh vực trong hồ sơ mentee: vẫn gợi ý nhưng điểm bị phạt. */
+  domainMatch: boolean;
 }
 
-export type ExclusionReason = "notVerified" | "unavailable" | "noSchedule" | "fullCapacity" | "domainMismatch";
+export type ExclusionReason = "notVerified" | "unavailable" | "noSchedule" | "fullCapacity";
 
 export interface PipelineWeights {
   similarity: number;
@@ -86,6 +88,9 @@ export interface MatchResult {
   filters: EffectiveFilters;
   /** US-18 — số mentor mỗi bộ lọc đang bật loại riêng (sẽ có thêm nếu chỉ bỏ bộ lọc đó). */
   excludedBy: Partial<Record<MatchFilterName, number>>;
+  /** Lĩnh vực trong hồ sơ mentee; domainMatches = số mentor hợp lệ cùng lĩnh vực (0 = mọi gợi ý đều khác lĩnh vực). */
+  menteeDomain: string | null;
+  domainMatches: number;
   /** US-36 — id danh sách vừa hiển thị, gửi kèm phản hồi "Không phù hợp". */
   impressionId: Uuid | null;
 }

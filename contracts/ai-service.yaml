@@ -407,6 +407,16 @@ components:
         completedAt: { type: string, format: date-time, nullable: true }
         suggestedSkills: { type: array, items: { type: string }, description: "US-45 (PRD-CV-5) — kỹ năng đã duyệt từ CV, hiển thị dạng chip để chọn" }
         addedSkills: { type: array, items: { type: string }, description: "US-45 — kỹ năng mentee đã chọn thêm vào hồ sơ khi xác nhận mục tiêu" }
+        profileDomain: { type: string, nullable: true, description: Lĩnh vực trong hồ sơ mentee lúc hội thoại kết thúc }
+        suggestedDomain:
+          type: string
+          nullable: true
+          enum: [backend, frontend, fullstack, devops, data, mobile, product, null]
+          description: >-
+            Lĩnh vực suy ra từ CÁC CÂU TRẢ LỜI của mentee (không từ CV — CV là quá khứ, câu trả lời là hướng muốn đi) khi
+            hội thoại xong; chỉ có khi khác profileDomain (vd. hồ sơ frontend nhưng mentee nói muốn học product management).
+            Giao diện đề nghị đổi lĩnh vực cùng lúc xác nhận mục tiêu, vì matching ưu tiên mentor cùng lĩnh vực hồ sơ.
+        confirmedDomain: { type: string, nullable: true, description: Lĩnh vực mentee chọn đổi khi xác nhận mục tiêu (null = giữ nguyên) }
     CvUploadResult:
       type: object
       properties:
@@ -439,6 +449,13 @@ components:
           description: >-
             US-45 (PRD-CV-5) — kỹ năng gợi ý (suggestedSkills) mentee chọn thêm vào hồ sơ; không phân biệt hoa thường,
             ngoài danh sách gợi ý => 400 INVALID_SKILLS. null/không gửi = mọi kỹ năng gợi ý; [] = không thêm kỹ năng nào.
+        domain:
+          type: string
+          nullable: true
+          enum: [backend, frontend, fullstack, devops, data, mobile, product, null]
+          description: >-
+            Đổi lĩnh vực hồ sơ cùng lúc (thường = suggestedDomain mentee đồng ý). null/không gửi = giữ lĩnh vực hiện tại.
+            Ngoài danh sách => 400 INVALID_DOMAIN.
     EnrichmentAnswerInput:
       type: object
       properties:
@@ -809,7 +826,7 @@ paths:
         US-21 / FR-8.5 (MENTEE, chủ hội thoại) "Dùng mục tiêu này": goal (bản nháp hoặc bản người dùng sửa) được
         lưu vào confirmedGoal rồi gửi sang profile-service POST /api/profile/mentee/{id}/enrichment-chat
         {enrichedGoalText = confirmedGoal, cvSkills = chỉ confirmedFields.skills của CV (chưa duyệt => []),
-        cvFileUrl}; profile-service lỗi => profileSynced = false và job nền thử lại. Idempotent: goal đã
+        cvFileUrl, domain = confirmedDomain (chỉ gửi khi mentee chọn đổi lĩnh vực)}; profile-service lỗi => profileSynced = false và job nền thử lại. Idempotent: goal đã
         CONFIRMED thì trả 200 với trạng thái hiện tại, không gửi lại (kể cả khi body khác).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
@@ -819,7 +836,7 @@ paths:
             schema: { $ref: "#/components/schemas/GoalInput" }
       responses:
         "200": { description: Conversation (goalStatus = CONFIRMED) }
-        "400": { description: VALIDATION_ERROR — goal thiếu, < 10 hoặc > 3000 ký tự }
+        "400": { description: VALIDATION_ERROR — goal thiếu, < 10 hoặc > 3000 ký tự | INVALID_SKILLS | INVALID_DOMAIN }
         "403": { description: FORBIDDEN — không phải chủ hội thoại }
         "404": { description: CONVERSATION_NOT_FOUND }
         "409": { description: CONVERSATION_NOT_COMPLETED | GOAL_DISCARDED }

@@ -76,7 +76,7 @@ flowchart LR
     H -- có --> E[all-MiniLM-L6-v2]
     E --> V[(matching_db<br/>VECTOR 384 + HNSW)]
 
-    Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R2[1. Hard filter trên profile_db<br/>5 ràng buộc + bộ lọc người dùng]
+    Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R2[1. Hard filter trên profile_db<br/>4 ràng buộc + bộ lọc người dùng]
     R2 --> R1[2. Top-K retrieval<br/>cosine, chỉ trong mentor hợp lệ]
     V --> R1
     R1 --> R3[3. Re-rank<br/>0.6·sim + 0.15·rating + 0.1·exp<br/>+ 0.1·scheduleFit + 0.05·responsiveness]
@@ -165,7 +165,12 @@ Chạy bằng SQL trên `profile_db` cho **toàn bộ** mentor, trước bước
 | `unavailable` | Trạng thái hiệu lực ≠ `ACCEPTING` (US-08: `PAUSED`, `ON_LEAVE` chưa hết hạn, `SUSPENDED`) | Mentor tạm ngưng / nghỉ phép / bị đình chỉ |
 | `noSchedule` | Không có khung lịch rảnh nào | Không thể đặt lịch |
 | `fullCapacity` | `active_mentee_count ≥ capacity` | Đã đủ số mentee tối đa |
-| `domainMismatch` | `lower(domain) ≠ lower(mentee.domain)` | Khác lĩnh vực mentee chọn |
+
+**Lĩnh vực không còn là ràng buộc cứng** (trước đây có mã `domainMismatch`). Mentee hay đổi hướng mà chưa sửa hồ sơ — ví
+dụ hồ sơ ghi `frontend` nhưng mục tiêu sau chatbot là product management — nên loại hẳn mentor khác lĩnh vực khiến họ
+chỉ thấy mentor frontend. Giờ mentor khác lĩnh vực vẫn được xét nhưng bị phạt điểm ở bước re-rank (§1.6), có cờ
+`domainMatch = false`; response trả thêm `domainMatches` (số mentor hợp lệ cùng lĩnh vực) để giao diện báo khi không có
+mentor nào thuộc lĩnh vực của mentee.
 
 Số lượng bị loại theo từng lý do được trả về trong `pipeline.excluded` và hiển thị trên giao diện —
 người dùng thấy rõ kết quả **không chỉ dựa thuần vector** (DoD 7).
@@ -202,6 +207,10 @@ $$
   = 0.5. Trung vị (≤ 20 yêu cầu gần nhất trong 180 ngày, hết hạn = không phản hồi) do mentoring-service tính và đồng bộ sang
   `mentor_profiles.median_response_hours` (`ResponseTimeSyncJob`, giống cách đồng bộ rating).
 
+**Phạt khác lĩnh vực:** mentor có `lower(trim(domain)) ≠ lower(trim(mentee.domain))` bị nhân mọi phần điểm với
+`MATCH_DOMAIN_MISMATCH_FACTOR` (mặc định **0.75**), nên `scoreParts` vẫn cộng lại đúng `finalScore`. Cùng độ tương đồng thì
+mentor cùng lĩnh vực luôn đứng trước; mentor khác lĩnh vực chỉ vượt lên khi gần mục tiêu hơn hẳn.
+
 **Lý do chọn trọng số:**
 - **0.6 cho similarity** — mức phù hợp nội dung vẫn là tín hiệu chính; mentor ít liên quan nhưng rating cao không vượt
   mentor rất phù hợp (unit test `test_similarity_can_beat_rating`).
@@ -225,6 +234,7 @@ $$
 | "Trùng kỹ năng: X, Y" | Kỹ năng mentor ∈ kỹ năng mentee (không phân biệt hoa thường) |
 | "Có chuyên môn phù hợp mục tiêu của bạn: Z" | Kỹ năng mentor xuất hiện trong mục tiêu của mentee (khớp nguyên từ — "Go" không khớp "Google") |
 | "Cùng lĩnh vực backend" | Cùng domain |
+| "Khác lĩnh vực trong hồ sơ của bạn (frontend) nhưng gần với mục tiêu của bạn" | Khác domain (đã bị phạt điểm) |
 | "Hồ sơ rất tương đồng / tương đồng khá về nội dung (78%)" | similarity ≥ 0.6 / ≥ 0.4 |
 | "Được đánh giá cao (4.8/5 từ 12 lượt)" | Có đánh giá và rating ≥ 4 |
 | "9 năm kinh nghiệm" | ≥ 5 năm |
@@ -241,7 +251,8 @@ Java, chuẩn bị phỏng vấn trong 6 tháng tới và học thêm system des
 | 3 | Trần Thu Hà (Node.js, TypeScript…, 5 năm) | 0.624 | 0.627 | Cùng lĩnh vực backend · Hồ sơ rất tương đồng (62%) · 5 năm KN |
 
 Thống kê pipeline: `retrieved = 7`, loại `notVerified: 1` (mentor Java chưa phỏng vấn) và
-`domainMismatch: 3` (frontend, devops, data). Mentor Java chuyên system design đứng đầu — đúng kỳ vọng.
+`domainMismatch: 3` (frontend, devops, data). Mentor Java chuyên system design đứng đầu — đúng kỳ vọng. (Số liệu chạy
+trước khi bỏ ràng buộc lĩnh vực; giờ 3 mentor khác lĩnh vực vẫn có trong danh sách nhưng bị phạt điểm, xếp sau.)
 
 ### 1.9 Hiệu năng (NFR-1)
 
@@ -751,6 +762,15 @@ thoại (JSON `{"enriched_goal": ...}`), lỗi thì dùng mẫu rule-based ở t
 profile-service; kỹ năng được **gộp** (không trùng, không phân biệt hoa thường) vào kỹ năng hồ sơ;
 văn bản chuẩn hoá thay đổi → hash đổi → matching-service sinh lại embedding. Nếu gửi lỗi, cờ `profile_synced = false`
 và job thử lại mỗi 2 phút (chỉ goal `CONFIRMED`; bỏ qua xác nhận < 60 giây để không gửi trùng).
+
+**Đề nghị đổi lĩnh vực** — lĩnh vực hồ sơ là lựa chọn lúc đăng ký và matching ưu tiên mentor cùng lĩnh vực đó. Nếu
+mentee đổi hướng (hồ sơ `frontend`, nói với chatbot "muốn học product management") mà hồ sơ giữ nguyên thì gợi ý vẫn nghiêng
+về frontend. Vì vậy:
+- Prompt DeepSeek coi lĩnh vực/mục tiêu trong hồ sơ là "có thể đã cũ": câu hỏi đầu hỏi mở về hướng đi, không giả định lĩnh vực.
+- Khi hội thoại xong, `app/enrichment/domains.py` suy lĩnh vực từ **câu trả lời** của mentee (không từ CV — CV là quá khứ):
+  từ khoá bỏ dấu, khớp nguyên từ, cụm dài khớp trước ("react native" → mobile). Hoà điểm hoặc không có từ khoá → không đề
+  nghị. Khác lĩnh vực hồ sơ → `suggestedDomain`; giao diện hiện ô "Đổi lĩnh vực hồ sơ sang …" (mặc định chọn) cạnh nút
+  "Dùng mục tiêu này", và `domain` được gửi kèm sang profile-service.
 
 ### 3.6 Ví dụ (kiểm thử e2e với `scripts/sample-cv.pdf`)
 - Kỹ năng trích xuất (theo tần suất): Spring Boot, Docker, Java, REST API, PostgreSQL, JUnit, MySQL,

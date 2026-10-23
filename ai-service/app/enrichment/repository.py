@@ -45,16 +45,16 @@ async def mark_synced(conn: Db, conversation_id: UUID) -> bool:
 
 
 async def decide_goal(conn: Db, conversation_id: UUID, status: str, goal: str | None,
-                      added_skills: list[str] | None = None) -> asyncpg.Record | None:
+                      added_skills: list[str] | None = None, domain: str | None = None) -> asyncpg.Record | None:
     """
     US-21 — DRAFT → CONFIRMED (kèm goal người dùng chọn/sửa) hoặc DISCARDED, nguyên tử: chỉ một request thắng,
     nên xác nhận hai lần (kể cả đồng thời) chỉ đồng bộ một lần. None nếu goal không còn ở DRAFT.
     """
     return await conn.fetchrow(
         """UPDATE enrichment_conversations SET goal_status = $2, confirmed_goal = $3, goal_decided_at = now(),
-                  added_skills = COALESCE($4, added_skills)
+                  added_skills = COALESCE($4, added_skills), confirmed_domain = $5
            WHERE id = $1 AND goal_status = 'DRAFT' RETURNING *""",
-        conversation_id, status, goal, added_skills)
+        conversation_id, status, goal, added_skills, domain)
 
 
 async def messages_of(conn: Db, conversation_id: UUID) -> list[asyncpg.Record]:
@@ -83,12 +83,14 @@ async def set_current_turn(conn: Db, conversation_id: UUID, turn_no: int) -> Non
                        conversation_id, turn_no)
 
 
-async def complete(conn: Db, conversation_id: UUID, enriched_goal: str) -> asyncpg.Record:
+async def complete(conn: Db, conversation_id: UUID, enriched_goal: str, profile_domain: str | None = None,
+                   suggested_domain: str | None = None) -> asyncpg.Record:
     return await conn.fetchrow(
         """UPDATE enrichment_conversations
-           SET status = 'COMPLETED', enriched_goal = $2, goal_status = 'DRAFT', completed_at = now()
+           SET status = 'COMPLETED', enriched_goal = $2, goal_status = 'DRAFT', completed_at = now(),
+               profile_domain = $3, suggested_domain = $4
            WHERE id = $1 RETURNING *""",
-        conversation_id, enriched_goal)
+        conversation_id, enriched_goal, profile_domain, suggested_domain)
 
 
 def to_exchange(message: asyncpg.Record) -> Exchange:
