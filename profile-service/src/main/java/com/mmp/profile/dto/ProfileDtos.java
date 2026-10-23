@@ -232,7 +232,9 @@ public final class ProfileDtos {
     public record EnrichmentInput(
             @NotBlank @Size(max = 3000) String enrichedGoalText,
             @Size(max = 30) List<@Size(max = 50) String> cvSkills,
-            @Size(max = 500) String cvFileUrl) {
+            @Size(max = 500) String cvFileUrl,
+            /** Lĩnh vực mới mentee chọn khi xác nhận mục tiêu; null/rỗng = giữ nguyên. */
+            @Size(max = 50) String domain) {
     }
 
     /** timezone (US-37) — múi giờ IANA của người dùng; mentoring-service dùng cho nhắc lịch (US-34). */

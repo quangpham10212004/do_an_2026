@@ -70,6 +70,11 @@ class ConversationView(CamelModel):
     # đã chọn thêm vào hồ sơ khi xác nhận mục tiêu
     suggested_skills: list[str] = []
     added_skills: list[str] = []
+    # Lĩnh vực hồ sơ lúc hội thoại xong; suggested_domain = lĩnh vực suy ra từ câu trả lời, chỉ có khi khác hồ sơ (vd. hồ
+    # sơ frontend nhưng mentee nói muốn học product management) — giao diện đề nghị đổi khi xác nhận mục tiêu.
+    profile_domain: str | None = None
+    suggested_domain: str | None = None
+    confirmed_domain: str | None = None
 
 
 class CvUploadResult(CamelModel):
@@ -90,6 +95,8 @@ class GoalInput(CamelModel):
     (hành vi trước US-45), [] = không thêm kỹ năng nào."""
     goal: Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=3000)]
     skills: list[str] | None = Field(default=None, max_length=30)
+    # Đổi lĩnh vực hồ sơ cùng lúc (thường = suggested_domain); None = giữ nguyên. Kiểm tra ở service (INVALID_DOMAIN).
+    domain: str | None = Field(default=None, max_length=50)
 
 
 def cv_view(cv: asyncpg.Record) -> CvView:
@@ -117,4 +124,6 @@ def conversation_view(conversation: asyncpg.Record, messages: list[asyncpg.Recor
         profile_synced=conversation["profile_synced"],
         created_at=conversation["created_at"], completed_at=conversation["completed_at"],
         suggested_skills=[] if confirmed is None else list(confirmed.skills),
-        added_skills=list(conversation["added_skills"] or []))
+        added_skills=list(conversation["added_skills"] or []),
+        profile_domain=conversation.get("profile_domain"), suggested_domain=conversation.get("suggested_domain"),
+        confirmed_domain=conversation.get("confirmed_domain"))

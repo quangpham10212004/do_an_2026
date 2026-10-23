@@ -66,7 +66,8 @@ export const aiApi = {
     api<Conversation>(`/api/ai/enrichment/conversations/${id}/answers`, { method: "POST", body: { answer, skipped } }),
   // US-21: goal nháp chỉ vào hồ sơ khi người dùng xác nhận (gọi lại không đồng bộ lần hai); bỏ qua = không gửi gì
   // US-45: skills = kỹ năng gợi ý được chọn thêm vào hồ sơ (bỏ trống = tất cả)
-  confirmGoal: (id: Uuid, goal: string, skills?: string[]) =>
-    api<Conversation>(`/api/ai/enrichment/conversations/${id}/confirm-goal`, { method: "POST", body: { goal, skills } }),
+  /** domain: đổi lĩnh vực hồ sơ cùng lúc (thường = suggestedDomain); bỏ trống = giữ nguyên. */
+  confirmGoal: (id: Uuid, goal: string, skills?: string[], domain?: string | null) =>
+    api<Conversation>(`/api/ai/enrichment/conversations/${id}/confirm-goal`, { method: "POST", body: { goal, skills, domain: domain ?? null } }),
   discardGoal: (id: Uuid) => api<Conversation>(`/api/ai/enrichment/conversations/${id}/discard-goal`, { method: "POST" }),
 };

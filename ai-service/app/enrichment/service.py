@@ -22,6 +22,7 @@ from app.clients import mentoring, profile
 from app.cv import engine as cv_engine
 from app.cv import repository as cv_repo
 from app.db import get_pool
+from app.enrichment import domains
 from app.enrichment import engine as enrichment_engine
 from app.enrichment import repository as repo
 from app.cv.models import ConfirmedFields
@@ -160,7 +161,9 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str, skipped: bool
         if not written:
             raise errors.conflict("ALREADY_ANSWERED", "Câu hỏi này đã được trả lời")
         if is_last:
-            await repo.complete(conn, conversation_id, goal)
+            # Lĩnh vực suy từ chính câu trả lời (câu bỏ qua không tính); khác hồ sơ => đề nghị đổi khi xác nhận mục tiêu.
+            answers = [e.answer for e in history if e.answer and e.answer != SKIPPED_ANSWER_FOR_ENGINE]
+            await repo.complete(conn, conversation_id, goal, mentee["domain"], domains.suggest(answers, mentee["domain"]))
         else:
             next_turn = current["turn_no"] + 1
             await repo.insert_message(conn, conversation_id, next_turn, next_question.question.slot,
@@ -170,11 +173,18 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str, skipped: bool
     return await _view(pool, conversation_id)
 
 
-async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str, skills: list[str] | None = None) -> ConversationView:
+async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str, skills: list[str] | None = None,
+                       domain: str | None = None) -> ConversationView:
     """
     US-21 — "Dùng mục tiêu này": goal (bản nháp hoặc bản người dùng sửa) được ghi nhận rồi đồng bộ sang hồ sơ
-    cùng các kỹ năng đã duyệt. Idempotent: goal đã xác nhận thì trả về trạng thái hiện tại, không gửi lại.
+    cùng các kỹ năng đã duyệt và lĩnh vực mới nếu mentee chọn đổi (domain, thường = suggested_domain).
+    Idempotent: goal đã xác nhận thì trả về trạng thái hiện tại, không gửi lại.
     """
+    new_domain = None
+    if domain is not None and domain.strip():
+        new_domain = domains.normalize(domain)
+        if new_domain is None:
+            raise errors.bad_request("INVALID_DOMAIN", f"Lĩnh vực không hợp lệ: {domain}")
     pool = await get_pool()
     conversation = await _owned_completed(pool, user, conversation_id)
     if conversation["goal_status"] == "DISCARDED":
@@ -183,7 +193,7 @@ async def confirm_goal(user: AuthUser, conversation_id: UUID, goal: str, skills:
         # US-45 (PRD-CV-5) — chỉ thêm các kỹ năng gợi ý mentee đã chọn (None = mọi kỹ năng đã duyệt, như trước).
         cv = await cv_repo.find(pool, conversation["cv_id"])
         chosen = pick_skills(_confirmed_skills(cv), skills)
-        if await repo.decide_goal(pool, conversation_id, "CONFIRMED", goal, chosen) is not None:
+        if await repo.decide_goal(pool, conversation_id, "CONFIRMED", goal, chosen, new_domain) is not None:
             await sync_profile(conversation_id)  # chỉ request chuyển DRAFT → CONFIRMED mới gửi
     return await _view(pool, conversation_id)
 
@@ -212,7 +222,8 @@ async def sync_profile(conversation_id: UUID) -> None:
     cv = await cv_repo.find(pool, conversation["cv_id"])
     try:
         await profile.apply_enrichment(conversation["mentee_id"], conversation["confirmed_goal"],
-                                       list(conversation["added_skills"] or []), cv_file_url(cv["id"]))
+                                       list(conversation["added_skills"] or []), cv_file_url(cv["id"]),
+                                       conversation.get("confirmed_domain"))
     except (httpx.HTTPError, errors.AiError) as e:
         log.warning("Could not sync enrichment %s to profile-service: %s", conversation_id, e)
         return

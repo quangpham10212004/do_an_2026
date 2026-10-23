@@ -2,14 +2,17 @@
 Pipeline AI Matching mentor-mentee (FR-4.3 → FR-4.6, US-17 PRD-MATCH-1/2):
 
     1. Hard filter       : profile_db (read-only) cho biết mentor nào thoả MỌI ràng buộc cứng —
-                           5 ràng buộc hệ thống (APPROVED, trạng thái hiệu lực ACCEPTING, có lịch rảnh,
-                           còn chỗ, cùng lĩnh vực) + bộ lọc người dùng (giá, ngày, buổi, ngôn ngữ,
-                           loại phiên, rating — match_filters.py)
+                           4 ràng buộc hệ thống (APPROVED, trạng thái hiệu lực ACCEPTING, có lịch rảnh,
+                           còn chỗ) + bộ lọc người dùng (giá, ngày, buổi, ngôn ngữ, loại phiên, rating —
+                           match_filters.py). Lĩnh vực KHÔNG còn là ràng buộc cứng: mentor khác lĩnh vực
+                           vẫn được xét nhưng bị nhân hệ số phạt ở bước re-rank (mentee đổi hướng, ví dụ
+                           hồ sơ ghi frontend nhưng mục tiêu là product management, vẫn thấy mentor phù hợp)
     2. Top-K retrieval   : CHỈ trong các mentor đó, lấy K mentor có vector gần mentee nhất
                            (cosine, pgvector <=>) trong matching_db
     3. Re-rank           : điểm cuối = 0.6·similarity + 0.15·rating/5 + 0.1·kinh nghiệm + 0.1·scheduleFit
                            + 0.05·responsiveness (US-35, PRD-MATCH-3; trọng số cấu hình được — config.py).
-                           Mentor < 3 đánh giá dùng trung vị rating nền tảng (PRD-MATCH-4, ranking_signals.py)
+                           Mentor < 3 đánh giá dùng trung vị rating nền tảng (PRD-MATCH-4, ranking_signals.py).
+                           Mentor khác lĩnh vực mentee: mọi phần điểm × DOMAIN_MISMATCH_FACTOR
     4. Explain           : sinh lý do đề xuất để kết quả không phải "hộp đen" (NFR-6)
 
 Lọc TRƯỚC khi xếp hạng (US-17): trước đây lấy top-K theo vector rồi mới lọc, nên khi bộ lọc chặt thì
@@ -54,13 +57,14 @@ WEIGHTS = {
 MAX_YEARS_EXPERIENCE_NORM = 10  # chuẩn hoá years_experience về [0, 1]
 # Rating dùng khi chưa tính được trung vị nền tảng (chưa mentor nào có ≥ 3 đánh giá) — cold-start.
 NEUTRAL_RATING = signals.FALLBACK_MEDIAN_RATING
+# Mentor khác lĩnh vực mentee: nhân cả điểm (và từng phần điểm) với hệ số này thay vì loại hẳn.
+DOMAIN_MISMATCH_FACTOR = config.MATCH_DOMAIN_MISMATCH_FACTOR
 
 # Mã lý do loại bỏ của ràng buộc hệ thống — trả về trong pipeline.excluded (thứ tự = thứ tự kiểm tra).
 REASON_NOT_VERIFIED = "notVerified"
 REASON_UNAVAILABLE = "unavailable"
 REASON_NO_SCHEDULE = "noSchedule"
 REASON_FULL_CAPACITY = "fullCapacity"
-REASON_DOMAIN_MISMATCH = "domainMismatch"
 
 
 async def get_mentee(mentee_id: str) -> dict | None:
@@ -94,8 +98,8 @@ WITH c AS (
                          AND m.on_leave_until < (now() AT TIME ZONE m.timezone)::date)) THEN 'unavailable'
                WHEN NOT EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) THEN 'noSchedule'
                WHEN m.active_mentee_count >= m.capacity THEN 'fullCapacity'
-               WHEN $1::text IS NOT NULL AND lower(trim(m.domain)) <> lower(trim($1::text)) THEN 'domainMismatch'
            END AS reason,
+           ($1::text IS NULL OR lower(trim(m.domain)) = lower(trim($1::text))) AS domain_match,
            ($2::numeric IS NULL OR m.hourly_rate <= $2::numeric) AS rate_ok,
            (cardinality($6::text[]) = 0 OR m.languages && $6::text[]) AS language_ok,
            ($7::text IS NULL OR $7::text = ANY (m.session_types)) AS session_ok,
@@ -132,7 +136,7 @@ async def eligible_candidates(
     mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str] | None = None
 ) -> tuple[list[dict], dict[str, int]]:
     """
-    Bước 1 — trên profile_db: (mentor đã qua 5 ràng buộc hệ thống, kèm cờ của từng bộ lọc người dùng;
+    Bước 1 — trên profile_db: (mentor đã qua 4 ràng buộc hệ thống, kèm cờ của từng bộ lọc người dùng;
     số mentor bị loại theo từng lý do hệ thống). Bộ lọc người dùng được áp ở match_filters.apply.
     """
     params = _filter_params(mentee_domain, filters, exclude_ids or [])
@@ -175,10 +179,12 @@ def re_rank(candidates: list[dict], platform_median: float | None = None, weight
     """
     Điểm cuối (US-35) = Σ trọng số × tín hiệu ∈ [0, 1]. Ứng viên thiếu schedule_fit (vd. script đánh giá offline)
     tính 0; thiếu median_response_hours tính responsiveness trung tính 0.5. score_parts = phần đóng góp của từng tín
-    hiệu (cộng lại = final_score) để giao diện giải thích điểm.
+    hiệu (cộng lại = final_score) để giao diện giải thích điểm. Ứng viên domain_match = False (khác lĩnh vực mentee)
+    bị nhân DOMAIN_MISMATCH_FACTOR vào mọi phần điểm, nên score_parts vẫn cộng lại đúng bằng final_score.
     """
     w = weights or WEIGHTS
     for c in candidates:
+        factor = 1.0 if c.get("domain_match", True) else DOMAIN_MISMATCH_FACTOR
         # Với vector đã chuẩn hoá, cosine distance ∈ [0, 2]; kẹp similarity về [0, 1]
         similarity = max(0.0, min(1.0, 1 - float(c["distance"])))
         rating = signals.effective_rating(c.get("rating"), c.get("rating_count", 0), platform_median)
@@ -192,6 +198,7 @@ def re_rank(candidates: list[dict], platform_median: float | None = None, weight
             "scheduleFit": w.get("scheduleFit", 0.0) * fit,
             "responsiveness": w.get("responsiveness", 0.0) * responsive,
         }
+        parts = {k: v * factor for k, v in parts.items()}
         c["similarity_score"] = round(similarity, 4)
         c["rating_used"] = round(rating, 2)
         c["new_mentor"] = signals.is_new_mentor(c.get("rating_count", 0))
@@ -264,8 +271,10 @@ def explain(candidate: dict, mentee: dict) -> tuple[list[str], list[str]]:
         reasons.append("Trùng kỹ năng: " + ", ".join(matched[:5]))
     if goal_hits:
         reasons.append("Có chuyên môn phù hợp mục tiêu của bạn: " + ", ".join(goal_hits[:5]))
-    if mentee.get("domain") and (candidate.get("domain") or "").lower() == mentee["domain"].lower():
+    if mentee.get("domain") and (candidate.get("domain") or "").strip().lower() == mentee["domain"].strip().lower():
         reasons.append(f"Cùng lĩnh vực {candidate['domain']}")
+    elif mentee.get("domain") and candidate.get("domain"):
+        reasons.append(f"Khác lĩnh vực trong hồ sơ của bạn ({mentee['domain']}) nhưng gần với mục tiêu của bạn")
     similarity = candidate.get("similarity_score", 0)
     if similarity >= 0.6:
         reasons.append(f"Hồ sơ rất tương đồng về nội dung ({similarity:.0%})")
@@ -339,6 +348,9 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
 
     return {
         "mentors": ranked,
+        "mentee_domain": mentee.get("domain"),
+        # Số mentor hợp lệ cùng lĩnh vực mentee — 0 thì giao diện báo "chưa có mentor thuộc lĩnh vực của bạn".
+        "domain_matches": sum(1 for c in eligible if c.get("domain_match", True)),
         "filters": filters,
         "excluded_by": excluded_by,
         "stats": {
@@ -355,7 +367,7 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
 async def similar_mentors(mentee_id: str, exclude_mentor_id: str, limit: int = 3) -> list[dict]:
     """
     Interface cho mentoring-service (US-15): mentor phù hợp nhất với mentee, trừ exclude_mentor_id.
-    Áp sở thích hồ sơ làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc người dùng (vẫn giữ 5 ràng
+    Áp sở thích hồ sơ làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc người dùng (vẫn giữ 4 ràng
     buộc hệ thống) để bổ sung, kết quả vòng đầu đứng trước. Mentee chưa có hồ sơ/chỉ mục => rỗng.
     """
     first = await match_mentors_for_mentee(mentee_id, limit=limit, exclude_ids=[exclude_mentor_id])

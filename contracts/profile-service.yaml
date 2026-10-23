@@ -683,6 +683,11 @@ paths:
                 enrichedGoalText: { type: string, maxLength: 3000 }
                 cvSkills: { type: array, items: { type: string } }
                 cvFileUrl: { type: string }
+                domain:
+                  type: string
+                  maxLength: 50
+                  nullable: true
+                  description: Lĩnh vực mới mentee chọn khi xác nhận mục tiêu (chuẩn hoá chữ thường); null = giữ nguyên
       responses:
         "200":
           description: Hồ sơ sau khi cập nhật

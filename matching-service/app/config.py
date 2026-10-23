@@ -37,6 +37,8 @@ MATCH_WEIGHT_RATING = float(os.getenv("MATCH_WEIGHT_RATING", "0.15"))
 MATCH_WEIGHT_EXPERIENCE = float(os.getenv("MATCH_WEIGHT_EXPERIENCE", "0.1"))
 MATCH_WEIGHT_SCHEDULE = float(os.getenv("MATCH_WEIGHT_SCHEDULE", "0.1"))
 MATCH_WEIGHT_RESPONSIVENESS = float(os.getenv("MATCH_WEIGHT_RESPONSIVENESS", "0.05"))
+# Hệ số nhân điểm cho mentor khác lĩnh vực mentee (thay cho loại hẳn — mentee có thể đang đổi hướng).
+MATCH_DOMAIN_MISMATCH_FACTOR = float(os.getenv("MATCH_DOMAIN_MISMATCH_FACTOR", "0.75"))
 
 # US-11 — áp dụng matching-service/migrations/*.sql lúc khởi động (bảng schema_migrations).
 MIGRATE_ON_STARTUP = os.getenv("MIGRATE_ON_STARTUP", "true").lower() == "true"

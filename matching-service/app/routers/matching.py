@@ -141,6 +141,7 @@ async def get_matches(
             rating_used=m.get("rating_used", float(m["rating"])),
             score_parts=m.get("score_parts", {}),
             headline=m.get("headline"),
+            domain_match=m.get("domain_match", True),
         )
         for m in result["mentors"]
     ]
@@ -162,6 +163,8 @@ async def get_matches(
         ),
         filters=EffectiveFilters(**filters_echo),
         excluded_by=result["excluded_by"],
+        mentee_domain=result.get("mentee_domain"),
+        domain_matches=result.get("domain_matches", 0),
         impression_id=impression_id,
     )
 

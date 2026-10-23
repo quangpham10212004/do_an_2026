@@ -223,8 +223,8 @@ def main():
     check(6, "Có similarityScore, finalScore và lý do đề xuất", 0 < top["similarityScore"] <= 1 and top["finalScore"] > 0 and top["reasons"], top)
     check(6, "Kết quả sắp xếp giảm dần theo finalScore",
           [m["finalScore"] for m in matching["mentors"]] == sorted([m["finalScore"] for m in matching["mentors"]], reverse=True))
-    check(7, "Không mentor nào khác lĩnh vực / hết chỗ / chưa duyệt trong kết quả",
-          all(m["domain"] == "backend" for m in matching["mentors"]))
+    check(7, "Mentor khác lĩnh vực chỉ có mặt khi được đánh dấu domainMatch=false (bị phạt điểm)",
+          all(m["domainMatch"] == (m["domain"] == "backend") for m in matching["mentors"]))
     check(7, "Thống kê pipeline cho thấy mentor chưa duyệt bị hard filter loại (notVerified)",
           matching["pipeline"]["excluded"].get("notVerified", 0) >= 1, matching["pipeline"])
     check(6, f"NFR-1: truy vấn matching < 2 giây ({latency * 1000:.0f} ms)", latency < 2)

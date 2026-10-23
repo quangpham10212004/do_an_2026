@@ -99,7 +99,7 @@ Ví dụ response:
     "reasons": ["Trùng kỹ năng: Java", "Có chuyên môn phù hợp mục tiêu của bạn: System Design",
                 "Cùng lĩnh vực backend", "Hồ sơ rất tương đồng về nội dung (78%)", "9 năm kinh nghiệm"]
   }],
-  "pipeline": { "k": 50, "retrieved": 7, "excluded": { "notVerified": 1, "domainMismatch": 3 },
+  "pipeline": { "k": 50, "retrieved": 7, "excluded": { "notVerified": 1 },
                 "returned": 3, "weights": { "similarity": 0.6, "rating": 0.15, "experience": 0.1,
                              "scheduleFit": 0.1, "responsiveness": 0.05 } }
 }

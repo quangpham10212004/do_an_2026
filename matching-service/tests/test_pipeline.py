@@ -1,6 +1,7 @@
-# Ràng buộc hệ thống (notVerified, unavailable, noSchedule, fullCapacity, domainMismatch) giờ được áp
+# Ràng buộc hệ thống (notVerified, unavailable, noSchedule, fullCapacity) giờ được áp
 # bằng SQL trên profile_db TRƯỚC khi xếp hạng (US-17) — test trên Postgres thật ở test_matching_db.py.
 from app.services.matching_pipeline import (
+    DOMAIN_MISMATCH_FACTOR,
     NEUTRAL_RATING,
     explain,
     re_rank,
@@ -45,6 +46,27 @@ def test_re_rank_formula():
     assert abs(c["final_score"] - 0.80) < 1e-6
     assert abs(sum(c["score_parts"].values()) - c["final_score"]) < 1e-3
     assert c["score_parts"]["scheduleFit"] == 0.05 and c["score_parts"]["responsiveness"] == 0.05
+
+
+def test_re_rank_penalizes_other_domain_but_keeps_parts_consistent():
+    same, other = re_rank([mentor(mentor_id="same"), mentor(mentor_id="other", domain="product", domain_match=False)])
+    assert [same["mentor_id"], other["mentor_id"]] == ["same", "other"]
+    assert abs(other["final_score"] - same["final_score"] * DOMAIN_MISMATCH_FACTOR) < 1e-3
+    assert abs(sum(other["score_parts"].values()) - other["final_score"]) < 1e-3
+    assert other["similarity_score"] == same["similarity_score"]  # chỉ điểm bị phạt, độ tương đồng giữ nguyên
+
+
+def test_re_rank_other_domain_wins_when_much_closer():
+    ranked = re_rank([mentor(mentor_id="same", distance=0.9),
+                      mentor(mentor_id="other", domain="product", domain_match=False, distance=0.05)])
+    assert ranked[0]["mentor_id"] == "other"
+
+
+def test_explain_flags_other_domain():
+    [c] = re_rank([mentor(domain="product", domain_match=False)])
+    reasons, _ = explain(c, {"domain": "frontend", "skills": [], "goal": "Muốn làm product manager"})
+    assert "Khác lĩnh vực trong hồ sơ của bạn (frontend) nhưng gần với mục tiêu của bạn" in reasons
+    assert not any(r.startswith("Cùng lĩnh vực") for r in reasons)
 
 
 def test_re_rank_uses_neutral_rating_for_unrated_mentor():

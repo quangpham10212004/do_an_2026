@@ -125,55 +125,64 @@ def main():
                 query.append((k, str(item).lower() if isinstance(item, bool) else str(item)))
         return call("GET", f"{MATCHING}/api/matching/mentors?{urllib.parse.urlencode(query)}", token=me)
 
+    # Lĩnh vực không còn là ràng buộc cứng: mentor của lần chạy khác / dữ liệu demo cũng có thể qua bộ lọc (bị phạt điểm,
+    # domainMatch = false). Mọi kiểm tra chỉ xét mentor của lần chạy này (lĩnh vực riêng DOMAIN); excludedBy đếm trên
+    # toàn bộ mentor nên chỉ so cận dưới.
+    def own(res):
+        return [m for m in res["mentors"] if m["domainMatch"]]
+
+    def own_ids(res):
+        return [m["mentorId"] for m in own(res)]
+
+    def at_least(excluded_by, expected):
+        return set(excluded_by) == set(expected) and all(excluded_by[k] >= n for k, n in expected.items())
+
     # ---------------- US-17 ----------------
     print("\nUS-17 — bộ lọc trước khi xếp hạng")
     res = search(limit=10, maxRate=150000, useProfileDefaults=False)
     over = [m for m in res["mentors"] if m["hourlyRate"] > 150000]
     check("AC: maxRate=150000 => không kết quả nào có hourlyRate > 150.000", res["mentors"] and not over,
           [m["hourlyRate"] for m in res["mentors"]])
-    check("AC: 30 mentor hợp lệ, limit=10 => đúng 10 kết quả",
-          res["pipeline"]["eligible"] == 30 and len(res["mentors"]) == 10, (res["pipeline"], len(res["mentors"])))
-    check("excludedBy.maxRate = 6 mentor giá 300.000đ", res["excludedBy"] == {"maxRate": 6}, res["excludedBy"])
+    check("AC: 30 mentor cùng lĩnh vực hợp lệ, limit=10 => đúng 10 kết quả, mentor cùng lĩnh vực đứng trước",
+          res["domainMatches"] == 30 and len(res["mentors"]) == 10 and len(own(res)) == 10, (res["domainMatches"], len(res["mentors"])))
+    check("excludedBy.maxRate ≥ 6 mentor giá 300.000đ", at_least(res["excludedBy"], {"maxRate": 6}), res["excludedBy"])
     # considered/excluded đếm MỌI mentor trong profile_db (cả dữ liệu của lần chạy khác) nên chỉ so cận dưới.
     stats = res["pipeline"]
-    check("Pipeline: xét ≥ 36 mentor, mọi mentor khác bị ràng buộc hệ thống loại, retrieved = 30 ≤ k",
-          stats["considered"] >= 36 and stats["considered"] - sum(stats["excluded"].values()) == 36
-          and stats["retrieved"] == 30 and stats["retrieved"] <= stats["k"], stats)
+    check("Pipeline: xét ≥ 36 mentor, eligible ≥ 30, retrieved ≤ k",
+          stats["considered"] >= 36 and stats["eligible"] >= 30 and stats["retrieved"] <= stats["k"], stats)
 
     res = search(limit=50)
     f = res["filters"]
     check("Không truyền param => bộ lọc lấy từ sở thích hồ sơ",
           f["maxRate"] == 150000 and f["days"] == [1, 6] and f["timeOfDay"] == "EVENING" and f["language"] == ["vi"]
           and sorted(f["fromProfileDefaults"]) == ["days", "language", "maxRate", "timeOfDay"], f)
-    ids = {m["mentorId"] for m in res["mentors"]}
+    ids = set(own_ids(res))
     check("Kết quả theo sở thích: 28 mentor giá ≤ 150k, tối T2, tiếng Việt",
-          ids == {m["id"] for m in cheap}, (len(ids), res["excludedBy"]))
+          ids == {m["id"] for m in cheap} and res["domainMatches"] == 28, (len(ids), res["excludedBy"]))
     # pricey chỉ trượt giá; mentor EN chỉ trượt ngôn ngữ; mentor sáng T7 chỉ trượt buổi (T7 nằm trong ngày đã chọn).
-    check("excludedBy theo sở thích: maxRate 6, timeOfDay 1, language 1, days 0",
-          res["excludedBy"] == {"maxRate": 6, "days": 0, "timeOfDay": 1, "language": 1}, res["excludedBy"])
+    check("excludedBy theo sở thích: maxRate ≥ 6, timeOfDay ≥ 1, language ≥ 1, days ≥ 0",
+          at_least(res["excludedBy"], {"maxRate": 6, "days": 0, "timeOfDay": 1, "language": 1}), res["excludedBy"])
 
     res = search(limit=50, maxRate=500000)
     check("Ghi đè maxRate cho lượt này: mentor 300k xuất hiện, maxRate không còn 'từ hồ sơ'",
-          len(res["mentors"]) == 34 and "maxRate" not in res["filters"]["fromProfileDefaults"], (len(res["mentors"]), res["filters"]))
+          res["domainMatches"] == 34 and "maxRate" not in res["filters"]["fromProfileDefaults"], (res["domainMatches"], res["filters"]))
     p = call("GET", f"{PROFILE}/api/profile/mentee/{mentee_id}", token=me)
     check("Ghi đè không làm đổi hồ sơ", float(p["budgetMaxPerHour"]) == 150000, p["budgetMaxPerHour"])
 
     res = search(limit=50, useProfileDefaults=False)
     check("useProfileDefaults=false => không bộ lọc người dùng, đủ 36 mentor",
-          len(res["mentors"]) == 36 and res["excludedBy"] == {} and res["filters"]["fromProfileDefaults"] == [], len(res["mentors"]))
+          res["domainMatches"] == 36 and res["excludedBy"] == {} and res["filters"]["fromProfileDefaults"] == [], res["domainMatches"])
 
     res = search(limit=50, useProfileDefaults=False, days=6, timeOfDay="MORNING")
-    check("Ngày T7 + buổi sáng => chỉ mentor có lịch sáng T7", [m["mentorId"] for m in res["mentors"]] == [sat_morning["id"]],
-          [m["mentorId"] for m in res["mentors"]])
+    check("Ngày T7 + buổi sáng => chỉ mentor có lịch sáng T7", own_ids(res) == [sat_morning["id"]], own_ids(res))
     res = search(limit=50, useProfileDefaults=False, timeOfDay="AFTERNOON")
-    check("Buổi chiều (12–18) không ai có lịch => rỗng, excludedBy.timeOfDay = 36",
-          res["mentors"] == [] and res["excludedBy"] == {"timeOfDay": 36}, res["excludedBy"])
+    check("Buổi chiều (12–18) không mentor nào của lần chạy có lịch => excludedBy.timeOfDay ≥ 36",
+          own(res) == [] and at_least(res["excludedBy"], {"timeOfDay": 36}), res["excludedBy"])
     res = search(limit=50, useProfileDefaults=False, language="en", sessionType="MOCK_INTERVIEW")
-    check("Ngôn ngữ en + loại phiên => đúng mentor tiếng Anh",
-          [m["mentorId"] for m in res["mentors"]] == [english["id"]], res["excludedBy"])
+    check("Ngôn ngữ en + loại phiên => đúng mentor tiếng Anh", own_ids(res) == [english["id"]], res["excludedBy"])
     res = search(limit=50, useProfileDefaults=False, minRating=4)
-    check("minRating=4: mentor chưa có đánh giá bị loại", res["mentors"] == [] and res["excludedBy"] == {"minRating": 36},
-          res["excludedBy"])
+    check("minRating=4: mentor chưa có đánh giá bị loại",
+          own(res) == [] and at_least(res["excludedBy"], {"minRating": 36}), res["excludedBy"])
     ok, d = expect_error(lambda: search(days=9), 400)
     check("Tham số lọc sai (days=9) => 400", ok, d)
 
@@ -182,10 +191,10 @@ def main():
     res = search(limit=10, useProfileDefaults=False, maxRate=0, language="vi")
     # v2.0 không còn mentor miễn phí: mentor tiếng Anh trượt cả giá lẫn ngôn ngữ (không tính riêng cho bộ lọc nào);
     # 35 mentor tiếng Việt chỉ trượt giá.
-    check("Kết quả ít: excludedBy chỉ ra bộ lọc giá loại nhiều nhất (35), ngôn ngữ 0",
-          res["mentors"] == [] and res["excludedBy"] == {"maxRate": 35, "language": 0}, res["excludedBy"])
+    check("Kết quả ít: excludedBy chỉ ra bộ lọc giá loại nhiều nhất (≥ 35), ngôn ngữ ≥ 0",
+          own(res) == [] and at_least(res["excludedBy"], {"maxRate": 35, "language": 0}), res["excludedBy"])
     res = search(limit=10, useProfileDefaults=False, language="vi")
-    check("Nới bộ lọc giá (bỏ maxRate) => đủ 10 kết quả", len(res["mentors"]) == 10, len(res["mentors"]))
+    check("Nới bộ lọc giá (bỏ maxRate) => đủ 10 kết quả", len(own(res)) == 10, len(own(res)))
 
     # ---------------- Interface US-15 ----------------
     print("\nInterface cho mentoring-service — similar-mentors")
@@ -196,7 +205,8 @@ def main():
     check("Trả đúng 3 mentor {mentorId, fullName, score}, không có mentor bị loại trừ",
           len(sim) == 3 and all(set(m) == {"mentorId", "fullName", "score"} for m in sim)
           and cheap[0]["id"] not in {m["mentorId"] for m in sim}, sim)
-    check("Áp sở thích hồ sơ: giá ≤ 150.000đ", all(rate_of[m["mentorId"]] <= 150000 for m in sim), sim)
+    check("Áp sở thích hồ sơ: mentor của lần chạy, giá ≤ 150.000đ",
+          all(m["mentorId"] in rate_of and rate_of[m["mentorId"]] <= 150000 for m in sim), sim)
     call("PUT", f"{PROFILE}/api/profile/mentee/{mentee_id}/preferences",
          {"preferredDays": [], "preferredTimeOfDay": None, "budgetMaxPerHour": None, "languages": ["en"]}, token=me)
     sim = call("GET", f"{MATCHING}/internal/matching/similar-mentors?menteeId={mentee_id}"

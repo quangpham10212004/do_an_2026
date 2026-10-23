@@ -75,7 +75,7 @@ def offline_features(models: list[str]) -> list[dict]:
         mv, ev = vectors[:len(mentors)], vectors[len(mentors):]
         for e, e_vec in zip(mentees, ev):
             for m, m_vec in zip(mentors, mv):
-                if m["domain"] != e["domain"]:  # hard filter domainMismatch
+                if m["domain"] != e["domain"]:  # chỉ đánh giá cặp cùng lĩnh vực (khác lĩnh vực bị phạt điểm khi chạy thật)
                     continue
                 similarity = max(0.0, min(1.0, dot(e_vec, m_vec)))  # = 1 - cosine distance, kẹp như re_rank
                 rows.append({"mentee": e["key"], "mentor": m["key"], "model": model_name,

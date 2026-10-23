@@ -49,9 +49,16 @@ components:
         ratingUsed: { type: number, description: Rating dùng để xếp hạng (thật hoặc trung vị nền tảng) }
         scoreParts:
           type: object
-          description: Phần đóng góp của từng tín hiệu (similarity, rating, experience, scheduleFit, responsiveness); cộng lại = finalScore
+          description: >
+            Phần đóng góp của từng tín hiệu (similarity, rating, experience, scheduleFit, responsiveness); cộng lại =
+            finalScore. Mentor khác lĩnh vực mentee: mọi phần đã nhân hệ số phạt MATCH_DOMAIN_MISMATCH_FACTOR (mặc định 0.75)
           additionalProperties: { type: number }
         headline: { type: string, nullable: true }
+        domainMatch:
+          type: boolean
+          description: >
+            false = mentor khác lĩnh vực trong hồ sơ mentee. Lĩnh vực không còn là ràng buộc cứng: mentor vẫn được gợi ý
+            (mentee có thể đang đổi hướng) nhưng điểm bị phạt
     MatchFeedback:
       type: object
       description: US-36 (PRD-MATCH-6) — lượt "Không phù hợp" đang hiệu lực
@@ -87,7 +94,7 @@ components:
           description: >
             Số mentor bị ràng buộc HỆ THỐNG loại (đếm trên toàn bộ mentor, mỗi mentor tính 1 lý do đầu tiên
             theo thứ tự): notVerified, unavailable (status hiệu lực ≠ ACCEPTING — PAUSED/ON_LEAVE/SUSPENDED),
-            noSchedule, fullCapacity, domainMismatch
+            noSchedule, fullCapacity. (Khác lĩnh vực không còn bị loại — xem RankedMentor.domainMatch.)
           additionalProperties: { type: integer }
         eligible: { type: integer, description: Số mentor qua mọi ràng buộc hệ thống VÀ mọi bộ lọc người dùng }
         k: { type: integer, description: "Số mentor hợp lệ gần nhất về vector được đưa vào re-rank = max(50, 5 × limit)" }
@@ -295,6 +302,12 @@ paths:
                       không bật bộ lọc nào.
                     additionalProperties: { type: integer }
                     example: { maxRate: 12, language: 0 }
+                  menteeDomain: { type: string, nullable: true, description: Lĩnh vực trong hồ sơ mentee }
+                  domainMatches:
+                    type: integer
+                    description: >
+                      Số mentor hợp lệ (qua ràng buộc hệ thống và bộ lọc) cùng lĩnh vực mentee. 0 trong khi vẫn có gợi ý =
+                      mọi gợi ý đều khác lĩnh vực; giao diện báo "chưa có mentor thuộc lĩnh vực của bạn"
                   impressionId:
                     type: string
                     format: uuid

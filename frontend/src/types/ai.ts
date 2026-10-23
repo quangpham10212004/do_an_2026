@@ -323,6 +323,11 @@ export interface Conversation {
   /** US-45: kỹ năng đã duyệt từ CV — chip gợi ý; addedSkills = những kỹ năng đã thêm vào hồ sơ. */
   suggestedSkills: string[];
   addedSkills: string[];
+  /** Lĩnh vực hồ sơ lúc hội thoại xong; suggestedDomain = lĩnh vực suy từ câu trả lời, chỉ có khi khác hồ sơ. */
+  profileDomain: string | null;
+  suggestedDomain: string | null;
+  /** Lĩnh vực mentee chọn đổi khi xác nhận mục tiêu (null = giữ nguyên). */
+  confirmedDomain: string | null;
 }
 
 /** Một CV trong danh sách "CV của tôi" (GET /api/ai/cv/mine). */
