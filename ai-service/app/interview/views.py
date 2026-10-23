@@ -12,7 +12,7 @@ from pydantic import Field
 from app.interview.models import Recommendation, Strategy
 from app.interview import rubric
 from app.interview.rubric import RubricScores, is_flagged
-from app.interview.voice import VoiceSessionView
+from app.interview.voice import TranscriptItem, VoiceSessionView, load_transcript
 from app.schemas import CamelModel
 
 
@@ -69,6 +69,8 @@ class InterviewView(CamelModel):
     self_answer_acknowledged: bool = False
     # v2.1 — kế hoạch câu hỏi do AI soạn (chỉ admin; buổi chat / trước 011 => None)
     plan: list[PlanTopicView] | None = None
+    # v2.1 — buổi giọng nói đã nộp: nguyên văn hội thoại (lời AI, lời mentor, mốc chủ đề) để xem lại AI đã hỏi gì
+    transcript: list[TranscriptItem] | None = None
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
@@ -189,6 +191,7 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
     nhận xét chung vẫn hiện sau khi hoàn thành. Admin luôn thấy đủ.
     """
     in_progress = interview["status"] == "IN_PROGRESS"
+    plan = planner.load(interview["plan"])
     reveal = for_admin or interview["status"] in DECIDED_STATUSES
     turn_views = [turn_view(t, reveal, for_admin) for t in turns]
     current = next((t for t in turn_views if t.answer is None), None) if in_progress else None
@@ -205,6 +208,7 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
         self_answer_acknowledged=interview["self_answer_acknowledged"],
         plan=planner.plan_view(interview["plan"]) if for_admin else None,
+        transcript=load_transcript(interview["transcript"], [t.name for t in plan.topics] if plan else []),
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"],
         resume_deadline=None if not in_progress else _resume_deadline(interview, turns),

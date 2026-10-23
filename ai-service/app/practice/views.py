@@ -9,7 +9,7 @@ from pydantic import StringConstraints, field_validator
 from app import config
 from app.interview import planner
 from app.interview.planner import PlanTopicView
-from app.interview.voice import VoiceSessionView
+from app.interview.voice import TranscriptItem, VoiceSessionView, load_transcript
 from app.practice import repository as repo
 from app.practice.models import PracticeResult
 from app.schemas import CamelModel
@@ -58,6 +58,8 @@ class PracticeView(CamelModel):
     overall_score: float | None = None
     # Có khi COMPLETED: điểm, rubric và nhận xét từng câu, 3 điểm mạnh, 3 việc cần cải thiện, báo cáo cách nói
     result: PracticeResult | None = None
+    # v2.1 — nguyên văn hội thoại (lời AI, lời mentee, mốc chủ đề) để xem lại AI đã hỏi gì, mình đã nói gì
+    transcript: list[TranscriptItem] | None = None
     created_at: datetime
     completed_at: datetime | None = None
     # IN_PROGRESS: kết nối lại được tới mốc này (bắt đầu + VOICE_SESSION_MINUTES); quá hạn => ABANDONED
@@ -80,5 +82,6 @@ def practice_view(row: asyncpg.Record) -> PracticeView:
         engine=row["engine"], consent_external_ai=row["consent_external_ai"],
         overall_score=None if row["overall_score"] is None else round(row["overall_score"], 1),
         result=None if result is None else PracticeResult.model_validate(result),
+        transcript=load_transcript(row["transcript"], list(row["topics"] or [])),
         created_at=row["created_at"], completed_at=row["completed_at"],
         resume_deadline=row["created_at"] + timedelta(minutes=config.VOICE_SESSION_MINUTES) if in_progress else None)

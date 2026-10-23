@@ -1,4 +1,5 @@
 """Truy cập bảng interviews / interview_turns (ai_db)."""
+import json
 from uuid import UUID
 
 from datetime import datetime
@@ -11,7 +12,7 @@ from app.interview.models import TurnEvaluation, TurnRecord
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
                        created_at, completed_at, reviewed_at, self_answer_acknowledged, kind, from_tier,
-                       mode, consent_external_ai, plan"""
+                       mode, consent_external_ai, plan, transcript"""
 
 
 async def find(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -132,12 +133,16 @@ async def set_current_turn(conn: Db, interview_id: UUID, turn_no: int) -> None:
 
 
 async def complete(conn: Db, interview_id: UUID, overall_score: float, summary: str,
-                   strengths: str, weaknesses: str, recommendation: str) -> asyncpg.Record:
+                   strengths: str, weaknesses: str, recommendation: str,
+                   transcript: list[dict] | None = None) -> asyncpg.Record:
+    """transcript: bản ghi nguyên văn của buổi giọng nói (None với buổi chat)."""
     return await conn.fetchrow(
         f"""UPDATE interviews SET status = 'PENDING_REVIEW', overall_score = $2, summary = $3, strengths = $4,
-                                  weaknesses = $5, recommendation = $6, completed_at = now()
+                                  weaknesses = $5, recommendation = $6, completed_at = now(),
+                                  transcript = COALESCE($7::jsonb, transcript)
             WHERE id = $1 RETURNING {INTERVIEW_COLUMNS}""",
-        interview_id, overall_score, summary, strengths, weaknesses, recommendation)
+        interview_id, overall_score, summary, strengths, weaknesses, recommendation,
+        None if transcript is None else json.dumps(transcript, ensure_ascii=False))
 
 
 async def review(conn: Db, interview_id: UUID, status: str, reviewed_by: UUID,

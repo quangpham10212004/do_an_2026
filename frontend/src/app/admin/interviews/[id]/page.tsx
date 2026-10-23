@@ -6,7 +6,7 @@ import { Check, RotateCcw, X } from "lucide-react";
 import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, Select, StatusBadge, Textarea, type Flash } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
-import { PlanCard } from "@/features/ai/VoiceViews";
+import { PlanCard, VoiceTranscriptCard } from "@/features/ai/VoiceViews";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { Interview, InterviewEligibility, MentorTier, Recommendation, ReviewDecision } from "@/types";
@@ -125,10 +125,14 @@ function InterviewReview({ id }: { id: string }) {
       />
       <FlashAlerts flash={msg} className="mb-6" />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Card>
-          <CardHeader title="Toàn bộ hội thoại" />
-          <CardBody><InterviewTranscript interview={interview} admin /></CardBody>
-        </Card>
+        <div className="flex min-w-0 flex-col gap-6">
+          {interview.transcript && <VoiceTranscriptCard transcript={interview.transcript} title="Nguyên văn cuộc gọi"
+            description="Lời người phỏng vấn AI và lời mentor theo thứ tự, kể cả câu hỏi đào sâu." />}
+          <Card>
+            <CardHeader title={interview.mode === "VOICE" ? "Chấm theo chủ đề" : "Toàn bộ hội thoại"} />
+            <CardBody><InterviewTranscript interview={interview} admin /></CardBody>
+          </Card>
+        </div>
         <div className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-20">
           {interview.status === "PENDING_REVIEW" && (
             <Card>

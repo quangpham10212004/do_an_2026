@@ -6,7 +6,7 @@ import RequireAuth from "@/components/RequireAuth";
 import { Mic, PhoneOff, Timer } from "lucide-react";
 import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, DescriptionList, Loading, PageHeader, Segmented, StatusBadge, Table, Textarea } from "@/components/ui";
 import { AssessmentCard, InterviewTranscript, RUBRIC } from "@/features/ai/InterviewViews";
-import { TopicPlan, VOICE_DISABLED, VoiceCallCard, VoiceConsent } from "@/features/ai/VoiceViews";
+import { TopicPlan, VOICE_DISABLED, VoiceCallCard, VoiceConsent, VoiceTranscriptCard } from "@/features/ai/VoiceViews";
 import { aiApi } from "@/features/ai/api";
 import { useRealtimeVoice } from "@/features/ai/useRealtimeVoice";
 import { STATUS_LABELS, formatDateTime } from "@/lib/format";
@@ -262,8 +262,11 @@ function Interview() {
                   )
               } />
           ) : (
+          <div className="flex min-w-0 flex-col gap-6">
+          {interview.transcript && <VoiceTranscriptCard transcript={interview.transcript} description="Nguyên văn cuộc gọi: AI đã hỏi gì và bạn đã trả lời gì." />}
           <Card>
-            <CardHeader title="Hội thoại" actions={inProgress && <Badge tone="accent">Câu {interview.currentTurn}/{interview.maxTurns}</Badge>} />
+            <CardHeader title={voiceMode ? "Câu trả lời theo chủ đề" : "Hội thoại"}
+              actions={inProgress && <Badge tone="accent">Câu {interview.currentTurn}/{interview.maxTurns}</Badge>} />
             <CardBody>
               <InterviewTranscript interview={interview} />
               <div ref={bottom} />
@@ -290,6 +293,7 @@ function Interview() {
               </form>
             )}
           </Card>
+          </div>
           )}
           <div className="flex min-w-0 flex-col gap-6">
             {inProgress && voiceMode && session && <TopicPlan topics={session.topics} />}

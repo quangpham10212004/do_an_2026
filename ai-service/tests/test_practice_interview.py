@@ -222,6 +222,7 @@ def test_practice_grading_returns_every_report_field(client, db, mentee_id):
     assert [x["id"] for x in mine] == [p["id"]] and mine[0]["result"]["speaking"]["fillerCount"] == 6
     one = client.get(f"/api/ai/practice-interviews/{p['id']}", headers=auth(mentee_id, "MENTEE")).json()
     assert one["result"] == r
+    assert one["transcript"] == done["transcript"] and one["transcript"][1]["text"] == p["topics"][0]
 
 
 CTX = PracticeContext(interview_type="BACKEND", level="FRESHER", target_role="Backend Developer")

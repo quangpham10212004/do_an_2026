@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { Alert, Badge, Card, CardBody, CardFooter, CardHeader, Checkbox } from "@/components/ui";
-import type { PlanSource, PlanTopic } from "@/types";
+import type { PlanSource, PlanTopic, VoiceTranscriptItem } from "@/types";
 import type { VoiceEntry, VoicePhase } from "./useRealtimeVoice";
 
 /** v2.1 — nguồn câu hỏi trong kế hoạch AI soạn. */
@@ -48,30 +48,54 @@ const PHASE_BADGE: Partial<Record<VoicePhase, ReactNode>> = {
   dropped: <Badge tone="warning">Mất kết nối</Badge>,
 };
 
+/** Lời AI, lời ứng viên và mốc từng chủ đề theo thứ tự cuộc gọi — dùng cho bản ghi trực tiếp lẫn bản ghi đã lưu. */
+function ConversationLog({ entries, topics = [] }: { entries: (VoiceTranscriptItem & { id?: string })[]; topics?: string[] }) {
+  const topicName = (x: VoiceTranscriptItem) => x.text || (x.topicNo && topics[x.topicNo - 1]) || `Chủ đề ${x.topicNo ?? "?"}`;
+  return (
+    <>
+      {entries.map((x, i) => x.role === "marker"
+        ? <div key={x.id ?? i} className="text-small font-medium text-ink-muted">— {topicName(x)} —</div>
+        : (
+          <div key={x.id ?? i} className={x.role === "user" ? "self-end rounded-md border border-border bg-surface px-3 py-2" : "px-3 py-2"}>
+            <div className="text-small text-ink-muted">{x.role === "user" ? "Bạn" : "Người phỏng vấn AI"}</div>
+            <div>{x.text || "…"}</div>
+          </div>
+        ))}
+    </>
+  );
+}
+
 /** Bản ghi trực tiếp của cuộc gọi: lời người phỏng vấn AI, lời ứng viên và mốc từng chủ đề. */
 export function VoiceCallCard({ entries, phase, topics, error, footer, title = "Hội thoại" }: {
   entries: VoiceEntry[]; phase: VoicePhase; topics: string[]; error?: string; footer: ReactNode; title?: string;
 }) {
   const bottom = useRef<HTMLDivElement>(null);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [entries]);
-  const topicName = (n?: number) => (n && topics[n - 1]) || `Chủ đề ${n ?? "?"}`;
   return (
     <Card>
       <CardHeader title={title} actions={PHASE_BADGE[phase]} />
       <CardBody className="flex flex-col gap-3">
         {error && <Alert>{error}</Alert>}
         {entries.length === 0 && <p className="text-small text-ink-muted">Bản ghi lời nói sẽ hiện ở đây khi buổi phỏng vấn bắt đầu.</p>}
-        {entries.map((x) => x.role === "marker"
-          ? <div key={x.id} className="text-small font-medium text-ink-muted">— {topicName(x.topicNo)} —</div>
-          : (
-            <div key={x.id} className={x.role === "user" ? "self-end rounded-md border border-border bg-surface px-3 py-2" : "px-3 py-2"}>
-              <div className="text-small text-ink-muted">{x.role === "user" ? "Bạn" : "Người phỏng vấn AI"}</div>
-              <div>{x.text || "…"}</div>
-            </div>
-          ))}
+        <ConversationLog entries={entries} topics={topics} />
         <div ref={bottom} />
       </CardBody>
       <CardFooter>{footer}</CardFooter>
+    </Card>
+  );
+}
+
+/** Nguyên văn cuộc gọi đã nộp — xem lại AI đã hỏi gì (kể cả câu đào sâu) và mình đã nói gì. */
+export function VoiceTranscriptCard({ transcript, title = "Hội thoại", description }: {
+  transcript: VoiceTranscriptItem[]; title?: string; description?: ReactNode;
+}) {
+  const spoken = transcript.filter((x) => x.role === "marker" || x.text?.trim());
+  return (
+    <Card>
+      <CardHeader title={title} description={description} />
+      <CardBody className="flex flex-col gap-3">
+        {spoken.length ? <ConversationLog entries={spoken} /> : <p className="text-small text-ink-muted">Bản ghi không có lời nói nào.</p>}
+      </CardBody>
     </Card>
   );
 }

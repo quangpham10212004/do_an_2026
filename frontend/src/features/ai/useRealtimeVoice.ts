@@ -86,6 +86,9 @@ export function useRealtimeVoice(onEnd: (items: VoiceTranscriptItem[]) => void) 
       case "response.output_audio_transcript.done":
         upsert(e.item_id, { role: "assistant", text: e.transcript });
         break;
+      case "conversation.item.input_audio_transcription.delta":
+        update((list) => list.map((x) => (x.id === e.item_id ? { ...x, text: x.text + e.delta } : x)));
+        break;
       case "conversation.item.input_audio_transcription.completed":
         upsert(e.item_id, { role: "user", text: e.transcript });
         break;

@@ -90,6 +90,11 @@ components:
           nullable: true
           items: { $ref: "#/components/schemas/PlanTopic" }
           description: "v2.1 — kế hoạch câu hỏi buổi giọng nói (AI soạn, dự phòng ngân hàng câu hỏi). Chỉ admin; chat / buổi trước 011 => null"
+        transcript:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/TranscriptItem" }
+          description: "v2.1 — nguyên văn buổi giọng nói đã nộp (mốc chủ đề có text = tên chủ đề). Mentor và admin; chat / chưa nộp / buổi trước 012 => null"
         engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
         maxTurns: { type: integer }
         currentTurn: { type: integer }
@@ -271,6 +276,11 @@ components:
           allOf: [{ $ref: "#/components/schemas/PracticeResult" }]
           nullable: true
           description: Có khi COMPLETED — hiện ngay cho mentee, không qua admin
+        transcript:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/TranscriptItem" }
+          description: "v2.1 — nguyên văn buổi luyện (mốc chủ đề có text = tên chủ đề); null khi chưa nộp"
         createdAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time, nullable: true }
         resumeDeadline: { type: string, format: date-time, nullable: true, description: "IN_PROGRESS: bắt đầu + VOICE_SESSION_MINUTES (30 phút)" }
