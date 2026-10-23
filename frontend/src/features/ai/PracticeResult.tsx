@@ -3,6 +3,7 @@
 import { CalendarCheck } from "lucide-react";
 import { Alert, ButtonLink, Card, CardBody, CardHeader, ScoreRing, Stat, Stats, StatusBadge } from "@/components/ui";
 import { MOCK_LEVEL_LABELS, MOCK_TYPE_LABELS } from "@/features/mentoring/mockLabels";
+import { PlanSourceBadge } from "@/features/ai/VoiceViews";
 import type { Practice, PracticeRubric } from "@/types";
 
 /** FR-10.x — rubric luyện phỏng vấn (mỗi tiêu chí 0–10). */
@@ -45,6 +46,7 @@ export function practiceTitle(p: Practice): string {
 /** Kết quả buổi luyện: điểm tổng, 3 điểm mạnh, 3 việc cần cải thiện, báo cáo cách nói, nhận xét từng câu. */
 export function PracticeResultView({ practice }: { practice: Practice }) {
   const r = practice.result;
+  const sourceOf = (topic: string) => practice.plan?.find((p) => p.name === topic)?.source;
   if (!r) {
     return practice.status === "ABANDONED"
       ? <Alert>Buổi luyện quá 30 phút chưa hoàn thành nên bị huỷ và đã tính là lượt miễn phí.</Alert>
@@ -88,7 +90,10 @@ export function PracticeResultView({ practice }: { practice: Practice }) {
         <CardBody className="flex flex-col gap-6">
           {r.turns.map((t) => (
             <div key={t.topicNo} className="chat">
-              <div className="bubble-meta">Câu {t.topicNo} · {t.topic}</div>
+              <div className="bubble-meta flex flex-wrap items-center gap-2">
+                Câu {t.topicNo} · {t.topic}
+                {sourceOf(t.topic) && <PlanSourceBadge source={sourceOf(t.topic)!} />}
+              </div>
               <div className="bubble">{t.question}</div>
               <div className="bubble bubble-me">{t.answer}</div>
               <div className="well mt-1 flex flex-col gap-2">

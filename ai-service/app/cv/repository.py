@@ -49,6 +49,18 @@ async def latest_for_user(conn: Db, user_id: UUID) -> asyncpg.Record | None:
         "SELECT * FROM cv_documents WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", user_id)
 
 
+async def confirmed_for_external_ai(conn: Db, user_id: UUID) -> ConfirmedFields | None:
+    """
+    v2.1 — ngữ cảnh soạn câu hỏi phỏng vấn: trường đã xác nhận của CV mới nhất mà người dùng ĐỒNG Ý gửi AI bên ngoài
+    (US-19); CV không đồng ý hoặc chưa xác nhận => None (câu hỏi không dựa vào CV).
+    """
+    cv = await conn.fetchrow(
+        """SELECT confirmed_fields FROM cv_documents
+            WHERE user_id = $1 AND consent_external_ai AND confirmed_fields IS NOT NULL
+            ORDER BY created_at DESC LIMIT 1""", user_id)
+    return None if cv is None else confirmed_of(cv)
+
+
 async def list_for_user(conn: Db, user_id: UUID) -> list[asyncpg.Record]:
     return await conn.fetch(
         """SELECT d.id, d.file_name, d.created_at, d.consent_external_ai, d.purged_at,

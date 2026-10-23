@@ -10,6 +10,8 @@ class PracticeContext(CamelModel):
     level: str
     target_role: str
     target_company: str | None = None
+    # v2.1 — kế hoạch AI soạn: tên chủ đề → khái niệm kỳ vọng (rule-based chấm câu không có trong practice bank)
+    planned_concepts: dict[str, list[str]] = {}
 
 
 class PracticeAnswer(CamelModel):

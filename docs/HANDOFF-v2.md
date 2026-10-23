@@ -81,6 +81,9 @@ Nhánh: `feature/voice-interview-prototype` (xếp chồng trên PR #15 `feature
   `/interview/voice` bị gỡ.
 - Mentee: "Luyện phỏng vấn với AI" — 1 lượt miễn phí trọn đời, kết quả + báo cáo nói hiện ngay; `/api/ai/practice-interviews/**`,
   bảng `practice_interviews`. Migration ai `010_voice_interviews.sql`.
+- Câu hỏi do AI soạn (phương án A, 23/10): DeepSeek soạn kế hoạch một lần lúc bắt đầu từ hồ sơ / mục tiêu / CV đã xác nhận +
+  đồng ý gửi AI bên ngoài, lưu `plan` (migration `011_interview_plans.sql`); không có `DEEPSEEK_API_KEY` → ngân hàng câu hỏi.
+  `app/interview/planner.py`, `tests/test_interview_planner.py`. Chưa kiểm với DeepSeek thật (chỉ client giả lập).
 
 **Bật**: điền `OPENAI_API_KEY` vào `.env` rồi `docker compose up -d ai-service` (tuỳ chọn: `OPENAI_REALTIME_MODEL=gpt-realtime`,
 `OPENAI_REALTIME_VOICE=marin`, `OPENAI_TRANSCRIBE_MODEL=gpt-4o-transcribe`, `VOICE_INTERVIEW_TOPICS=4`, `VOICE_SESSION_MINUTES=30`,

@@ -60,11 +60,14 @@ function IntakeForm({ eligibility, busy, onStart }: { eligibility: PracticeEligi
               <Input id="practice-company" value={targetCompany} onChange={(e) => setCompany(e.target.value)} maxLength={120} />
             </Field>
           </div>
+          <p className="text-small text-ink-muted">
+            AI soạn câu hỏi riêng cho bạn từ vị trí, cấp độ, mục tiêu trong hồ sơ và CV đã xác nhận (chỉ khi bạn đã đồng ý gửi CV tới AI bên ngoài).
+          </p>
           <VoiceConsent checked={consent} onChange={setConsent} disabled={voiceOff} />
         </CardBody>
         <CardFooter>
           <Button type="submit" variant="primary" icon={Mic} loading={busy} disabled={voiceOff || !consent || role.length < 2}>
-            {busy ? "Đang chuẩn bị…" : "Bắt đầu luyện phỏng vấn"}
+            {busy ? "AI đang soạn câu hỏi cho bạn…" : "Bắt đầu luyện phỏng vấn"}
           </Button>
         </CardFooter>
       </form>

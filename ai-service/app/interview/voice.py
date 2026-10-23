@@ -20,7 +20,7 @@ import httpx
 from pydantic import Field
 
 from app import config, errors
-from app.interview import question_bank
+from app.interview.planner import PlannedTopic
 from app.schemas import CamelModel
 
 log = logging.getLogger(__name__)
@@ -162,21 +162,21 @@ def asked_topics(items: list[TranscriptItem], planned: int) -> list[TopicTurn]:
 
 # ---- AI Interview của mentor (FR-7.7) ----
 
-def plan_topics(domain: str | None, skills: list[str]) -> list[question_bank.Topic]:
-    """Cùng ngân hàng câu hỏi với phỏng vấn chat; tất định theo lĩnh vực + kỹ năng nên kết nối lại vẫn ra đúng kế hoạch."""
-    return question_bank.topics_for(domain, skills)[:config.VOICE_INTERVIEW_TOPICS]
-
-
-def build_instructions(mentor: dict, topics: list[question_bank.Topic]) -> str:
-    plan = "\n".join(f"{i}. {t.name} — câu hỏi chính: {t.question} | câu đào sâu gợi ý: {t.deepen_question}"
+def plan_lines(topics: list[PlannedTopic]) -> str:
+    return "\n".join(f"{i}. {t.name} — câu hỏi chính: {t.question} | câu đào sâu gợi ý: {t.follow_up}"
                      for i, t in enumerate(topics, start=1))
+
+
+def build_instructions(mentor: dict, topics: list[PlannedTopic]) -> str:
+    """Kế hoạch (planner) đã soạn sẵn; người phỏng vấn giọng nói chỉ dẫn dắt theo đúng thứ tự, không tự đổi câu hỏi."""
+    plan = plan_lines(topics)
     skills = ", ".join(mentor.get("skills") or []) or "chưa khai báo"
     return f"""Bạn là người phỏng vấn kỹ thuật của MentorHub, đang phỏng vấn để xác thực năng lực một ứng viên mentor.
 Ứng viên: lĩnh vực {mentor.get("domain") or "chưa rõ"}, kỹ năng {skills}, {mentor.get("yearsExperience") or 0} năm kinh nghiệm.
 
 Nói tiếng Việt, giọng chuyên nghiệp và thân thiện; thuật ngữ kỹ thuật tiếng Anh giữ nguyên. Mỗi lượt nói ngắn (tối đa 2–3 câu).
 
-Kế hoạch {len(topics)} chủ đề, đi lần lượt:
+Kế hoạch {len(topics)} chủ đề, đi lần lượt (đặt câu hỏi chính gần đúng như kế hoạch, không tự thay chủ đề):
 {plan}
 
 Quy tắc:

@@ -2,7 +2,7 @@
 FR-10.x — "Luyện phỏng vấn với AI" cho mentee, bằng giọng nói (OpenAI Realtime, phần dùng chung ở interview/voice.py).
 
 Khác AI Interview xác thực mentor: người phỏng vấn đóng vai nhà tuyển dụng cho đúng vị trí / cấp độ mentee nhắm tới,
-câu hỏi lấy từ practice bank (dạng × cấp độ), rubric riêng, kết quả hiện NGAY cho mentee (không qua admin).
+câu hỏi do AI soạn từ intake + mục tiêu + CV (interview/planner.py; dự phòng: practice bank dạng × cấp độ), rubric riêng, kết quả hiện NGAY cho mentee (không qua admin).
 Giới hạn: PRACTICE_FREE_LIMIT buổi miễn phí trọn đời (mặc định 1). Buổi COMPLETED hoặc ABANDONED là đã dùng; buổi
 IN_PROGRESS chưa quá VOICE_SESSION_MINUTES phút được tiếp tục (cùng dòng, client secret mới), quá hạn => ABANDONED.
 """
@@ -12,11 +12,12 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from app import config, engines, errors
-from app.clients import audit
+from app.clients import audit, profile
+from app.cv import repository as cv_repo
 from app.db import get_pool
-from app.interview import voice
+from app.interview import planner, voice
+from app.interview.planner import PlannedTopic
 from app.interview.voice import TranscriptItem
-from app.practice import bank
 from app.practice import engine as practice_engine
 from app.practice import repository as repo
 from app.practice.models import PracticeAnswer, PracticeContext
@@ -31,13 +32,13 @@ _TYPE_LABELS = {"BACKEND": "Backend", "FRONTEND": "Frontend", "SYSTEM_DESIGN": "
 _LEVEL_LABELS = {"INTERN": "thực tập sinh (intern)", "FRESHER": "fresher", "JUNIOR": "junior"}
 
 
-def plan_topics(interview_type: str, level: str) -> list[bank.PracticeTopic]:
-    return bank.topics_for(interview_type, level, config.VOICE_INTERVIEW_TOPICS)
+def _plan_of(row) -> planner.InterviewPlan:
+    """Kế hoạch đã lưu của buổi; buổi tạo trước migration 011 => practice bank (như lúc tạo)."""
+    return planner.load(row["plan"]) or planner.practice_bank_plan(row["interview_type"], row["level"])
 
 
-def build_instructions(ctx: PracticeContext, topics: list[bank.PracticeTopic]) -> str:
-    plan = "\n".join(f"{i}. {t.name} — câu hỏi chính: {t.question} | câu đào sâu gợi ý: {t.follow_up}"
-                     for i, t in enumerate(topics, start=1))
+def build_instructions(ctx: PracticeContext, topics: list[PlannedTopic]) -> str:
+    plan = voice.plan_lines(topics)
     company = f" tại {ctx.target_company}" if ctx.target_company else ""
     star = ("\n- Đây là phỏng vấn hành vi: nếu câu trả lời thiếu phần nào của STAR (tình huống, nhiệm vụ, hành động, kết quả), "
             "hỏi đào sâu đúng phần còn thiếu, ví dụ \"Kết quả cuối cùng thế nào?\"." if ctx.interview_type == "BEHAVIORAL" else "")
@@ -47,7 +48,7 @@ Dạng phỏng vấn: {_TYPE_LABELS[ctx.interview_type]}. Đây là buổi phỏ
 Nói tiếng Việt, giọng chuyên nghiệp, thân thiện như người phỏng vấn thật; thuật ngữ kỹ thuật tiếng Anh giữ nguyên.
 Mỗi lượt nói ngắn (tối đa 2–3 câu). Đặt câu hỏi phù hợp kỳ vọng của cấp độ {ctx.level}.
 
-Kế hoạch {len(topics)} chủ đề, đi lần lượt:
+Kế hoạch {len(topics)} chủ đề, đi lần lượt (đặt câu hỏi chính gần đúng như kế hoạch, không tự thay chủ đề):
 {plan}
 
 Quy tắc:
@@ -107,10 +108,19 @@ def _free_used() -> errors.AiError:
 
 
 async def _session(user: AuthUser, row) -> PracticeStart:
-    topics = plan_topics(row["interview_type"], row["level"])
+    topics = _plan_of(row).topics  # kết nối lại: đúng kế hoạch đã soạn
     session = await voice.mint(user.user_id, build_instructions(_context(row), topics), [t.name for t in topics],
                                "Phỏng vấn xin việc ngành phần mềm bằng tiếng Việt, có thuật ngữ kỹ thuật tiếng Anh.")
     return PracticeStart(practice=practice_view(row), voice=session)
+
+
+async def _goal(mentee_id: UUID) -> str | None:
+    """Mục tiêu trong hồ sơ mentee — chỉ là ngữ cảnh soạn câu hỏi, profile-service lỗi thì bỏ qua."""
+    try:
+        return ((await profile.find_mentee(mentee_id)) or {}).get("goal")
+    except errors.AiError as e:
+        log.warning("Mentee goal unavailable for the practice plan: %s", e.code)
+        return None
 
 
 async def start(user: AuthUser, body: StartPracticeInput) -> PracticeStart:
@@ -125,14 +135,17 @@ async def start(user: AuthUser, body: StartPracticeInput) -> PracticeStart:
     if await repo.used_count(pool, user.user_id) >= config.PRACTICE_FREE_LIMIT:
         raise _free_used()
 
-    topics = plan_topics(body.interview_type, body.level)
     ctx = PracticeContext(interview_type=body.interview_type, level=body.level, target_role=body.target_role,
                           target_company=body.target_company)
+    # Phương án A — AI soạn kế hoạch một lần từ intake + mục tiêu + CV (nếu được đồng ý gửi AI bên ngoài); lỗi => practice bank.
+    plan = await planner.practice_plan(body.interview_type, body.level, body.target_role, body.target_company,
+                                       await _goal(user.user_id), await cv_repo.confirmed_for_external_ai(pool, user.user_id))
+    topics = plan.topics
     # Tạo client secret TRƯỚC khi ghi CSDL: OpenAI lỗi (502) thì lượt miễn phí không bị tính.
     session = await voice.mint(user.user_id, build_instructions(ctx, topics), [t.name for t in topics],
                                "Phỏng vấn xin việc ngành phần mềm bằng tiếng Việt, có thuật ngữ kỹ thuật tiếng Anh.")
     row = await repo.insert(pool, user.user_id, body.interview_type, body.level, body.target_role, body.target_company,
-                            [t.name for t in topics], engines.select(None))
+                            [t.name for t in topics], engines.select(None), planner.dump(plan))
     if row is None:  # yêu cầu song song vừa tạo buổi IN_PROGRESS
         return await _session(user, await repo.in_progress(pool, user.user_id))
     return PracticeStart(practice=practice_view(row), voice=session)
@@ -153,12 +166,14 @@ async def complete(user: AuthUser, practice_id: UUID, items: list[TranscriptItem
         raise errors.forbidden("Đây không phải buổi luyện phỏng vấn của bạn")
     if row["status"] != "IN_PROGRESS":
         raise errors.conflict("PRACTICE_NOT_IN_PROGRESS", "Buổi luyện phỏng vấn đã kết thúc")
-    topics = plan_topics(row["interview_type"], row["level"])
+    plan = _plan_of(row)
+    topics = plan.topics
     grouped = voice.asked_topics(items, len(topics))
     answers = [PracticeAnswer(topic_no=t.topic_no, topic=topics[t.topic_no - 1].name, question=" / ".join(t.questions),
                               answer=" ".join(t.answers)) for t in grouped]
     # Chấm NGOÀI transaction (DeepSeek có thể mất vài giây).
-    result = await practice_engine.grade(row["engine"], _context(row), answers)
+    ctx = _context(row).model_copy(update={"planned_concepts": plan.concepts()})
+    result = await practice_engine.grade(row["engine"], ctx, answers)
     updated = await repo.complete(pool, practice_id, [i.model_dump(by_alias=True, exclude_none=True) for i in items],
                                   result.model_dump(by_alias=True), result.overall_score, result.engine)
     if updated is None:

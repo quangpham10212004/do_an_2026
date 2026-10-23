@@ -5,7 +5,8 @@ from uuid import UUID
 import asyncpg
 
 from app import config
-from app.interview import attempts
+from app.interview import attempts, planner
+from app.interview.planner import PlanTopicView
 from pydantic import Field
 
 from app.interview.models import Recommendation, Strategy
@@ -66,6 +67,8 @@ class InterviewView(CamelModel):
     # US-23: có lượt bị gắn cờ (PROMPT_INJECTION / COPIED_ANSWER) — chỉ admin
     flagged: bool = False
     self_answer_acknowledged: bool = False
+    # v2.1 — kế hoạch câu hỏi do AI soạn (chỉ admin; buổi chat / trước 011 => None)
+    plan: list[PlanTopicView] | None = None
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
@@ -201,6 +204,7 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         recommendation=interview["recommendation"], review_note=interview["review_note"],
         flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
         self_answer_acknowledged=interview["self_answer_acknowledged"],
+        plan=planner.plan_view(interview["plan"]) if for_admin else None,
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"],
         resume_deadline=None if not in_progress else _resume_deadline(interview, turns),

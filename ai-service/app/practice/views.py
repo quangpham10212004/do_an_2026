@@ -7,6 +7,8 @@ import asyncpg
 from pydantic import StringConstraints, field_validator
 
 from app import config
+from app.interview import planner
+from app.interview.planner import PlanTopicView
 from app.interview.voice import VoiceSessionView
 from app.practice import repository as repo
 from app.practice.models import PracticeResult
@@ -49,6 +51,8 @@ class PracticeView(CamelModel):
     target_company: str | None = None
     status: str
     topics: list[str] = []
+    # v2.1 — kế hoạch câu hỏi + nguồn; ẩn khi IN_PROGRESS (không lộ câu hỏi trước khi phỏng vấn)
+    plan: list[PlanTopicView] | None = None
     engine: str
     consent_external_ai: bool = False
     overall_score: float | None = None
@@ -72,7 +76,8 @@ def practice_view(row: asyncpg.Record) -> PracticeView:
     return PracticeView(
         id=row["id"], mentee_id=row["mentee_id"], interview_type=row["interview_type"], level=row["level"],
         target_role=row["target_role"], target_company=row["target_company"], status=row["status"],
-        topics=list(row["topics"] or []), engine=row["engine"], consent_external_ai=row["consent_external_ai"],
+        topics=list(row["topics"] or []), plan=None if in_progress else planner.plan_view(row["plan"]),
+        engine=row["engine"], consent_external_ai=row["consent_external_ai"],
         overall_score=None if row["overall_score"] is None else round(row["overall_score"], 1),
         result=None if result is None else PracticeResult.model_validate(result),
         created_at=row["created_at"], completed_at=row["completed_at"],

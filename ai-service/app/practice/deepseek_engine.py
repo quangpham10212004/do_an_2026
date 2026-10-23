@@ -83,9 +83,12 @@ def _intake(ctx: PracticeContext) -> str:
             f"Vị trí ứng tuyển: {ctx.target_role}\nCông ty: {ctx.target_company or '(không nêu)'}\n</candidate_intake>")
 
 
-def _transcript(answers: list[PracticeAnswer], hidden: set[int]) -> str:
+def _transcript(ctx: PracticeContext, answers: list[PracticeAnswer], hidden: set[int]) -> str:
+    def expected(topic: str) -> str:
+        concepts = ctx.planned_concepts.get(topic)
+        return f"Ý chính kỳ vọng (tham khảo, không bắt buộc đủ): {', '.join(concepts)}\n" if concepts else ""
     return "\n\n".join(
-        f"Chủ đề {a.topic_no} [{a.topic}]\nCâu hỏi của người phỏng vấn: {a.question}\n<answer>\n"
+        f"Chủ đề {a.topic_no} [{a.topic}]\nCâu hỏi của người phỏng vấn: {a.question}\n{expected(a.topic)}<answer>\n"
         f"{HIDDEN_ANSWER if a.topic_no in hidden else (a.answer or '(không trả lời)')}\n</answer>"
         for a in answers)
 
@@ -98,7 +101,7 @@ def grade(llm: DeepSeekClient, ctx: PracticeContext,
           answers: list[PracticeAnswer]) -> tuple[tuple[list[TurnGrade], str, list[str], list[str]] | None, bool]:
     """→ ((turns, summary, strengths, improvements) | None, fallback). None = để façade chấm toàn bộ bằng rule-based."""
     hidden = {a.topic_no for a in answers if interview_rubric.detect_injection(a.answer)}
-    prompt = (_intake(ctx) + f"\n<transcript>\n{_transcript(answers, hidden)}\n</transcript>\n"
+    prompt = (_intake(ctx) + f"\n<transcript>\n{_transcript(ctx, answers, hidden)}\n</transcript>\n"
               f"\nChấm {len(answers)} chủ đề trên (mỗi topic_no đúng một mục trong turns), viết summary, "
               "đúng 3 strengths và đúng 3 improvements.")
     g = llm.json(SYSTEM_PROMPT, prompt, _Grade, EXAMPLE)

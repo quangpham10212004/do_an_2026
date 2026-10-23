@@ -20,7 +20,8 @@ from pydantic import TypeAdapter
 from app import config, engines, errors
 from app.clients import audit, mentoring, profile
 from app.db import get_pool
-from app.interview import attempts, rubric, voice
+from app.cv import repository as cv_repo
+from app.interview import attempts, planner, rubric, voice
 from app.interview import engine as interview_engine
 from app.interview import repository as repo
 from app.interview.models import InterviewContext, TurnRecord
@@ -186,6 +187,11 @@ async def _prepare_start(user: AuthUser, self_answer_acknowledged: bool) -> _Sta
     return _Start(pool, mentor, upgrade, None)
 
 
+def _plan_of(interview) -> planner.InterviewPlan:
+    """Kế hoạch đã lưu của buổi giọng nói; buổi tạo trước migration 011 => ngân hàng câu hỏi (như lúc tạo)."""
+    return planner.load(interview["plan"]) or planner.mentor_bank_plan(interview["domain"], list(interview["skills"] or []))
+
+
 def _mode_conflict(in_progress) -> errors.AiError:
     other = "giọng nói" if in_progress["mode"] == "VOICE" else "chat"
     return errors.conflict("INTERVIEW_IN_PROGRESS", f"Bạn đang có buổi phỏng vấn {other} dở dang — hãy tiếp tục buổi đó")
@@ -233,17 +239,18 @@ async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_ex
     if s.in_progress is not None:
         if s.in_progress["mode"] != "VOICE":
             raise _mode_conflict(s.in_progress)
-        topics = voice.plan_topics(s.in_progress["domain"], list(s.in_progress["skills"] or []))
+        topics = _plan_of(s.in_progress).topics  # kết nối lại: đúng kế hoạch đã soạn
         session = await voice.mint(user.user_id, voice.build_instructions(s.mentor, topics), [t.name for t in topics])
         return VoiceInterviewStart(interview=await _view(s.pool, s.in_progress, for_admin=False), voice=session)
 
     mentor = s.mentor
     skills = list(mentor.get("skills") or [])
-    topics = voice.plan_topics(mentor["domain"], skills)
+    # Phương án A — AI soạn kế hoạch câu hỏi một lần từ hồ sơ + CV (nếu được đồng ý gửi AI bên ngoài); lỗi => ngân hàng câu hỏi.
+    plan = await planner.mentor_plan(mentor, await cv_repo.confirmed_for_external_ai(s.pool, user.user_id))
     # Tạo client secret TRƯỚC khi ghi CSDL: OpenAI lỗi (502) thì không có buổi nào bị tính.
-    session = await voice.mint(user.user_id, voice.build_instructions(mentor, topics), [t.name for t in topics])
-    interview = await repo.insert(s.pool, user.user_id, mentor["domain"], skills, len(topics), engines.select(None),
-                                  *_kind(s), mode="VOICE", consent_external_ai=True)
+    session = await voice.mint(user.user_id, voice.build_instructions(mentor, plan.topics), [t.name for t in plan.topics])
+    interview = await repo.insert(s.pool, user.user_id, mentor["domain"], skills, len(plan.topics), engines.select(None),
+                                  *_kind(s), mode="VOICE", consent_external_ai=True, plan=planner.dump(plan))
     await _after_start(user, mentor)
     return VoiceInterviewStart(interview=await _view(s.pool, interview, for_admin=False), voice=session)
 
@@ -283,10 +290,12 @@ async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: lis
     if interview["status"] != "IN_PROGRESS":
         raise errors.conflict("INTERVIEW_NOT_IN_PROGRESS", "Buổi phỏng vấn đã kết thúc")
 
-    topics = voice.plan_topics(interview["domain"], list(interview["skills"] or []))
+    plan = _plan_of(interview)
+    topics = plan.topics
     grouped = voice.asked_topics(items, len(topics))
     mentor = await profile.find_mentor(user.user_id)
     ctx = _context(interview["domain"], list(interview["skills"] or []), mentor, len(grouped))
+    ctx = ctx.model_copy(update={"planned_concepts": plan.concepts()})  # rule-based chấm câu AI soạn theo expectedConcepts
 
     # Chấm NGOÀI transaction (DeepSeek có thể mất vài giây mỗi lượt).
     history: list[TurnRecord] = []

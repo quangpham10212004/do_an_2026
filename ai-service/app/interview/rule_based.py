@@ -132,7 +132,10 @@ def _find_topic(ctx: InterviewContext, name: str) -> Topic | None:
     for t in topics_for(ctx.domain, ctx.skills):
         if t.name == name:
             return t
-    return next((t for t in BY_DOMAIN["general"] if t.name == name), None)
+    found = next((t for t in BY_DOMAIN["general"] if t.name == name), None)
+    if found is None and name in ctx.planned_concepts:  # chủ đề do AI soạn (v2.1): chỉ có khái niệm kỳ vọng
+        return Topic(name, "", "", tuple(ctx.planned_concepts[name]), ())
+    return found
 
 
 def find_topic(domain: str, name: str) -> Topic | None:

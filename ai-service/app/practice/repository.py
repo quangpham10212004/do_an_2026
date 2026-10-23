@@ -8,7 +8,7 @@ import asyncpg
 from app.db import Db
 
 COLUMNS = """id, mentee_id, interview_type, level, target_role, target_company, status, topics, transcript, result,
-             overall_score, engine, consent_external_ai, created_at, completed_at"""
+             overall_score, engine, consent_external_ai, created_at, completed_at, plan"""
 USED_STATUSES = ("COMPLETED", "ABANDONED")
 
 
@@ -34,14 +34,15 @@ async def list_for(conn: Db, mentee_id: UUID) -> list[asyncpg.Record]:
 
 
 async def insert(conn: Db, mentee_id: UUID, interview_type: str, level: str, target_role: str,
-                 target_company: str | None, topics: list[str], engine: str) -> asyncpg.Record | None:
-    """None khi mentee đã có buổi IN_PROGRESS (unique index một phần — bấm bắt đầu hai lần cùng lúc)."""
+                 target_company: str | None, topics: list[str], engine: str, plan: str) -> asyncpg.Record | None:
+    """None khi mentee đã có buổi IN_PROGRESS (unique index một phần — bấm bắt đầu hai lần cùng lúc).
+    plan = kế hoạch câu hỏi đã soạn (planner.dump)."""
     try:
         return await conn.fetchrow(
             f"""INSERT INTO practice_interviews (mentee_id, interview_type, level, target_role, target_company, topics,
-                                                 engine, consent_external_ai)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING {COLUMNS}""",
-            mentee_id, interview_type, level, target_role, target_company, topics, engine)
+                                                 engine, consent_external_ai, plan)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8::jsonb) RETURNING {COLUMNS}""",
+            mentee_id, interview_type, level, target_role, target_company, topics, engine, plan)
     except asyncpg.UniqueViolationError:
         return None
 

@@ -11,7 +11,7 @@ from app.interview.models import TurnEvaluation, TurnRecord
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
                        created_at, completed_at, reviewed_at, self_answer_acknowledged, kind, from_tier,
-                       mode, consent_external_ai"""
+                       mode, consent_external_ai, plan"""
 
 
 async def find(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -40,13 +40,14 @@ async def count_by_status(conn: Db) -> dict[str, int]:
 
 async def insert(conn: Db, mentor_id: UUID, domain: str, skills: list[str], max_turns: int,
                  engine: str, kind: str = "VERIFICATION", from_tier: str | None = None,
-                 mode: str = "CHAT", consent_external_ai: bool = False) -> asyncpg.Record:
-    """Chỉ gọi sau khi mentor đã xác nhận tự trả lời (US-22) => self_answer_acknowledged = true."""
+                 mode: str = "CHAT", consent_external_ai: bool = False, plan: str | None = None) -> asyncpg.Record:
+    """Chỉ gọi sau khi mentor đã xác nhận tự trả lời (US-22) => self_answer_acknowledged = true.
+    plan = kế hoạch câu hỏi của buổi giọng nói (planner.dump), chat => NULL."""
     return await conn.fetchrow(
         f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged, kind, from_tier,
-                                    mode, consent_external_ai)
-            VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9) RETURNING {INTERVIEW_COLUMNS}""",
-        mentor_id, domain, skills, max_turns, engine, kind, from_tier, mode, consent_external_ai)
+                                    mode, consent_external_ai, plan)
+            VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10::jsonb) RETURNING {INTERVIEW_COLUMNS}""",
+        mentor_id, domain, skills, max_turns, engine, kind, from_tier, mode, consent_external_ai, plan)
 
 
 async def lock_in_progress(conn: Db, interview_id: UUID) -> asyncpg.Record | None:

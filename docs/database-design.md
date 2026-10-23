@@ -242,6 +242,7 @@ erDiagram
         text kind "v2.0 VERIFICATION|UPGRADE (xin nâng cấp, 009)"
         text from_tier "v2.0 cấp lúc xin nâng cấp"
         text mode "v2.1 CHAT|VOICE (010)"
+        jsonb plan "v2.1 kế hoạch câu hỏi AI soạn, buổi giọng nói (011)"
         boolean consent_external_ai "v2.1 đồng ý OpenAI xử lý âm thanh (010)"
         int max_turns
         int current_turn
@@ -306,6 +307,7 @@ erDiagram
         jsonb result
         real overall_score "0..100"
         text engine
+        jsonb plan "kế hoạch câu hỏi AI soạn (011)"
         boolean consent_external_ai
         timestamptz created_at
         timestamptz completed_at
@@ -319,7 +321,7 @@ erDiagram
 | `interview_turns` | Từng lượt hỏi-đáp; `UNIQUE (interview_id, turn_no)` chống ghi trùng; ghi câu trả lời bằng `UPDATE ... WHERE answer IS NULL` |
 | `cv_documents` | CV đã upload: văn bản trích xuất + kết quả parse (`JSONB`); file PDF nằm trên volume `cv-storage` |
 | `enrichment_conversations` / `enrichment_messages` | Hội thoại chatbot làm rõ mục tiêu và từng lượt hỏi-đáp theo slot; `profile_synced` = đã đẩy goal sang profile-service (job nền thử lại nếu chưa) |
-| `practice_interviews` *(v2.1 ⚒, migration ai `010_voice_interviews.sql`)* | Buổi mentee luyện phỏng vấn giọng nói với AI (FR-10.x): `topics` = chủ đề đã lập từ `practice_bank`, `transcript` = bản chép lời (`TranscriptItem[]`), `result` = nhận xét từng câu + 3 điểm mạnh + 3 điểm cần cải thiện + báo cáo nói, `overall_score` 0–100, `consent_external_ai` = đã đồng ý cho OpenAI xử lý âm thanh. Lượt miễn phí bị dùng khi có buổi `COMPLETED` hoặc `ABANDONED`; tối đa một buổi `IN_PROGRESS` mỗi mentee, buổi `IN_PROGRESS` quá 30 phút → `ABANDONED`. `UNIQUE (mentee_id) WHERE status = 'IN_PROGRESS'` chặn bấm bắt đầu hai lần; chỉ mục `(mentee_id, created_at DESC)` cho danh sách. Không lưu âm thanh |
+| `practice_interviews` *(v2.1 ⚒, migration ai `010_voice_interviews.sql`)* | Buổi mentee luyện phỏng vấn giọng nói với AI (FR-10.x): `topics` = chủ đề đã lập từ `practice_bank`, `transcript` = bản chép lời (`TranscriptItem[]`), `result` = nhận xét từng câu + 3 điểm mạnh + 3 điểm cần cải thiện + báo cáo nói, `overall_score` 0–100, `consent_external_ai` = đã đồng ý cho OpenAI xử lý âm thanh. Lượt miễn phí bị dùng khi có buổi `COMPLETED` hoặc `ABANDONED`; tối đa một buổi `IN_PROGRESS` mỗi mentee, buổi `IN_PROGRESS` quá 30 phút → `ABANDONED`. `UNIQUE (mentee_id) WHERE status = 'IN_PROGRESS'` chặn bấm bắt đầu hai lần; chỉ mục `(mentee_id, created_at DESC)` cho danh sách. `plan` = kế hoạch câu hỏi AI soạn lúc bắt đầu (migration `011_interview_plans.sql`, mỗi chủ đề kèm nguồn BANK/CV/GOAL/AI). Không lưu âm thanh |
 
 ---
 

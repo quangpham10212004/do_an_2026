@@ -119,7 +119,10 @@ def assess(ctx: PracticeContext, topic: bank.PracticeTopic | None, answer: str) 
 
 
 def grade_turn(ctx: PracticeContext, a: PracticeAnswer) -> TurnGrade:
-    r, feedback = assess(ctx, bank.find(ctx.interview_type, a.topic), a.answer)
+    topic = bank.find(ctx.interview_type, a.topic)
+    if topic is None and a.topic in ctx.planned_concepts:  # chủ đề do AI soạn (v2.1): chỉ có khái niệm kỳ vọng
+        topic = bank.PracticeTopic(a.topic, "", "", tuple(ctx.planned_concepts[a.topic]))
+    r, feedback = assess(ctx, topic, a.answer)
     flags = [interview_rubric.FLAG_PROMPT_INJECTION] if interview_rubric.detect_injection(a.answer) else []
     return TurnGrade(topic_no=a.topic_no, topic=a.topic, question=a.question, answer=a.answer or NO_ANSWER,
                      score=rubric.turn_score(r), rubric=r, feedback=feedback, flags=flags)

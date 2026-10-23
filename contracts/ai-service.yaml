@@ -85,6 +85,11 @@ components:
           enum: [CHAT, VOICE]
           description: "FR-7.7 — CHAT (hỏi-đáp bằng chữ) | VOICE (OpenAI Realtime; mỗi chủ đề đã hỏi là một lượt, maxTurns = số chủ đề kế hoạch)"
         consentExternalAi: { type: boolean, description: "FR-7.7 — mentor đồng ý âm thanh được OpenAI (Mỹ) xử lý (true với VOICE)" }
+        plan:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/PlanTopic" }
+          description: "v2.1 — kế hoạch câu hỏi buổi giọng nói (AI soạn, dự phòng ngân hàng câu hỏi). Chỉ admin; chat / buổi trước 011 => null"
         engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
         maxTurns: { type: integer }
         currentTurn: { type: integer }
@@ -234,6 +239,15 @@ components:
         model: { type: string, nullable: true }
         promptVersion: { type: string, example: practice-v1, description: "practice-v1 (DeepSeek) | rule-based-practice-v1" }
         fallbackUsed: { type: boolean }
+    PlanTopic:
+      type: object
+      description: >
+        v2.1 phương án A — một chủ đề trong kế hoạch câu hỏi soạn MỘT lần lúc bắt đầu buổi giọng nói (DeepSeek, prompt plan-v1)
+        từ hồ sơ, mục tiêu và CV đã xác nhận (chỉ CV đồng ý gửi AI bên ngoài). Không có DeepSeek / JSON sai => ngân hàng câu hỏi.
+      properties:
+        name: { type: string }
+        question: { type: string }
+        source: { type: string, enum: [BANK, CV, GOAL, AI] }
     Practice:
       type: object
       properties:
@@ -245,6 +259,11 @@ components:
         targetCompany: { type: string, nullable: true }
         status: { type: string, enum: [IN_PROGRESS, COMPLETED, ABANDONED] }
         topics: { type: array, items: { type: string } }
+        plan:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/PlanTopic" }
+          description: "v2.1 — kế hoạch câu hỏi + nguồn; null khi IN_PROGRESS (không lộ câu hỏi trước)"
         engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
         consentExternalAi: { type: boolean }
         overallScore: { type: number, nullable: true }

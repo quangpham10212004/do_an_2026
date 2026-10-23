@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from app import config
-from app.interview import voice
+from app.interview import planner, voice
 from app.interview.voice import TranscriptItem
 from tests.conftest import auth
 from tests.test_interview_attempts import finish, reject
@@ -113,7 +113,7 @@ def test_group_by_topic_merges_a_repeated_marker_and_drops_topics_never_asked():
 
 def test_instructions_carry_the_plan_and_the_no_help_rules():
     mentor = {"domain": "backend", "skills": ["Java"], "yearsExperience": 8}
-    topics = voice.plan_topics("backend", ["Java"])
+    topics = planner.mentor_bank_plan("backend", ["Java"]).topics
     text = voice.build_instructions(mentor, topics)
     assert len(topics) == config.VOICE_INTERVIEW_TOPICS
     assert all(t.question in text for t in topics)

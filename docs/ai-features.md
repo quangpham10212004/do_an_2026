@@ -541,6 +541,26 @@ sequenceDiagram
 - Thiếu `OPENAI_API_KEY`: production (`APP_ENV=prod`) → 503 `VOICE_UNAVAILABLE`, không tạo bản ghi; ngoài production vẫn tạo
   bản ghi và trả `voice: null` để test/e2e gửi bản chép lời tổng hợp (CI không cần micro hay key).
 
+**Kế hoạch câu hỏi do AI soạn (phương án A, `interview/planner.py`, migration `011_interview_plans.sql`)** — người phỏng vấn
+giọng nói không tự nghĩ câu hỏi; DeepSeek soạn kế hoạch **một lần** lúc bắt đầu, lưu vào cột `plan`:
+
+- Đầu vào `<candidate_profile>` (JSON, chỉ là dữ liệu): mentor — lĩnh vực, kỹ năng, số năm, giới thiệu, headline; mentee —
+  loại, cấp độ, vị trí, công ty, mục tiêu trong hồ sơ. Cả hai: các trường **đã xác nhận** của CV mới nhất có
+  `consent_external_ai = true` (vai trò, kỹ năng, tối đa 4 dự án, học vấn). Mỗi trường được cắt ngắn; trường khớp mẫu chèn
+  lệnh (`detect_injection`) bị bỏ.
+- Đầu ra (prompt `plan-v1`): mỗi chủ đề `{name, question, followUp, expectedConcepts (3–12), source}`; kiểm schema chặt — đúng số
+  chủ đề, độ dài, không trùng tên, nguồn hợp lệ, câu hỏi không chứa mệnh lệnh chèn. Sai bất kỳ điều gì, không có key hoặc lỗi
+  mạng → ngân hàng câu hỏi (`source = BANK`), giống trước 011.
+- Mentor: AI soạn 3 chủ đề kỹ thuật cốt lõi của lĩnh vực (độ khó như nhau giữa các mentor; đúng một chủ đề `CV` đào sâu dự án
+  nếu có), chủ đề "Năng lực mentoring" luôn lấy từ `question_bank` ở vị trí 3 → điểm vẫn so sánh được cho ngưỡng cấp.
+  Mentee: AI soạn cả 4 chủ đề theo loại × cấp độ — đúng một chủ đề `CV` nếu CV có dự án, ít nhất một chủ đề `GOAL` nếu có
+  mục tiêu / công ty; BEHAVIORAL toàn câu hỏi STAR.
+- Kết nối lại dùng đúng kế hoạch đã lưu. Admin thấy kế hoạch + nguồn trên trang duyệt (`InterviewView.plan`, chỉ admin);
+  mentee thấy nguồn từng câu trong kết quả (`PracticeView.plan`, ẩn khi đang làm).
+- Chấm: `expectedConcepts` của kế hoạch là khái niệm kỳ vọng cho engine rule-based (`planned_concepts`) và được gửi kèm làm
+  tham khảo cho bộ chấm DeepSeek của buổi luyện.
+- Thêm một lời gọi DeepSeek (vài giây) lúc bắt đầu; nút bắt đầu hiện "AI đang soạn câu hỏi…".
+
 **Lời dặn người phỏng vấn (instructions của phiên Realtime)** — dựng từ hồ sơ + kế hoạch chủ đề:
 
 | Quy tắc | Mentor (xác thực) | Mentee (luyện) |

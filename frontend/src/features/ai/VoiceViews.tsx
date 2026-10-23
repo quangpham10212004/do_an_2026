@@ -2,7 +2,34 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { Alert, Badge, Card, CardBody, CardFooter, CardHeader, Checkbox } from "@/components/ui";
+import type { PlanSource, PlanTopic } from "@/types";
 import type { VoiceEntry, VoicePhase } from "./useRealtimeVoice";
+
+/** v2.1 — nguồn câu hỏi trong kế hoạch AI soạn. */
+const PLAN_SOURCE_LABELS: Record<PlanSource, string> = { BANK: "Ngân hàng câu hỏi", CV: "Từ CV", GOAL: "Theo mục tiêu", AI: "AI soạn" };
+
+export function PlanSourceBadge({ source }: { source: PlanSource }) {
+  return <Badge tone={source === "BANK" ? "neutral" : "accent"} plain>{PLAN_SOURCE_LABELS[source]}</Badge>;
+}
+
+/** v2.1 — kế hoạch câu hỏi đã dùng cho buổi giọng nói (admin xem câu đã hỏi và vì sao). */
+export function PlanCard({ plan, description }: { plan: PlanTopic[]; description?: ReactNode }) {
+  return (
+    <Card>
+      <CardHeader title="Kế hoạch câu hỏi" description={description} />
+      <CardBody>
+        <ol className="flex list-decimal flex-col gap-3 pl-5">
+          {plan.map((t) => (
+            <li key={t.name}>
+              <div className="flex flex-wrap items-center gap-2 font-medium">{t.name} <PlanSourceBadge source={t.source} /></div>
+              <div className="text-small text-ink-muted">{t.question}</div>
+            </li>
+          ))}
+        </ol>
+      </CardBody>
+    </Card>
+  );
+}
 
 /** Thông báo khi ai-service chưa cấu hình OPENAI_API_KEY (voice = null / voiceAvailable = false). */
 export const VOICE_DISABLED = "Phỏng vấn giọng nói chưa được bật";

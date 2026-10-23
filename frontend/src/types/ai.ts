@@ -52,6 +52,8 @@ export interface Interview {
   /** FR-7.7 — CHAT | VOICE (phỏng vấn giọng nói, OpenAI Realtime). */
   mode?: InterviewMode;
   consentExternalAi?: boolean;
+  /** v2.1 — kế hoạch câu hỏi của buổi giọng nói kèm nguồn (chỉ admin); null = chat hoặc buổi cũ */
+  plan?: PlanTopic[] | null;
   engine: "DEEPSEEK" | "RULE_BASED";
   maxTurns: number;
   currentTurn: number;
@@ -171,6 +173,15 @@ export interface PracticeResult {
   fallbackUsed: boolean;
 }
 
+/** v2.1 — nguồn của câu hỏi: ngân hàng câu hỏi, CV, mục tiêu / công việc nhắm tới, hoặc AI soạn theo lĩnh vực. */
+export type PlanSource = "BANK" | "CV" | "GOAL" | "AI";
+
+export interface PlanTopic {
+  name: string;
+  question: string;
+  source: PlanSource;
+}
+
 export interface Practice {
   id: Uuid;
   menteeId: Uuid;
@@ -180,6 +191,8 @@ export interface Practice {
   targetCompany: string | null;
   status: PracticeStatus;
   topics: string[];
+  /** v2.1 — kế hoạch câu hỏi kèm nguồn; null khi đang làm (không lộ câu hỏi trước) */
+  plan?: PlanTopic[] | null;
   engine: "DEEPSEEK" | "RULE_BASED";
   consentExternalAi: boolean;
   overallScore: number | null;
