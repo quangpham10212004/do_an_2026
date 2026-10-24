@@ -21,7 +21,9 @@ PROFILE_DB_URL = os.getenv(
 APP_ENV = os.getenv("APP_ENV", "dev").strip().lower()
 JWT_SECRET = os.getenv("JWT_SECRET", _DEV_JWT_SECRET)
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", _DEV_INTERNAL_API_KEY)
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+# G10/D13 — model đa ngôn ngữ (384 chiều, giữ nguyên VECTOR(384)) để hồ sơ tiếng Việt, tiếng Anh,
+# hoặc trộn đều được hiểu; mentor và mentee không bị thiệt vì viết hồ sơ bằng ngôn ngữ khác nhau.
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
 PRELOAD_MODEL = os.getenv("PRELOAD_MODEL", "true").lower() == "true"
 
 # IndexSyncJob — lưới an toàn cho thông báo best-effort của profile-service:

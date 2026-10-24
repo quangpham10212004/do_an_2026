@@ -225,7 +225,13 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8085/health || exit 1"]
 
   matching-service:
-    build: ./matching-service
+    build:
+      context: ./matching-service
+      # G10/D13 — phải khớp EMBEDDING_MODEL ở environment dưới: ARG chỉ quyết định model được tải
+      # SẴN vào image lúc build (Dockerfile); runtime vẫn đọc biến môi trường. Lệch hai bên thì
+      # container cố tải model khác lúc khởi động, mất lợi ích "không cần Internet" của ARG.
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
     ports: ["8090:8090"]
     environment:
       <<: *common-env
@@ -237,7 +243,7 @@ services:
       INDEX_SYNC_INTERVAL: ${INDEX_SYNC_INTERVAL:-60}
       INDEX_SYNC_ENABLED: ${INDEX_SYNC_ENABLED:-true}
       INDEX_SYNC_BATCH: ${INDEX_SYNC_BATCH:-200}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       PRELOAD_MODEL: ${PRELOAD_MODEL:-true}
     depends_on:
       matching-db: { condition: service_healthy }

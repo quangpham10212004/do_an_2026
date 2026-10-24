@@ -71,13 +71,31 @@ def fake_store(monkeypatch):
 
 @pytest.mark.anyio
 async def test_embedding_is_skipped_when_text_unchanged(fake_store):
-    """NFR-7 — text không đổi thì không chạy model lại."""
+    """NFR-7 — text không đổi và model không đổi thì không chạy model lại."""
     fake_store["index_row"] = {"has_vector": True, "text_hash": text_hash(normalize_mentor(MENTOR_ROW)),
+                               "model": index_service.config.EMBEDDING_MODEL,
                                "indexed_at": "2026-09-01T00:00:00+00:00"}
     result = await index_service.reindex(MENTOR_ROW["user_id"], role=MENTOR)
     assert result.status == index_service.UNCHANGED
     assert fake_store["embed_calls"] == []
     assert fake_store["stored"] == []
+
+
+@pytest.mark.anyio
+async def test_reembeds_when_model_differs_even_if_text_unchanged(fake_store):
+    """G10/D13 — text không đổi NHƯNG model đã đổi (hoặc model=NULL, embed từ trước khi theo dõi) vẫn phải embed lại."""
+    fake_store["index_row"] = {"has_vector": True, "text_hash": text_hash(normalize_mentor(MENTOR_ROW)),
+                               "model": "model-cu", "indexed_at": "2026-09-01T00:00:00+00:00"}
+    result = await index_service.reindex(MENTOR_ROW["user_id"], role=MENTOR)
+    assert result.status == index_service.UPDATED
+    assert len(fake_store["stored"]) == 1
+
+    fake_store["stored"].clear()
+    fake_store["index_row"] = {"has_vector": True, "text_hash": text_hash(normalize_mentor(MENTOR_ROW)),
+                               "model": None, "indexed_at": "2026-09-01T00:00:00+00:00"}
+    result = await index_service.reindex(MENTOR_ROW["user_id"], role=MENTOR)
+    assert result.status == index_service.UPDATED
+    assert len(fake_store["stored"]) == 1
 
 
 @pytest.mark.anyio
@@ -153,7 +171,13 @@ def fake_reconcile(monkeypatch):
     class FakePool:
         async def fetch(self, sql, *args):
             role = MENTOR if "mentor_embeddings" in sql else MENTEE
-            return [{"user_id": uid, "text_hash": h} for uid, h in state["indexed"][role].items()]
+            # Giá trị trong state["indexed"] là text_hash (giả định model hiện hành, tương thích test
+            # cũ) hoặc tuple (text_hash, model) khi test cần kiểm tra lệch model (G10/D13).
+            rows = []
+            for uid, val in state["indexed"][role].items():
+                h, m = val if isinstance(val, tuple) else (val, index_service.config.EMBEDDING_MODEL)
+                rows.append({"user_id": uid, "text_hash": h, "model": m})
+            return rows
 
     async def get_pool():
         return FakePool()
@@ -184,6 +208,20 @@ async def test_reconcile_only_reembeds_profiles_whose_text_drifted(fake_reconcil
     assert stats["stale"] == 2
     assert stats["reindexed"] == 2
     assert stats["pending"] == 0
+
+
+@pytest.mark.anyio
+async def test_reconcile_reembeds_when_model_changed(fake_reconcile):
+    """G10/D13 — text đúng nhưng model lưu kèm embedding khác model hiện hành thì vẫn phải lập chỉ mục lại."""
+    same_text_old_model = _mentor("a")
+    fake_reconcile["profiles"][MENTOR] = [same_text_old_model]
+    fake_reconcile["indexed"][MENTOR] = {
+        "a": (text_hash(normalize_mentor(same_text_old_model)), "model-cu"),
+    }
+    stats = await index_service.reconcile(batch=100)
+    assert sorted(uid for _, uid in fake_reconcile["reindexed"]) == ["a"]
+    assert stats["stale"] == 1
+    assert stats["reindexed"] == 1
 
 
 @pytest.mark.anyio

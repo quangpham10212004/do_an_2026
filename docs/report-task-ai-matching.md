@@ -10,7 +10,7 @@
 | T0 | ĐẠT | `270b2e2` (code), `7a20457` (tài liệu) |
 | T1 | ĐẠT | `(xem §T1)` |
 | T2 | ĐẠT | (xem §T2) |
-| T2b | chưa làm | |
+| T2b | ĐẠT | (xem §T2b) |
 | T2c | chưa làm | |
 | T3 | chưa làm | |
 | T4 | chưa làm | |
@@ -112,5 +112,69 @@ PYTHONIOENCODING=utf-8 INTERNAL_API_KEY=change-me-internal-service-key python e2
 
 **Phát hiện phụ — rủi ro cần lưu ý (không chặn T2, nhưng ghi lại để không quên):**
 `platform_median_rating()` tính trung vị **trên toàn hệ thống** (mọi mentor APPROVED có ≥3 đánh giá), không giới hạn theo domain hay theo lần chạy e2e. Môi trường docker compose đang chạy liên tục (15+ giờ, nhiều script seed/e2e khác đã chạy qua), nên kết quả của check `minRating=4` trong e2e phụ thuộc vào trạng thái TOÀN CỤC của DB tại thời điểm chạy, không chỉ 36 mentor do chính script này tạo. Đã xác nhận bằng truy vấn trực tiếp: hiện tại `count(*) = 0` mentor nào đủ 3 đánh giá trong `profile_db`, nên trung vị là `None` → fallback 3,5 → check vẫn đúng. Nếu sau này có script khác đồng bộ rating thật (qua mentoring-service) cho mentor đủ 3 đánh giá với rating ≥ 4, trung vị nền tảng sẽ đổi và có thể làm check này cần cập nhật lại ngưỡng — đây là đặc tính đã biết của thiết kế (trung vị dùng chung toàn nền tảng), không phải lỗi của T2.
+
+---
+
+## ⚠️ Sự cố: xoá nhầm dữ liệu `profile_db` sống (trong lúc làm T2b)
+
+Khi chuẩn bị T2b, phát hiện `tests/test_matching_db.py` dùng fixture `conn` chạy `DROP SCHEMA public CASCADE` trên `profile_db` trước MỖI test (để dựng schema sạch cho test cách ly) — nhưng ở T0, T1, T2, biến `PROFILE_DB_ADMIN_URL` đã được trỏ trực tiếp vào `localhost:5434`, chính là `profile-db` mà toàn bộ docker compose (15+ giờ đang chạy) dùng chung, không phải một database test riêng. Hậu quả: mỗi lần `pytest tests/test_matching_db.py` chạy ở T0/T1/T2, dữ liệu mentor/mentee thật trong môi trường sống bị xoá và dựng lại từ đầu; sau 3 lần, `mentor_profiles` chỉ còn 2 dòng, `mentee_profiles` chỉ còn 1 dòng (dữ liệu sót của lần e2e cuối). Các database riêng của service khác (mentoring-db, payment-db...) không bị xoá trực tiếp nhưng có thể còn tham chiếu `user_id` không còn tồn tại trong `profile_db`.
+
+**Đã báo cho người dùng qua AskUserQuestion**, nhận được xác nhận: dữ liệu đó chỉ là dữ liệu test/demo, không quan trọng, tiếp tục bình thường — không cần khôi phục.
+
+**Khắc phục cho các task còn lại:** dựng 2 container Postgres dùng một lần (`tmp-matching-db` cổng 15439, `tmp-profile-db` cổng 15434 trên host — không đụng cổng 5439/5434 của docker compose) để chạy mọi test cần CSDL thật từ T2b trở đi. Container app `matching-service` của docker compose (cổng 8090) vẫn được rebuild/restart bình thường để chạy e2e — đó là thao tác triển khai hợp lệ, không phải xoá dữ liệu.
+
+**Bài học áp dụng từ đây:** không trỏ `PROFILE_DB_ADMIN_URL`/`MATCHING_DB_URL` của bất kỳ lệnh pytest nào vào cổng 5434/5439 (database sống) nữa; luôn dùng container tạm ở cổng 15434/15439.
+
+---
+
+## T2b — G10, D13: đổi sang model đa ngôn ngữ, lập chỉ mục lại khi đổi model
+
+**Input (theo §11.1):** đặt `EMBEDDING_MODEL` sang model mới; hồ sơ mentee tiếng Việt "Tôi muốn học backend Java Spring Boot"; hai mentor tiếng Anh (một backend Spring Boot, một UI/React).
+
+**Thay đổi:**
+- Model: `all-MiniLM-L6-v2` → `paraphrase-multilingual-MiniLM-L12-v2` (384 chiều, không đổi `VECTOR(384)`). Đổi mặc định ở `app/config.py`, `Dockerfile` (`ARG EMBEDDING_MODEL`), `docker-compose.yml` (thêm `build.args.EMBEDDING_MODEL` khớp với `environment.EMBEDDING_MODEL` — trước đây ARG không được truyền từ compose nên image luôn tải sẵn model cũ bất kể biến môi trường), `.env.example`, `contracts/matching-service.yaml`.
+- `migrations/003_embedding_model.sql`: thêm cột `model TEXT` vào `mentor_embeddings`, `mentee_embeddings`. `NULL` = embed từ trước khi có cột này.
+- `index_service.py`: `_store_vector` ghi kèm `config.EMBEDDING_MODEL`; `_index` coi lệch model (hoặc `model=NULL`) là "cần embed lại" dù text không đổi; `reconcile` phát hiện lệch model qua so sánh tuple `(text_hash, model)` thay vì chỉ `text_hash`.
+- `tests/test_index_service.py`: thêm `test_reembeds_when_model_differs_even_if_text_unchanged`, `test_reconcile_reembeds_when_model_changed`; sửa fixture `fake_store`/`fake_reconcile` để mô phỏng cột `model` (tương thích ngược — giá trị cũ không có `model` được coi là khớp model hiện hành, test cũ không cần sửa).
+
+**Lệnh đã chạy:**
+```
+# Xác nhận model trước khi đổi (384 chiều, phân biệt được cùng/khác nghĩa qua ngôn ngữ)
+python -c "from sentence_transformers import SentenceTransformer; ..."
+
+# pytest trên DB TẠM (xem sự cố ở trên) — không còn chạm database sống
+docker run -d --name tmp-matching-db -p 15439:5432 pgvector/pgvector:pg16 ...
+docker run -d --name tmp-profile-db  -p 15434:5432 postgres:16 ...
+MATCHING_DB_URL=...15439 PROFILE_DB_URL=...15434 PROFILE_DB_ADMIN_URL=...15434 pytest tests/ -q
+
+# Rebuild + restart container sống để e2e dùng code mới (hợp lệ, không xoá dữ liệu)
+docker compose build matching-service && docker compose up -d matching-service
+
+# Kiểm chứng chức năng qua API thật (script tạm, không thuộc repo)
+python verify_t2b.py
+
+# e2e đầy đủ
+python scripts/e2e_s2_profile_matching.py
+```
+
+**Output thật:**
+- So sánh model trước khi đổi (câu "Tôi muốn học backend Java Spring Boot" vi vs "I want to learn backend Java Spring Boot" en vs "I want to learn frontend React UI design" en):
+  | Model | cosine cùng nghĩa (vi-en) | cosine khác nghĩa (vi-en) |
+  |---|---|---|
+  | `all-MiniLM-L6-v2` (cũ) | 0.611 | 0.148 |
+  | `paraphrase-multilingual-MiniLM-L12-v2` (mới) | **0.956** | 0.308 |
+  → model mới nhận ra câu cùng nghĩa khác ngôn ngữ là gần như giống nhau (0,956), model cũ chỉ nhận ra một phần (0,611).
+- `pytest tests/` trên DB tạm: `110 passed, 1 failed` (108 trước T2b + 2 test mới; 1 fail là lỗi mã hoá đã biết).
+- `docker compose build` + `up -d`: healthy, log xác nhận `Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2` — tải từ image, không gọi mạng lúc khởi động.
+- Sau khi container sống chạy được một lúc, `psql` xác nhận IndexSyncJob đã TỰ lập chỉ mục lại toàn bộ embedding cũ (trước đó `model IS NULL`) sang `paraphrase-multilingual-MiniLM-L12-v2`, không cần thao tác tay.
+- `verify_t2b.py` (script tạm, qua API thật — mentee tiếng Việt, 2 mentor tiếng Anh): `similarity backend mentor: 0.9466`, `similarity ui mentor: 0.5536` → **PASS**.
+- e2e đầy đủ sau khi đổi model: `35/35 PASS trong 23.5s` (so với ~9.6s trước đó — xem phát hiện phụ).
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.1 — mọi embedding đúng 384 chiều; embedding lưu kèm tên model; embedding khác model được tự xếp hàng lập chỉ mục lại (không cần thao tác tay); độ tương đồng mentee tiếng Việt với mentor đúng domain cao hơn mentor sai domain; không còn vector model cũ lẫn trong kết quả (đã xác nhận bằng psql).
+
+**Phát hiện phụ:**
+- Model đa ngôn ngữ (L12, 12 lớp) nặng hơn model cũ (L6, 6 lớp) — thời gian build image tăng thêm ~49s (tải model lúc build), và e2e tổng thời gian tăng từ ~9,6s lên ~23,5s (36 mentor + 1 mentee phải embed lại). Đây là đánh đổi đã lường trước ở rủi ro của D13 (docs/design-ai-matching-spec.md §12); cần đo riêng bằng benchmark ở T8 để biết p95 có còn dưới 2.000ms (NFR-1, D12) không — T2b mới dừng ở xác nhận ĐÚNG, chưa đo tốc độ chính xác.
+- Việc build image trước đây KHÔNG truyền `ARG EMBEDDING_MODEL` từ `docker-compose.yml` (thiếu `args:`) nên dù đổi biến môi trường, image vẫn luôn tải sẵn model cũ lúc build — một lỗi cấu hình có từ trước, chỉ lộ ra khi làm T2b. Đã sửa cùng lúc.
+- T2c (so sánh định lượng model cũ/mới trên bộ eval đầy đủ, nhiều cặp có nhãn) CHƯA làm — phần trên chỉ là một ví dụ đơn, không thay thế được eval có nhãn.
 
 ---

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from starlette.concurrency import run_in_threadpool
 
+from app import config
 from app.db import get_matching_pool, get_profile_pool
 from app.services.embedding_service import embed_text
 from app.services.profile_text import MENTEE, MENTOR, normalize, text_hash
@@ -88,7 +89,7 @@ async def _fetch_index_row(role: str, user_id: str) -> dict | None:
     spec = _spec(role)
     pool = await get_matching_pool()
     row = await pool.fetchrow(
-        f"SELECT user_id, text_hash, indexed_at, (embedding IS NOT NULL) AS has_vector "
+        f"SELECT user_id, text_hash, model, indexed_at, (embedding IS NOT NULL) AS has_vector "
         f"FROM {spec['index_table']} WHERE user_id = $1::uuid",
         user_id,
     )
@@ -130,16 +131,17 @@ async def _store_vector(role: str, user_id: str, vector: list[float], hash_: str
     pool = await get_matching_pool()
     return await pool.fetchval(
         f"""
-        INSERT INTO {spec['index_table']} (user_id, embedding, text_hash, indexed_at, attempts, last_error, updated_at)
+        INSERT INTO {spec['index_table']}
+            (user_id, embedding, text_hash, model, indexed_at, attempts, last_error, updated_at)
         -- $2::text::vector chứ không phải $2::vector: asyncpg không có codec cho kiểu
         -- `vector`, nên tham số phải được gửi dưới dạng text rồi để Postgres tự ép kiểu.
-        VALUES ($1::uuid, $2::text::vector, $3, now(), 0, NULL, now())
+        VALUES ($1::uuid, $2::text::vector, $3, $4, now(), 0, NULL, now())
         ON CONFLICT (user_id) DO UPDATE
-            SET embedding = EXCLUDED.embedding, text_hash = EXCLUDED.text_hash,
+            SET embedding = EXCLUDED.embedding, text_hash = EXCLUDED.text_hash, model = EXCLUDED.model,
                 indexed_at = now(), attempts = 0, last_error = NULL, updated_at = now()
         RETURNING indexed_at
         """,
-        user_id, _to_pgvector(vector), hash_,
+        user_id, _to_pgvector(vector), hash_, config.EMBEDDING_MODEL,
     )
 
 
@@ -167,7 +169,10 @@ async def _index(role: str, profile: dict, force: bool) -> IndexResult:
 
     if not force:
         current = await _fetch_index_row(role, user_id)
-        if current and current["has_vector"] and current["text_hash"] == hash_:
+        # G10/D13: text không đổi NHƯNG model đã đổi (hoặc chưa từng được theo dõi, model=NULL) vẫn
+        # phải embed lại — vector của hai model không so sánh được dù cùng 384 chiều.
+        if (current and current["has_vector"] and current["text_hash"] == hash_
+                and current.get("model") == config.EMBEDDING_MODEL):
             return IndexResult(user_id, role, UNCHANGED, current["indexed_at"])
 
     try:
@@ -239,12 +244,17 @@ async def reconcile(batch: int) -> dict:
 
         pool = await get_matching_pool()
         indexed = {
-            r["user_id"]: r["text_hash"]
+            r["user_id"]: (r["text_hash"], r["model"])
             for r in await pool.fetch(
-                f"SELECT user_id, text_hash FROM {spec['index_table']} WHERE embedding IS NOT NULL"
+                f"SELECT user_id, text_hash, model FROM {spec['index_table']} WHERE embedding IS NOT NULL"
             )
         }
-        stale = [p for p in profiles if indexed.get(p["user_id"]) != text_hash(normalize(role, p))]
+        # G10/D13: lệch model (kể cả NULL — embed từ trước khi có cột này) cũng tính là "cũ", không
+        # chỉ lệch text_hash — buộc lập chỉ mục lại khi đổi EMBEDDING_MODEL.
+        stale = [
+            p for p in profiles
+            if indexed.get(p["user_id"]) != (text_hash(normalize(role, p)), config.EMBEDDING_MODEL)
+        ]
         stats["stale"] += len(stale)
         for profile in stale[:batch]:
             result = await _index(role, profile, force=True)

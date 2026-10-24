@@ -3,7 +3,8 @@ info:
   title: matching-service
   version: 1.0.0
   description: >
-    AI Matching pipeline: embedding (sentence-transformers all-MiniLM-L6-v2, 384 chiều);
+    AI Matching pipeline: embedding (sentence-transformers paraphrase-multilingual-MiniLM-L12-v2,
+    384 chiều — đa ngôn ngữ, hồ sơ tiếng Việt/tiếng Anh/trộn đều được hiểu);
     hard filter (ràng buộc hệ thống + bộ lọc người dùng, US-17) → pgvector top-K chỉ trong mentor hợp lệ
     → re-rank → giải thích. Sở hữu bởi Thảo.
     Sở hữu TOÀN BỘ chỉ mục embedding: vector, hash text nguồn và trạng thái index nằm trong
