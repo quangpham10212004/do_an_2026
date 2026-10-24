@@ -6,10 +6,13 @@ Lớp E22CNPM03 — GVHD: Đào Ngọc Phong.
 
 > **21/10/2026 — Bản chốt v2.0**: [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) là nguồn chuẩn cho nghiệp vụ và thông số (ví VND, cấp độ + khung giá, buổi trải nghiệm, phòng học, chính sách huỷ, referral). Nội dung đánh dấu ⚒ trong SRD / business-domain / database-design / api-reference là **mục tiêu chưa hiện thực**; số liệu ở mục "Số liệu chính" bên dưới là của 06/10/2026 và chưa phản ánh Sprint 3–6 — chạy lại các lệnh đếm trước khi trích dẫn.
 
+> **23/10/2026 — Thu nhỏ phạm vi**: [scope-core.md](scope-core.md) khoanh 5 chức năng lõi (AI Interview, AI Matching, phân tích CV, chatbot làm rõ mục tiêu, mentoring); phần còn lại tạm gác.
+
 ## Danh mục tài liệu
 
 | Tài liệu | Nội dung | Gợi ý dùng cho chương báo cáo |
 |---|---|---|
+| [scope-core.md](scope-core.md) | **Phạm vi tập trung**: 5 chức năng lõi, phần tạm gác, phụ thuộc khi muốn gỡ, gợi ý demo | Ch.1 Phạm vi · Chuẩn bị bảo vệ |
 | [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) | **Bản chốt nghiệp vụ và thông số v2.0**: mọi quy tắc, ngưỡng, mốc thời gian; bảng thông số cấu hình; tác động lên code | Ch.2 Phân tích yêu cầu · nguồn chuẩn khi các tài liệu khác mâu thuẫn |
 | [SRD-Mentor-Mentee-Platform.md](SRD-Mentor-Mentee-Platform.md) | Đặc tả yêu cầu v2.0: phạm vi, yêu cầu chức năng/phi chức năng, quyết định thiết kế, tiêu chí nghiệm thu | Ch.1 Giới thiệu · Ch.2 Phân tích yêu cầu |
 | [business-domain-mentor-mentee.md](business-domain-mentor-mentee.md) | Use case, luồng nghiệp vụ chi tiết, sơ đồ tuần tự, sơ đồ trạng thái | Ch.2 Phân tích yêu cầu · Ch.3 Thiết kế |
@@ -18,13 +21,12 @@ Lớp E22CNPM03 — GVHD: Đào Ngọc Phong.
 | [database-design.md](database-design.md) | ERD và mô tả bảng của 7 CSDL (gồm `matching_db`) | Ch.3 Thiết kế CSDL |
 | [api-reference.md](api-reference.md) | 100 endpoint (107 kể cả `/health`) của 7 service, quyền truy cập, ví dụ | Ch.3 Thiết kế API · Phụ lục |
 | [ai-features.md](ai-features.md) | AI Matching (matching-service), AI Interview và CV Parsing + Chatbot enrichment (ai-service, DeepSeek + rule-based): thuật toán, công thức, prompt, ví dụ, hạn chế, câu hỏi bảo vệ | Ch.4 Hiện thực các tính năng AI (phần cá nhân) |
+| [design-ai-matching-spec.md](design-ai-matching-spec.md) | **Đặc tả kỹ thuật AI Matching**: 16 tiêu chí (C01–C16), 4 chỉ số đánh giá (M1–M4), pipeline, API, cấu hình, khoảng trống ⚒ | Ch.4 Hiện thực AI Matching · Ch.5 Đánh giá |
 | [testing-report.md](testing-report.md) | Chiến lược, unit test, kiểm tra e2e theo DoD (DoD 2 nay là nhất quán cuối cùng), hiệu năng, bảo mật, lỗi phát hiện, giới hạn | Ch.5 Kiểm thử & đánh giá |
 | [deployment-guide.md](deployment-guide.md) | Cài đặt, cấu hình, tài khoản demo, kịch bản demo ~20 phút, xử lý sự cố, **nâng cấp/migration CSDL** | Ch.5 Triển khai · Phụ lục |
 | [cv-data-policy.md](cv-data-policy.md) | **Chính sách dữ liệu CV**: nơi lưu, giới hạn, quyền truy cập, gửi DeepSeek, thời hạn lưu, cách xoá, phần chưa hiện thực | Ch.4 (phần CV) · Ch.5 Bảo mật |
 | [ui-design.md](ui-design.md) | Design system MentorHub (Claude Design, tokens.json, Tailwind v4), bố cục, điều hướng, ảnh chụp màn hình | Ch.3 Thiết kế giao diện |
 | [user-guide.md](user-guide.md) | Hướng dẫn sử dụng theo vai trò | Phụ lục |
-| [system-analysis-status.md](system-analysis-status.md) | **Hiện trạng hệ thống & sổ khoảng trống**: những gì đã có, refactor đang dở, danh sách cần cập nhật theo mức ưu tiên, kế hoạch 3 đợt | Quản lý tiến độ · Rà soát trước khi nộp |
-| [archive/](archive/) | SRD v0.2 (bản trước khi hiện thực) | Tham khảo lịch sử |
 
 Tài liệu kỹ thuật khác trong repo: `CONVENTIONS.md` (quy ước nhóm), `contracts/*.yaml` (OpenAPI).
 
@@ -38,7 +40,7 @@ Tài liệu kỹ thuật khác trong repo: `CONVENTIONS.md` (quy ước nhóm), 
 
 ## Số liệu chính (06/10/2026)
 
-> Số liệu đếm bằng lệnh ở [system-analysis-status.md](system-analysis-status.md) Phần E — chạy lại trước
+> Số liệu chưa được kiểm chứng lại sau các thay đổi gần đây — chạy lại các lệnh đếm trước
 > khi trích dẫn. Unit test, e2e và benchmark chạy lại ngày 06/10/2026 sau `R-1`.
 
 | Hạng mục | Giá trị |

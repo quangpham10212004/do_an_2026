@@ -14,7 +14,7 @@
 | Phiên bản | Ngày | Nội dung |
 |---|---|---|
 | 0.1 | 2026 | Bản đầu: Auth, Profile, Learning Hub, AI Matching, Mentoring, Payment |
-| 0.2 | 31/07/2026 | Bổ sung AI Interview, CV Parsing + Chatbot enrichment, quy trình nghiệp vụ chi tiết (lưu tại `archive/SRD-Mentor-Mentee-Platform-v0.2.md`) |
+| 0.2 | 31/07/2026 | Bổ sung AI Interview, CV Parsing + Chatbot enrichment, quy trình nghiệp vụ chi tiết (bản gốc đã gỡ khỏi repo, xem lịch sử git) |
 | 1.0 | 16/09/2026 | Chốt yêu cầu theo bản hiện thực: bổ sung các quyết định thiết kế (mục 2.4), hoàn thiện đặc tả API (mục 9), đánh dấu tiêu chí nghiệm thu đã đạt (mục 6), thống nhất phân công giữa SRD và `CONVENTIONS.md` |
 | 1.1 | 17/09/2026 | Tách phần AI hội thoại (AI Interview, CV Parsing, Chatbot enrichment) thành **ai-service** (Python/FastAPI); đổi nhà cung cấp LLM sang **DeepSeek API** (quyết định D4, D12) |
 | **1.2** | 20/09/2026 | Chuyển **toàn bộ** AI Interview và CV Parsing + Chatbot enrichment (luồng nghiệp vụ + dữ liệu) từ mentoring-service (Java) sang ai-service (Python); ai-service có CSDL riêng `ai_db` và API công khai `/api/ai/**` (cập nhật quyết định D12) |

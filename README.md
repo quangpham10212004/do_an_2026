@@ -11,6 +11,10 @@ Từ v2.1 (⚒ đang làm): **phỏng vấn bằng giọng nói** qua OpenAI Rea
 | GVHD | Đào Ngọc Phong |
 | Tài liệu | [`docs/`](docs/README.md) — SRD, kiến trúc, ADR, CSDL, API, AI, chính sách dữ liệu CV, kiểm thử, triển khai, hướng dẫn sử dụng |
 
+> **Phạm vi hiện tại (23/10/2026):** tập trung vào 5 chức năng lõi — AI Interview, AI Matching, phân tích CV, chatbot làm rõ
+> mục tiêu, mentoring. Ví/thanh toán, referral, Jitsi, học tập, phỏng vấn giọng nói được tạm gác (code vẫn còn và vẫn chạy).
+> Chi tiết: [docs/scope-core.md](docs/scope-core.md).
+
 ## Chạy nhanh
 
 ```bash

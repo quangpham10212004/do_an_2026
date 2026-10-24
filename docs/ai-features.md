@@ -176,7 +176,18 @@ trong các ngày đã chọn, hoặc ngày bất kỳ nếu không chọn ngày)
 `freeOnly`. Param không truyền thì lấy từ sở thích hồ sơ mentee (US-16) khi `useProfileDefaults=true`;
 response trả lại bộ lọc hiệu lực (`filters`, kèm `fromProfileDefaults`).
 
-**`excludedBy` (US-18, PRD-MATCH-5)** — với mỗi bộ lọc người dùng đang bật: số mentor đã qua ràng buộc
+**Ngân sách là ưu tiên mềm (`includeOverBudget`, mặc định bật)** — `maxRate` (và `budgetMaxPerHour` lấy từ hồ sơ) không
+còn loại mentor. Mentor vượt ngân sách nhưng qua mọi ràng buộc hệ thống và bộ lọc khác được xếp **riêng và đặt SAU mọi mentor trong ngân sách**,
+kèm `overBudget = true` và `overBudgetBy` (số đồng vượt mỗi giờ); mentee vẫn thấy lựa chọn tốt dù giá cao hơn 1–2 triệu.
+- Hai nhóm lấy top-K **riêng** (mentor đắt gần mentee hơn không chiếm chỗ của mentor trong ngân sách) và re-rank cùng công thức; nhóm
+  vượt ngân sách xếp theo `finalScore` (mentor phù hợp nhất trước), không theo mức vượt.
+- Số mentor vượt ngân sách hiển thị = `max(MATCH_OVER_BUDGET_SHOWN (3), limit − số mentor trong ngân sách)`: luôn thấy ít nhất vài lựa chọn, và khi
+  ngân sách quá chặt thì danh sách vẫn đủ `limit`. Tổng số mentor vượt ngân sách trả trong `pipeline.overBudget`.
+- `maxRate` không còn xuất hiện trong `excludedBy` (không loại ai); các bộ lọc khác giữ nguyên là hard filter.
+- `includeOverBudget=false` quay về lọc cứng `hourlyRate ≤ maxRate` (US-17 AC gốc). Gợi ý mentor thay thế cho mentoring-service
+  (`/internal/matching/similar-mentors`) luôn lọc cứng theo ngân sách.
+
+**`excludedBy` (US-18, PRD-MATCH-5)** — với mỗi bộ lọc người dùng đang bật (trừ `maxRate` khi ngân sách là ưu tiên mềm): số mentor đã qua ràng buộc
 hệ thống và mọi bộ lọc khác nhưng trượt riêng bộ lọc đó = số mentor có thêm nếu chỉ nới bộ lọc đó. Trang
 `/matching` dùng con số lớn nhất để gợi ý "Nới điều kiện" khi kết quả ít.
 
@@ -190,7 +201,7 @@ $$
 \text{finalScore} = 0.6 \cdot \text{similarity} + 0.15 \cdot \frac{\text{rating}^{*}}{5} + 0.1 \cdot \min\left(\frac{\text{years}}{10},\ 1\right) + 0.1 \cdot \text{scheduleFit} + 0.05 \cdot \text{responsiveness}
 $$
 
-(Sprint 4, US-35 — PRD-MATCH-3/4; trước đó là 0.7 / 0.2 / 0.1 với rating trung tính 3.5, xem `docs/eval-matching.md`.)
+(Sprint 4, US-35 — PRD-MATCH-3/4; trước đó là 0.7 / 0.2 / 0.1 với rating trung tính 3.5, xem `docs/design-ai-matching-spec.md` §8.)
 
 - $\text{rating}^{*}$ = rating thật nếu mentor có **≥ 3 đánh giá**, ngược lại = **trung vị rating của nền tảng** (mentor
   APPROVED có ≥ 3 đánh giá; chưa có ai thì 3.5) và thẻ hiện nhãn "Mentor mới" — 1–2 đánh giá đầu chưa đủ tin cậy.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-US-26 — chỉ số đánh giá AI Matching từ CSV đã chụp (capture.py) và sinh báo cáo docs/eval-matching.md.
+US-26 — chỉ số đánh giá AI Matching từ CSV đã chụp (capture.py) và sinh báo cáo scripts/eval/matching/out/report.md.
 
   (a) trọng số hiện tại   — thứ tự trong suggestions.csv (pipeline production).
   (b) trọng số mới        — PRD-MATCH-3 thêm tín hiệu trùng lịch (availability overlap) và thời gian phản hồi.
@@ -16,7 +16,7 @@ mọi số liệu là TẠM THỜI). Thang 0/1/2. Precision@5: mentor "liên qua
 chiết khấu log2(rank + 1), IDCG từ toàn bộ nhãn của mentee đó.
 
     python3 scripts/eval/matching/metrics.py                       # in bảng
-    python3 scripts/eval/matching/metrics.py --report docs/eval-matching.md
+    python3 scripts/eval/matching/metrics.py --report scripts/eval/matching/out/report.md
 """
 import argparse
 import csv
@@ -280,7 +280,7 @@ offline (tách biệt, tất định) là nguồn số liệu chính của báo 
 ```bash
 pip install -r matching-service/requirements.txt          # sentence-transformers (+ asyncpg/starlette để import code)
 python3 scripts/eval/matching/capture.py                   # offline: 2 model, ghi out/suggestions.csv + features.csv
-python3 scripts/eval/matching/metrics.py --report docs/eval-matching.md
+python3 scripts/eval/matching/metrics.py --report scripts/eval/matching/out/report.md
 # Tuỳ chọn, đối chiếu với hệ thống đang chạy:
 python3 scripts/eval/matching/seed_eval.py && python3 scripts/eval/matching/capture.py --source api --out /tmp/eval-api
 python3 -m pytest scripts/eval/matching/test_metrics.py
@@ -291,7 +291,7 @@ python3 -m pytest scripts/eval/matching/test_metrics.py
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=str(HERE / "out"), help="thư mục chứa suggestions.csv + features.csv")
-    parser.add_argument("--report", help="ghi báo cáo markdown (vd. docs/eval-matching.md)")
+    parser.add_argument("--report", help="ghi báo cáo markdown (vd. scripts/eval/matching/out/report.md)")
     args = parser.parse_args(argv)
     res = evaluate(*load(pathlib.Path(args.out)))
     print(tables(res))
