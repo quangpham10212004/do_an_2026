@@ -41,36 +41,35 @@
 
 ---
 
-## 3. Đánh giá năng lực và cấp độ mentor
+## 3. ~~Đánh giá năng lực và cấp độ mentor~~ — đã thay thế
 
-| Nội dung | Chốt | Hiện tại |
+> **Đã thay thế (24/10/2026).** Cấp độ Junior/Senior/Expert **không được hiện thực** — nhóm quyết định bỏ hẳn (D6,
+> [design-mentor-verification.md](design-mentor-verification.md)) thay vì theo kế hoạch "Chốt" dưới đây. Mentor đặt
+> `hourlyRate` tự do. Quy tắc đánh giá năng lực (vòng, số lượt, 24 giờ, 7 ngày) nay theo thiết kế 2 vòng ở tài liệu đó.
+> Bảng dưới giữ lại để biết kế hoạch cũ đã đổi hướng ra sao, không còn là nguồn chuẩn.
+
+| Nội dung | Chốt (cũ, không còn áp dụng) | Hiện tại trước PR gỡ cấp độ |
 |---|---|---|
-| Cấp độ | **Junior / Senior / Expert**, do admin phê duyệt; số năm kinh nghiệm chỉ để hiển thị | ⚒ chưa có cấp độ |
-| Đề xuất cấp độ từ điểm AI (thang 0–100) | < 60 không đạt · 60–74 Junior · 75–87 Senior · ≥ 88 Expert | ⚒ |
-| Admin | được chọn cấp khác đề xuất hoặc từ chối; **bắt buộc ghi lý do** (≥ 10 ký tự) | ⚒ một phần (đã có duyệt/từ chối + lý do) |
-| Tiếp tục khi gián đoạn | trong **24 giờ** kể từ lúc bắt đầu; quá hạn → ABANDONED, tính một lượt | ✎ đang 72 giờ |
-| Làm lại khi không đạt | sau **7 ngày** | ✔ |
-| Số lượt | tối đa 3 lượt; hết lượt cần admin mở khoá | ✔ |
-| Xin nâng cấp | mentor đã duyệt được phỏng vấn lại để nâng cấp sau **90 ngày** kể từ lần đổi cấp hoặc lần xin nâng cấp gần nhất. Không tính vào 3 lượt / chờ 7 ngày; chỉ duyệt lên cấp cao hơn; không đạt → giữ APPROVED + cấp cũ; trong lúc chờ duyệt vẫn nhận đặt lịch (chốt 23/10/2026) | ✔ |
-| Dấu hiệu bất thường | cờ của AI (trả lời quá nhanh, trùng mẫu…) → hàng chờ admin xem xét, không tự từ chối | ✔ (US-23 flags) |
+| Cấp độ | **Junior / Senior / Expert**, do admin phê duyệt; số năm kinh nghiệm chỉ để hiển thị | ✅ đã có, nay gỡ |
+| Đề xuất cấp độ từ điểm AI (thang 0–100) | < 60 không đạt · 60–74 Junior · 75–87 Senior · ≥ 88 Expert | ✅ đã có, nay gỡ |
+| Admin | được chọn cấp khác đề xuất hoặc từ chối; **bắt buộc ghi lý do** (≥ 10 ký tự) | ✅ đã có, nay gỡ |
+| Tiếp tục khi gián đoạn | trong **24 giờ** kể từ lúc bắt đầu; quá hạn → ABANDONED, tính một lượt | ✔ (không đổi) |
+| Làm lại khi không đạt | sau **7 ngày** | ✔ (không đổi) |
+| Số lượt | tối đa 3 lượt; hết lượt cần admin mở khoá | ✔ (không đổi, tới PR gỡ chat/mô hình đợt) |
+| Xin nâng cấp | mentor đã duyệt được phỏng vấn lại để nâng cấp sau **90 ngày** | ✅ đã có, nay gỡ |
+| Dấu hiệu bất thường | cờ của AI (trả lời quá nhanh, trùng mẫu…) → hàng chờ admin xem xét, không tự từ chối | ✔ (không đổi) |
 
 ---
 
-## 4. Học phí
+## 4. ~~Học phí~~ — đã thay thế
 
-| Cấp | Khung giá / buổi 60 phút |
-|---|---|
-| Junior | 100.000 – 200.000 đ |
-| Senior | 200.000 – 400.000 đ |
-| Expert | 400.000 – 700.000 đ |
+> **Đã thay thế (24/10/2026, D6).** Không còn khung giá theo cấp. Mentor đặt `hourlyRate` tự do (0 – 100.000.000đ),
+> không bước giá bắt buộc. Bảng dưới (khung giá cũ) không còn áp dụng.
 
-- Buổi học thường **cố định 60 phút**. Mentor chọn giá theo bước **10.000 đ** trong khung (⚒ — hiện `hourlyRate` 0 – 100 triệu).
-- Đổi giá lúc nào cũng được, chỉ áp dụng cho **yêu cầu đặt mới**. Buổi đã gửi yêu cầu (kể cả đang chờ mentor
-  xác nhận) giữ giá lúc đặt.
-- **Đổi cấp độ**: nếu giá hiện tại nằm ngoài khung mới, hệ thống tự kẹp về biên gần nhất của khung mới và báo
-  mentor. Buổi đã đặt không đổi giá.
+- ~~Junior 100.000 – 200.000 đ · Senior 200.000 – 400.000 đ · Expert 400.000 – 700.000 đ~~
+- Buổi học thường **cố định 60 phút**. Giá đổi lúc nào cũng được, chỉ áp dụng cho **yêu cầu đặt mới**; buổi đã gửi yêu cầu
+  (kể cả đang chờ mentor xác nhận) giữ giá lúc đặt.
 - **Đổi mentor**: huỷ buổi cũ theo chính sách huỷ (mục 7) rồi đặt buổi mới theo giá mentor mới; không bù chênh lệch.
-- Khung giá là giả định; nhóm khảo sát xong thì chỉ cần sửa cấu hình.
 
 ---
 
@@ -259,10 +258,9 @@ nếu người dùng bỏ mã.
 | `login-protection.max-failed-attempts` / `block-duration` | 5 / PT15M | auth |
 | `password-reset.ttl` | PT15M | auth |
 | `interview.resume-window` / `cooldown` / `max-attempts` | PT24H / P7D / 3 | ai |
-| `interview.tier-thresholds` | 60 / 75 / 88 | ai |
 | `VOICE_INTERVIEW_TOPICS` / `VOICE_SESSION_MINUTES` / `PRACTICE_FREE_LIMIT` | 4 / 30 / 1 | ai |
 | `OPENAI_REALTIME_MODEL` / `OPENAI_REALTIME_VOICE` / `OPENAI_TRANSCRIBE_MODEL` | `gpt-realtime` / `marin` / `gpt-4o-transcribe` | ai |
-| `pricing.tiers` | JUNIOR 100k–200k · SENIOR 200k–400k · EXPERT 400k–700k, bước 10k | profile |
+| ~~`interview.tier-thresholds`~~ / ~~`pricing.tiers`~~ | Đã gỡ (D6) — mentor đặt giá tự do, không còn cấp độ | — |
 | `booking.min-lead-time` / `max-advance` | PT3H / P60D | mentoring |
 | `booking.insufficient-balance-hold` | PT15M | mentoring |
 | `requests.confirm-within` / `confirm-before-start` | PT24H / PT1H | mentoring |

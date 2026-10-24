@@ -75,11 +75,6 @@ components:
         domain: { type: string }
         skills: { type: array, items: { type: string } }
         status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED, ABANDONED] }
-        kind:
-          type: string
-          enum: [VERIFICATION, UPGRADE]
-          description: "Bản chốt v2.0 §3 — UPGRADE = mentor đã duyệt xin nâng cấp (không tính vào số lần, từ chối thì giữ cấp cũ)."
-        fromTier: { type: string, nullable: true, enum: [JUNIOR, SENIOR, EXPERT], description: Cấp lúc bắt đầu buổi xin nâng cấp }
         mode:
           type: string
           enum: [CHAT, VOICE]
@@ -96,11 +91,6 @@ components:
         currentQuestion: { $ref: "#/components/schemas/InterviewTurn" }
         turns: { type: array, items: { $ref: "#/components/schemas/InterviewTurn" } }
         overallScore: { type: number, nullable: true, description: 0-100 }
-        suggestedTier:
-          type: string
-          nullable: true
-          enum: [JUNIOR, SENIOR, EXPERT]
-          description: "Bản chốt v2.0 — cấp đề xuất từ điểm (< 60 không đạt → null; 60–74 JUNIOR; 75–87 SENIOR; ≥ 88 EXPERT). Chỉ admin thấy."
         summary: { type: string, nullable: true }
         strengths: { type: array, items: { type: string } }
         weaknesses: { type: array, items: { type: string } }
@@ -150,15 +140,8 @@ components:
         cooldownUntil: { type: string, format: date-time, nullable: true }
         locked: { type: boolean }
         canStart: { type: boolean, description: true khi được bắt đầu buổi mới hoặc đang có buổi dở }
-        reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, LOCKED, COOLDOWN, TIER_MAX, UPGRADE_COOLDOWN] }
+        reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, LOCKED, COOLDOWN] }
         questionCount: { type: integer, description: Số câu hỏi của một buổi (INTERVIEW_MAX_TURNS) }
-        kind: { type: string, enum: [VERIFICATION, UPGRADE], description: "Mentor APPROVED => buổi tiếp theo là xin nâng cấp" }
-        currentTier: { type: string, nullable: true, enum: [JUNIOR, SENIOR, EXPERT] }
-        upgradeAvailableAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: "90 ngày (INTERVIEW_UPGRADE_AFTER_DAYS) sau lần xếp cấp hoặc lần xin nâng cấp gần nhất đã có kết quả"
         voiceAvailable: { type: boolean, description: "FR-7.7 — server có OPENAI_API_KEY (lựa chọn Giọng nói dùng được)" }
     VoiceSession:
       type: object
@@ -497,8 +480,7 @@ paths:
         "409":
           description: >
             INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED (bị từ chối 3 lần, chờ admin mở khoá) |
-            INTERVIEW_COOLDOWN | UPGRADE_COOLDOWN (mentor đã duyệt, chưa đủ 90 ngày) | TIER_MAX (đã là EXPERT) —
-            INTERVIEW_COOLDOWN / UPGRADE_COOLDOWN có thêm `retryAfter` (date-time), vd.
+            INTERVIEW_COOLDOWN — có thêm `retryAfter` (date-time), vd.
             {"error":{"code":"INTERVIEW_COOLDOWN","message":"...","retryAfter":"2026-11-17T03:00:00Z"}}
   /api/ai/interviews/eligibility:
     get:
@@ -542,7 +524,7 @@ paths:
     post:
       summary: >
         FR-7.7 (MENTOR) Bắt đầu AI Interview bằng giọng nói — cùng điều kiện với POST /api/ai/interviews (số lần, chờ 7 ngày,
-        khoá, xin nâng cấp sau 90 ngày, chờ duyệt). Tạo buổi IN_PROGRESS mode VOICE (maxTurns = số chủ đề, VOICE_INTERVIEW_TOPICS)
+        khoá, chờ duyệt). Tạo buổi IN_PROGRESS mode VOICE (maxTurns = số chủ đề, VOICE_INTERVIEW_TOPICS)
         và trả client secret. Gọi lại khi đang có buổi giọng nói chưa quá 30 phút => cùng buổi, client secret mới (kết nối lại).
         Quá 30 phút chưa gửi bản ghi => ABANDONED (tính là 1 lần).
       requestBody:
@@ -564,9 +546,8 @@ paths:
         "400": { description: VOICE_CONSENT_REQUIRED | SELF_ANSWER_ACK_REQUIRED | PROFILE_REQUIRED }
         "409":
           description: >
-            Như POST /api/ai/interviews (INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED | INTERVIEW_COOLDOWN |
-            UPGRADE_COOLDOWN | TIER_MAX) + INTERVIEW_IN_PROGRESS (đang có buổi chat dở; ngược lại POST /api/ai/interviews trả
-            mã này khi đang có buổi giọng nói dở)
+            Như POST /api/ai/interviews (INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED | INTERVIEW_COOLDOWN) +
+            INTERVIEW_IN_PROGRESS (đang có buổi chat dở; ngược lại POST /api/ai/interviews trả mã này khi đang có buổi giọng nói dở)
         "502": { description: VOICE_UNAVAILABLE — OpenAI lỗi / từ chối tạo phiên (không tạo buổi) }
         "503": { description: "VOICE_UNAVAILABLE — APP_ENV=prod và chưa có OPENAI_API_KEY (không tạo buổi)" }
   /api/ai/interviews/{id}/voice-transcript:
@@ -575,7 +556,7 @@ paths:
         FR-7.7 (MENTOR, chủ buổi) Gửi bản ghi buổi giọng nói đang IN_PROGRESS: mỗi chủ đề đã hỏi thành một lượt
         (question = lời người phỏng vấn nối " / ", answer = lời mentor; không trả lời => "(Mentor không trả lời câu hỏi này.)"),
         chấm bằng engine + rubric như chat, rồi cùng luồng hoàn thành: PENDING_REVIEW, đồng bộ PENDING_REVIEW sang
-        profile-service (bỏ qua với UPGRADE), thông báo admin + mentor. Điểm từng câu ẩn với mentor tới khi admin quyết định.
+        profile-service, thông báo admin + mentor. Điểm từng câu ẩn với mentor tới khi admin quyết định.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -691,10 +672,6 @@ paths:
         REQUEST_RETAKE: buổi chuyển RETAKE_REQUESTED, không tính vào số lần, mentor bắt đầu lại được ngay.
         Bắt buộc note ≥ 10 ký tự khi quyết định ngược khuyến nghị AI: APPROVE khi AI = REJECT, REJECT khi AI = APPROVE,
         REQUEST_RETAKE khi AI = APPROVE/REJECT. AI = NEEDS_REVIEW (hoặc buổi cũ không có khuyến nghị) => không bắt buộc.
-        Bản chốt v2.0: khi APPROVE gán cấp `tier` (mặc định cấp đề xuất `suggestedTier`; chọn cấp khác cần note ≥ 10 ký tự; điểm dưới
-        ngưỡng đạt thì bắt buộc gửi `tier` + note). Cấp được gửi sang profile-service, giá mentor bị kẹp về khung của cấp.
-        Buổi xin nâng cấp (kind = UPGRADE): APPROVE chỉ lên cấp cao hơn cấp hiện tại (400 TIER_NOT_HIGHER); REJECT /
-        REQUEST_RETAKE không đổi trạng thái xác thực hay cấp của mentor.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -706,10 +683,9 @@ paths:
               properties:
                 decision: { type: string, enum: [APPROVE, REJECT, REQUEST_RETAKE] }
                 note: { type: string, maxLength: 2000 }
-                tier: { type: string, enum: [JUNIOR, SENIOR, EXPERT], description: Chỉ có nghĩa khi decision = APPROVE }
       responses:
         "200": { description: Interview }
-        "400": { description: REVIEW_NOTE_REQUIRED | TIER_REQUIRED | TIER_NOT_HIGHER | VALIDATION_ERROR }
+        "400": { description: REVIEW_NOTE_REQUIRED | VALIDATION_ERROR }
         "409": { description: INTERVIEW_NOT_PENDING_REVIEW }
   /api/ai/admin/interviews/mentors/{mentorId}/eligibility:
     get:

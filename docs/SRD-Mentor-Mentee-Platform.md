@@ -261,15 +261,20 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 
 ---
 
-### 3.9 Module: Cấp độ mentor & khung học phí (profile-service, ai-service) — v2.0
+### 3.9 ~~Module: Cấp độ mentor & khung học phí~~ — đã bỏ (D6, [design-mentor-verification.md](design-mentor-verification.md))
 
-| ID | Yêu cầu | Mô tả | Trạng thái |
+Cấp độ JUNIOR/SENIOR/EXPERT và khung giá theo cấp đã bị **gỡ hoàn toàn** khỏi dự án: `tier`, `tierAssignedAt` không còn ở
+`mentor_profiles` (Flyway `V11__drop_mentor_tier.sql`); `GET /api/profile/pricing-tiers`, `PUT /api/profile/mentor/{id}/rate`,
+`PUT /internal/mentor/{id}/tier` không còn tồn tại. Mentor đặt `hourlyRate` tự do (0–100.000.000đ) qua
+`PUT /api/profile/mentor/{userId}`.
+
+| ID | Yêu cầu (hiện trạng trước khi gỡ) | Mô tả | Trạng thái |
 |---|---|---|---|
-| FR-9.1 | Cấp độ mentor | `tier` ∈ {JUNIOR, SENIOR, EXPERT} gán lúc admin duyệt; số năm kinh nghiệm chỉ để hiển thị | ✅ |
-| FR-9.2 | Khung giá | JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k mỗi buổi 60 phút (cấu hình được; là giả định, khảo sát trước khi chốt) | ✅ |
-| FR-9.3 | Chọn giá | Mentor chọn giá trong khung, bước 10.000đ, đổi lúc nào cũng được nhưng chỉ áp cho yêu cầu đặt mới | ✅ |
-| FR-9.4 | Đổi cấp độ | Giá nằm ngoài khung mới thì tự kẹp về biên gần nhất và báo mentor; buổi đã đặt giữ giá | ✅ |
-| FR-9.5 | Đổi mentor | Huỷ buổi cũ theo chính sách huỷ, đặt buổi mới theo giá mentor mới, không bù chênh lệch | ✅ |
+| FR-9.1 | Cấp độ mentor | `tier` ∈ {JUNIOR, SENIOR, EXPERT} gán lúc admin duyệt | ⚠️ đã gỡ |
+| FR-9.2 | Khung giá | JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k mỗi buổi 60 phút | ⚠️ đã gỡ |
+| FR-9.3 | Chọn giá | Mentor chọn giá trong khung, bước 10.000đ | ⚠️ đã gỡ, thay bằng giá tự do |
+| FR-9.4 | Đổi cấp độ | Giá nằm ngoài khung mới thì tự kẹp về biên gần nhất | ⚠️ đã gỡ |
+| FR-9.5 | Đổi mentor | Không bù chênh lệch giá khi đổi mentor | Không đổi (không liên quan cấp độ) |
 
 Bộ lọc "miễn phí" trong đề xuất mentor bị gỡ (không còn buổi miễn phí).
 

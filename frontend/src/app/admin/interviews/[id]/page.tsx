@@ -3,17 +3,15 @@
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Check, RotateCcw, X } from "lucide-react";
-import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, Select, StatusBadge, Textarea, type Flash } from "@/components/ui";
+import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Field, FlashAlerts, Input, Loading, PageHeader, StatusBadge, Textarea, type Flash } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 import { PlanCard } from "@/features/ai/VoiceViews";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { Interview, InterviewEligibility, MentorTier, Recommendation, ReviewDecision } from "@/types";
+import type { Interview, InterviewEligibility, Recommendation, ReviewDecision } from "@/types";
 
 const MIN_NOTE = 10;
-const TIERS: MentorTier[] = ["JUNIOR", "SENIOR", "EXPERT"];
-const TIER_LABELS: Record<MentorTier, string> = { JUNIOR: "Junior (100–200 nghìn đ/buổi)", SENIOR: "Senior (200–400 nghìn đ/buổi)", EXPERT: "Expert (400–700 nghìn đ/buổi)" };
 
 /**
  * US-23 — bắt buộc ghi chú (≥ 10 ký tự) khi quyết định ngược khuyến nghị AI (giống rubric.note_required ở ai-service):
@@ -71,15 +69,11 @@ function AttemptsCard({ mentorId }: { mentorId: string }) {
 function InterviewReview({ id }: { id: string }) {
   const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
   const [note, setNote] = useState("");
-  const [tier, setTier] = useState<MentorTier | "">("");
   const [msg, setMsg] = useState<Flash>({});
 
   useEffect(() => {
-    aiApi.interview(id).then((i) => { setInterview(i); setTier(i.suggestedTier ?? ""); }).catch((e) => { setMsg({ error: errorMessage(e) }); setInterview(null); });
+    aiApi.interview(id).then(setInterview).catch((e) => { setMsg({ error: errorMessage(e) }); setInterview(null); });
   }, [id]);
-
-  // Bản chốt v2.0 §3 — buổi xin nâng cấp: chỉ được duyệt lên cấp cao hơn cấp lúc xin.
-  const upgradeFrom = interview?.kind === "UPGRADE" ? interview.fromTier ?? null : null;
 
   async function decide(decision: ReviewDecision) {
     setMsg({});
@@ -88,25 +82,8 @@ function InterviewReview({ id }: { id: string }) {
         setMsg({ error: `Quyết định khác khuyến nghị của AI — vui lòng ghi rõ lý do (ít nhất ${MIN_NOTE} ký tự).` });
         return;
       }
-      if (decision === "APPROVE" && interview) {
-        const suggested = interview.suggestedTier;
-        if (upgradeFrom && tier && TIERS.indexOf(tier) <= TIERS.indexOf(upgradeFrom)) {
-          setMsg({ error: `Xin nâng cấp chỉ được duyệt lên cấp cao hơn ${upgradeFrom}. Giữ cấp hiện tại thì chọn Từ chối.` });
-          return;
-        }
-        if (!tier) {
-          setMsg({ error: "Điểm dưới ngưỡng đạt — chọn cấp độ rõ ràng nếu vẫn duyệt." });
-          return;
-        }
-        if ((!suggested || tier !== suggested) && note.trim().length < MIN_NOTE) {
-          setMsg({ error: `Cấp độ khác cấp AI đề xuất — vui lòng ghi rõ lý do (ít nhất ${MIN_NOTE} ký tự).` });
-          return;
-        }
-      }
-      setInterview(await aiApi.reviewInterview(id, decision, note, decision === "APPROVE" ? (tier || null) : null));
-      setMsg({ ok: upgradeFrom
-        ? (decision === "APPROVE" ? `Đã nâng mentor lên cấp ${tier}.` : decision === "REJECT" ? `Mentor giữ cấp ${upgradeFrom}.` : "Đã yêu cầu mentor làm lại buổi xin nâng cấp.")
-        : (decision === "APPROVE" ? "Đã kích hoạt mentor." : decision === "REJECT" ? "Đã từ chối mentor." : "Đã yêu cầu mentor phỏng vấn lại (không tính vào số lần).") });
+      setInterview(await aiApi.reviewInterview(id, decision, note));
+      setMsg({ ok: decision === "APPROVE" ? "Đã kích hoạt mentor." : decision === "REJECT" ? "Đã từ chối mentor." : "Đã yêu cầu mentor phỏng vấn lại (không tính vào số lần)." });
     } catch (e) {
       setMsg({ error: errorMessage(e) });
     }
@@ -121,7 +98,7 @@ function InterviewReview({ id }: { id: string }) {
         back={{ href: "/admin/interviews", label: "Duyệt mentor" }}
         title={`AI Interview · ${interview.mentorName || "Mentor"}`}
         description={`${interview.domain} · ${interview.skills.join(", ")}`}
-        actions={<>{upgradeFrom && <Badge tone="accent">Xin nâng cấp từ {upgradeFrom}</Badge>}{interview.mode === "VOICE" && <Badge>Giọng nói</Badge>}<StatusBadge status={interview.status} /></>}
+        actions={<>{interview.mode === "VOICE" && <Badge>Giọng nói</Badge>}<StatusBadge status={interview.status} /></>}
       />
       <FlashAlerts flash={msg} className="mb-6" />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -133,21 +110,8 @@ function InterviewReview({ id }: { id: string }) {
           {interview.status === "PENDING_REVIEW" && (
             <Card>
               <CardHeader title="Quyết định của quản trị viên"
-                description={upgradeFrom
-                  ? `Mentor đang hoạt động ở cấp ${upgradeFrom}. Duyệt = lên cấp cao hơn; từ chối hoặc yêu cầu làm lại thì mentor giữ cấp ${upgradeFrom}.`
-                  : "Đọc kỹ câu trả lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được duyệt."} />
+                description="Đọc kỹ câu trả lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được duyệt." />
               <CardBody className="flex flex-col gap-3">
-                <Field label="Cấp độ mentor" id="review-tier"
-                  hint={upgradeFrom && interview.suggestedTier && TIERS.indexOf(interview.suggestedTier) <= TIERS.indexOf(upgradeFrom)
-                    ? `AI đề xuất ${interview.suggestedTier} từ điểm ${interview.overallScore}, không cao hơn cấp hiện tại — giữ cấp thì chọn Từ chối.`
-                    : interview.suggestedTier
-                    ? `AI đề xuất ${interview.suggestedTier} từ điểm ${interview.overallScore}. Chọn cấp khác thì cần ghi lý do.`
-                    : "Điểm dưới ngưỡng đạt (60) nên không có đề xuất — chọn cấp rõ ràng và ghi lý do nếu vẫn duyệt."}>
-                  <Select id="review-tier" value={tier} onChange={(e) => setTier(e.target.value as MentorTier | "")}>
-                    <option value="">— Chọn cấp —</option>
-                    {TIERS.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
-                  </Select>
-                </Field>
                 <Field label="Nhận xét gửi mentor" id="review-note"
                   hint={`Bắt buộc (từ ${MIN_NOTE} ký tự) khi quyết định ngược khuyến nghị AI. AI khuyến nghị “Cần xem xét” thì không bắt buộc.`}>
                   <Textarea id="review-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
@@ -157,7 +121,7 @@ function InterviewReview({ id }: { id: string }) {
               <CardFooter>
                 <Button icon={RotateCcw} onClick={() => decide("REQUEST_RETAKE")}>Yêu cầu làm lại{star("REQUEST_RETAKE")}</Button>
                 <Button variant="danger" icon={X} onClick={() => decide("REJECT")}>Từ chối{star("REJECT")}</Button>
-                <Button variant="primary" icon={Check} onClick={() => decide("APPROVE")}>{upgradeFrom ? "Duyệt nâng cấp" : "Duyệt và kích hoạt"}{star("APPROVE")}</Button>
+                <Button variant="primary" icon={Check} onClick={() => decide("APPROVE")}>Duyệt và kích hoạt{star("APPROVE")}</Button>
               </CardFooter>
             </Card>
           )}

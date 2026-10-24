@@ -51,9 +51,6 @@ public class EmailClient {
             Map.entry("MENTOR_APPROVED", "ACCOUNT"),
             Map.entry("MENTOR_REJECTED", "ACCOUNT"),
             Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"),
-            // Bản chốt v2.0 §3 — kết quả xin nâng cấp
-            Map.entry("MENTOR_TIER_UPGRADED", "ACCOUNT"),
-            Map.entry("MENTOR_TIER_UPGRADE_REJECTED", "ACCOUNT"),
             // US-42 — payment-service gửi qua /internal/notifications khi admin đã chuyển tiền rút
             Map.entry("PAYOUT_PAID", "ACCOUNT"),
             // Bản chốt v2.0 D15 — nhắc trước 30 / 7 ngày: khuyến mãi sắp hết hạn, ví sắp "ngủ" (tiền của người dùng → luôn gửi)

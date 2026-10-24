@@ -73,9 +73,7 @@ erDiagram
         int years_experience
         text cv_file_url
         text_array portfolio_links
-        numeric hourly_rate "VND/buổi 60 phút; v2.0: nằm trong khung của tier"
-        text tier "v2.0 JUNIOR|SENIOR|EXPERT, NULL khi chưa duyệt (V9)"
-        timestamptz tier_assigned_at "v2.0 — mốc xin nâng cấp: 90 ngày sau lần đổi cấp (hoặc lần xin gần nhất, ai_db)"
+        numeric hourly_rate "VND/buổi 60 phút; mentor đặt tự do (V9/V10 thêm tier, V11 đã gỡ — D6)"
         boolean trial_enabled "v2.0 nhận buổi trải nghiệm, mặc định true (V10)"
         int capacity
         int active_mentee_count "đồng bộ từ mentoring"
@@ -107,7 +105,6 @@ erDiagram
 |---|---|
 | `mentor_profiles` | Hồ sơ mentor + dữ liệu phục vụ matching (trạng thái xác thực, sức chứa, rating) |
 | `mentee_profiles` | Hồ sơ mentee |
-| `mentor_profiles.tier` *(v2.0)* | Cấp độ do admin gán lúc duyệt phỏng vấn; khung giá lấy từ cấu hình `pricing.tiers` (JUNIOR 100–200k, SENIOR 200–400k, EXPERT 400–700k, bước 10.000đ); `hourly_rate` bị kẹp về khung khi đổi cấp |
 | `mentor_availability` | Khung giờ rảnh lặp lại hằng tuần (giờ Việt Nam); `CHECK (end_time > start_time)` |
 | Role `matching_reader` | Chỉ có `SELECT` trên 3 bảng trên — hiện thực hoá ngoại lệ kiến trúc read-only |
 
@@ -239,8 +236,8 @@ erDiagram
         text domain
         text_array skills
         text status "IN_PROGRESS|PENDING_REVIEW|APPROVED|REJECTED|RETAKE_REQUESTED|ABANDONED"
-        text kind "v2.0 VERIFICATION|UPGRADE (xin nâng cấp, 009)"
-        text from_tier "v2.0 cấp lúc xin nâng cấp"
+        text kind "009; không còn được ghi sau D6 — luôn VERIFICATION, cột xoá ở migration 012"
+        text from_tier "009; không còn dùng sau D6, cột xoá ở migration 012"
         text mode "v2.1 CHAT|VOICE (010)"
         jsonb plan "v2.1 kế hoạch câu hỏi AI soạn, buổi giọng nói (011)"
         boolean consent_external_ai "v2.1 đồng ý OpenAI xử lý âm thanh (010)"

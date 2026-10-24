@@ -24,3 +24,4 @@ uploads/
 
 # Playwright MCP screenshots / snapshots
 .playwright-mcp/
+.backups/

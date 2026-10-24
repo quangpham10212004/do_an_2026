@@ -28,8 +28,6 @@ import type {
 // profile-service (Thảo)
 export const profileApi = {
   getMentor: (id: Uuid) => api<MentorProfile>(`/api/profile/mentor/${id}`),
-  /** Bản chốt v2.0 — khung giá theo cấp độ mentor. */
-  pricingTiers: () => api<{ step: number; tiers: { tier: "JUNIOR" | "SENIOR" | "EXPERT"; min: number; max: number }[] }>("/api/profile/pricing-tiers"),
   saveMentor: (id: Uuid, body: MentorProfileInput) => api<MentorProfile>(`/api/profile/mentor/${id}`, { method: "PUT", body }),
   getAvailability: (id: Uuid) => api<AvailabilitySlot[]>(`/api/profile/mentor/${id}/availability`),
   saveAvailability: (id: Uuid, slots: AvailabilitySlot[]) =>

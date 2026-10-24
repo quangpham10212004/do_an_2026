@@ -159,12 +159,6 @@ components:
               nullable: true
               description: US-37 — chỉ chủ hồ sơ/admin/nội bộ; người xem khác nhận null
               allOf: [{ $ref: "#/components/schemas/Completeness" }]
-            tier:
-              type: string
-              nullable: true
-              enum: [JUNIOR, SENIOR, EXPERT]
-              description: Bản chốt v2.0 — cấp độ do admin gán lúc duyệt phỏng vấn; null = chưa gán
-            tierAssignedAt: { type: string, format: date-time, nullable: true }
             trialEnabled: { type: boolean, description: "Bản chốt v2.0 §10 — nhận buổi trải nghiệm 15 phút (mặc định true)" }
             medianResponseHours:
               type: number
@@ -365,27 +359,6 @@ paths:
               schema: { $ref: "#/components/schemas/MentorProfile" }
         "400": { description: "INVALID_MEETING_LINK · INVALID_BOOKING_SETTINGS · INVALID_TIMEZONE · VALIDATION_ERROR" }
 
-  /api/profile/pricing-tiers:
-    get:
-      summary: Bản chốt v2.0 — khung giá theo cấp độ mentor (mỗi buổi 60 phút, bước giá `step`)
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  step: { type: integer, example: 10000 }
-                  tiers:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        tier: { type: string, enum: [JUNIOR, SENIOR, EXPERT] }
-                        min: { type: integer, example: 100000 }
-                        max: { type: integer, example: 200000 }
-
   /api/profile/mentor/{userId}/trial:
     put:
       summary: Bản chốt v2.0 §10 — mentor bật / tắt nhận buổi trải nghiệm 15 phút (chủ hồ sơ MENTOR hoặc ADMIN)
@@ -406,30 +379,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MentorProfile" }
         "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
-  /api/profile/mentor/{userId}/rate:
-    put:
-      summary: >
-        Bản chốt v2.0 — mentor chọn giá trong khung cấp độ (bước 10.000đ). Chỉ áp cho yêu cầu đặt mới; buổi đã gửi giữ giá.
-        Chủ hồ sơ MENTOR hoặc ADMIN.
-      parameters: [{ $ref: "#/components/parameters/UserId" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [hourlyRate]
-              properties:
-                hourlyRate: { type: number, example: 250000 }
-      responses:
-        "200":
-          description: Hồ sơ sau khi lưu
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/MentorProfile" }
-        "400": { description: "RATE_OUT_OF_TIER · VALIDATION_ERROR" }
-        "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
-        "409": { description: "TIER_NOT_ASSIGNED — chưa được admin gán cấp" }
 
   /api/profile/mentor/{userId}/status:
     put:
@@ -830,36 +779,8 @@ paths:
               required: [status]
               properties:
                 status: { type: string, enum: [PENDING_INTERVIEW, PENDING_REVIEW, APPROVED, REJECTED] }
-                tier:
-                  type: string
-                  enum: [JUNIOR, SENIOR, EXPERT]
-                  description: >
-                    Bản chốt v2.0 — cấp do admin gán khi APPROVED. Thiếu => giữ cấp đang có, chưa có thì suy ra từ mức giá.
-                    Giá bị kẹp về khung của cấp.
       responses:
         "200": { description: Hồ sơ mentor sau cập nhật }
-
-  /internal/mentor/{userId}/tier:
-    put:
-      summary: Nội bộ (bản chốt v2.0) — đổi cấp mentor (admin duyệt xin nâng cấp); giá bị kẹp về khung mới, buổi đã đặt giữ giá
-      security: [{ internalToken: [] }]
-      parameters: [{ $ref: "#/components/parameters/UserId" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [tier]
-              properties:
-                tier: { type: string, enum: [JUNIOR, SENIOR, EXPERT] }
-      responses:
-        "200":
-          description: Hồ sơ mentor sau cập nhật
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/MentorProfile" }
-        "404": { description: PROFILE_NOT_FOUND }
 
   /internal/mentor/{userId}/status:
     put:

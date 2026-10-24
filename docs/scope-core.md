@@ -10,7 +10,7 @@ Cập nhật 23/10/2026. Nhóm thu nhỏ phạm vi, ưu tiên hoàn thiện, ki�
 
 | # | Chức năng | Service | Tài liệu | Kiểm thử chính |
 |---|---|---|---|---|
-| 1 | **AI Interview** xác thực mentor. Hiện trạng: chat một buổi, gợi ý hạng JUNIOR/SENIOR/EXPERT, xin nâng hạng sau 90 ngày. ⚒ Thiết kế mới (24/10/2026): **2 vòng** (AI giọng nói + camera, rồi admin phỏng vấn qua Jitsi), bỏ cấp độ, giá tự do | ai-service (`app/interview`), mentoring-service (token phòng Jitsi) | `ai-features.md` §2 · [design-mentor-verification.md](design-mentor-verification.md) · `eval-interview.md` | `e2e_v2_tier` (sẽ bỏ), `e2e_s3_ai_auth`, `e2e_s4_ai_auth`, `e2e_s5_ai_auth`, pytest ai-service |
+| 1 | **AI Interview** xác thực mentor. Hiện trạng (sau PR 1a): chat hoặc giọng nói một buổi, **không còn cấp độ** — giá mentor tự đặt. ⚒ Thiết kế mới (24/10/2026, đang hiện thực theo [design-mentor-verification.md](design-mentor-verification.md)): **2 vòng** (AI giọng nói + camera, rồi admin phỏng vấn qua Jitsi), bỏ chat | ai-service (`app/interview`), mentoring-service (token phòng Jitsi) | `ai-features.md` §2 · [design-mentor-verification.md](design-mentor-verification.md) · `eval-interview.md` | `e2e_s3_ai_auth`, `e2e_s4_ai_auth`, `e2e_s5_ai_auth`, pytest ai-service |
 | 2 | **AI Matching** mentor–mentee (embedding + pgvector) | matching-service | `ai-features.md` §1 · `design-ai-matching-spec.md` | `e2e_p0_profile_matching`, `e2e_s2/s3/s4_profile_matching`, `benchmark_matching.py`, pytest matching-service |
 | 3 | **Phân tích CV** (Parsing) | ai-service (`app/cv`) | `ai-features.md` §3 · `cv-data-policy.md` · `eval-cv.md` | `e2e_s2_cv` |
 | 4 | **Chatbot làm rõ mục tiêu** của mentee (CV enrichment) | ai-service (`app/enrichment`) | `ai-features.md` §3 | `e2e_s2_cv`, `e2e_s4_ai_auth` |

@@ -13,7 +13,6 @@ from app.interview.voice import TranscriptItem
 from tests.conftest import auth
 from tests.test_interview_attempts import finish, reject
 from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, start
-from tests.test_interview_upgrade import approved  # noqa: F401 — fixture mentor đã duyệt 100 ngày trước
 
 
 def items(*raw):
@@ -217,17 +216,16 @@ def test_voice_while_pending_review_is_blocked(client, db, fake_profile, fake_me
     assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_PENDING_REVIEW"
 
 
-def test_approved_mentor_voice_is_an_upgrade_and_follows_the_90_days(client, db, approved, fake_mentoring, mentor_id):  # noqa: F811
-    approved.mentor["tierAssignedAt"] = "2026-10-20T00:00:00Z"
+def test_approved_mentor_cannot_start_another_voice_interview(client, db, fake_profile, fake_mentoring, mentor_id):
+    """D6/D10 — bỏ luồng xin nâng cấp: mentor đã APPROVED không mở được buổi phỏng vấn mới."""
+    from tests.test_interview_flow import answer_all
+    interview, _ = answer_all(client, start(client, mentor_id).json(), mentor_id, text=STRONG_ANSWER)
+    admin = auth(uuid.uuid4(), "ADMIN")
+    approved = client.post(f"/api/ai/admin/interviews/{interview['id']}/review",
+                           json={"decision": "APPROVE", "note": None}, headers=admin)
+    assert approved.status_code == 200 and approved.json()["status"] == "APPROVED"
     res = start_voice(client, mentor_id)
-    assert res.status_code == 409 and res.json()["error"]["code"] == "UPGRADE_COOLDOWN"
-    approved.mentor["tierAssignedAt"] = "2025-01-01T00:00:00Z"
-    iv = start_voice(client, mentor_id).json()["interview"]
-    assert iv["kind"] == "UPGRADE" and iv["fromTier"] == "JUNIOR" and iv["mode"] == "VOICE"
-    done = post_transcript(client, mentor_id, iv["id"]).json()
-    assert done["status"] == "PENDING_REVIEW"
-    assert approved.verifications == []  # xin nâng cấp: không hạ về PENDING_REVIEW
-    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
+    assert res.status_code == 409 and res.json()["error"]["code"] == "ALREADY_APPROVED"
 
 
 # ---------- bản ghi → PENDING_REVIEW ----------

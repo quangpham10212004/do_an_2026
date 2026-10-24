@@ -77,9 +77,6 @@ public final class ProfileDtos {
             CompletenessRules.Completeness completeness,
             /** US-35 (PRD-MATCH-9) — trung vị thời gian phản hồi yêu cầu (giờ); null = chưa có dữ liệu. */
             BigDecimal medianResponseHours,
-            /** Bản chốt v2.0 — JUNIOR | SENIOR | EXPERT, null = chưa gán cấp. */
-            String tier,
-            java.time.OffsetDateTime tierAssignedAt,
             /** Bản chốt v2.0 §10 — nhận buổi trải nghiệm 15 phút. */
             boolean trialEnabled) {
 
@@ -89,7 +86,7 @@ public final class ProfileDtos {
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, statusReason, null, bufferMinutes, minNoticeHours,
                     languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, completeness,
-                    medianResponseHours, tier, tierAssignedAt, trialEnabled);
+                    medianResponseHours, trialEnabled);
         }
 
         /**
@@ -102,7 +99,7 @@ public final class ProfileDtos {
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, reason, null, bufferMinutes, minNoticeHours,
                     languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, null,
-                    medianResponseHours, tier, tierAssignedAt, trialEnabled);
+                    medianResponseHours, trialEnabled);
         }
 
         /**
@@ -129,7 +126,7 @@ public final class ProfileDtos {
                     effective == p.getStatus() ? p.getStatusReason() : null, p.getMeetingLink(), p.getBufferMinutes(),
                     p.getMinNoticeHours(), Arrays.asList(p.getLanguages()), Arrays.asList(p.getSessionTypes()),
                     p.getTimezone(), slots, exceptions, p.getHeadline(), avatarUrl, completeness,
-                    p.getMedianResponseHours(), p.getTier(), p.getTierAssignedAt(), p.isTrialEnabled());
+                    p.getMedianResponseHours(), p.isTrialEnabled());
         }
     }
 
@@ -340,33 +337,11 @@ public final class ProfileDtos {
     public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {
     }
 
-    /**
-     * tier (tuỳ chọn, chỉ có nghĩa khi status = APPROVED): cấp do admin gán. Thiếu => suy ra từ mức giá hiện có
-     * (tương thích bên gọi cũ). Giá bị kẹp về khung của cấp.
-     */
-    public record VerificationUpdate(@NotNull @Pattern(regexp = "PENDING_INTERVIEW|PENDING_REVIEW|APPROVED|REJECTED") String status,
-                                     @Pattern(regexp = "JUNIOR|SENIOR|EXPERT") String tier) {
-        public VerificationUpdate(String status) {
-            this(status, null);
-        }
-    }
-
-    /** Bản chốt v2.0 — đổi cấp (xin nâng cấp được duyệt); giá bị kẹp về khung mới. */
-    public record TierUpdate(@NotNull @Pattern(regexp = "JUNIOR|SENIOR|EXPERT") String tier) {
+    public record VerificationUpdate(@NotNull @Pattern(regexp = "PENDING_INTERVIEW|PENDING_REVIEW|APPROVED|REJECTED") String status) {
     }
 
     /** Bản chốt v2.0 §10 — bật / tắt nhận buổi trải nghiệm. */
     public record TrialInput(@NotNull Boolean enabled) {
-    }
-
-    /** Mentor tự chọn giá trong khung cấp độ (bước 10.000đ). */
-    public record RateInput(@NotNull @DecimalMin("0") @DecimalMax("100000000") BigDecimal hourlyRate) {
-    }
-
-    public record PricingTiersResponse(long step, List<TierBand> tiers) {
-    }
-
-    public record TierBand(String tier, long min, long max) {
     }
 
     /** US-35 — medianResponseHours null = mentor chưa có yêu cầu nào được tính. */

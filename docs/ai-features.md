@@ -377,13 +377,14 @@ sequenceDiagram
   tiếp theo → 502 `AI_ENGINE_UNAVAILABLE`, transaction rollback nên mentor
   gửi lại câu trả lời được.
 
-### 2.3b Cấp độ mentor và khung giá (v2.0 ⚒ — [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) §3–4)
+### 2.3b ~~Cấp độ mentor và khung giá~~ — đã gỡ (D6, [design-mentor-verification.md](design-mentor-verification.md))
 
-Điểm tổng 0–100 vẫn là đầu ra của AI; v2.0 thêm **đề xuất cấp độ** để admin duyệt: dưới 60 không đạt · 60–74 **Junior** · 75–87 **Senior** · từ 88 **Expert**
-(ngưỡng cấu hình `interview.tier-thresholds`). Admin được chọn cấp khác đề xuất hoặc từ chối, bắt buộc ghi lý do; cấp độ quyết định khung giá
-(Junior 100–200k, Senior 200–400k, Expert 400–700k mỗi buổi 60 phút). Số năm kinh nghiệm chỉ để hiển thị, không tham gia xếp cấp. Tiếp tục khi gián đoạn trong
-**24 giờ** (quá hạn → ABANDONED, tính một lượt); làm lại sau **7 ngày**, tối đa 3 lượt; mentor đã duyệt xin nâng cấp sau 90 ngày (buổi `kind = UPGRADE`: không tính vào 3 lượt, chỉ duyệt lên cấp cao hơn,
-không đạt thì giữ cấp cũ và vẫn nhận mentee).
+Phần đề xuất cấp độ (Junior/Senior/Expert theo điểm tổng) và khung giá theo cấp đã bị **gỡ hoàn toàn**: không còn
+`rubric.suggest_tier`, `TIER_PASS_FROM`/`TIER_SENIOR_FROM`/`TIER_EXPERT_FROM`, cột `tier`/`tier_assigned_at`, luồng xin
+nâng cấp sau 90 ngày (`kind = UPGRADE`, `INTERVIEW_UPGRADE_AFTER_DAYS`). Điểm tổng 0–100 vẫn là đầu ra của AI, nhưng
+chỉ còn dùng cho khuyến nghị `APPROVE`/`NEEDS_REVIEW`/`REJECT` (§2.3). Mentor đặt `hourlyRate` tự do. Tiếp tục khi
+gián đoạn trong **24 giờ** (quá hạn → ABANDONED, tính một lượt); làm lại sau **7 ngày**, tối đa 3 lượt — các luật này
+không đổi.
 
 ### 2.4 Số lượt (FR-7.3)
 **5 lượt** (cấu hình `INTERVIEW_MAX_TURNS`): đủ phủ 3–4 chủ đề chuyên môn + 1 lượt đào sâu, trong đó

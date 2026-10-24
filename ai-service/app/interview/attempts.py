@@ -7,7 +7,6 @@ US-22 (PRD-AIV-4) — quy tắc số lần phỏng vấn. Hàm thuần, không I
 - Tối đa `max_attempts` lần (mặc định 3). Bị từ chối đủ `max_attempts` lần => khoá (INTERVIEW_LOCKED) cho tới
   khi admin mở khoá; mở khoá => chỉ các buổi tạo SAU lần mở khoá gần nhất được tính.
 - Buổi gần nhất bị REJECTED => phải chờ `cooldown` (mặc định 7 ngày) tính từ lúc admin từ chối.
-- Chỉ buổi xác thực (kind = VERIFICATION) tính vào các quy tắc trên; buổi xin nâng cấp (UPGRADE) theo `upgrade_available_at`.
 """
 import os
 from dataclasses import dataclass
@@ -67,20 +66,3 @@ def evaluate(outcomes: list[InterviewOutcome], now: datetime, max_attempts: int,
         cooldown_until = until if until > now else None
     return Eligibility(attempts_used=used, attempts_left=max(0, max_attempts - used), max_attempts=max_attempts,
                        cooldown_until=cooldown_until, locked=locked)
-
-
-TIER_RANK = {"JUNIOR": 1, "SENIOR": 2, "EXPERT": 3}
-
-
-def is_higher_tier(tier: str, than: str | None) -> bool:
-    return TIER_RANK[tier] > TIER_RANK.get(than or "", 0)
-
-
-def upgrade_available_at(tier_assigned_at: datetime | None, last_upgrade_decided_at: datetime | None,
-                         wait: timedelta) -> datetime | None:
-    """
-    Bản chốt v2.0 §3 — mentor đã duyệt xin nâng cấp sau `wait` (90 ngày) kể từ lần gán cấp gần nhất hoặc lần xin nâng
-    cấp gần nhất đã có kết quả (duyệt, từ chối, bỏ dở). None = chưa có mốc nào (mentor cũ chưa có dữ liệu) => được xin ngay.
-    """
-    marks = [m for m in (tier_assigned_at, last_upgrade_decided_at) if m is not None]
-    return max(marks) + wait if marks else None

@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, MentorTier, ReviewDecision, Uuid, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, ReviewDecision, Uuid, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -17,8 +17,8 @@ export const aiApi = {
     api<Interview>(`/api/ai/interviews/${id}/answers`, { method: "POST", body: { answer, pastedLargeText } }),
   interview: (id: Uuid) => api<Interview>(`/api/ai/interviews/${id}`),
   adminInterviews: (status: InterviewStatus | "" = "") => api<Interview[]>(`/api/ai/admin/interviews?status=${status}`),
-  reviewInterview: (id: Uuid, decision: ReviewDecision, note: string, tier?: MentorTier | null) =>
-    api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note, ...(tier ? { tier } : {}) } }),
+  reviewInterview: (id: Uuid, decision: ReviewDecision, note: string) =>
+    api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // FR-7.7 — phỏng vấn giọng nói: cùng điều kiện với chat; gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
   // 400 VOICE_CONSENT_REQUIRED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.

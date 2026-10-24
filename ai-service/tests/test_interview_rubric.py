@@ -96,9 +96,9 @@ def finished(client, mentor_id, text=STRONG_ANSWER):
     return interview
 
 
-def review(client, interview_id, decision, note=None, tier=None):
+def review(client, interview_id, decision, note=None):
     return client.post(f"/api/ai/admin/interviews/{interview_id}/review",
-                       json={"decision": decision, "note": note, "tier": tier}, headers=ADMIN)
+                       json={"decision": decision, "note": note}, headers=ADMIN)
 
 
 def test_rule_based_turns_have_rubric_and_reproducibility_info(client, db, fake_profile, fake_mentoring, mentor_id):
@@ -146,7 +146,7 @@ def test_note_required_when_overruling_ai(client, db, fake_profile, fake_mentori
     res = review(client, interview["id"], "APPROVE", "ok")
     assert res.status_code == 400 and res.json()["error"]["code"] == "REVIEW_NOTE_REQUIRED"
     assert fake_audit.records == []
-    res = review(client, interview["id"], "APPROVE", "Đã phỏng vấn trực tiếp, đạt yêu cầu", tier="JUNIOR")
+    res = review(client, interview["id"], "APPROVE", "Đã phỏng vấn trực tiếp, đạt yêu cầu")
     assert res.status_code == 200 and res.json()["status"] == "APPROVED"
     entry = fake_audit.records[-1]
     assert entry["action"] == "INTERVIEW_APPROVED" and entry["targetType"] == "INTERVIEW"
@@ -203,9 +203,9 @@ def test_legacy_interview_without_rubric_still_displays(client, db, fake_profile
     turn = res.json()["turns"][0]
     assert turn["score"] == pytest.approx(6.2) and turn["rubric"] is None and turn["flags"] == []
     assert res.json()["selfAnswerAcknowledged"] is False
-    # NEEDS_REVIEW => không bắt buộc ghi chú; điểm 62 => cấp đề xuất JUNIOR (v2.0)
+    # NEEDS_REVIEW => không bắt buộc ghi chú
     assert review(client, iid, "APPROVE").status_code == 200
-    assert fake_profile.tiers[-1] == (mentor_id, "JUNIOR")
+    assert fake_profile.verifications[-1] == (mentor_id, "APPROVED")
 
 
 def test_agreement_counts_pure():
@@ -222,7 +222,7 @@ def test_admin_stats_report_agreement(client, db, fake_profile, fake_mentoring, 
     review(client, weak["id"], "REJECT")                                 # đồng thuận
     other = uuid.uuid4()
     weak2 = finished(client, other, text=WEAK_ANSWER)
-    review(client, weak2["id"], "APPROVE", "Phỏng vấn trực tiếp đạt yêu cầu", tier="JUNIOR")  # bác AI
+    review(client, weak2["id"], "APPROVE", "Phỏng vấn trực tiếp đạt yêu cầu")  # bác AI
     stats = client.get("/api/ai/admin/stats", headers=ADMIN).json()
     assert stats["decisionsTotal"] == 2 and stats["decisionsComparable"] == 2
     assert stats["decisionsAgreeing"] == 1 and stats["agreementRate"] == 0.5

@@ -113,8 +113,7 @@ def test_eligibility_cooldown_lock_and_unlock(client, db, fake_profile, fake_men
     admin = auth(uuid.uuid4(), "ADMIN")
     assert eligibility(client, mentor_id) == {"attemptsUsed": 0, "attemptsLeft": 3, "maxAttempts": 3,
                                               "cooldownUntil": None, "locked": False, "canStart": True,
-                                              "reason": None, "questionCount": 5, "kind": "VERIFICATION",
-                                              "currentTier": None, "upgradeAvailableAt": None,
+                                              "reason": None, "questionCount": 5,
                                               "voiceAvailable": False}
     for n in range(1, 4):
         interview = finish(client, mentor_id)

@@ -65,15 +65,15 @@ Ký hiệu cột **Quyền**: `Public` không cần token · `Auth` mọi ngư�
 
 ### 2.1 Bổ sung v2.0 (profile-service)
 
+> **Cấp độ mentor và khung giá đã bị gỡ (D6, [design-mentor-verification.md](design-mentor-verification.md)):**
+> `GET /api/profile/pricing-tiers`, `PUT /api/profile/mentor/{userId}/rate`, `PUT /internal/mentor/{id}/tier` không còn
+> tồn tại. `PUT /internal/mentor/{id}/verification` chỉ còn nhận `{status}` (không còn `tier`). Mentor đặt `hourlyRate`
+> tự do qua `PUT /api/profile/mentor/{userId}` (§2). Luồng xin nâng cấp AI Interview (`kind: UPGRADE`, `suggestedTier`,
+> `fromTier`, `currentTier`, `upgradeAvailableAt`, 409 `UPGRADE_COOLDOWN`/`TIER_MAX`, 400 `TIER_NOT_HIGHER`) cũng đã gỡ.
+
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
-| GET | `/api/profile/pricing-tiers` | Auth | `{tiers:[{tier, min, max, step}]}` | 9.2 |
-| PUT | `/api/profile/mentor/{userId}/rate` | Mentor (chủ hồ sơ) | `{hourlyRate}` — 400 `RATE_OUT_OF_TIER` nếu ngoài khung hoặc không chia hết bước 10.000; 409 `TIER_NOT_ASSIGNED` khi chưa có cấp | 9.3 |
-| PUT | `/internal/mentor/{id}/verification` | Internal (ai-service) | `{status, tier?}` — tier gán lúc admin APPROVE (thiếu thì giữ cấp cũ / suy ra từ giá); giá được kẹp về khung | 9.1, 9.4 |
-| PUT | `/internal/mentor/{id}/tier` | Internal | `{tier}` — đổi cấp, kẹp lại giá nếu ngoài khung | 9.4 |
 | PUT | `/api/profile/mentor/{userId}/trial` | Mentor (chủ hồ sơ) | `{enabled}` — bật/tắt nhận buổi trải nghiệm (mặc định bật) | 5.8 |
-
-AI Interview v2.0: `GET /api/ai/interviews/{id}` (admin) thêm `suggestedTier`; `POST /api/ai/admin/interviews/{id}/review` nhận `{decision, note, tier?}` (khác cấp đề xuất hoặc điểm dưới ngưỡng đạt thì bắt buộc `note` ≥ 10 ký tự; dưới ngưỡng bắt buộc `tier`). Xin nâng cấp (§3): mentor đã APPROVED gọi lại `POST /api/ai/interviews` → buổi `kind: UPGRADE`, `fromTier` = cấp hiện tại; 409 `UPGRADE_COOLDOWN` (+`retryAfter`) khi chưa đủ 90 ngày kể từ lần đổi cấp / lần xin gần nhất, 409 `TIER_MAX` khi đã EXPERT. `GET /api/ai/interviews/eligibility` thêm `kind`, `currentTier`, `upgradeAvailableAt`. Duyệt buổi UPGRADE chỉ lên cấp cao hơn (400 `TIER_NOT_HIGHER`); từ chối / làm lại không đổi trạng thái hay cấp; buổi UPGRADE không tính vào 3 lượt / chờ 7 ngày.
 
 ## 3. matching-service (8090) — Thảo
 

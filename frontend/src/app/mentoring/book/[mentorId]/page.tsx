@@ -198,7 +198,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
             <Avatar name={mentor.displayName} src={mentor.avatarUrl} />
             <div className="min-w-0">
               <div className="font-semibold">{mentor.displayName}</div>
-              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}{mentor.tier ? ` · ${mentor.tier}` : ""}</div>
+              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}</div>
             </div>
           </div>
           <CardBody className="flex flex-col gap-4">

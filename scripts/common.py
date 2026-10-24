@@ -29,12 +29,6 @@ _AI_REVIEW = re.compile(r"/api/ai/admin/interviews/[^/]+/review/?$")
 MIN_OVERRULE_NOTE = 10
 
 
-def tier_for_rate(rate):
-    """Bản chốt v2.0 — cấp độ có khung giá chứa mức giá `rate` (ranh giới thuộc khung thấp hơn); dùng khi script duyệt mentor
-    để giá không bị kẹp về khung khác. Giá dưới sàn JUNIOR (vd. 0) → JUNIOR (giá được kẹp lên 100.000)."""
-    return "JUNIOR" if rate <= 200_000 else "SENIOR" if rate <= 400_000 else "EXPERT"
-
-
 _LOGIN = re.compile(r"/api/auth/login/?$")
 _SESSION_REVIEW = re.compile(r"/api/mentoring/sessions/[^/]+/review/?$")
 

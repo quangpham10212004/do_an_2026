@@ -5,7 +5,6 @@ export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "R
 export type InterviewStrategy = "OPENING" | "DEEPEN" | "PIVOT";
 export type Recommendation = "APPROVE" | "REJECT" | "NEEDS_REVIEW";
 export type ReviewDecision = "APPROVE" | "REJECT" | "REQUEST_RETAKE";
-export type MentorTier = "JUNIOR" | "SENIOR" | "EXPERT";
 
 /** US-23: điểm 4 tiêu chí rubric (0–10). */
 export interface RubricScores {
@@ -46,9 +45,6 @@ export interface Interview {
   domain: string;
   skills: string[];
   status: InterviewStatus;
-  /** Bản chốt v2.0 §3 — UPGRADE = mentor đã duyệt xin nâng cấp; fromTier = cấp lúc xin. */
-  kind?: InterviewKind;
-  fromTier?: MentorTier | null;
   /** FR-7.7 — CHAT | VOICE (phỏng vấn giọng nói, OpenAI Realtime). */
   mode?: InterviewMode;
   consentExternalAi?: boolean;
@@ -60,8 +56,6 @@ export interface Interview {
   currentQuestion: InterviewTurn | null;
   turns: InterviewTurn[];
   overallScore: number | null;
-  /** Bản chốt v2.0 — cấp đề xuất từ điểm (chỉ admin); null = chưa có điểm hoặc dưới ngưỡng đạt (< 60) */
-  suggestedTier: MentorTier | null;
   summary: string | null;
   strengths: string[];
   weaknesses: string[];
@@ -84,7 +78,6 @@ export interface Interview {
   softTimerSeconds?: number;
 }
 
-export type InterviewKind = "VERIFICATION" | "UPGRADE";
 export type InterviewMode = "CHAT" | "VOICE";
 
 /** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
@@ -95,13 +88,8 @@ export interface InterviewEligibility {
   cooldownUntil: IsoDateTime | null;
   locked: boolean;
   canStart: boolean;
-  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | "TIER_MAX" | "UPGRADE_COOLDOWN" | null;
+  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | null;
   questionCount: number;
-  /** Bản chốt v2.0 §3 — mentor đã duyệt: buổi tiếp theo là xin nâng cấp (không theo số lần / chờ 7 ngày). */
-  kind?: InterviewKind;
-  currentTier?: MentorTier | null;
-  /** Mốc được xin nâng cấp (90 ngày sau lần xếp cấp / lần xin gần nhất); null = được xin ngay. */
-  upgradeAvailableAt?: IsoDateTime | null;
   /** FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được). */
   voiceAvailable?: boolean;
 }

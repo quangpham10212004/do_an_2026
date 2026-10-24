@@ -56,11 +56,10 @@ async def display_name(user_id: UUID) -> str | None:
     return (summary or {}).get("displayName")
 
 
-async def update_verification(mentor_id: UUID, status: str, tier: str | None = None) -> None:
-    """FR-7.5 — đồng bộ trạng thái xác thực mentor (mentor chỉ vào matching khi APPROVED); tier = cấp do admin gán (v2.0)."""
-    body = {"status": status} if tier is None else {"status": status, "tier": tier}
+async def update_verification(mentor_id: UUID, status: str) -> None:
+    """FR-7.5 — đồng bộ trạng thái xác thực mentor (mentor chỉ vào matching khi APPROVED)."""
     try:
-        res = await _client().put(f"/internal/mentor/{mentor_id}/verification", json=body)
+        res = await _client().put(f"/internal/mentor/{mentor_id}/verification", json={"status": status})
         res.raise_for_status()
     except httpx.HTTPError as e:
         raise _unavailable(str(e)) from None

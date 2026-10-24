@@ -109,7 +109,6 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
   const [form, setForm] = useState<MentorForm>({ displayName: user.fullName || "", headline: "", skills: "", domain: "", bio: "", yearsExperience: 0, hourlyRate: 0, capacity: 3, portfolioLinks: "" });
   const [slots, setSlots] = useState<SlotForm[]>([]);
   const [msg, setMsg] = useState<Flash>({});
-  const [tiers, setTiers] = useState<{ step: number; tiers: { tier: string; min: number; max: number }[] } | null>(null);
   const [parsing, setParsing] = useState(false);
   const [cvConsent, setCvConsent] = useState(false);
   const [cvListKey, setCvListKey] = useState(0);
@@ -128,10 +127,6 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
       setMsg({ error: errorMessage(e) });
     }
   }
-
-  useEffect(() => {
-    profileApi.pricingTiers().then(setTiers).catch(() => {});
-  }, []);
 
   useEffect(() => {
     profileApi.getMentor(user.userId).then((p) => {
@@ -258,18 +253,10 @@ function MentorProfileForm({ user }: { user: SessionUser }) {
                   <Field label="Giới thiệu bản thân" id="m-bio" required className="span-2">
                     <Textarea id="m-bio" required value={form.bio} onChange={set("bio")} className="min-h-[140px]" />
                   </Field>
-                  {(() => {
-                    const band = profile?.tier ? tiers?.tiers.find((t) => t.tier === profile.tier) : undefined;
-                    return (
-                      <Field label="Mức phí (đ/buổi 60 phút)" id="m-rate"
-                        hint={band
-                          ? `Cấp ${profile?.tier}: chọn trong ${band.min.toLocaleString("vi-VN")} – ${band.max.toLocaleString("vi-VN")} đ, bước ${(tiers?.step ?? 10000).toLocaleString("vi-VN")} đ. Chỉ áp dụng cho yêu cầu đặt mới.`
-                          : "Bạn chưa có cấp độ — hoàn tất AI Interview và chờ quản trị viên duyệt để chọn mức phí."}>
-                        <Input id="m-rate" type="number" disabled={!band} min={band?.min ?? 0} max={band?.max} step={tiers?.step ?? 10000}
-                          value={form.hourlyRate} onChange={set("hourlyRate")} />
-                      </Field>
-                    );
-                  })()}
+                  <Field label="Mức phí (đ/buổi 60 phút)" id="m-rate" hint="Bạn tự đặt mức phí. Chỉ áp dụng cho yêu cầu đặt mới.">
+                    <Input id="m-rate" type="number" min={0} max={100000000} step={10000}
+                      value={form.hourlyRate} onChange={set("hourlyRate")} />
+                  </Field>
                   <Field label="Sức chứa (số mentee tối đa)" id="m-capacity">
                     <Input id="m-capacity" type="number" min={1} max={50} value={form.capacity} onChange={set("capacity")} />
                   </Field>

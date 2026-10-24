@@ -48,7 +48,7 @@ function MentorDetail({ user, id }: { user: SessionUser; id: string }) {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-ink-muted">
               <span>{domainLabel(mentor.domain)}</span>
               <span>{mentor.yearsExperience} năm kinh nghiệm</span>
-              <span className="font-medium text-ink tabular">{formatRate(mentor.hourlyRate)}{mentor.tier ? ` · ${mentor.tier}` : ""}</span>
+              <span className="font-medium text-ink tabular">{formatRate(mentor.hourlyRate)}</span>
               {response && <span className="inline-flex items-center gap-1"><Clock aria-hidden="true" className="size-4" />{response}</span>}
             </div>
             <div className="flex flex-wrap gap-2 pt-1">

@@ -13,7 +13,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, tier_for_rate
+from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -62,7 +62,7 @@ def approved_mentor(admin_token, name, rate):
     while iv["status"] == "IN_PROGRESS":
         iv = call("POST", f"{AI}/api/ai/interviews/{iv['id']}/answers", {"answer": answer}, token=t)
     call("POST", f"{AI}/api/ai/admin/interviews/{iv['id']}/review",
-         {"decision": "APPROVE", "note": "Duyet cho e2e v2.0 booking", "tier": tier_for_rate(rate)}, token=admin_token)
+         {"decision": "APPROVE", "note": "Duyet cho e2e v2.0 booking"}, token=admin_token)
     return m
 
 
@@ -110,9 +110,9 @@ def main():
     print(f"E2E v2.0 booking run {RUN}\n")
     admin = call("POST", f"{AUTH}/api/auth/login", {"email": "admin@mmp.local", "password": "Admin@123"})
     at_ = admin["accessToken"]
-    mentor = approved_mentor(at_, "main", 300000)     # SENIOR, 300.000đ
+    mentor = approved_mentor(at_, "main", 300000)
     prof = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor["accessToken"])
-    check("Mentor đã duyệt có cấp SENIOR và giá 300.000", prof["tier"] == "SENIOR" and float(prof["hourlyRate"]) == 300000, prof)
+    check("Mentor đã duyệt giữ giá tự đặt 300.000", prof["verificationStatus"] == "APPROVED" and float(prof["hourlyRate"]) == 300000, prof)
 
     print("\n1. Đặt lịch khi ví thiếu tiền → PENDING (giữ khung giờ), nạp ví rồi trả")
     me = accepted_mentee(mentor, "poor")
@@ -209,7 +209,10 @@ def main():
     me6 = accepted_mentee(mentor, "price")
     topup(me6, 1000000)
     s6 = book(me6, mentor, at(18, 10))
-    call("PUT", f"{PROFILE}/api/profile/mentor/{mentor['userId']}/rate", {"hourlyRate": 400000}, token=mentor["accessToken"])
+    call("PUT", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", {
+        "displayName": f"V2 Mentor {mentor['userId']}", "domain": "backend", "skills": ["Java", "Spring Boot"],
+        "bio": "Backend engineer nhieu nam kinh nghiem, huong dan junior xay dung REST API va microservices.",
+        "yearsExperience": 6, "hourlyRate": 400000, "capacity": 30, "isAvailable": True, "portfolioLinks": []}, token=mentor["accessToken"])
     check("Đổi giá sau khi đặt không ảnh hưởng buổi đã đặt", float(session(me6, s6["id"])["price"]) == 300000)
     status, code = error_code(lambda: book(me6, mentor, at(19, 10), duration=90))
     check("Thời lượng ≠ 60 → 400 INVALID_DURATION", status == 400 and code == "INVALID_DURATION", (status, code))

@@ -10,7 +10,6 @@ from app.interview.planner import PlanTopicView
 from pydantic import Field
 
 from app.interview.models import Recommendation, Strategy
-from app.interview import rubric
 from app.interview.rubric import RubricScores, is_flagged
 from app.interview.voice import VoiceSessionView
 from app.schemas import CamelModel
@@ -45,9 +44,6 @@ class InterviewView(CamelModel):
     domain: str
     skills: list[str] = []
     status: str
-    # Bản chốt v2.0 §3 — VERIFICATION (xác thực lần đầu) | UPGRADE (mentor đã duyệt xin nâng cấp, from_tier = cấp lúc xin)
-    kind: str = "VERIFICATION"
-    from_tier: str | None = None
     # FR-7.7 — CHAT (hỏi-đáp bằng chữ) | VOICE (OpenAI Realtime; max_turns = số chủ đề trong kế hoạch)
     mode: str = "CHAT"
     consent_external_ai: bool = False
@@ -57,8 +53,6 @@ class InterviewView(CamelModel):
     current_question: InterviewTurnView | None = None
     turns: list[InterviewTurnView] = []
     overall_score: float | None = None
-    # Bản chốt v2.0 §3 — cấp độ đề xuất từ điểm (chỉ admin thấy); None = chưa có điểm hoặc dưới ngưỡng đạt
-    suggested_tier: str | None = None
     summary: str | None = None
     strengths: list[str] = []
     weaknesses: list[str] = []
@@ -97,10 +91,6 @@ class EligibilityView(CamelModel):
     can_start: bool
     reason: str | None = None
     question_count: int = 5
-    # Bản chốt v2.0 §3 — mentor đã duyệt: buổi tiếp theo là xin nâng cấp (UPGRADE), không theo số lần / chờ 7 ngày
-    kind: str = "VERIFICATION"
-    current_tier: str | None = None
-    upgrade_available_at: datetime | None = None
     # FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được)
     voice_available: bool = False
 
@@ -124,8 +114,6 @@ class AnswerInput(CamelModel):
 class ReviewInterviewInput(CamelModel):
     decision: str = Field(pattern="^(APPROVE|REJECT|REQUEST_RETAKE)$")
     note: str | None = Field(default=None, max_length=2000)
-    # Bản chốt v2.0 §3 — cấp do admin gán khi APPROVE; thiếu => lấy cấp đề xuất
-    tier: str | None = Field(default=None, pattern="^(JUNIOR|SENIOR|EXPERT)$")
 
 
 class InterviewStats(CamelModel):
@@ -194,12 +182,11 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
     current = next((t for t in turn_views if t.answer is None), None) if in_progress else None
     return InterviewView(
         id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name, domain=interview["domain"],
-        skills=list(interview["skills"] or []), status=interview["status"], kind=interview["kind"],
-        from_tier=interview["from_tier"], mode=interview["mode"], consent_external_ai=interview["consent_external_ai"],
+        skills=list(interview["skills"] or []), status=interview["status"],
+        mode=interview["mode"], consent_external_ai=interview["consent_external_ai"],
         engine=interview["engine"],
         max_turns=interview["max_turns"], current_turn=interview["current_turn"], current_question=current,
-        turns=turn_views, overall_score=_r1(interview["overall_score"]),
-        suggested_tier=rubric.suggest_tier(interview["overall_score"]) if for_admin else None, summary=interview["summary"],
+        turns=turn_views, overall_score=_r1(interview["overall_score"]), summary=interview["summary"],
         strengths=_split(interview["strengths"]), weaknesses=_split(interview["weaknesses"]),
         recommendation=interview["recommendation"], review_note=interview["review_note"],
         flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
