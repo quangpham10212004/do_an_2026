@@ -7,6 +7,35 @@
 > G7–G9, G11 (xem §9).
 > Giải thích kiến trúc tổng quan nằm ở [ai-features.md](ai-features.md) §1; đặc tả này là chuẩn nghiệm thu cho bộ tiêu chí.
 
+## 0. Hiện trạng tóm tắt (24/10/2026)
+
+AI Matching đã **đúng và đủ để chạy thật**, không còn lỗi logic nào đã biết trong 16 tiêu chí lọc/chấm
+điểm. Phần còn thiếu là **số liệu đánh giá chất lượng có nhãn/dữ liệu thật** — không làm xong được trong
+một phiên code, cần quy trình riêng (thu thập dữ liệu người dùng, hai người chấm tay). Ba mức:
+
+**Đã xong và kiểm chứng được.**
+- 16 tiêu chí (C01–C16) khớp đúng code, mỗi tiêu chí có test gọi tên (T0–T7).
+- 3 khoảng trống đã sửa: `minRating` theo rating hiệu lực (G1), kiểm tra tổng trọng số lúc khởi động
+  (G2), model embedding đa ngôn ngữ (G10).
+- Ngân sách mềm (C11) hoạt động đúng, đo lường riêng theo nhóm (G6).
+- Đo lường kỹ thuật (`tookMs`, `enoughData`) đã có; hợp đồng API và kiểu TypeScript đồng bộ với code.
+- Tài liệu (đặc tả này + [ai-features.md](ai-features.md)) phản ánh đúng trạng thái code.
+
+**Chưa xong — thiếu dữ liệu/người, không phải thiếu code.**
+- M1, M2 (Precision@5, NDCG@10): chưa có ngưỡng thật vì nhãn còn nháp — cần hai người chấm tay (T9, T10).
+- M3 (tỉ lệ "Không phù hợp" theo hạng): cơ chế đã có (`byRankInBudget`/`byRankOverBudget`, `enoughData`),
+  chưa có dữ liệu người dùng thật để biết số liệu thật (T11).
+- M4 (độ trễ): có số đo (§8), nhưng chỉ 15 mẫu, không phải 50, và máy đo không rảnh lúc đo — coi là số
+  **sơ bộ**, chưa phải con số chốt cuối cùng (G11).
+
+**Chưa làm — vì chưa được yêu cầu, không phải vì khó.**
+- G7–G9 (T14–T16): quy đổi múi giờ mentee ở C06, trung hoà điểm khớp lịch khi mentee chưa chọn ngày,
+  cảnh báo khi dữ liệu đồng bộ (rating, phản hồi) quá cũ.
+- T2c: so sánh định lượng model cũ/mới trên bộ eval đầy đủ nhiều cặp có nhãn — chờ nhãn thật (T9) mới
+  làm được trọn vẹn, hiện chỉ có một ví dụ đơn ở T2b.
+
+Tiến độ chi tiết theo từng task, kèm lệnh đã chạy và output thật: [report-task-ai-matching.md](report-task-ai-matching.md).
+
 ## 1. Mục tiêu và phạm vi
 
 **Mục tiêu.** Với mỗi mentee, trả về danh sách mentor được xếp hạng, đủ điều kiện nhận mentee, kèm lý do. Hệ thống tách rõ ba loại tiêu chí:
