@@ -58,6 +58,8 @@ export interface PipelineStats {
   retrieved: number;
   returned: number;
   weights: PipelineWeights;
+  /** M4 (NFR-1) — thời gian xử lý pipeline tính trên server (ms); không tính overhead router. */
+  tookMs: number;
 }
 
 /** US-17 — tên bộ lọc = tên query param của GET /api/matching/mentors. */
@@ -122,4 +124,26 @@ export interface RebuildResult {
   mentors: number;
   mentees: number;
   pending: number;
+}
+
+/** GET /api/matching/admin/evaluation — chỉ ADMIN. */
+export interface RankStat {
+  rank: number;
+  impressions: number;
+  notRelevant: number;
+  notRelevantRate: number;
+  /** D11 — false khi impressions < 100: notRelevantRate còn quá nhiễu để đọc ngưỡng. */
+  enoughData: boolean;
+}
+
+export interface EvaluationStats {
+  days: number;
+  resultLists: number;
+  /** Gộp cả hai nhóm ngân sách — hạng của nhóm vượt ngân sách là hạng trong danh sách đã nối. */
+  byRank: RankStat[];
+  /** G6 — chỉ mentor trong ngân sách (C11), cùng cấu trúc byRank. */
+  byRankInBudget: RankStat[];
+  /** G6 — chỉ mentor vượt ngân sách (C11), cùng cấu trúc byRank. */
+  byRankOverBudget: RankStat[];
+  reasons: Partial<Record<NotRelevantReason | "OTHER", number>>;
 }

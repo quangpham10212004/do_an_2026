@@ -15,7 +15,7 @@
 | T3 | ĐẠT | (xem §T3) |
 | T4 | ĐẠT | (xem §T4) |
 | T5 | ĐẠT | (xem §T5) |
-| T6 | chưa làm | |
+| T6 | ĐẠT | (xem §T6) |
 | T7 | chưa làm | |
 | T8 | chưa làm | |
 | T9–T16 | chưa làm (cần người chấm/dữ liệu thật, hoặc tuỳ chọn) | |
@@ -272,6 +272,33 @@ python -c "... gọi admin/evaluation qua API thật ..."
 - Test `test_evaluation_stats_enough_data_flag`: `byRank[0].impressions=150, enoughData=True`; `byRank[1].impressions=30, enoughData=False` — đúng input/expected ở §11.1.
 - e2e: `35/35 PASS`.
 - API thật (`admin/evaluation`): mỗi hạng trả thêm `enoughData` (ví dụ hạng 1 có 33 lượt trong môi trường hiện tại → `enoughData: False`, đúng vì dưới 100).
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.1.
+
+---
+
+## T6 — cập nhật hợp đồng OpenAPI và kiểu TypeScript
+
+**Input (theo §11.1):** `contracts/matching-service.yaml`, `frontend/src/types/matching.ts`.
+
+**Thay đổi:**
+- `contracts/matching-service.yaml`:
+  - `PipelineStats`: thêm `tookMs` (T4).
+  - `GET /api/matching/admin/evaluation`: thêm `byRankInBudget`, `byRankOverBudget` (T3) và `enoughData` trong từng mục `byRank`/`byRankInBudget`/`byRankOverBudget` (T5) — dùng YAML anchor `&rankStat`/`*rankStat` để không lặp lại schema 3 lần.
+- `frontend/src/types/matching.ts`:
+  - `PipelineStats.tookMs: number`.
+  - Thêm `RankStat`, `EvaluationStats` (chưa có type nào cho hai schema này trước đây — trang admin evaluation chưa có UI, nhưng kiểu được thêm đủ để khớp hợp đồng, dùng khi làm UI sau).
+
+**Lệnh đã chạy:**
+```
+python -c "import yaml; yaml.safe_load(open('contracts/matching-service.yaml'))"   # xác nhận cú pháp + anchor
+cd frontend && rm -rf .next && ./node_modules/.bin/tsc --noEmit
+```
+
+**Output thật:**
+- YAML parse OK; `byRank.items.properties` và `byRankInBudget.items.properties` đều có đủ 5 khoá (`rank, impressions, notRelevant, notRelevantRate, enoughData`) — xác nhận anchor giải đúng.
+- `tsc --noEmit`: lần đầu báo 2 lỗi ở `.next/types/app/payment/package/[packageId]/page.ts` — xác nhận đây là cache build cũ (route `payment/package/[packageId]` không còn trong `src/app/payment/`, không liên quan thay đổi của T6). Xoá `.next/` (chỉ là cache, không phải mã nguồn; container frontend sống build từ image riêng, không mount thư mục này nên không bị ảnh hưởng) rồi chạy lại: **không lỗi, không output**.
+- Response thật của `admin/evaluation` (đã gọi ở T3/T5) đã khớp hợp đồng mới (`byRank`, `byRankInBudget`, `byRankOverBudget`, mỗi mục có `enoughData`).
 
 **Kết luận:** ĐẠT theo output mong đợi ở §11.1.
 

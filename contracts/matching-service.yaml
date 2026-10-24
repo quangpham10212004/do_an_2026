@@ -102,6 +102,12 @@ components:
           type: object
           additionalProperties: { type: number }
           example: { similarity: 0.6, rating: 0.15, experience: 0.1, scheduleFit: 0.1, responsiveness: 0.05 }
+        tookMs:
+          type: number
+          default: 0
+          description: >
+            M4 (NFR-1) — thời gian xử lý pipeline tính trên server (hard filter, top-K, re-rank,
+            giải thích, ghi match_impressions); không tính overhead xác thực/rate-limit của router.
     TimeOfDay:
       type: string
       enum: [MORNING, AFTERNOON, EVENING]
@@ -386,13 +392,25 @@ paths:
                   days: { type: integer }
                   resultLists: { type: integer }
                   byRank:
+                    description: Gộp cả hai nhóm ngân sách — hạng của nhóm vượt ngân sách là hạng trong danh sách đã nối.
                     type: array
-                    items:
+                    items: &rankStat
                       type: object
                       properties:
                         rank: { type: integer }
                         impressions: { type: integer }
                         notRelevant: { type: integer }
                         notRelevantRate: { type: number }
+                        enoughData:
+                          description: "D11 — false khi impressions < 100: notRelevantRate còn quá nhiễu để đọc ngưỡng."
+                          type: boolean
+                  byRankInBudget:
+                    description: G6 — chỉ mentor trong ngân sách (C11), cùng cấu trúc byRank.
+                    type: array
+                    items: *rankStat
+                  byRankOverBudget:
+                    description: G6 — chỉ mentor vượt ngân sách (C11), cùng cấu trúc byRank.
+                    type: array
+                    items: *rankStat
                   reasons: { type: object, additionalProperties: { type: integer } }
         "403": { description: FORBIDDEN }
