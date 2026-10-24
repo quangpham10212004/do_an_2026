@@ -54,6 +54,11 @@ flowchart LR
 
 ## 1. AI Matching mentor-mentee
 
+> Đặc tả đầy đủ 16 tiêu chí lọc/chấm điểm và 4 chỉ số đánh giá: [design-ai-matching-spec.md](design-ai-matching-spec.md)
+> (có bảng ánh xạ tiêu chí ↔ code ↔ test, khoảng trống đã xử lý/còn mở G1–G11, tiến độ ở
+> [report-task-ai-matching.md](report-task-ai-matching.md)). Mục này giữ lại phần giải thích kiến trúc và lập luận
+> cho bảo vệ đồ án.
+
 ### 1.1 Bài toán
 Cho một mentee, trả về danh sách mentor **phù hợp về nội dung** (kỹ năng, lĩnh vực, mục tiêu) và
 **khả thi trên thực tế** (đã được xác thực, còn nhận mentee, có lịch rảnh, còn chỗ), được xếp hạng
@@ -73,7 +78,7 @@ flowchart LR
     JOB[IndexSyncJob<br/>mỗi 60 giây] --> N[matching-service:<br/>đọc hồ sơ, chuẩn hoá văn bản]
     N --> H{SHA-256 đổi?}
     H -- không --> SKIP[Giữ vector cũ<br/>NFR-7]
-    H -- có --> E[all-MiniLM-L6-v2]
+    H -- có --> E[paraphrase-multilingual-MiniLM-L12-v2]
     E --> V[(matching_db<br/>VECTOR 384 + HNSW)]
 
     Q[Mentee bấm Tìm mentor<br/>+ bộ lọc / sở thích hồ sơ] --> R2[1. Hard filter trên profile_db<br/>5 ràng buộc + bộ lọc người dùng]
@@ -96,19 +101,25 @@ Mentor: "Domain: backend. Skills: Java, Spring Boot. Experience: 9 years. About:
 Mentee: "Domain: backend. Skills: Java, SQL. Level: beginner. Goal: <goal>"
 ```
 
-**Model**: `sentence-transformers/all-MiniLM-L6-v2` — transformer 6 lớp đã được huấn luyện
-contrastive trên hơn 1 tỷ cặp câu, sinh vector 384 chiều. Lý do chọn:
+**Model**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` — transformer 12 lớp, đa ngôn
+ngữ, sinh vector 384 chiều (đổi từ `all-MiniLM-L6-v2` — xem [design-ai-matching-spec.md](design-ai-matching-spec.md)
+D13/G10). Lý do đổi: mentor và mentee viết hồ sơ bằng tiếng Việt, tiếng Anh, hoặc trộn đều; model cũ chủ
+yếu hiểu tiếng Anh nên cặp khác ngôn ngữ có độ tương đồng thấp giả tạo, trong khi similarity chiếm 0,60
+trọng số điểm. Đo trên một câu mẫu: cosine giữa câu tiếng Việt và câu tiếng Anh cùng nghĩa tăng từ 0,611
+(model cũ) lên 0,956 (model mới).
 
-| Tiêu chí | all-MiniLM-L6-v2 |
+| Tiêu chí | `paraphrase-multilingual-MiniLM-L12-v2` |
 |---|---|
-| Kích thước / tốc độ | ~90MB, chạy CPU; đo thực tế **~10 ms/lần** sinh embedding |
-| Chất lượng | Tốt cho semantic similarity câu ngắn tiếng Anh; tên công nghệ (Java, Spring Boot…) là thuật ngữ tiếng Anh |
-| Số chiều | 384 — nhỏ gọn cho pgvector và HNSW |
+| Kích thước / tốc độ | Nặng hơn model cũ (12 lớp so với 6); độ trễ đo lại ở §1.9 |
+| Chất lượng | Đa ngôn ngữ (gồm Việt, Anh); tên công nghệ (Java, Spring Boot…) vẫn là thuật ngữ tiếng Anh, giữ nguyên trong văn bản chuẩn hoá |
+| Số chiều | 384 — không đổi `VECTOR(384)` trong `matching_db` |
 | Chi phí | Mã nguồn mở, chạy cục bộ, không gửi dữ liệu người dùng ra ngoài |
 
 Vector được **chuẩn hoá L2** (`normalize_embeddings=True`), nên cosine similarity = tích vô hướng.
-Có thể đổi sang model đa ngôn ngữ cùng 384 chiều (ví dụ `paraphrase-multilingual-MiniLM-L12-v2`) bằng
-biến `EMBEDDING_MODEL` rồi gọi API admin `rebuild?force=true`.
+Mỗi embedding được lưu kèm tên model (cột `model`, migration `003`); embedding của model khác (hoặc
+`model IS NULL`, embed từ trước khi có cột này) được `IndexSyncJob` tự lập chỉ mục lại, không cần
+thao tác tay. Đổi model khác (vẫn 384 chiều) bằng biến `EMBEDDING_MODEL` rồi khởi động lại — không cần
+gọi `rebuild?force=true` vì `reconcile()` đã tự phát hiện lệch model.
 
 **Tái sử dụng embedding (NFR-7)**: `matching_db` lưu `text_hash = SHA-256(văn bản chuẩn hoá)` cạnh mỗi
 vector; chỉ gọi model khi hash thay đổi.
@@ -256,11 +267,18 @@ Thống kê pipeline: `retrieved = 7`, loại `notVerified: 1` (mentor Java chư
 
 ### 1.9 Hiệu năng (NFR-1)
 
-`scripts/benchmark_matching.py` chèn tạm 5.000 hồ sơ mentor tổng hợp rồi gọi API 50 lần:
+`scripts/benchmark_matching.py` chèn tạm 5.000 hồ sơ mentor tổng hợp rồi gọi API. Số đo 24/10/2026
+(sau khi đổi model đa ngôn ngữ, D13) — **sơ bộ**: chỉ 15 lượt gọi, không phải 50, vì mặc định script
+gọi liên tiếp quá nhanh, va với giới hạn tần suất NFR-10 (20 lượt/phút/người dùng); máy đo cũng đang
+chạy đồng thời nhiều việc khác, không phải máy rảnh chuyên đo. Chi tiết và việc cần làm tiếp (nới giới
+hạn tần suất cho script đo, đo lại đủ 50 mẫu): [design-ai-matching-spec.md](design-ai-matching-spec.md) §8, G11.
 
-| Số mentor | Trung bình | p50 | p95 | Max | Yêu cầu |
-|---|---|---|---|---|---|
-| ~5.007 | 4,8 ms | 4,7 ms | 5,7 ms | 6,8 ms | < 2.000 ms ✅ |
+| Số mentor | Số lượt | Trung bình | p50 | p95 | Max | Yêu cầu |
+|---|---|---|---|---|---|---|
+| ~5.007 | 15 (sơ bộ) | 255,5 ms | 237,9 ms | 377,3 ms | 521,4 ms | < 2.000 ms ✅ |
+
+Số cũ (4,8 ms trung bình, đo trước khi đổi model) không còn phản ánh cấu hình hiện tại — model đa ngôn
+ngữ nặng hơn (12 lớp so với 6) nên chậm hơn đáng kể, nhưng vẫn đạt NFR-1 nhiều lần.
 
 ### 1.10 Hạn chế & hướng phát triển
 - (Đã xử lý ở US-17) Trước đây hard filter áp dụng **sau** top-K nên kết quả có thể hụt; nay lọc trước
@@ -808,7 +826,7 @@ và job thử lại mỗi 2 phút (chỉ goal `CONFIRMED`; bỏ qua xác nhận 
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | matching-service: model sentence-transformers (phải 384 chiều) |
+| `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | matching-service: model sentence-transformers (phải 384 chiều) |
 | `INDEX_SYNC_INTERVAL` / `INDEX_SYNC_BATCH` | 60 giây / 200 | matching-service: chu kỳ và số hồ sơ mỗi vòng của `IndexSyncJob` |
 | `INDEX_SYNC_ENABLED` | `true` | matching-service: tắt job đồng bộ (dùng khi benchmark) |
 | `DEEPSEEK_API_KEY` | (trống) | ai-service: trống → engine rule-based; có giá trị → engine DeepSeek + fallback |
@@ -829,7 +847,7 @@ và job thử lại mỗi 2 phút (chỉ goal `CONFIRMED`; bỏ qua xác nhận 
 
 | Tính năng | Unit test | Kiểm thử e2e |
 |---|---|---|
-| AI Matching | `matching-service/tests/test_pipeline.py` (10), `test_api.py` (9); `ProfileLogicTest` (6) | DoD 2, 5, 6, 7 |
+| AI Matching | `matching-service/tests/`: `test_pipeline.py` (9), `test_api.py` (28), `test_match_filters.py` (16), `test_matching_db.py` (17, cần Postgres thật), `test_ranking_signals.py` (12); `ProfileLogicTest` (6) | DoD 2, 5, 6, 7; `scripts/e2e_s2_profile_matching.py` (35 kiểm tra) |
 | AI Interview | ai-service `test_interview_rule_based.py` (10); `test_deepseek.py` (8, dùng chung) | DoD 4, 5 |
 | CV + Enrichment | ai-service `test_cv.py` (9), `test_enrichment_rule_based.py` (6) | DoD 3 |
 | Luồng đầy đủ (CSDL thật) | ai-service `test_interview_flow.py` (7), `test_cv_enrichment_flow.py` (8) | DoD 3, 4 |

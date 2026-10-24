@@ -358,3 +358,29 @@ pytest tests/ -q                          # hồi quy
 **Kết luận:** ĐẠT một phần theo output mong đợi ở §11.2 — pytest và e2e đạt đầy đủ ("mọi test và e2e pass"). Benchmark **không đạt đúng câu chữ cũ** ("in trung bình, p50, p95, max; p95 < 2.000 ms") vì không chạy được với `--requests 50` như viết trong spec — đã chạy với số lượt thấp hơn và ghi rõ là số sơ bộ, kèm phát hiện G11 giải thích vì sao. Việc đo lại đầy đủ 50 mẫu trên máy rảnh dời sang sau khi xử lý G11 (không thuộc phạm vi T0–T8 ban đầu).
 
 ---
+
+## T13 — Thu gọn/sửa `ai-features.md` §1
+
+**Input (theo §11.4):** `docs/ai-features.md`.
+
+**Quyết định:** không gutting toàn bộ §1 thành một đoạn tóm tắt ngắn — nội dung đó là tài liệu bảo vệ đồ án (lập luận chọn thiết kế, "Câu hỏi hội đồng"), có giá trị riêng ngoài phạm vi spec kỹ thuật. Thay vào đó: thêm một dòng trỏ sang `design-ai-matching-spec.md` ngay đầu mục 1, và CHỈ sửa những chỗ thật sự sai lệch với code hiện tại sau T0–T8 (kiểm tra bằng grep, không phải phỏng đoán).
+
+**Thay đổi:**
+- Thêm dòng trỏ sang spec và báo cáo tiến độ, ngay sau `## 1. AI Matching mentor-mentee`.
+- Sơ đồ mermaid §1.2: `all-MiniLM-L6-v2` → `paraphrase-multilingual-MiniLM-L12-v2`.
+- §1.3: viết lại đoạn mô tả model theo đúng model hiện tại (trước đây mô tả model cũ và chỉ gợi ý model đa ngôn ngữ như một khả năng ⚒ — giờ đó chính là model đang dùng); thêm số đo cosine Việt–Anh (0,611 → 0,956); sửa đoạn "tái sử dụng embedding" để nhắc cột `model` (migration `003`) và việc `IndexSyncJob` tự lập chỉ mục lại khi lệch model.
+- §1.9 (Hiệu năng): thay bảng số cũ (4,8 ms, đo trước khi đổi model) bằng số thật 24/10/2026 (255,5 ms trung bình, p95 377,3 ms), ghi rõ là **sơ bộ** (15 mẫu, lý do ở G11) và trỏ sang spec §8.
+- §5 (Kiểm thử): thay `test_pipeline.py (10), test_api.py (9)` (đã cũ) bằng số đếm thật của 5 file test liên quan, cộng `scripts/e2e_s2_profile_matching.py` (35 kiểm tra).
+- §4 (Cấu hình AI): `EMBEDDING_MODEL` mặc định cập nhật theo model mới.
+
+**Lệnh đã chạy:**
+```
+grep -c "^async def test_\|^def test_" matching-service/tests/test_pipeline.py tests/test_api.py ...
+grep -n "all-MiniLM-L6-v2\|4,8 ms" docs/ai-features.md    # xác nhận không còn chỗ nào sót
+```
+
+**Output thật:** số test đếm được — `test_pipeline.py` 9, `test_api.py` 28, `test_match_filters.py` 16, `test_matching_db.py` 17, `test_ranking_signals.py` 12. Sau khi sửa, grep không còn thấy `all-MiniLM-L6-v2` hay "4,8 ms" trong file (trừ câu nhắc lịch sử "đổi từ `all-MiniLM-L6-v2`" và "Số cũ (4,8 ms...)" — cố ý giữ lại làm lịch sử, có ghi rõ là số cũ).
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.4 ("không còn nội dung mâu thuẫn spec"), với một điều chỉnh có chủ đích: không thu gọn toàn bộ §1 thành tóm tắt như câu chữ gốc của task, vì nội dung đó phục vụ mục đích khác (bảo vệ đồ án) và vẫn đúng với code sau khi sửa các chỗ lệch.
+
+---
