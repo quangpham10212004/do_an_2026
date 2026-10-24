@@ -359,7 +359,8 @@ def test_unhide_404_when_not_hidden(client, fake_feedback):
 def test_evaluation_stats_admin_only(client, monkeypatch):
     async def fake_stats(days, max_rank=10):
         return {"days": days, "resultLists": 3, "byRank": [{"rank": 1, "impressions": 3, "notRelevant": 1,
-                                                            "notRelevantRate": 0.3333}], "reasons": {"SCHEDULE": 1}}
+                                                            "notRelevantRate": 0.3333}],
+                "byRankInBudget": [], "byRankOverBudget": [], "reasons": {"SCHEDULE": 1}}
     monkeypatch.setattr(feedback_service, "evaluation_stats", fake_stats)
     res = client.get("/api/matching/admin/evaluation?days=7", headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
     assert res.status_code == 403

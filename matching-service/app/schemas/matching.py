@@ -124,6 +124,11 @@ class EvaluationStats(CamelModel):
     days: int
     result_lists: int
     by_rank: list[RankStat]
+    # G6 — tách byRank theo nhóm ngân sách (C11): hạng của nhóm vượt ngân sách là hạng trong danh
+    # sách đã nối (matching_pipeline._run), nên trộn vào byRank chung có thể lệch tỉ lệ thật của
+    # từng nhóm. by_rank giữ nguyên (tương thích ngược) — hai trường dưới là bổ sung.
+    by_rank_in_budget: list[RankStat]
+    by_rank_over_budget: list[RankStat]
     reasons: dict[str, int]
 
 

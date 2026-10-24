@@ -307,6 +307,10 @@ async def test_hidden_mentor_is_excluded_for_30_days_and_list_still_full(conn):
     assert stats["byRank"][0] == {"rank": 1, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
     assert stats["reasons"] == {"SCHEDULE": 1}
     assert set(mentors) >= ids(first)
+    # G6 — không dùng maxRate ở test này nên không mentor nào vượt ngân sách: byRankInBudget phải
+    # khớp byRank chung, byRankOverBudget rỗng ở mọi hạng.
+    assert stats["byRankInBudget"][0] == stats["byRank"][0]
+    assert all(r["impressions"] == 0 for r in stats["byRankOverBudget"])
 
 
 async def test_schedule_fit_uses_exceptions_and_ranks_matching_mentor_first(conn):
@@ -357,6 +361,35 @@ async def test_over_budget_mentors_come_last_not_dropped(conn):
     assert all(m["over_budget"] and m["over_budget_by"] == 1850000 for m in tail)
     assert result["excluded_by"] == {}
     assert result["stats"]["over_budget"] == 3 and result["stats"]["returned"] == 8
+
+
+async def test_evaluation_stats_split_by_budget_group(conn):
+    """G6 — match_impressions.over_budget đúng theo nhóm; admin/evaluation tách byRank theo nhóm,
+    không trộn hạng của nhóm vượt ngân sách (hạng trong danh sách đã NỐI) vào byRankInBudget."""
+    from app.services import feedback_service
+
+    cheap = [await add_mentor(conn, rate=100000) for _ in range(2)]
+    pricey = await add_mentor(conn, rate=2000000)
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee, limit=5, include_over_budget=True, maxRate=150000)
+    mentors = result["mentors"]
+    assert len(mentors) == 3  # 2 trong ngân sách + 1 vượt ngân sách (OVER_BUDGET_SHOWN mặc định 3, chỉ có 1)
+    pricey_rank = next(i for i, m in enumerate(mentors, start=1) if str(m["mentor_id"]) == pricey)
+    assert pricey_rank == 3  # hạng trong danh sách đã nối — đứng sau 2 mentor trong ngân sách
+
+    impression = await feedback_service.log_impressions(mentee, mentors, {}, matching_pipeline.WEIGHTS)
+    await feedback_service.hide(mentee, pricey, "TOO_EXPENSIVE", None, impression)
+
+    stats = await feedback_service.evaluation_stats(days=1)
+    # Hạng 3 trong byRank CHUNG trộn lẫn: đúng là mentor vượt ngân sách bị "Không phù hợp" ở hạng 3.
+    assert stats["byRank"][2] == {"rank": 3, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
+    # Tách theo nhóm: hạng 3 của nhóm TRONG ngân sách không có lượt hiển thị nào (0 mentor trong ngân
+    # sách đứng hạng 3) — không bị tính nhầm là "100% không phù hợp ở hạng 3 của nhóm trong ngân sách".
+    assert stats["byRankInBudget"][2] == {"rank": 3, "impressions": 0, "notRelevant": 0, "notRelevantRate": 0.0}
+    # Nhóm VƯỢT ngân sách: đúng 1 lượt hiển thị ở hạng 3, bị "Không phù hợp".
+    assert stats["byRankOverBudget"][2] == {"rank": 3, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
+    assert set(cheap) <= {str(m["mentor_id"]) for m in mentors}
 
 
 async def test_over_budget_fills_list_up_to_limit_when_few_in_budget(conn):

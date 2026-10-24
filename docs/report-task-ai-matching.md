@@ -12,7 +12,7 @@
 | T2 | ĐẠT | (xem §T2) |
 | T2b | ĐẠT | (xem §T2b) |
 | T2c | chưa làm | |
-| T3 | chưa làm | |
+| T3 | ĐẠT | (xem §T3) |
 | T4 | chưa làm | |
 | T5 | chưa làm | |
 | T6 | chưa làm | |
@@ -176,5 +176,46 @@ python scripts/e2e_s2_profile_matching.py
 - Model đa ngôn ngữ (L12, 12 lớp) nặng hơn model cũ (L6, 6 lớp) — thời gian build image tăng thêm ~49s (tải model lúc build), và e2e tổng thời gian tăng từ ~9,6s lên ~23,5s (36 mentor + 1 mentee phải embed lại). Đây là đánh đổi đã lường trước ở rủi ro của D13 (docs/design-ai-matching-spec.md §12); cần đo riêng bằng benchmark ở T8 để biết p95 có còn dưới 2.000ms (NFR-1, D12) không — T2b mới dừng ở xác nhận ĐÚNG, chưa đo tốc độ chính xác.
 - Việc build image trước đây KHÔNG truyền `ARG EMBEDDING_MODEL` từ `docker-compose.yml` (thiếu `args:`) nên dù đổi biến môi trường, image vẫn luôn tải sẵn model cũ lúc build — một lỗi cấu hình có từ trước, chỉ lộ ra khi làm T2b. Đã sửa cùng lúc.
 - T2c (so sánh định lượng model cũ/mới trên bộ eval đầy đủ, nhiều cặp có nhãn) CHƯA làm — phần trên chỉ là một ví dụ đơn, không thay thế được eval có nhãn.
+
+---
+
+## T3 — G6: cột `over_budget` trong `match_impressions`
+
+**Input (theo §11.1):** gọi `GET /api/matching/mentors` với `maxRate` đủ thấp để có cả hai nhóm, đọc `match_impressions` và `GET /api/matching/admin/evaluation`.
+
+**Lưu ý đánh số migration:** spec ghi "migration 003" cho G6, nhưng T2b (chạy trước T3 theo thứ tự kế hoạch) đã dùng `003` cho cột `model`. G6 dùng `004_impression_over_budget.sql` — đánh số theo thứ tự thực hiện, không theo đúng số đã ghi tạm trong spec lúc viết (sẽ cập nhật lại tham chiếu trong spec ở bước tài liệu T12/T13).
+
+**Thay đổi:**
+- `migrations/004_impression_over_budget.sql`: `ALTER TABLE match_impressions ADD COLUMN over_budget BOOLEAN NOT NULL DEFAULT false`. Dòng cũ mặc định `false` — đúng hành vi trước khi có ngân sách mềm.
+- `feedback_service.log_impressions`: ghi `bool(m.get("over_budget"))` cho mỗi dòng (mentor trong `shown_over` có `over_budget=True` từ `_run`, mentor nhóm `ranked` không có khoá này → `False`).
+- `feedback_service.evaluation_stats`: giữ `byRank` (gộp) **không đổi** để tương thích ngược; thêm `byRankInBudget`, `byRankOverBudget` — tính bằng truy vấn `GROUP BY rank, over_budget` cho lượt hiển thị, và JOIN `match_feedback` với `match_impressions` (qua `impression_id` + `mentor_id`) để biết đúng nhóm của lượt "Không phù hợp" (bảng `match_feedback` không tự có cột `over_budget`).
+- `schemas/matching.py` (`EvaluationStats`): thêm `by_rank_in_budget`, `by_rank_over_budget` (camelCase tự động qua `CamelModel`).
+- `tests/test_api.py`: sửa fixture `test_evaluation_stats_admin_only` (thêm 2 khoá mới, bắt buộc vì không có default).
+- `tests/test_matching_db.py`: sửa `test_hidden_mentor_is_excluded_for_30_days_and_list_still_full` (thêm assertion cho 2 nhóm khi không dùng `maxRate`); thêm `test_evaluation_stats_split_by_budget_group` — kịch bản đúng input của spec: 2 mentor trong ngân sách + 1 vượt ngân sách, mentor vượt ngân sách ở hạng 3 (hạng trong danh sách đã NỐI) bị "Không phù hợp" → xác nhận `byRank` gộp lẫn hạng 3 của hai nhóm, còn `byRankInBudget`/`byRankOverBudget` tách đúng (hạng 3 của nhóm trong ngân sách là 0 lượt, không bị tính nhầm 100% "Không phù hợp").
+
+**Lệnh đã chạy:**
+```
+# pytest trên DB TẠM (15439/15434), không chạm DB sống
+pytest tests/ -q -k "evaluation or budget"
+pytest tests/ -q
+
+docker compose build matching-service && docker compose up -d matching-service
+# xác nhận migration 004 áp dụng
+psql ... schema_migrations
+
+python scripts/e2e_s2_profile_matching.py
+
+# gọi API thật bằng admin seed sẵn (admin@mmp.local)
+python -c "... call admin/evaluation ..."
+```
+
+**Output thật:**
+- `pytest -k "evaluation or budget"`: `9 passed`.
+- `pytest tests/` đầy đủ: `111 passed, 1 failed` (110 trước T3 + 1 test mới; 1 fail là lỗi mã hoá đã biết).
+- `schema_migrations`: `001 baseline, 002 feedback_impressions, 003 embedding_model, 004 impression_over_budget` — áp dụng đúng thứ tự trên container sống.
+- e2e: `35/35 PASS trong 12.6s`.
+- Gọi `GET /api/matching/admin/evaluation?days=30` qua API thật (admin seed): trả đủ `byRank`, `byRankInBudget`, `byRankOverBudget` — `byRankInBudget` khớp `byRank` (chưa có mentee nào dùng `maxRate` trong môi trường hiện tại), `byRankOverBudget` toàn 0 ở mọi hạng — đúng vì chưa có dữ liệu ngân sách mềm thật trong môi trường này. `byRank` cũ không đổi cấu trúc (xác nhận tương thích ngược).
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.1 — migration chạy đúng một lần, dòng cũ `over_budget=false`; impression mới ghi đúng cờ theo nhóm; `admin/evaluation` trả thêm số liệu tách nhóm, trường cũ không đổi.
 
 ---

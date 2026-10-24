@@ -97,7 +97,7 @@ async def log_impressions(mentee_id: str, mentors: list[dict], filters: dict, we
     rows = [
         (impression_id, mentee_id, str(m["mentor_id"]), rank, float(m["final_score"]),
          json.dumps(m.get("score_parts") or {}), json.dumps(filters, default=str), json.dumps(weights),
-         config.EMBEDDING_MODEL)
+         config.EMBEDDING_MODEL, bool(m.get("over_budget")))
         for rank, m in enumerate(mentors, start=1)
     ]
     try:
@@ -105,8 +105,8 @@ async def log_impressions(mentee_id: str, mentors: list[dict], filters: dict, we
         await pool.executemany(
             """
             INSERT INTO match_impressions (impression_id, mentee_id, mentor_id, rank, final_score, score_parts, filters,
-                                           weights, model)
-            VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)
+                                           weights, model, over_budget)
+            VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10)
             """,
             rows,
         )
@@ -140,6 +140,25 @@ async def evaluation_stats(days: int, max_rank: int = 10) -> dict:
         lists = await conn.fetchval(
             "SELECT count(DISTINCT impression_id) FROM match_impressions WHERE created_at >= $1", since,
         )
+        # G6 — tách theo nhóm ngân sách (C11): hạng của nhóm vượt ngân sách là hạng trong danh sách đã
+        # NỐI (matching_pipeline._run), nên tỉ lệ "Không phù hợp" chung ở trên có thể lệch nếu không
+        # tách riêng. shown_budget theo over_budget trực tiếp; rejected_budget JOIN sang
+        # match_impressions để biết đúng nhóm của impression gốc (match_feedback không tự có cột này).
+        shown_budget = await conn.fetch(
+            "SELECT rank, over_budget, count(*) AS n FROM match_impressions "
+            "WHERE created_at >= $1 AND rank <= $2 GROUP BY rank, over_budget",
+            since, max_rank,
+        )
+        rejected_budget = await conn.fetch(
+            """
+            SELECT mi.rank, mi.over_budget, count(*) AS n
+            FROM match_feedback mf
+            JOIN match_impressions mi ON mi.impression_id = mf.impression_id AND mi.mentor_id = mf.mentor_id
+            WHERE mf.created_at >= $1 AND mf.rank IS NOT NULL AND mf.rank <= $2
+            GROUP BY mi.rank, mi.over_budget
+            """,
+            since, max_rank,
+        )
     shown_by = {r["rank"]: r["n"] for r in shown}
     rejected_by = {r["rank"]: r["n"] for r in rejected}
     by_rank = []
@@ -147,9 +166,22 @@ async def evaluation_stats(days: int, max_rank: int = 10) -> dict:
         n, bad = shown_by.get(rank, 0), rejected_by.get(rank, 0)
         by_rank.append({"rank": rank, "impressions": n, "notRelevant": bad,
                         "notRelevantRate": round(bad / n, 4) if n else 0.0})
+
+    def _by_budget(over_budget: bool) -> list[dict]:
+        shown_g = {r["rank"]: r["n"] for r in shown_budget if r["over_budget"] == over_budget}
+        rejected_g = {r["rank"]: r["n"] for r in rejected_budget if r["over_budget"] == over_budget}
+        out = []
+        for rank in range(1, max_rank + 1):
+            n, bad = shown_g.get(rank, 0), rejected_g.get(rank, 0)
+            out.append({"rank": rank, "impressions": n, "notRelevant": bad,
+                        "notRelevantRate": round(bad / n, 4) if n else 0.0})
+        return out
+
     return {
         "days": days,
         "resultLists": lists or 0,
         "byRank": by_rank,
+        "byRankInBudget": _by_budget(False),
+        "byRankOverBudget": _by_budget(True),
         "reasons": {r["reason"]: r["n"] for r in reasons},
     }
