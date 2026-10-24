@@ -1,368 +1,470 @@
-# Thiết kế: xác thực mentor 3 vòng
+# Thiết kế: xác thực mentor 2 vòng
 
-> **Trạng thái: THIẾT KẾ ĐỀ XUẤT, chưa hiện thực (⚒).** Soạn 24/10/2026 cho scope A (xác thực mentor) của AI Interview.
-> Tài liệu này mô tả đích đến. Hiện trạng đang chạy (chat 5 lượt, có cấp độ) được mô tả ở [ai-features.md](ai-features.md) §2.
-> Khi hiện thực xong, các quy tắc ở đây thay thế phần tương ứng của [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) §3–4 (cấp độ, khung giá).
+> **Trạng thái: THIẾT KẾ ĐÃ CHỐT (nhóm xác nhận 24/10/2026), chưa hiện thực (⚒).** Soạn 24/10/2026 cho AI Interview (xác thực mentor). Bản này thay bản 3 vòng
+> (trắc nghiệm, AI chat, AI giọng nói) bằng **2 vòng**: AI phỏng vấn giọng nói có camera, rồi phỏng vấn với admin.
+> Hiện trạng đang chạy (một buổi chat 5 lượt, có cấp độ) được mô tả ở [ai-features.md](ai-features.md) §2.
+> Khi hiện thực xong, các quy tắc ở đây thay thế phần tương ứng của [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) §3–4 và §16.1.
+> Tên endpoint, bảng, biến cấu hình của **hiện trạng** đã được đối chiếu với mã nguồn; mọi thứ ghi **(đề xuất)** hoặc "mới" là chưa tồn tại.
 
 ## 1. Mục tiêu và phạm vi
 
-**Mục tiêu.** Quyết định một mentor mới có được xuất hiện trong kết quả matching và nhận mentee hay không, bằng quy trình
-ba vòng đi từ rẻ đến đắt: trắc nghiệm → chat tự luận với AI → phỏng vấn giọng nói với AI có quay video. Admin quyết định cuối cùng (NFR-8).
+**Mục tiêu.** Quyết định một mentor mới có được xuất hiện trong kết quả matching và nhận mentee hay không, bằng hai vòng: AI phỏng vấn
+giọng nói (rẻ, mở rộng được) rồi admin phỏng vấn trực tiếp (đắt, đáng tin). Admin quyết định cuối (NFR-8).
 
 **Thay đổi so với hiện trạng.**
 
 | Hạng mục | Hiện trạng | Thiết kế mới |
 |---|---|---|
-| Cấu trúc | Một buổi phỏng vấn chat (5 lượt), giọng nói là chế độ thay thế | Ba vòng nối tiếp trong một **đợt đăng ký** |
-| Cổng chặn | Không có | Vòng 1 là cổng chặn |
-| Số lần | Tối đa 3 buổi, chờ 7 ngày sau khi bị từ chối, admin mở khoá | Mỗi vòng tối đa 2 lần, bị từ chối thì chờ 15 ngày, không còn nút mở khoá |
-| Video | Không | Vòng 3 bắt buộc bật camera, lưu 60 ngày, AI phân tích sau buổi |
+| Cấu trúc | Một buổi chat 5 lượt; giọng nói là chế độ thay thế (`mode = VOICE`) | Hai vòng nối tiếp trong một **đợt đăng ký** |
+| Vòng 1 | Chat | AI **giọng nói**, bắt buộc **camera**, video lưu 60 ngày. AI chuyển giọng nói thành văn bản, phân tích và gắn cờ; **admin duyệt** kết quả |
+| Vòng 2 | Không có (admin duyệt trên bản ghi) | **Admin phỏng vấn** qua video call (phòng Jitsi), chấm theo **phiếu thống nhất**, không giới hạn thời lượng |
+| Số lần | Tối đa 3 buổi, chờ 7 ngày, admin mở khoá | Mỗi vòng tối đa 2 lần, bị đóng đợt thì chờ 15 ngày, **không còn nút mở khoá** |
 | Cấp độ Junior/Senior/Expert | Có, quyết định khung giá, có luồng xin nâng cấp 90 ngày | **Bỏ hoàn toàn** |
 | Giá | Trong khung của cấp | Mentor đặt tự do |
+| Chế độ chat và dữ liệu phỏng vấn cũ | Có | **Xoá khỏi dự án** (D10) |
 
-**Ngoài phạm vi.** Luyện phỏng vấn cho mentee và phỏng vấn thử với mentor (scope B). Mức `JUNIOR` của **mentee** trong luyện phỏng vấn giữ nguyên.
+**Ngoài phạm vi.** Luyện phỏng vấn cho mentee và phỏng vấn thử với mentor (`practice_interviews`, `mock-interviews`). Mức `JUNIOR` của **mentee**
+trong luyện phỏng vấn giữ nguyên. Phân tích khuôn mặt trong video (D5). Đối chiếu danh tính với giấy tờ.
 
 ## 2. Quyết định đã chốt
 
 | # | Quyết định |
 |---|---|
-| D1 | Ba vòng: (1) trắc nghiệm có chống gian lận, (2) AI chat tự luận, (3) AI phỏng vấn giọng nói, mentor bật camera |
-| D2 | Vòng 3: AI chỉ có giọng nói, màn hình hiện chữ AI nói, không có hình AI. Sau buổi, AI phân tích video |
-| D3 | Cổng chặn ở vòng 1 |
-| D4 | Mỗi vòng tối đa 2 lần |
-| D5 | Không được admin duyệt thì đăng ký lại sau 15 ngày |
-| D6 | Vòng 3 AI chấm, admin duyệt cuối cùng |
-| D7 | Video lưu 60 ngày, admin xem và xoá được, mentor chỉ xem |
-| D8 | Bỏ cấp độ khỏi toàn bộ dự án (cả luồng xin nâng cấp 90 ngày) |
-| D9 | Giá mentor đặt tự do, không giới hạn |
+| D1 | Hai vòng: (1) AI phỏng vấn giọng nói, bắt buộc camera; (2) phỏng vấn với người |
+| D2 | Người phỏng vấn vòng 2 là **admin**, cũng là người quyết định cuối |
+| D3 | Vòng 2 là video call qua **phòng Jitsi có sẵn** |
+| D4 | Đặt lịch vòng 2: admin đề xuất khung giờ, mentor chọn |
+| D5 | Video vòng 1: quay, lưu 60 ngày, admin xem và xoá được, mentor chỉ xem. **Không phân tích khuôn mặt** (vòng 2 gặp người thật nên không cần OpenCV hay MediaPipe) |
+| D6 | Bỏ cấp độ khỏi toàn bộ dự án (cả luồng xin nâng cấp 90 ngày); giá mentor tự đặt; bị đóng đợt hoặc bị từ chối thì chờ 15 ngày |
+| D7 | Vòng 1 kết thúc bằng bước **admin duyệt**: video được lưu; AI chuyển giọng nói thành văn bản, phân tích và gắn cờ; admin xem văn bản, phân tích, cờ và video rồi cho sang vòng 2 hoặc từ chối. Admin có **hai quyết định** trong một đợt: duyệt vòng 1 và kết luận sau vòng 2 |
+| D8 | **Buổi vòng 2 không giới hạn thời lượng.** Khung giờ chỉ có giờ bắt đầu; admin kết thúc buổi bằng cách nộp phiếu chấm và quyết định. Phòng Jitsi vẫn cần một trần kỹ thuật (mục 6.2) |
+| D9 | **Đổi lịch vòng 2:** mentor được đổi tối đa **2 lần** mỗi đợt, và phải báo trước **ít nhất 24 giờ** so với giờ bắt đầu. Muộn hơn thì không được đổi; không đến thì tính là vắng |
+| D10 | **Bỏ phần cũ khỏi dự án:** chế độ chat của mentor (không giữ dự phòng), luồng cấp độ và nâng cấp, mở khoá, và toàn bộ dữ liệu phỏng vấn cũ, **kể cả buổi giọng nói đã có** (xoá sau khi sao lưu). Mentor đã `APPROVED` giữ nguyên trạng thái |
+| D11 | Vòng 2 chấm theo **phiếu thống nhất** 5 tiêu chí (mục 6.3), cùng thang và cùng ngưỡng với vòng 1 để so sánh được. Nhóm đã xác nhận trọng số 30/25/10/20/15, điều kiện chặn và quy tắc bắt buộc lý do |
+| D12 | **Bản chép lời có kiểm tra chéo:** trình duyệt vẫn gửi bản chép lời của OpenAI để chấm nhanh; server chép lời lại từ âm thanh đã tải lên và so sánh, lệch nhiều thì gắn cờ `TRANSCRIPT_MISMATCH` (mục 5.3). Nhóm đã đồng ý làm cách này ngay từ bản đầu |
+| D13 | **`RETAKE` ở bước duyệt vòng 1:** admin được yêu cầu mentor làm lại vòng 1 tối đa **2 lần mỗi đợt** (`VERIFICATION_ROUND1_MAX_RETAKE`), **không tính** vào 2 lần làm (mục 4). Hết 2 lần `RETAKE` thì admin chỉ còn `PASS` hoặc `REJECT` |
 
-Các quyết định D10 trở đi là đề xuất của người soạn, được đánh dấu **(đề xuất)** để nhóm xác nhận.
+Các giá trị ghi **(đề xuất)** là giá trị khởi đầu của người soạn, hiệu chỉnh khi có dữ liệu thật (mục 16).
 
 ## 3. Tổng quan quy trình
 
-Một **đợt đăng ký** (application) gom ba vòng. Mentor chỉ có một đợt đang mở tại một thời điểm.
+Một **đợt đăng ký** (application) gom hai vòng. Mentor chỉ có một đợt đang mở tại một thời điểm.
 
 ```mermaid
 flowchart TD
-    A["Mentor bắt đầu đợt đăng ký"] --> R1["Vòng 1: trắc nghiệm"]
-    R1 -->|"đạt ngưỡng"| R2["Vòng 2: AI chat tự luận"]
-    R1 -->|"chưa đạt, còn lượt"| R1
-    R1 -->|"chưa đạt, hết 2 lượt"| X["Đóng đợt: chờ 15 ngày"]
-    R2 -->|"hoàn thành hợp lệ"| R3["Vòng 3: giọng nói + camera"]
-    R2 -->|"không hoàn thành, hết 2 lượt"| X
-    R3 -->|"hoàn thành hợp lệ"| P["Chờ admin duyệt"]
-    R3 -->|"không hoàn thành, hết 2 lượt"| X
-    P -->|"APPROVE"| OK["Mentor được kích hoạt"]
-    P -->|"REJECT"| X
-    P -->|"REQUEST_RETAKE"| R3
+    A["Mentor bắt đầu đợt đăng ký"] --> R1["Vòng 1: AI giọng nói + camera"]
+    R1 -->|"không hợp lệ, còn lượt"| R1
+    R1 -->|"không hợp lệ, hết 2 lượt"| X["Đóng đợt: chờ 15 ngày"]
+    R1 -->|"hoàn thành hợp lệ"| T["AI chép lời, phân tích, gắn cờ"]
+    T --> V["Admin duyệt vòng 1: xem văn bản, phân tích, cờ, video"]
+    V -->|"REJECT"| X
+    V -->|"RETAKE (tối đa 2 lần)"| R1
+    V -->|"PASS"| S["Admin đề xuất khung giờ"]
+    S --> C["Mentor chọn khung giờ"]
+    C --> R2["Vòng 2: admin phỏng vấn qua Jitsi, chấm phiếu"]
+    R2 -->|"mentor vắng lần 1"| S
+    R2 -->|"mentor vắng lần 2"| X
+    R2 -->|"APPROVE"| OK["Mentor được kích hoạt"]
+    R2 -->|"REJECT"| X
+    R2 -->|"RESCHEDULE"| S
 ```
 
-**Quan hệ với trạng thái hồ sơ** (`mentor_profiles.verification_status`, giữ nguyên bốn giá trị hiện có):
+**Trạng thái đợt** (`verification_applications.status`, mới) và quan hệ với `mentor_profiles.verification_status` (giữ nguyên bốn giá trị hiện có):
 
-| Thời điểm | Giá trị |
-|---|---|
-| Chưa có đợt, hoặc đang làm vòng 1–3 | `PENDING_INTERVIEW` |
-| Vòng 3 xong, chờ admin | `PENDING_REVIEW` |
-| Admin duyệt | `APPROVED` (mới vượt qua hard filter của matching) |
-| Đợt bị đóng (hết lượt hoặc admin từ chối) | `REJECTED` |
-| Hết 15 ngày và bắt đầu đợt mới | quay về `PENDING_INTERVIEW` |
+| `status` của đợt | Ý nghĩa | `verification_status` |
+|---|---|---|
+| `ROUND1` | Đang làm vòng 1 (hoặc chưa có lần nào) | `PENDING_INTERVIEW` |
+| `ROUND1_REVIEW` | Vòng 1 xong, AI đã chép lời và phân tích, chờ admin duyệt | `PENDING_REVIEW` |
+| `ROUND2_PENDING_SLOTS` | Admin đã duyệt vòng 1, chờ đề xuất giờ | `PENDING_REVIEW` |
+| `ROUND2_PENDING_CHOICE` | Admin đã đề xuất, chờ mentor chọn | `PENDING_REVIEW` |
+| `ROUND2_SCHEDULED` | Đã chốt giờ, chờ buổi phỏng vấn | `PENDING_REVIEW` |
+| `APPROVED` | Admin duyệt | `APPROVED` (mới vượt hard filter của matching) |
+| `REJECTED` | Admin từ chối | `REJECTED` |
+| `CLOSED` | Hết lượt hoặc vắng hai lần | `REJECTED` |
+
+Sau 15 ngày kể từ lúc đóng, mentor bắt đầu đợt mới và `verification_status` quay về `PENDING_INTERVIEW`.
 
 ## 4. Luật số lần và 15 ngày
 
-Một **lần** (attempt) là một lượt làm một vòng. Một lần có kết quả là `PASSED`, `FAILED`, `ABANDONED` hoặc `INVALIDATED`.
+Một **lần** (attempt) là một lượt làm vòng 1. Một lần có kết quả `PASSED`, `ABANDONED` hoặc `INVALIDATED`.
 
 | Tình huống | Kết quả |
 |---|---|
-| Vòng 1 chưa đạt, lần 1 | Làm lại vòng 1 ngay, đề mới (trộn lại) |
-| Vòng 1 chưa đạt, lần 2 | Đóng đợt, chờ 15 ngày |
-| Vòng 2 hoặc 3 không hoàn thành hợp lệ, lần 1 | Làm lại chính vòng đó |
-| Vòng 2 hoặc 3 không hoàn thành hợp lệ, lần 2 | Đóng đợt, chờ 15 ngày |
-| Đã qua một vòng | Giữ kết quả, không làm lại trong cùng đợt |
-| Admin từ chối | Đóng đợt, chờ 15 ngày |
-| Admin yêu cầu làm lại | Mở lại vòng 3, **không tính** vào 2 lần |
-| Bỏ dở quá hạn | Tính là một lần `ABANDONED` (hiện là 24 giờ, giữ nguyên) |
+| Vòng 1 không hoàn thành hợp lệ, lần 1 | Làm lại vòng 1 ngay |
+| Vòng 1 không hoàn thành hợp lệ, lần 2 | Đóng đợt, chờ 15 ngày |
+| Vòng 1 hoàn thành hợp lệ | AI chép lời, phân tích, gắn cờ; đợt chuyển `ROUND1_REVIEW` chờ admin duyệt |
+| Admin duyệt vòng 1: `PASS` | Giữ kết quả vòng 1, không làm lại trong cùng đợt, sang vòng 2 |
+| Admin duyệt vòng 1: `REJECT` | Đóng đợt, chờ 15 ngày |
+| Admin duyệt vòng 1: `RETAKE` (D13) | Mở lại vòng 1, **không tính** vào 2 lần làm; tối đa 2 lần `RETAKE` mỗi đợt, hết thì admin chỉ còn `PASS` hoặc `REJECT`. Dùng khi video hoặc âm thanh hỏng, hoặc cần xem lại, không phải lỗi của mentor |
+| Vòng 2: mentor đổi giờ, báo trước **≥ 24 giờ** | Được tối đa **2 lần** mỗi đợt (D9), không tính lần vắng; admin đề xuất lại giờ |
+| Vòng 2: mentor đổi giờ muộn hơn 24 giờ, hoặc đã đổi đủ 2 lần | Không được đổi; nếu không đến thì tính vắng |
+| Vòng 2: mentor vắng buổi đã chốt, lần 1 | Tính một lần vắng, admin đề xuất lại giờ |
+| Vòng 2: mentor vắng lần 2 | Đóng đợt, chờ 15 ngày |
+| Vòng 2: admin vắng, hoặc admin chọn `RESCHEDULE` | **Không tính** lần của mentor |
+| Mentor không chọn giờ trong 3 ngày (đề xuất) | Admin đề xuất lại hoặc đóng đợt, không tính lần |
+| Admin từ chối (sau vòng 1 hoặc sau buổi vòng 2) | Đóng đợt, chờ 15 ngày |
 | Sau 15 ngày | Bắt đầu đợt mới, làm lại từ vòng 1 |
 
-**"Không hoàn thành hợp lệ" (đề xuất).** Vì cổng chặn chỉ ở vòng 1, vòng 2 và 3 không có điểm đạt cố định. Hai vòng này được tính là
-một lần thất bại khi: bỏ dở quá hạn, bị vô hiệu hoá (vòng 3: từ chối cấp camera, camera tắt quá mức cho phép), hoặc lỗi từ phía người
-dùng. Lỗi do hệ thống (DeepSeek hoặc OpenAI không phản hồi) **không** tính lần. Điểm thấp ở vòng 2 và 3 không loại mentor: nó chảy vào khuyến nghị
-cho admin.
+**"Không hoàn thành hợp lệ" ở vòng 1 (đề xuất).** Vì không có điểm đạt cố định, vòng 1 chỉ bị tính là một lần thất bại khi:
+bỏ dở (**buổi giọng nói: IN_PROGRESS quá 30 phút (`VOICE_SESSION_MINUTES`) mà chưa gửi bản chép lời**; ngưỡng 24 giờ của chat không áp dụng ở đây),
+bị vô hiệu hoá (từ chối cấp camera hoặc micro, camera mất quá `VIDEO_RECONNECT_SECONDS` = 60 giây tổng cộng), hoặc lỗi từ phía mentor.
+Lỗi do hệ thống (OpenAI hoặc DeepSeek không phản hồi) **không** tính lần. **Điểm thấp không loại mentor**: nó chảy vào khuyến nghị cho admin (mục 7).
 
 **Thời hạn 15 ngày** tính từ lúc đóng đợt (`closed_at`) hoặc lúc admin từ chối (`reviewed_at`). Cấu hình `VERIFICATION_RETRY_DAYS = 15`.
 
-## 5. Vòng 1: trắc nghiệm
+## 5. Vòng 1: AI phỏng vấn giọng nói và camera
 
-### 5.1 Mục đích và hạn chế
+### 5.1 Trải nghiệm và phần tái dùng
 
-Sàng lọc kiến thức nền, chấm tất định, không tốn LLM. Trắc nghiệm **không** đo được năng lực hướng dẫn hay kinh nghiệm thật, nên nó chỉ là cổng chặn, không tham gia vào điểm cuối.
+- AI chỉ có giọng nói. Màn hình hiện chữ AI nói (phụ đề), không hiện hình AI.
+- **Tái dùng nguyên trạng:** `POST /api/ai/interviews/voice` (trả client secret ngắn hạn, `ai-service/app/interview/voice.py`),
+  `POST /api/ai/interviews/{id}/voice-transcript` (chấm bản chép lời bằng `engine.evaluate` và `engine.summarize`, DeepSeek có fallback rule-based),
+  kế hoạch chủ đề AI soạn từ hồ sơ và CV (cột `interviews.plan`, migration 011, `planner.mentor_plan`), rubric 4 tiêu chí,
+  chống prompt injection, `interviews.consent_external_ai` (đồng ý âm thanh được OpenAI xử lý, migration 010), tự đánh dấu `ABANDONED` sau 30 phút.
+- **Mới:** camera và micro **bắt buộc**; đồng ý quay và lưu video; quay và tải lên theo đoạn; lưu 60 ngày; phát lại cho admin; chép lời lại phía server.
+- Mentor từ chối cấp camera thì không bắt đầu được, và **chưa tính lần**.
+- Chế độ chat (`mode = CHAT`) **bị xoá khỏi dự án** (D10, mục 8), không giữ làm dự phòng.
 
-### 5.2 Đề thi (đề xuất)
+### 5.2 Luồng quay và tải lên
 
-| Thông số | Giá trị mặc định | Cấu hình |
-|---|---|---|
-| Số câu | 20 | `MCQ_QUESTION_COUNT` |
-| Thời gian làm bài | 30 phút, tính ở server | `MCQ_TIME_LIMIT_MINUTES` |
-| Ngưỡng đạt | 70% số câu đúng | `MCQ_PASS_RATIO` |
-| Số đáp án mỗi câu | 4, một đáp án đúng | |
-
-- **Chọn đề theo lĩnh vực và kỹ năng** của mentor, giống cách `question_bank` đang chọn chủ đề (ưu tiên chủ đề trùng kỹ năng khai báo, luôn phủ nhiều chủ đề).
-- **Trộn ngẫu nhiên** thứ tự câu và thứ tự đáp án cho từng lần làm. Mỗi lần làm rút bộ câu hỏi riêng, và lần làm lại không trùng câu của lần trước nếu ngân hàng đủ lớn.
-- **Ngân hàng câu hỏi:** tối thiểu khoảng 60 câu mỗi lĩnh vực (gấp 3 lần số câu trong đề) để hạn chế lộ đề. Câu hỏi do nhóm soạn. Nếu dùng LLM sinh nháp thì **bắt buộc người duyệt đáp án**, vì LLM có thể gán sai đáp án đúng.
-
-### 5.3 Chấm và bảo mật đề
-
-- Server giữ đáp án đúng, **không gửi xuống trình duyệt**. Mỗi câu trả lời được gửi về server ngay khi chọn, kèm thời điểm.
-- Hết giờ thì server tự nộp bài. Điểm tính ở server từ các câu đã ghi nhận.
-- Mentor không thấy đáp án đúng sau khi làm xong, chỉ thấy đạt hoặc chưa đạt và điểm số.
-
-### 5.4 Chống gian lận
-
-Trình duyệt chỉ cung cấp **tín hiệu**, không phải bằng chứng (người dùng vẫn có thể dùng điện thoại thứ hai). Hệ thống ghi sự kiện, không tự kết tội.
-
-| Tín hiệu | Cách bắt | Ghi nhận |
-|---|---|---|
-| Rời tab hoặc cửa sổ | `visibilitychange`, `blur` | Số lần và tổng thời gian rời |
-| Chọn quá nhanh | Thời gian một câu dưới ngưỡng (mặc định 3 giây) | Số câu quá nhanh |
-| Copy, paste, chuột phải | Sự kiện clipboard và `contextmenu` | Số lần |
-| Thoát toàn màn hình | Fullscreen API | Số lần |
-| Nộp trùng, đổi đáp án bất thường | Phân tích log ở server | Số lần đổi |
-
-**Xử lý (đề xuất).**
-- Mọi sự kiện lưu lại và hiển thị cho admin ở phần duyệt, kể cả khi mentor đạt vòng 1.
-- Có hai ngưỡng cứng, cấu hình được, vượt thì lần làm bị `INVALIDATED` (tính một lần, điểm 0): rời tab quá **5 lần** hoặc tổng thời gian rời tab quá **60 giây**.
-- Các tín hiệu còn lại chỉ gắn cờ, không loại. Lý do: dễ báo nhầm (thông báo hệ thống, bấm nhầm, câu dễ trả lời nhanh).
-- Các ngưỡng là giá trị khởi đầu, cần hiệu chỉnh khi có dữ liệu thật. Khi bảo vệ cần nói rõ giới hạn: không thể chống gian lận tuyệt đối trên trình duyệt.
-
-## 6. Vòng 2: AI chat tự luận
-
-Dùng lại luồng chat hiện có ([ai-features.md](ai-features.md) §2.2–2.7): câu hỏi thích ứng (DEEPEN hoặc PIVOT), hai engine DeepSeek và rule-based có fallback, rubric 4 tiêu chí, chống prompt injection, cờ `COPIED_ANSWER`, ẩn điểm khi đang làm.
-
-**Thay đổi:**
-- Là vòng thứ hai, chỉ mở sau khi vòng 1 đạt.
-- Không còn `kind = UPGRADE`, `from_tier`.
-- Kết quả không tự quyết định trạng thái hồ sơ. Nó trở thành đầu vào của khuyến nghị cuối (mục 8).
-- Giới hạn 2 lần áp dụng theo mục 4.
-
-## 7. Vòng 3: phỏng vấn giọng nói và camera
-
-### 7.1 Trải nghiệm
-
-- AI chỉ có giọng nói. Màn hình hiện chữ AI nói (phụ đề) và không hiện hình AI. Hạ tầng giọng nói dùng lại OpenAI Realtime qua WebRTC ([ai-features.md](ai-features.md) §2.11).
-- Mentor **bắt buộc bật camera và micro**. Trước khi bắt đầu phải đồng ý (mục 7.5). Từ chối cấp camera thì không bắt đầu được, và chưa tính lần.
-- Kế hoạch chủ đề do AI soạn từ hồ sơ và CV như hiện nay. **Tuỳ chọn (đề xuất):** thêm một chủ đề kiểm tra tính nhất quán, hỏi lại một ý mentor đã viết ở vòng 2, để phát hiện trường hợp người viết bài khác người nói.
-
-### 7.2 Luồng quay và tải lên
+Trình duyệt quay **hai luồng** từ cùng camera và micro: (a) video có tiếng cho admin xem; (b) **chỉ âm thanh**, nhỏ, dùng cho server chép lời.
+Làm vậy để không phải cài ffmpeg vào image ai-service chỉ để tách tiếng (và vì file video 30 phút ~110 MB, lớn hơn nhiều so với giới hạn upload của API chép lời, cần kiểm khi hiện thực).
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant B as Trình duyệt (mentor)
     participant AI as ai-service
-    participant OA as OpenAI Realtime
-    participant J as Job phân tích
-    B->>AI: POST /verification/rounds/3/start {consent}
-    AI-->>B: {attemptId, clientSecret, uploadToken}
-    B->>OA: WebRTC (âm thanh) như hiện nay
-    B->>B: MediaRecorder quay camera + micro, cắt đoạn mỗi 10 giây
+    participant OA as OpenAI
+    B->>AI: POST /api/ai/interviews/voice {consent_external_ai, consent_video}
+    AI-->>B: {interviewId, clientSecret, uploadToken}
+    B->>OA: WebRTC Realtime (âm thanh), OpenAI chép lời trong phiên
+    B->>B: MediaRecorder: video+tiếng, và âm thanh riêng, cắt đoạn mỗi 10 giây
     loop mỗi đoạn
-        B->>AI: PUT /videos/{id}/chunks/{n}
+        B->>AI: PUT /api/ai/verification/videos/{id}/chunks/{n} (video) và /audio-chunks/{n}
     end
-    B->>AI: POST /interviews/{id}/voice-transcript (chấm như hiện nay)
-    B->>AI: POST /videos/{id}/finish
-    AI->>J: xếp hàng phân tích
-    J->>J: lấy mẫu khung hình, đếm khuôn mặt, kiểm tra khoảng trống
-    J-->>AI: lưu kết quả phân tích
+    B->>AI: POST /api/ai/interviews/{id}/voice-transcript (bản chép lời của trình duyệt, chấm như hiện nay)
+    B->>AI: POST /api/ai/verification/videos/{id}/finish
+    AI->>OA: chép lời lại từ âm thanh đã tải (nền)
+    AI->>AI: so sánh hai bản chép lời, gắn cờ, chuyển ROUND1_REVIEW
 ```
 
-- **Tải lên theo từng đoạn** để không mất dữ liệu khi đóng tab, và để biết camera bị ngắt ở đâu (khoảng trống giữa các đoạn).
-- Giới hạn độ phân giải và bitrate khi quay (ví dụ 640×360, khoảng 500 kbps) để buổi 30 phút nặng khoảng 110 MB.
-- Camera hoặc micro ngắt giữa buổi: cho phép kết nối lại trong thời gian ngắn (đề xuất 60 giây tổng cộng). Vượt quá thì lần làm bị `INVALIDATED`.
+- **Tải theo đoạn** để không mất dữ liệu khi đóng tab, và để biết camera ngắt ở đâu.
+- Giới hạn khi quay video: 640×360, khoảng 500 kbps; buổi 30 phút nặng khoảng 110 MB (500 kbps × 1.800 s ÷ 8 ≈ 112 MB). Luồng chỉ âm thanh khoảng 32 kbps, ≈ 7 MB.
+- Camera hoặc micro ngắt giữa buổi: cho kết nối lại, tổng thời gian mất tối đa 60 giây (đề xuất). Vượt quá thì lần làm bị `INVALIDATED`.
 
-### 7.3 Phân tích video sau buổi
+### 5.3 Chép lời, phân tích và gắn cờ
 
-Mục tiêu duy nhất là **tín hiệu cho admin**. Phân tích **không chấm điểm** và không đánh giá nét mặt, cảm xúc hay độ tự tin (độ chính xác thấp, dễ thiên vị, khó bảo vệ).
+Sau khi mentor kết thúc buổi, AI xử lý trước khi admin duyệt:
 
-| Cờ | Điều kiện (đề xuất) |
-|---|---|
-| `NO_FACE_LONG` | Không thấy mặt liên tục quá 20 giây |
-| `MULTIPLE_FACES` | Thấy nhiều hơn một khuôn mặt trong quá 10% số khung hình |
-| `CAMERA_OFF` | Có khoảng trống giữa các đoạn video |
-| `LOW_PRESENCE` | Dưới 80% khung hình có đúng một khuôn mặt |
+1. **Chép lời kép.** Bản chép lời của OpenAI trong phiên (`OPENAI_TRANSCRIBE_MODEL`, `voice.py` `session_config`) do **trình duyệt gom và gửi lên**
+   (`TranscriptInput.items`), nên về nguyên tắc có thể bị sửa. Vì vậy server **chép lời lại** từ luồng âm thanh đã tải lên (nguồn không đi qua tay người dùng sau khi tải) và lưu riêng.
+2. **So sánh.** Chuẩn hoá (bỏ dấu câu, chữ thường) rồi tính tỉ lệ khác biệt theo từ giữa hai bản (`transcript_diff`). Vượt `TRANSCRIPT_MISMATCH_THRESHOLD` (khởi đầu 0,30, đề xuất, hiệu chỉnh khi có dữ liệu thật) thì gắn cờ `TRANSCRIPT_MISMATCH`. Chép lời lại thất bại (OpenAI lỗi, file quá lớn) thì ghi `transcript_check = UNAVAILABLE`, **không** gắn cờ và **không** chặn quy trình.
+3. **Phân tích.** Chấm bản chép lời của trình duyệt bằng engine hiện có (DeepSeek, fallback rule-based), rubric 4 tiêu chí, điểm 0 đến 100, nhận xét từng chủ đề. Không đổi so với hiện trạng. Khi có cờ `TRANSCRIPT_MISMATCH`, giao diện hiện hai bản cạnh nhau và đánh dấu điểm là "chưa đáng tin".
+4. **Gắn cờ.** Các cờ rubric áp dụng được cho bản chép lời (ví dụ `PROMPT_INJECTION`), cờ camera (5.4) và `TRANSCRIPT_MISMATCH`. Cờ chỉ là tín hiệu cho admin, **không tự loại** mentor.
 
-- Cách làm: lấy mẫu khoảng một khung hình mỗi 2–5 giây, dùng bộ phát hiện khuôn mặt chạy trên CPU. **Chọn thư viện (OpenCV hoặc MediaPipe) ở giai đoạn hiện thực**, vì ảnh hưởng đến kích thước image của ai-service.
-- Không đối chiếu danh tính với giấy tờ (ngoài phạm vi).
-- Cờ nghiêm trọng (`MULTIPLE_FACES`, `NO_FACE_LONG`, `CAMERA_OFF`) buộc khuyến nghị của AI là `NEEDS_REVIEW` bất kể điểm, cùng cách `PROMPT_INJECTION` đang xử lý.
-- Phân tích chạy bất đồng bộ. Admin có thể mở buổi duyệt khi điểm đã có, giao diện hiển thị "đang phân tích" cho tới khi xong.
+Kết quả (văn bản, phân tích, điểm, cờ) và video được trình bày gộp cho admin ở bước duyệt vòng 1 (mục 7).
 
-### 7.4 Lưu trữ và quyền truy cập video
+### 5.4 Cờ camera (không cần thị giác máy tính)
+
+Không phân tích hình ảnh. Cờ suy ra từ **khoảng trống giữa các đoạn tải lên**:
+
+| Cờ | Điều kiện (đề xuất) | Tác động |
+|---|---|---|
+| `CAMERA_OFF` | Thiếu đoạn hoặc khoảng trống thời gian giữa các đoạn vượt `VIDEO_MAX_GAP_SECONDS` (10 giây) | Buộc khuyến nghị của AI là `NEEDS_REVIEW` bất kể điểm, giống cách `PROMPT_INJECTION` đang xử lý |
+
+### 5.5 Lưu trữ và quyền truy cập video
 
 | Mục | Quy định |
 |---|---|
-| Thời hạn lưu | **60 ngày** kể từ khi kết thúc buổi (`VIDEO_RETENTION_DAYS`). Job nền xoá file và đánh dấu `deleted_at` |
+| Thời hạn lưu | **60 ngày** kể từ khi kết thúc buổi (`VIDEO_RETENTION_DAYS`), áp cho cả video và âm thanh. Job nền xoá file và đánh dấu `deleted_at`, cùng khuôn với `purge_expired_cvs_forever` (CV) đã chạy trong `ai-service/app/main.py` |
 | Admin | Xem và **xoá** được |
 | Mentor | Chỉ **xem** video của chính mình, không xoá |
 | Người khác | Không truy cập được |
-| Nơi lưu | Docker volume như `cv-storage` (dev). Triển khai thật nên dùng object storage |
+| Nơi lưu | Một Docker volume mới cho ai-service (dev), cùng kiểu `cv-storage`; mẫu chống path traversal đã có ở `ai-service/app/storage.py`. Triển khai thật nên dùng object storage |
 | Phát video | Qua endpoint có kiểm quyền, không có đường dẫn file công khai |
 | Nhật ký | Ghi audit log mỗi lần admin xem hoặc xoá |
 
-Xoá sớm bởi admin là xoá vĩnh viễn file; bản ghi phân tích và cờ vẫn giữ để admin còn căn cứ.
+Xoá sớm bởi admin là xoá vĩnh viễn file; bản ghi, cờ và hai bản chép lời vẫn giữ để admin còn căn cứ.
 
-### 7.5 Đồng ý và quyền riêng tư
+### 5.6 Đồng ý và quyền riêng tư
 
-Video và âm thanh là dữ liệu cá nhân nhạy cảm. Trước khi bắt đầu vòng 3, mentor phải tick đồng ý, nêu rõ: (a) quay camera và micro, (b) âm thanh được OpenAI xử lý, (c) video lưu 60 ngày, (d) admin xem được và mentor chỉ xem. Giá trị lưu cùng bản ghi (mở rộng `consent_external_ai`). Cần bổ sung một **chính sách dữ liệu video** tương tự [cv-data-policy.md](cv-data-policy.md) khi hiện thực.
+Hai nội dung đồng ý **khác nhau** nên tách thành hai trường (đề xuất): `consent_external_ai` (có sẵn: âm thanh được OpenAI xử lý, nay gồm cả lần chép lời lại phía server)
+và `consent_video` (mới: quay camera, video lưu 60 ngày, admin xem được, mentor chỉ xem). Mentor phải tick cả hai trước khi bắt đầu. Cần bổ sung một **chính sách dữ liệu video**
+tương tự [cv-data-policy.md](cv-data-policy.md) khi hiện thực.
 
-## 8. Điểm tổng hợp và duyệt của admin
+## 6. Vòng 2: phỏng vấn với admin (mới)
 
-- **Vòng 1:** chỉ là cổng chặn, điểm hiển thị cho admin nhưng **không** vào điểm cuối.
-- **Điểm cuối (đề xuất):** `final = 0.6 × điểm vòng 2 + 0.4 × điểm vòng 3` (thang 0–100). Vòng 2 đo chiều sâu và kinh nghiệm, vòng 3 đo giao tiếp trực tiếp. Trọng số cấu hình được. Mỗi vòng dùng điểm của lần làm hợp lệ gần nhất.
-- **Khuyến nghị của AI:** giữ ngưỡng hiện có (≥ 70 `APPROVE`, 50–69.9 `NEEDS_REVIEW`, < 50 `REJECT`). Có cờ gian lận nghiêm trọng (chống gian lận vòng 1, `PROMPT_INJECTION`, `COPIED_ANSWER`, cờ video) thì `NEEDS_REVIEW`.
-- **Quyết định của admin** (giữ nguyên): `APPROVE`, `REJECT`, `REQUEST_RETAKE`. Quy tắc ghi chú tối thiểu 10 ký tự khi quyết định ngược khuyến nghị giữ nguyên. **Bỏ** phần chọn cấp độ, nên bỏ `TIER_REQUIRED` và `TIER_NOT_HIGHER`.
-- Trang duyệt hiển thị gộp: điểm và cờ vòng 1, hội thoại và rubric vòng 2, hội thoại, rubric và **trình phát video** vòng 3, các cờ phân tích video.
-- Audit log và thống kê đồng thuận admin và AI giữ nguyên, bỏ trường `tier`, `fromTier`, `suggestedTier`.
+### 6.1 Luồng
 
-## 9. Bỏ cấp độ và giá tự do
+1. Admin **duyệt vòng 1 là `PASS`** (mục 7): đợt chuyển `ROUND2_PENDING_SLOTS`. Vòng 2 chỉ mở sau bước này.
+2. Admin **đề xuất khung giờ** (mặc định 3, `VERIFICATION_ROUND2_SLOT_COUNT`), mỗi khung chỉ gồm **giờ bắt đầu**. Giao diện có thể gộp duyệt vòng 1 và đề xuất giờ thành một thao tác.
+3. Mentor chọn một khung giờ trong **trang trong app** (nguồn chính), trong 3 ngày (`VERIFICATION_SLOT_CHOICE_DAYS`). Mentor đổi giờ theo D9: tối đa 2 lần, báo trước ≥ 24 giờ.
+4. Hệ thống chốt giờ: `ROUND2_SCHEDULED`. **Không giới hạn thời lượng** (D8). Hệ thống cảnh báo (không chặn) khi admin đã có buổi khác bắt đầu trong vòng 60 phút (đề xuất), vì không có thời lượng nên không tự tính được chồng lịch.
+5. Tới giờ cả hai vào phòng Jitsi. Admin chấm phiếu (6.3) rồi ghi kết luận: `APPROVE`, `REJECT` hoặc `RESCHEDULE`.
+
+### 6.2 Phòng Jitsi
+
+Tái dùng hạ tầng Jitsi sẵn có (compose profile `jitsi`, prosody `AUTH_TYPE=jwt`, `ENABLE_GUESTS=0`) và cách ký JWT của mentoring-service, nhưng **không dùng lại `RoomService.join`**
+vì hàm đó gắn chặt với bảng `sessions` (đọc phiên, `mentorId`/`menteeId`, trạng thái `CONFIRMED`).
+
+| Mục | Quy định (đề xuất) |
+|---|---|
+| Tên phòng | `mentorhub-verify-<uuid>` |
+| Quyền | Admin là moderator, mentor là khách |
+| Khung giờ vào phòng | Mở trước giờ bắt đầu `ROOM_OPENS_BEFORE` (10 phút, cấu hình sẵn của mentoring-service). **Không có giờ đóng theo lịch** (D8); token có hạn `exp` = giờ bắt đầu + `VERIFICATION_ROOM_MAX_HOURS` (4 giờ) chỉ như **trần kỹ thuật an toàn**, không phải thời lượng chính sách. Admin chấm xong thì buổi kết thúc (`ended_at`) |
+| Nhật ký | `mentor_joined_at`, `admin_joined_at` trên bản ghi `verification_interviews` |
+| Mentor vắng | Sau `ROOM_GRACE` (10 phút) kể từ giờ bắt đầu mà `mentor_joined_at` còn rỗng thì admin được báo vắng. Quy tắc giống `ROOM_REQUIRE_JOIN_LOG`: **nhật ký vào phòng quyết định**, không phải lời khai |
+| Cấp token | Endpoint nội bộ **mới** ở mentoring-service (`POST /internal/rooms/token`), ai-service gọi bằng `X-Internal-Token`. Giữ `JITSI_JWT_SECRET` ở một nơi duy nhất |
+
+Phần việc phía mentoring-service: tách `RoomService.issueToken(roomName, userId, name, moderator, opensAt, expiresAt)` dùng chung cho phiên học và phỏng vấn xác minh.
+**Cần chạy thử khi hiện thực:** Jitsi/prosody có ngắt người đã vào phòng khi JWT hết hạn hay chỉ kiểm lúc vào. Kết quả quyết định trần 4 giờ có cắt buổi đang diễn ra hay không.
+
+### 6.3 Phiếu chấm thống nhất (D11)
+
+Mục tiêu: mọi buổi phỏng vấn của mọi mentor được chấm bằng **cùng tiêu chí, cùng thang, cùng quy tắc**, và so sánh được với điểm AI ở vòng 1. Dùng cùng thang 0 đến 10 và cùng ba mức mô tả (0–2, 3–6, 7–10) với rubric AI trong `rubric.py`, thêm tiêu chí thứ năm mà chỉ người mới kiểm được.
+
+| Tiêu chí | Trọng số | 0–2 | 3–6 | 7–10 |
+|---|---|---|---|---|
+| `technical` (kỹ thuật) | 30% | Sai, lạc đề, hoặc không trả lời được câu cơ bản | Đúng nhưng chung chung, thiếu đánh đổi | Đúng, nêu được đánh đổi và giới hạn, xử lý tốt câu hỏi đào sâu |
+| `depth` (kinh nghiệm thực tế) | 25% | Không có ví dụ cụ thể, hoặc không khớp hồ sơ | Có dự án nhưng mơ hồ về vai trò và kết quả | Dự án thực tế, vai trò rõ, số liệu, giải thích quyết định |
+| `communication` (giao tiếp) | 10% | Khó theo dõi | Dễ hiểu | Có cấu trúc, điều chỉnh theo người nghe |
+| `mentoring` (hướng dẫn) | 20% | Không có góc nhìn hướng dẫn | Có chỉ dẫn chung | Kế hoạch dạy cụ thể, biết gỡ vướng, hỏi ngược để chẩn đoán trình độ mentee |
+| `authenticity` (xác thực và cam kết) | 15% | Hồ sơ, CV hoặc vòng 1 không khớp lời nói; nghi người khác làm bài; né câu hỏi kiểm tra | Khớp phần lớn; cam kết thời gian, số mentee còn mơ hồ | Khớp hoàn toàn; cam kết rõ (giờ rảnh, số mentee, giá, cách làm việc) |
+
+Tổng trọng số = 30 + 25 + 10 + 20 + 15 = 100%. Trọng số và mô tả là **hằng số trong mã**, đặt cạnh `rubric.py` (cùng cách `WEIGHTS` đang làm), không phải biến môi trường.
+
+**Cách tính và khuyến nghị.**
+1. Điểm tổng (0–100) = Σ trọng số × điểm tiêu chí × 10, làm tròn như `round1` ở `rubric.py`.
+2. Khuyến nghị theo điểm, **cùng ngưỡng vòng 1** (`APPROVE_THRESHOLD` 70, `REJECT_THRESHOLD` 50): ≥ 70 `APPROVE`, 50 đến 69.9 `NEEDS_REVIEW`, dưới 50 `REJECT`.
+3. **Điều kiện chặn:** `authenticity` ≤ 2 hoặc `technical` ≤ 2 thì khuyến nghị tối đa là `NEEDS_REVIEW` bất kể điểm tổng (không ai được khuyến nghị duyệt khi sai kiến thức nền hoặc nghi gian lận).
+4. **Bằng chứng:** tiêu chí chấm **≤ 2 hoặc ≥ 9** phải kèm lý do ít nhất 10 ký tự. Giữ nhất quán giữa các lần và làm căn cứ khi mentor khiếu nại.
+5. **So với vòng 1:** giao diện đặt điểm bốn tiêu chí chung (`technical`, `depth`, `communication`, `mentoring`) của AI cạnh điểm admin. Chênh từ 4 điểm trở lên ở một tiêu chí thì đánh dấu "lệch lớn" (chỉ là thông tin để admin xem lại: AI chấm sai, hoặc người làm bài vòng 1 khác người đang nói; không tự chặn).
+6. `APPROVE` và `REJECT` bắt buộc đủ 5 điểm. `RESCHEDULE` không cần phiếu.
+7. Admin vẫn là người quyết định cuối. Quyết định **ngược** khuyến nghị cần ghi chú tổng ít nhất 10 ký tự (giữ nguyên `MIN_OVERRULE_NOTE`).
+
+**Khung câu hỏi thống nhất.** Không giới hạn thời gian, nhưng mỗi buổi hỏi **ít nhất một câu cho mỗi tiêu chí**:
+
+| Phần | Mục đích | Gợi ý |
+|---|---|---|
+| Xác minh | `authenticity` | Đối chiếu 2 đến 3 chi tiết giữa lời nói với CV, hồ sơ; nhờ giải thích lại một câu đã trả lời ở vòng 1 |
+| Kỹ thuật | `technical` | 2 đến 3 chủ đề theo lĩnh vực và kỹ năng khai báo (lấy từ ngân sách chủ đề `question_bank.py`), ưu tiên chủ đề điểm thấp ở vòng 1; hỏi đào sâu hai tầng |
+| Kinh nghiệm | `depth` | Một dự án gần nhất: vai trò, quyết định, số liệu, điều sẽ làm khác đi |
+| Hướng dẫn | `mentoring`, `communication` | Một tình huống chuẩn dùng chung cho mọi mentor cùng lĩnh vực: "mentee mới bị kẹt ở chủ đề X, bạn hướng dẫn thế nào" |
+| Cam kết | `authenticity` | Giờ rảnh mỗi tuần, số mentee nhận cùng lúc, giá, kỳ vọng |
+
+### 6.4 Thông báo
+
+Dùng đường sẵn có `ai-service/app/clients/mentoring.py` (`notify_user`) tới `POST /internal/notifications` của mentoring-service, nơi tạo thông báo trong app và gọi `EmailClient`.
+Thêm các loại: `MENTOR_INTERVIEW_SLOTS_PROPOSED`, `MENTOR_INTERVIEW_SCHEDULED`, đăng ký vào `EmailClient.CATEGORIES` nhóm `ACCOUNT` (luôn gửi, kể cả giờ yên tĩnh).
+Lời gọi là **bắn-rồi-quên** và hàng đợi email có thể bỏ thư khi đầy, nên **trang trong app là nguồn chính**, email chỉ nhắc.
+
+## 7. Khuyến nghị của AI và duyệt của admin
+
+Admin có **hai quyết định** trong một đợt: **duyệt vòng 1** (mục này) và **kết luận sau vòng 2** (mục 6.3). AI chỉ đưa thông tin và khuyến nghị, không quyết định.
+
+**Duyệt vòng 1.**
+- Điều kiện: đợt ở `ROUND1_REVIEW`, tức AI đã chép lời, phân tích và gắn cờ xong.
+- Admin xem gộp: văn bản chép lời (cả hai bản nếu có `TRANSCRIPT_MISMATCH`), điểm và nhận xét theo rubric, các cờ, **trình phát video**, số lần đã làm.
+- Quyết định: `PASS` (sang vòng 2), `REJECT` (đóng đợt, chờ 15 ngày), `RETAKE` (làm lại vòng 1, không tính vào 2 lần làm, tối đa 2 lần mỗi đợt, D13). Ghi chú bắt buộc khi `RETAKE` để mentor biết cần làm lại vì sao.
+- Ghi chú tối thiểu 10 ký tự khi quyết định **ngược** khuyến nghị của AI: `PASS` khi AI khuyến nghị `REJECT`, hoặc `REJECT` khi AI khuyến nghị `APPROVE`.
+
+**Khuyến nghị của AI (vòng 1).**
+- Một điểm 0 đến 100 từ rubric. **Không còn điểm tổng hợp hai vòng** (không có `FINAL_WEIGHT_*`): vòng 1 do AI chấm, vòng 2 do admin chấm riêng bằng phiếu 6.3.
+- Giữ ngưỡng hiện có: ≥ 70 `APPROVE`, 50 đến 69.9 `NEEDS_REVIEW`, dưới 50 `REJECT`.
+  Có cờ nghiêm trọng (`PROMPT_INJECTION`, `CAMERA_OFF`, `TRANSCRIPT_MISMATCH`) thì `NEEDS_REVIEW`.
+- Khuyến nghị **không** tự quyết định trạng thái đợt.
+
+**Khác.**
+- Trang admin ở bước kết luận vòng 2 hiển thị lại toàn bộ thông tin vòng 1 cùng trạng thái lịch, nhật ký vào phòng và phiếu chấm.
+- Audit log và thống kê đồng thuận admin và AI (`GET /api/ai/admin/stats`) giữ nguyên, ghi riêng hai loại quyết định; bỏ trường `tier`, `fromTier`, `suggestedTier`.
+
+## 8. Bỏ phần cũ khỏi dự án (D6, D10)
+
+**Bỏ cấp độ và giá tự do.**
 
 | Phần | Tác động |
 |---|---|
-| ai-service | Bỏ `kind = UPGRADE`, `from_tier`, `rubric.suggest_tier`, `TIERS`, cấu hình ngưỡng cấp và `INTERVIEW_UPGRADE_AFTER_DAYS`. Xoá test cấp độ và nâng cấp |
-| profile-service | Xoá `PricingTiers`, kiểm tra khung giá; migration xoá cột `tier`, `tier_assigned_at`; bỏ trường `tier` ở API |
-| Giá | Mentor đặt `hourly_rate` tự do (giữ ràng buộc dữ liệu tối thiểu, ví dụ không âm). Giá hiện có giữ nguyên |
+| ai-service | Bỏ `kind = UPGRADE`, `from_tier` (migration 009); `rubric.suggest_tier`, `TIERS`; trong `attempts.py`: `TIER_RANK`, `is_higher_tier`, `upgrade_available_at`; trong `config.py`: `TIER_PASS_FROM`, `TIER_SENIOR_FROM`, `TIER_EXPERT_FROM`, `INTERVIEW_UPGRADE_AFTER_DAYS`; trong `service.py`: `UPGRADE_COOLDOWN`, `TIER_MAX`, thông báo `MENTOR_TIER_UPGRADED` và `MENTOR_TIER_UPGRADE_REJECTED`, trường audit `fromTier`/`suggestedTier`. Bỏ endpoint `POST /admin/interviews/mentors/{id}/unlock` (thay bằng quy tắc 15 ngày) |
+| profile-service | Xoá `PricingTiers` và kiểm tra khung giá (`requireRateInTier`, `violation()`). **Sửa `ProfileService.updateRate`**: hiện ném `409 TIER_NOT_ASSIGNED` khi chưa có tier, nên bỏ tier mà không sửa thì mentor **không đặt được giá**. Sửa `updateProfile` (kiểm giá theo khung) và `updateVerification` (tự suy tier từ giá khi `APPROVED`). Bỏ `PUT /internal/mentor/{id}/tier`, `GET /api/profile/pricing-tiers`, DTO `TierUpdate`, `PricingTiersResponse`, `TierBand`, các biến `PRICING_*` và `TIER_*`. Migration `V11__*.sql` xoá cột `tier`, `tier_assigned_at` (`V9__mentor_tier.sql` đã backfill tier cho mentor `APPROVED`) |
+| Giá | Mentor đặt `hourly_rate` tự do (giữ ràng buộc tối thiểu, ví dụ không âm). Giá hiện có giữ nguyên |
+| mentoring-service | Chỉ `EmailClient` nhắc loại thông báo tier. `MentoringRequest` và `RequestRules` **không** dính cấp độ |
 | Matching | Không đổi. Bộ lọc giá `maxRate` của mentee vẫn hoạt động |
-| Frontend | Bỏ hiển thị cấp độ ở trang phỏng vấn, trang duyệt, hồ sơ mentor, đặt lịch |
-| Tài liệu và script | Cập nhật `ban-chot-nghiep-vu.md` §3–4, `scope-core.md`, contracts, script e2e (bỏ `e2e_v2_tier.py`) |
-| Phạm vi cần kiểm | Các điểm trùng từ khoá ở mentoring-service (`MentoringRequest`, `RequestRules`) cần xem lại, có thể không liên quan đến cấp độ |
 
-## 10. Mô hình dữ liệu (ai_db)
+**Bỏ chế độ chat của mentor (D10).** Danh sách dưới đây dựa trên các hàm đã đọc; danh sách cuối cùng xác nhận bằng grep khi hiện thực.
 
-Ý tưởng: thêm tầng **đợt** và **lần làm** phía trên các bảng hiện có, tái dùng `interviews` và `interview_turns` cho vòng 2 và 3.
+| Loại bỏ (chỉ phục vụ chat) | Giữ lại (dùng chung với giọng nói và luyện phỏng vấn) |
+|---|---|
+| Endpoint `POST /interviews`, `POST /interviews/{id}/answers`; `service.start`, `service.answer`; `engine.first_question` và bản cài đặt ở `rule_based.first_question`, `deepseek_engine.first_question`; giao diện chat trong `frontend/src/app/interview/page.tsx`; thông báo `INTERVIEW_RETAKE_REQUESTED` của luồng cũ | `rubric.py`; `engine.evaluate`, `engine.summarize` (cả đường giọng nói dùng ở `service.submit_voice_transcript`); `planner.py`; `question_bank.py`; `voice.py`; `deepseek_engine`, `rule_based` phần chấm |
+
+**Dữ liệu cũ.** Toàn bộ dòng phỏng vấn cũ (`interviews`, `interview_turns`, bảng `interview_attempt_unlocks`) thuộc mô hình một buổi có cấp độ, không có `application_id`, không ánh xạ sang mô hình mới nên **xoá** trong migration `012`.
+Xoá này **không đảo ngược được**: sao lưu trước khi chạy. `mentor_profiles.verification_status` là thuộc tính hồ sơ, **không** bị đụng: mentor đã `APPROVED` vẫn hiện trong matching. Dữ liệu demo seed lại.
+`practice_interviews` (luyện phỏng vấn của mentee) giữ nguyên.
+
+**Hệ quả của việc bỏ chat.** Vòng 1 **phụ thuộc OpenAI**: không có `OPENAI_API_KEY` thì mentor mới không qua được vòng 1 (xem rủi ro, mục 15), và dòng "để trống khoá thì chat vẫn chạy" trong `scope-core.md` §3 không còn đúng.
+
+**Phần còn lại cần sửa.**
+
+| Phần | Tác động |
+|---|---|
+| Frontend | `interview/page.tsx`, `admin/interviews/page.tsx` và `[id]/page.tsx`, `profile/page.tsx` (ô giá đang khoá khi chưa có tier), `mentors/[id]/page.tsx`, `mentoring/book/[mentorId]/page.tsx`, `features/ai/api.ts`, `features/profile/api.ts`, `types/ai.ts`, `types/profile.ts` |
+| Contracts | `contracts/ai-service.yaml`, `contracts/profile-service.yaml` |
+| Test | Xoá `test_interview_tier.py` (7), `test_interview_upgrade.py` (10), `MentorTierTest.java` (12). Sửa `test_interview_attempts.py` (15, có logic unlock và cooldown), `test_interview_flow.py` (7, phần chat). Xem lại `test_interview_rule_based.py`, `test_interview_planner.py`, `test_voice_interview.py` |
+| Script e2e | Xoá `e2e_v2_tier.py`. Sửa các script gửi `tier` khi duyệt: `common.py` (`tier_for_rate`), `e2e_acceptance.py`, `e2e_p0_mentoring.py`, `e2e_s2_mentoring.py`, `e2e_s3_mentoring.py`, `e2e_s5_ai_auth.py`, `e2e_v2_booking.py` (assert `tier == "SENIOR"`), `e2e_v2_room_referral.py`, `e2e_v2_trial.py`, `seed_demo.py`. Các script dùng luồng chat (`e2e_s3_ai_auth.py`, `e2e_s5_ai_auth.py`, đã kiểm bằng grep; `e2e_s4_ai_auth.py` không dùng) cần viết lại theo luồng mới |
+| Tài liệu | `ban-chot-nghiep-vu.md` §3–4, §15 (hàng 3) và §16.1; `scope-core.md`; `ai-features.md`; `api-reference.md`; `database-design.md`; `architecture.md`; `SRD-Mentor-Mentee-Platform.md`; `business-domain-mentor-mentee.md`; `user-guide.md`; `testing-report.md`; `deployment-guide.md`. `eval-interview.md` và `scripts/eval/interview` đánh giá engine chấm câu trả lời (dùng chung với bản chép lời) nên giữ, chỉ sửa chỗ nhắc chat |
+
+## 9. Mô hình dữ liệu (ai_db)
+
+Ý tưởng: thêm tầng **đợt** phía trên bảng `interviews` (tái dùng cho vòng 1), thêm bảng cho vòng 2 và video.
 
 ```mermaid
 erDiagram
-    VERIFICATION_APPLICATIONS ||--o{ VERIFICATION_ATTEMPTS : "gồm"
-    VERIFICATION_ATTEMPTS ||--o| INTERVIEWS : "vòng 2, 3"
-    VERIFICATION_ATTEMPTS ||--o{ MCQ_ATTEMPT_ITEMS : "vòng 1"
-    VERIFICATION_ATTEMPTS ||--o{ ATTEMPT_EVENTS : "chống gian lận"
+    VERIFICATION_APPLICATIONS ||--o{ INTERVIEWS : "vòng 1 (mode VOICE)"
+    VERIFICATION_APPLICATIONS ||--o{ VERIFICATION_SLOTS : "khung giờ đề xuất"
+    VERIFICATION_APPLICATIONS ||--o| VERIFICATION_INTERVIEWS : "vòng 2"
     INTERVIEWS ||--o{ INTERVIEW_TURNS : "có"
-    INTERVIEWS ||--o| INTERVIEW_VIDEOS : "vòng 3"
-    MCQ_QUESTIONS ||--o{ MCQ_ATTEMPT_ITEMS : "được rút"
+    INTERVIEWS ||--o| INTERVIEW_VIDEOS : "video và âm thanh vòng 1"
+    VERIFICATION_SLOTS ||--o| VERIFICATION_INTERVIEWS : "được chọn"
 ```
 
 | Bảng | Trạng thái | Nội dung chính |
 |---|---|---|
-| `verification_applications` | **Mới** | `id`, `mentor_id`, `status` (`IN_PROGRESS`, `PENDING_REVIEW`, `APPROVED`, `REJECTED`, `CLOSED`), `current_round`, `retry_after`, `closed_at`, `recommendation`, `final_score`, `reviewed_by`, `review_note`, `reviewed_at`. Ràng buộc: mỗi mentor tối đa một đợt `IN_PROGRESS` hoặc `PENDING_REVIEW` |
-| `verification_attempts` | **Mới** | `id`, `application_id`, `round` (1–3), `attempt_no` (1–2), `status` (`IN_PROGRESS`, `PASSED`, `FAILED`, `ABANDONED`, `INVALIDATED`, `COMPLETED`), `score`, `started_at`, `deadline_at`, `submitted_at`, `interview_id` (vòng 2, 3). Duy nhất theo (`application_id`, `round`, `attempt_no`) |
-| `mcq_questions` | **Mới** | `id`, `domain`, `topic`, `stem`, `options` (4), `correct_index`, `explanation`, `status`, `created_at`. Nạp từ file JSON được duyệt |
-| `mcq_attempt_items` | **Mới** | `attempt_id`, `position`, `question_id`, `option_order`, `chosen_index`, `answered_at`, `time_ms` |
-| `attempt_events` | **Mới** | `attempt_id`, `type` (`TAB_HIDDEN`, `BLUR`, `PASTE`, `FULLSCREEN_EXIT`, `FAST_ANSWER`, `CAMERA_LOST`…), `at`, `meta` |
-| `interview_videos` | **Mới** | `id`, `interview_id`, `storage_path`, `size_bytes`, `duration_s`, `chunk_count`, `analysis` (JSON), `analysis_status`, `created_at`, `expires_at`, `deleted_at`, `deleted_by` |
-| `interviews` | **Đổi** | Thêm `attempt_id`. Bỏ `kind`, `from_tier`. Trạng thái quyết định chuyển lên đợt, nên các giá trị `APPROVED`, `REJECTED`, `RETAKE_REQUESTED` ở mức buổi không còn dùng |
-| `interview_attempt_unlocks` | **Bỏ** | Thay bằng quy tắc 15 ngày |
+| `verification_applications` | **Mới** | `id`, `mentor_id`, `status` (mục 3), `retry_after`, `closed_at`, `reschedule_count`, `no_show_count`, `retake_count`, `round1_decision` (`PASS`, `REJECT`, `RETAKE`), `round1_reviewed_by`, `round1_reviewed_at`, `round1_note`, `reviewed_by`, `review_note`, `reviewed_at` (ba cột cuối là kết luận sau vòng 2). Ràng buộc: mỗi mentor tối đa một đợt chưa kết thúc |
+| `verification_slots` | **Mới** | `id`, `application_id`, `starts_at` (không có giờ kết thúc, D8), `status` (`PROPOSED`, `CHOSEN`, `EXPIRED`), `proposed_by`, `created_at` |
+| `verification_interviews` | **Mới** | `id`, `application_id`, `slot_id`, `admin_id`, `scheduled_at`, `status` (`SCHEDULED`, `COMPLETED`, `MENTOR_NO_SHOW`, `RESCHEDULED`), `mentor_joined_at`, `admin_joined_at`, `ended_at`, `scores` (JSON 5 tiêu chí), `score_notes` (JSON), `total_score`, `recommendation`, `note` |
+| `interview_videos` | **Mới** | `id`, `interview_id`, `storage_path`, `audio_storage_path`, `size_bytes`, `duration_s`, `chunk_count`, `gap_detected`, `server_transcript`, `transcript_diff`, `transcript_check` (`OK`, `MISMATCH`, `UNAVAILABLE`), `consent_video`, `created_at`, `expires_at`, `deleted_at`, `deleted_by` |
+| `interviews` | **Đổi** | Thêm `application_id`. Bỏ `kind`, `from_tier`. Giữ các cột đã có: `mode`, `consent_external_ai`, `plan`, `abandoned_at`. Quyết định `APPROVED`, `REJECTED`, `RETAKE_REQUESTED` ở mức buổi chuyển lên đợt nên không còn dùng |
+| `interview_attempt_unlocks` | **Bỏ** | Thay bằng quy tắc 15 ngày (bảng này tạo ở migration 005) |
 
-**Migration.** Dữ liệu phỏng vấn cũ (một buổi, có cấp độ) không ánh xạ trọn vẹn sang mô hình ba vòng. Đề xuất: giữ lại các dòng cũ chỉ để tra cứu lịch sử, mentor đã `APPROVED` giữ nguyên trạng thái, dữ liệu demo seed lại. Xoá cột `tier` không đảo ngược được, nên cần sao lưu trước khi chạy.
+**Migration.** ai-service dùng runner SQL đánh số (`ai-service/app/migrations.py`, `ai-service/migrations/NNN_*.sql`, bảng `schema_migrations`, hiện có 001 đến 011): thêm `012_*.sql`, gồm cả việc xoá dữ liệu cũ ở mục 8.
+profile-service dùng Flyway: thêm `V11__*.sql`. (ADR-04 ghi "không dùng công cụ migration" đã được thay thế.) **Xoá dữ liệu cũ và cột `tier` không đảo ngược được**, nên sao lưu trước khi chạy.
 
-## 11. API đề xuất
+## 10. API đề xuất
 
-Tiền tố `/api/ai/verification` cho mentor, `/api/ai/admin/verification` cho admin. Tên là đề xuất.
+**Giữ nguyên (đã có, `ai-service/app/routers/interview.py`, prefix `/api/ai`):** `POST /interviews/voice`, `POST /interviews/{id}/voice-transcript`, `GET /interviews/{id}`,
+`GET /interviews/me`, `GET /admin/stats`. **Đổi:** `GET /interviews/eligibility` thay bằng `GET /verification/status`; `POST /admin/interviews/{id}/review` và `/admin/interviews/mentors/{id}/unlock` được thay (mục 6.3, 7, 8).
+**Xoá (chat, D10):** `POST /interviews` và `POST /interviews/{id}/answers`.
 
-| Method | Đường dẫn | Mục đích |
+| Method | Đường dẫn (mới, tiền tố `/api/ai`) | Mục đích |
 |---|---|---|
-| GET | `/status` | Đợt hiện tại: vòng đang ở, số lần còn lại, `retry_after`, lý do không bắt đầu được |
-| POST | `/applications` | Bắt đầu đợt mới (cần cam kết tự trả lời) |
-| POST | `/rounds/1/start` | Bắt đầu một lần vòng 1, trả đề đã trộn (không có đáp án) |
-| POST | `/rounds/1/attempts/{id}/answers` | Ghi một đáp án |
-| POST | `/rounds/1/attempts/{id}/events` | Gửi sự kiện chống gian lận |
-| POST | `/rounds/1/attempts/{id}/submit` | Nộp bài |
-| POST | `/rounds/2/start` | Dùng lại logic `POST /interviews` |
-| POST | `/interviews/{id}/answers` | Giữ như hiện nay |
-| POST | `/rounds/3/start` | Như bắt đầu giọng nói hiện nay, thêm đồng ý camera, trả `uploadToken` |
-| PUT | `/videos/{id}/chunks/{n}` | Tải một đoạn video |
-| POST | `/videos/{id}/finish` | Kết thúc tải lên, xếp hàng phân tích |
-| GET | `/videos/{id}/stream` | Phát video (mentor chỉ xem của mình, admin xem tất cả) |
-| GET | `/admin/applications` | Danh sách đợt chờ duyệt |
-| GET | `/admin/applications/{id}` | Chi tiết gộp ba vòng |
-| POST | `/admin/applications/{id}/review` | Quyết định: APPROVE, REJECT, REQUEST_RETAKE |
-| DELETE | `/admin/videos/{id}` | Admin xoá video |
+| GET | `/verification/status` | Đợt hiện tại: vòng đang ở, số lần còn lại, `retry_after`, khung giờ đề xuất, số lần đổi giờ còn lại, lý do chưa bắt đầu được |
+| POST | `/verification/applications` | Bắt đầu đợt mới |
+| PUT | `/verification/videos/{id}/chunks/{n}` | Tải một đoạn video |
+| PUT | `/verification/videos/{id}/audio-chunks/{n}` | Tải một đoạn âm thanh riêng |
+| POST | `/verification/videos/{id}/finish` | Kết thúc tải lên, xếp hàng chép lời lại và so sánh |
+| GET | `/verification/videos/{id}/stream` | Phát video (mentor chỉ video của mình, admin xem tất cả) |
+| POST | `/verification/slots/{id}/choose` | Mentor chọn khung giờ |
+| POST | `/verification/round2/reschedule` | Mentor xin đổi giờ (tối đa 2 lần, báo trước ≥ 24 giờ) |
+| GET | `/verification/round2/room` | Lấy thông tin vào phòng Jitsi (kiểm quyền và khung giờ, gọi mentoring-service lấy token) |
+| GET | `/admin/verification/applications` | Danh sách đợt chờ xử lý |
+| GET | `/admin/verification/applications/{id}` | Chi tiết gộp vòng 1 (văn bản chép lời, phân tích, cờ, video) và vòng 2 |
+| POST | `/admin/verification/applications/{id}/round1-review` | Admin duyệt vòng 1: `PASS`, `REJECT`, `RETAKE` (tối đa 2 lần, kèm ghi chú) |
+| POST | `/admin/verification/applications/{id}/slots` | Admin đề xuất khung giờ (chỉ khi vòng 1 đã `PASS`) |
+| POST | `/admin/verification/applications/{id}/mentor-absent` | Admin báo mentor vắng (cần nhật ký vào phòng) |
+| POST | `/admin/verification/applications/{id}/decision` | Kết luận sau vòng 2: `APPROVE`, `REJECT` (kèm phiếu chấm đủ 5 tiêu chí), `RESCHEDULE` |
+| DELETE | `/admin/verification/videos/{id}` | Admin xoá video |
 
-Các endpoint `/interviews/**` và `/admin/interviews/**` hiện có có thể giữ cho vòng 2 và 3 để giảm thay đổi, và gom lại sau.
+mentoring-service thêm `POST /internal/rooms/token` (mục 6.2). Frontend tách `JitsiEmbed({domain, roomName, jwt})` từ trang
+`mentoring/sessions/[id]/room/page.tsx` để dùng chung, và thêm trang phòng cho vai trò `ADMIN` và `MENTOR` (không có nút "báo vắng" của buổi học).
 
-## 12. Cấu hình đề xuất
+## 11. Cấu hình đề xuất
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `VERIFICATION_MAX_ATTEMPTS_PER_ROUND` | 2 | Số lần mỗi vòng |
+| `VERIFICATION_MAX_ATTEMPTS_PER_ROUND` | 2 | Số lần vòng 1; số lần vắng vòng 2 |
 | `VERIFICATION_RETRY_DAYS` | 15 | Chờ sau khi bị đóng đợt hoặc từ chối |
-| `MCQ_QUESTION_COUNT` | 20 | Số câu mỗi đề |
-| `MCQ_TIME_LIMIT_MINUTES` | 30 | Thời gian làm bài |
-| `MCQ_PASS_RATIO` | 0.7 | Ngưỡng đạt vòng 1 |
-| `MCQ_FAST_ANSWER_SECONDS` | 3 | Ngưỡng "chọn quá nhanh" |
-| `MCQ_MAX_TAB_LEAVES` | 5 | Ngưỡng vô hiệu hoá |
-| `MCQ_MAX_TAB_AWAY_SECONDS` | 60 | Ngưỡng vô hiệu hoá |
-| `FINAL_WEIGHT_ROUND2` / `FINAL_WEIGHT_ROUND3` | 0.6 / 0.4 | Trọng số điểm cuối |
-| `VIDEO_RETENTION_DAYS` | 60 | Thời hạn lưu video |
+| `VERIFICATION_ROUND1_MAX_RETAKE` | 2 | Số lần admin được yêu cầu làm lại vòng 1 mỗi đợt, không tính vào số lần làm (D13) |
+| `VERIFICATION_ROUND2_SLOT_COUNT` | 3 | Số khung giờ admin đề xuất |
+| `VERIFICATION_ROUND2_MAX_RESCHEDULE` | 2 | Số lần mentor được đổi giờ mỗi đợt (D9) |
+| `VERIFICATION_ROUND2_RESCHEDULE_NOTICE_HOURS` | 24 | Báo trước tối thiểu khi đổi giờ (D9) |
+| `VERIFICATION_SLOT_CHOICE_DAYS` | 3 | Hạn mentor chọn giờ |
+| `VERIFICATION_ROOM_MAX_HOURS` | 4 | Trần kỹ thuật của token phòng Jitsi (không phải thời lượng chính sách, D8) |
+| `VIDEO_RETENTION_DAYS` | 60 | Thời hạn lưu video và âm thanh |
 | `VIDEO_RECONNECT_SECONDS` | 60 | Tổng thời gian được phép mất camera |
-| `INTERVIEW_RESUME_HOURS` | 24 | Giữ nguyên, thời hạn bỏ dở |
+| `VIDEO_MAX_GAP_SECONDS` | 10 | Khoảng trống giữa các đoạn để bật `CAMERA_OFF` |
+| `TRANSCRIPT_MISMATCH_THRESHOLD` | 0.30 | Tỉ lệ khác biệt theo từ giữa hai bản chép lời để bật `TRANSCRIPT_MISMATCH` |
+| `VOICE_SESSION_MINUTES` | 30 | **Giữ nguyên** (đã có), hạn bỏ dở của buổi giọng nói |
 
-## 13. Bảo mật và quyền riêng tư
+Hằng số trong mã (không phải biến môi trường): trọng số và ngưỡng của phiếu chấm vòng 2 (mục 6.3).
+Bỏ: `INTERVIEW_MAX_ATTEMPTS`, `INTERVIEW_COOLDOWN_DAYS`, `INTERVIEW_UPGRADE_AFTER_DAYS`, `INTERVIEW_MAX_TURNS` (chỉ dùng cho chat; xác nhận bằng grep), `TIER_*`, `PRICING_*`.
+Tái dùng của mentoring-service: `ROOM_OPENS_BEFORE`, `ROOM_GRACE`, `JITSI_*`.
 
-- API key thật của OpenAI không tới trình duyệt (giữ nguyên cơ chế client secret ngắn hạn).
-- Video chỉ truy cập qua endpoint có kiểm quyền. Mentor chỉ xem video của mình, admin xem và xoá. Mọi lần xem hoặc xoá ghi audit log.
-- Đáp án trắc nghiệm không rời server. Ngân hàng câu hỏi không có endpoint công khai.
-- Giữ cơ chế chống prompt injection cho vòng 2 và 3. Phân tích video không đưa dữ liệu hình ảnh cho LLM bên ngoài.
+## 12. Bảo mật và quyền riêng tư
+
+- API key thật của OpenAI không tới trình duyệt (giữ cơ chế client secret ngắn hạn). `JITSI_JWT_SECRET` chỉ nằm ở mentoring-service; ai-service lấy token qua endpoint nội bộ.
+- Video và âm thanh chỉ truy cập qua endpoint có kiểm quyền. Mentor chỉ xem video của mình, admin xem và xoá. Mọi lần xem hoặc xoá ghi audit log.
+- Giữ cơ chế chống prompt injection cho bản chép lời. Video không đưa cho LLM bên ngoài (không phân tích hình ảnh); **âm thanh được gửi cho OpenAI** (Realtime và chép lời lại), nên nằm trong phần đồng ý `consent_external_ai`.
 - Cần chính sách dữ liệu video và cập nhật phần đồng ý. Mentor cần biết rõ ai xem video và trong bao lâu.
+- Endpoint cấp phòng chỉ cấp token khi người gọi là admin hoặc đúng mentor của đợt, trong khung giờ cho phép.
+- Phiếu chấm vòng 2 và ghi chú lưu cùng audit log, không sửa sau khi đã quyết định.
 
-## 14. Kiểm thử đề xuất
+## 13. Kiểm thử đề xuất
 
 | Lớp | Nội dung |
 |---|---|
-| Unit | Luật số lần và 15 ngày (hàm thuần như `attempts.py`), chấm trắc nghiệm, chọn và trộn đề, ngưỡng vô hiệu hoá, tính điểm cuối, khuyến nghị khi có cờ |
-| API | Chặn sang vòng 2 khi chưa đạt vòng 1, hết 2 lần, chờ 15 ngày, bỏ dở quá hạn, gửi trùng đáp án, quyền xem video (mentor, admin, người khác) |
-| e2e | Mentor đi qua ba vòng, admin duyệt, mentor xuất hiện trong matching; ca rớt vòng 1 hai lần |
-| Video | Tải đoạn và ghép, phát hiện khoảng trống, phân tích trên video mẫu (một mặt, không mặt, hai mặt), job xoá sau 60 ngày |
-| Phi chức năng | Dung lượng và thời gian tải video, ảnh hưởng của thư viện phân tích lên image |
+| Unit | Luật số lần và 15 ngày (hàm thuần như `attempts.py`), **giới hạn `RETAKE` 2 lần và không tính vào số lần làm**, chuyển trạng thái đợt, **luật đổi giờ (≥ 24 giờ, tối đa 2 lần)**, quy tắc vắng theo nhật ký vào phòng, **phiếu chấm** (tính điểm, ngưỡng khuyến nghị, điều kiện chặn `technical`/`authenticity` ≤ 2, bắt buộc lý do khi chấm ≤ 2 hoặc ≥ 9, đánh dấu lệch ≥ 4 so với vòng 1), phát hiện khoảng trống giữa các đoạn video, so sánh hai bản chép lời (`transcript_diff`) |
+| API | Không sang vòng 2 khi chưa `PASS`, hết 2 lần, chờ 15 ngày, chọn giờ ngoài khung đã đề xuất, đổi giờ muộn hơn 24 giờ hoặc quá 2 lần, quyền xem video (mentor, admin, người khác), chỉ admin hoặc đúng mentor lấy được token phòng, `APPROVE` thiếu phiếu bị từ chối |
+| e2e | Mentor đi qua hai vòng (OpenAI giả lập), admin duyệt vòng 1, đề xuất giờ, mentor chọn, admin chấm phiếu và quyết định, mentor xuất hiện trong matching; ca admin `REJECT` ở vòng 1; ca vắng hai lần; ca `TRANSCRIPT_MISMATCH` |
+| Video | Tải đoạn và ghép, phát hiện khoảng trống, job xoá sau 60 ngày |
+| Thủ công | Hai người vào cùng phòng Jitsi trên trình duyệt thật (e2e hiện chỉ kiểm JWT, log và khung giờ); buổi dài hơn 30 phút (kiểm hành vi khi token hết hạn); quay camera 30 phút trên máy thật; gửi âm thanh 7 MB cho API chép lời (kiểm giới hạn kích thước và định dạng) |
+| Phi chức năng | Dung lượng và thời gian tải video; dung lượng ổ đĩa khi nhiều mentor (100 mentor ≈ 11 GB video); chi phí chép lời lại |
 
-Rule-based và DeepSeek tiếp tục được đánh giá theo [eval-interview.md](eval-interview.md). Bộ nhãn vòng 2 và 3 cần hai người chấm độc lập để số liệu hết ở trạng thái tạm thời.
+Rule-based và DeepSeek tiếp tục được đánh giá theo [eval-interview.md](eval-interview.md) (hiện **PROVISIONAL**: hai cột người chấm còn trống, DeepSeek chưa chạy). Bộ nhãn vòng 1 cần hai người chấm độc lập để số liệu hết ở trạng thái tạm thời.
 
-## 15. Kế hoạch triển khai
+## 14. Kế hoạch triển khai
 
 | Giai đoạn | Nội dung | Phụ thuộc |
 |---|---|---|
-| 1 | Bỏ cấp độ, giá tự do (mục 9) | Không |
-| 2 | Mô hình đợt và lần làm, luật số lần và 15 ngày | 1 |
-| 3 | Vòng 1: ngân hàng câu hỏi, đề, chấm, chống gian lận, giao diện | 2 |
-| 4 | Nối vòng 2 vào quy trình, điểm tổng hợp, trang duyệt gộp | 2, 3 |
-| 5 | Vòng 3: camera, tải đoạn, phân tích, lưu trữ 60 ngày, trình phát, đồng ý | 4 |
+| 1 | Bỏ phần cũ: cấp độ, giá tự do, chế độ chat, mở khoá, xoá dữ liệu cũ (mục 8) | Không |
+| 2 | Mô hình đợt, luật số lần và 15 ngày, trạng thái hồ sơ | 1 |
+| 3 | Vòng 1: camera, quay và tải đoạn (video và âm thanh), lưu 60 ngày, đồng ý, trình phát, cờ `CAMERA_OFF`, chép lời lại và `TRANSCRIPT_MISMATCH`, trang admin duyệt vòng 1 | 2 |
+| 4 | Vòng 2: khung giờ, đổi giờ, endpoint token Jitsi, trang admin và mentor, phiếu chấm, thông báo, quyết định, quy tắc vắng | 2 |
 
-Mỗi giai đoạn chạy được và kiểm thử được độc lập. Vòng 3 làm sau cùng vì có nhiều rủi ro nhất.
+Giai đoạn 3 và 4 độc lập nhau nên làm song song được sau giai đoạn 2. Mỗi giai đoạn chạy và kiểm thử được riêng. Giai đoạn 4 có rủi ro lớn nhất về hạ tầng (Jitsi, mục 15), giai đoạn 3 về dữ liệu cá nhân.
 
-## 16. Rủi ro
+## 15. Rủi ro
 
 | Rủi ro | Giảm thiểu |
 |---|---|
-| Ngân hàng câu hỏi bị lộ | Ngân hàng lớn, trộn ngẫu nhiên, thay câu định kỳ |
-| Báo nhầm gian lận | Chỉ gắn cờ, hai ngưỡng cứng cấu hình được, hiệu chỉnh khi có dữ liệu |
-| Câu hỏi do LLM sinh có đáp án sai | Bắt buộc người duyệt |
+| Vòng 1 phụ thuộc OpenAI: không có `OPENAI_API_KEY` hoặc OpenAI ngừng thì không ai qua được vòng 1 (đã bỏ chat dự phòng, D10) | Lỗi hệ thống không tính lần; e2e và demo dùng OpenAI giả lập; ghi rõ yêu cầu khoá trong hướng dẫn triển khai và `scope-core.md` |
+| Jitsi đang ở mục "Tạm gác" của `scope-core.md`; video thật mới kiểm tay một lần (22/10), e2e chỉ kiểm JWT | Đưa Jitsi ra khỏi danh sách gác; chạy lại thủ công trước khi hiện thực xong; thêm kiểm thử thủ công vào mục 13 |
+| Buổi vòng 2 không giới hạn thời lượng nhưng token Jitsi có `exp`: chưa rõ Jitsi có ngắt người đã vào khi token hết hạn không | Trần kỹ thuật 4 giờ; chạy thử buổi dài hơn trần trước khi chốt (mục 13) |
+| Không có thời lượng nên không tự phát hiện được chồng lịch của admin | Cảnh báo khi admin có buổi bắt đầu trong vòng 60 phút (đề xuất); admin tự chịu trách nhiệm khi xếp lịch |
+| Jitsi tự host cần UDP 10000 và TLS thật khi demo từ xa (chứng chỉ tự ký chỉ chạy cục bộ) | Chuẩn bị domain và TLS cho triển khai thật; demo cục bộ khi chưa có |
+| Nghẽn ở admin: mỗi mentor cần hai lần admin xử lý (duyệt vòng 1, rồi buổi phỏng vấn không giới hạn thời lượng) | Bước duyệt vòng 1 loại bớt ca không đạt; giao diện gộp duyệt vòng 1 và đề xuất giờ; giới hạn số đợt chờ; cân nhắc thêm người phỏng vấn sau |
+| Chép lời lại phía server lỗi hoặc file âm thanh vượt giới hạn của API chép lời | Âm thanh riêng ~7 MB (không dùng video 110 MB); lỗi thì `UNAVAILABLE`, không chặn; admin vẫn đối chiếu với video; kiểm giới hạn khi hiện thực |
+| Ngưỡng `TRANSCRIPT_MISMATCH_THRESHOLD` báo nhầm vì nhận dạng giọng nói khác nhau giữa hai lần chép | Giá trị khởi đầu 0,30, chỉ gắn cờ không loại, hiệu chỉnh bằng dữ liệu thật |
 | Dung lượng video lớn | Giới hạn bitrate và độ phân giải, chia đoạn, chuyển object storage khi triển khai thật |
-| Thư viện phân tích làm nặng image | Chọn thư viện ở giai đoạn 5, cân nhắc chạy ở service riêng |
-| Chi phí giọng nói theo phút | Giữ giới hạn 30 phút, 2 lần mỗi vòng |
-| Dữ liệu cá nhân nhạy cảm | Đồng ý rõ ràng, thời hạn 60 ngày, phân quyền, audit log |
-| Điểm vòng 2 và 3 chưa kiểm chứng | Hoàn tất nhãn độc lập và đánh giá DeepSeek |
+| Dữ liệu cá nhân nhạy cảm | Đồng ý rõ ràng (hai trường riêng), thời hạn 60 ngày, phân quyền, audit log |
+| Quy tắc vắng mặt hiện gắn với `sessions` (`RoomRules`, `AttendanceService`) | Viết quy tắc riêng cho vòng 2 (mục 6.2), không dùng lại hàm của buổi học |
+| Xoá dữ liệu phỏng vấn cũ và cột `tier` không đảo ngược | Sao lưu trước khi chạy migration; không đụng `verification_status` của mentor đã duyệt |
+| Điểm vòng 1 chưa kiểm chứng (nhãn nháp, DeepSeek chưa chạy); trọng số phiếu chấm vòng 2 chưa thử với dữ liệu thật | Điểm AI chỉ là khuyến nghị; hiệu chỉnh trọng số sau vài chục buổi đầu |
 
-## 17. Câu hỏi mở cần nhóm xác nhận
+## 16. Việc phải kiểm khi hiện thực
 
-1. **"Không hoàn thành hợp lệ" ở vòng 2 và 3** (mục 4): nhóm xác nhận hiểu như đề xuất (bỏ dở, bị vô hiệu hoá, không phải điểm thấp), hay muốn thêm một điểm tối thiểu cho vòng 2 và 3?
-2. **Trọng số điểm cuối** 0.6 và 0.4 cho vòng 2 và 3.
-3. **Hai ngưỡng cứng của vòng 1** (rời tab quá 5 lần hoặc quá 60 giây) có chấp nhận làm bài bị vô hiệu hoá không, hay chỉ gắn cờ?
-4. **Ngưỡng đạt vòng 1** 70% và đề 20 câu 30 phút.
-5. **Chủ đề kiểm tra tính nhất quán** với vòng 2 ở vòng 3: có làm không?
-6. **Nơi lưu video** khi triển khai thật: tiếp tục dùng volume hay chuyển object storage.
-7. **Dữ liệu phỏng vấn cũ và mentor đã duyệt** khi chuyển sang mô hình mới: giữ nguyên trạng thái như đề xuất ở mục 10?
+Không còn câu hỏi thiết kế nào để mở: nhóm đã xác nhận D8–D13 (24/10/2026). Những điểm dưới đây **không phải quyết định mà là giả định chưa kiểm**, phải chạy thử hoặc đo thật khi hiện thực rồi cập nhật spec nếu khác dự kiến.
 
-## 18. Câu hỏi hội đồng có thể hỏi
+| # | Việc cần kiểm | Giai đoạn | Nếu khác dự kiến |
+|---|---|---|---|
+| 1 | **Jitsi/prosody có ngắt người đã vào phòng khi JWT hết hạn không** (chạy buổi dài hơn `VERIFICATION_ROOM_MAX_HOURS`) | 4 | Nếu có ngắt: tăng trần hoặc cấp lại token; nếu không: trần chỉ chặn người vào muộn |
+| 2 | **API chép lời nhận file âm thanh ~7 MB, định dạng webm/opus**; giới hạn kích thước và định dạng; model chép lời dùng được ở endpoint `/audio/transcriptions` | 3 | Nếu không nhận: đổi định dạng quay, hoặc cắt âm thanh thành nhiều phần |
+| 3 | **Ngưỡng `TRANSCRIPT_MISMATCH_THRESHOLD` 0,30** có báo nhầm nhiều không (hai lần nhận dạng giọng nói vốn khác nhau) | 3 | Hiệu chỉnh bằng dữ liệu thật; cờ chỉ gắn, không loại nên rủi ro thấp |
+| 4 | **Trọng số phiếu chấm 30/25/10/20/15** và điều kiện chặn có phân biệt được mentor tốt/kém không | 4 | Hiệu chỉnh sau vài chục buổi đầu (hằng số trong mã, đổi dễ) |
+| 5 | **Trang admin ở vòng 1** có quá tải khi nhiều mentor chờ duyệt cùng lúc không; đã gộp duyệt vòng 1 và đề xuất giờ chưa | 3, 4 | Giới hạn số đợt chờ, hoặc thêm người phỏng vấn |
+| 6 | **Quay camera 30 phút và tải đoạn** trên máy thật, mạng yếu (mất đoạn, kết nối lại 60 giây) | 3 | Điều chỉnh bitrate, kích thước đoạn |
+| 7 | **Chạy lại hai người vào cùng phòng Jitsi** trên trình duyệt thật (video thật mới kiểm tay một lần, 22/10) | 4 | Sửa cấu hình Jitsi trước khi làm tiếp |
+| 8 | **Danh sách cuối cùng của mã chỉ phục vụ chat** (grep `INTERVIEW_MAX_TURNS`, `question_count`, các import của `engine.first_question`) | 1 | Cập nhật bảng loại bỏ/giữ lại ở mục 8 |
+| 9 | **Sao lưu `ai_db` và `profile_db`** trước migration `012` và `V11` (xoá dữ liệu cũ và cột `tier` không đảo ngược) | 1 | Không chạy migration nếu chưa có bản sao lưu |
 
-- *Vì sao trắc nghiệm là cổng chặn mà không tính vào điểm?* Vì nó chỉ đo kiến thức nền và rẻ để chấm. Năng lực hướng dẫn được đo ở hai vòng sau, nên chỉ vòng 2 và 3 quyết định khuyến nghị.
-- *Chống gian lận trên trình duyệt có tin được không?* Không tuyệt đối. Hệ thống ghi tín hiệu, chỉ tự động loại ở ngưỡng rõ ràng, còn lại để admin quyết định.
-- *AI phân tích video có thể chấm sai người không?* Phân tích chỉ phát hiện sự có mặt và số khuôn mặt, không chấm điểm và không đánh giá cảm xúc. Cờ chỉ buộc người duyệt xem kỹ.
+## 17. Câu hỏi hội đồng có thể hỏi
+
+- *Vì sao chỉ hai vòng?* Hai vòng đủ phủ hai mục tiêu: AI sàng lọc quy mô lớn với chi phí thấp, người xác nhận năng lực và con người thật. Trắc nghiệm không đo được năng lực hướng dẫn nên bị bỏ.
+- *Vì sao vòng 2 do admin phỏng vấn?* Giữ quyết định cuối ở người (NFR-8) và không cần thêm vai trò phỏng vấn viên. Đánh đổi: admin thành điểm nghẽn, nên bước duyệt vòng 1 loại bớt các ca không đạt trước khi tốn một buổi phỏng vấn.
+- *Phiếu chấm để làm gì?* Để mọi mentor được chấm bằng cùng tiêu chí và cùng thang với điểm AI, nên so sánh được và hạn chế cảm tính của từng lần phỏng vấn. Điểm vẫn chỉ là khuyến nghị, admin quyết định cuối.
+- *Vì sao không giới hạn thời lượng buổi phỏng vấn?* Để admin hỏi đủ cho đến khi có thể chấm đủ 5 tiêu chí. Đánh đổi: phải tự xếp lịch cẩn thận, và phòng có trần kỹ thuật 4 giờ.
+- *Vì sao quay video nhưng không phân tích?* Phân tích khuôn mặt có độ chính xác thấp, dễ thiên vị, khó bảo vệ, làm nặng hệ thống. Việc xác nhận người thật đã có vòng 2 đảm nhiệm. Video giữ lại để admin xem khi cần.
 - *Vì sao giữ video 60 ngày?* Đủ để admin duyệt và khiếu nại, ngắn để giảm rủi ro lưu dữ liệu nhạy cảm. Admin xoá sớm được.
+- *AI chấm sai thì sao?* Điểm AI chỉ là khuyến nghị. Admin duyệt vòng 1 sau khi xem văn bản, phân tích, cờ và video, rồi lại chấm riêng ở vòng 2; chênh lớn giữa hai điểm được đánh dấu.
+- *Bản chép lời có đáng tin không?* Bản của trình duyệt có thể bị sửa, nên server chép lời lại từ âm thanh đã tải lên và gắn cờ nếu hai bản lệch nhiều.
 - *Vì sao bỏ cấp độ?* Quyết định của nhóm để đơn giản hoá mô hình. Giá do mentor tự đặt, mentee dùng bộ lọc giá để chọn.
-- *Nếu OpenAI hoặc DeepSeek không phản hồi?* Lỗi từ phía hệ thống không tính lần làm. Vòng 2 vẫn có fallback rule-based.
+- *Nếu OpenAI hoặc DeepSeek không phản hồi?* Lỗi từ phía hệ thống không tính lần làm. Việc chấm có fallback rule-based; vòng 1 không có đường dự phòng khác vì chế độ chat đã bị bỏ.

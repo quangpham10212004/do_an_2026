@@ -10,7 +10,7 @@ Cập nhật 23/10/2026. Nhóm thu nhỏ phạm vi, ưu tiên hoàn thiện, ki�
 
 | # | Chức năng | Service | Tài liệu | Kiểm thử chính |
 |---|---|---|---|---|
-| 1 | **AI Interview** xác thực mentor bằng chat, gợi ý hạng JUNIOR/SENIOR/EXPERT, xin nâng hạng sau 90 ngày | ai-service (`app/interview`) | `ai-features.md` §2 · `eval-interview.md` | `e2e_v2_tier`, `e2e_s3_ai_auth`, `e2e_s4_ai_auth`, `e2e_s5_ai_auth`, pytest ai-service |
+| 1 | **AI Interview** xác thực mentor. Hiện trạng: chat một buổi, gợi ý hạng JUNIOR/SENIOR/EXPERT, xin nâng hạng sau 90 ngày. ⚒ Thiết kế mới (24/10/2026): **2 vòng** (AI giọng nói + camera, rồi admin phỏng vấn qua Jitsi), bỏ cấp độ, giá tự do | ai-service (`app/interview`), mentoring-service (token phòng Jitsi) | `ai-features.md` §2 · [design-mentor-verification.md](design-mentor-verification.md) · `eval-interview.md` | `e2e_v2_tier` (sẽ bỏ), `e2e_s3_ai_auth`, `e2e_s4_ai_auth`, `e2e_s5_ai_auth`, pytest ai-service |
 | 2 | **AI Matching** mentor–mentee (embedding + pgvector) | matching-service | `ai-features.md` §1 · `design-ai-matching-spec.md` | `e2e_p0_profile_matching`, `e2e_s2/s3/s4_profile_matching`, `benchmark_matching.py`, pytest matching-service |
 | 3 | **Phân tích CV** (Parsing) | ai-service (`app/cv`) | `ai-features.md` §3 · `cv-data-policy.md` · `eval-cv.md` | `e2e_s2_cv` |
 | 4 | **Chatbot làm rõ mục tiêu** của mentee (CV enrichment) | ai-service (`app/enrichment`) | `ai-features.md` §3 | `e2e_s2_cv`, `e2e_s4_ai_auth` |
@@ -24,10 +24,10 @@ Bắt buộc đi kèm (nền tảng của 5 chức năng trên, không tính là
 
 | Phần | Nằm ở đâu | Ghi chú |
 |---|---|---|
-| Phỏng vấn giọng nói (v2.1) và luyện phỏng vấn miễn phí cho mentee | ai-service (`app/practice`, route voice), frontend `interview`, `practice-interview`, `features/ai/Voice*` | Chưa nghiệm thu; cần `OPENAI_API_KEY`. Phỏng vấn **chat** vẫn thuộc lõi |
+| Luyện phỏng vấn miễn phí cho mentee (voice) | ai-service (`app/practice`), frontend `practice-interview` | Chưa nghiệm thu; cần `OPENAI_API_KEY`. ⚒ **Phỏng vấn giọng nói của mentor** (vòng 1 xác thực) chuyển vào lõi theo [design-mentor-verification.md](design-mentor-verification.md); phần dùng chung `voice.py` vẫn phải chạy |
 | Ví VND, nạp MoMo/VNPay, thu nhập mentor, referral theo mentor | payment-service, frontend `wallet`, `payment`, `earnings`, `referral` | **Vẫn được mentoring gọi** khi đặt buổi và tính thu nhập — chưa tách được |
 | Buổi trải nghiệm 15 phút (30.000đ) | mentoring-service, payment-service | Phụ thuộc ví |
-| Phòng học Jitsi + nhật ký vào phòng | mentoring-service, compose profile `jitsi` | Đã là compose profile tuỳ chọn |
+| Phòng học Jitsi + nhật ký vào phòng (buổi mentoring) | mentoring-service, compose profile `jitsi` | Đã là compose profile tuỳ chọn. ⚒ Hạ tầng Jitsi và cách ký JWT được **dùng lại cho vòng 2 xác thực mentor** (lõi), nên phải chạy được; video thật mới kiểm tay một lần (22/10) |
 | Khoá học, lộ trình, tiến độ | learning-service, frontend `learning` | Không phụ thuộc ngược từ 5 chức năng lõi |
 | Phỏng vấn thử (mock interview) | mentoring-service, frontend `mock-interviews` | |
 
@@ -37,13 +37,13 @@ Bắt buộc đi kèm (nền tảng của 5 chức năng trên, không tính là
 - **payment-service** khó tách: mentoring-service dùng `PaymentClient`, `PaymentOutbox`, `AttendanceService`,
   `DisputeService`, `AccountLockService`; auth-service cũng cấu hình `PAYMENT_SERVICE_URL`; ai-service/matching-service không phụ thuộc.
   Muốn bỏ ví phải sửa luồng đặt lịch của mentoring (cho đặt thẳng, không giữ tiền) — chưa làm.
-- **Voice interview** tách được: chỉ bật khi có `OPENAI_API_KEY`, để trống thì chat vẫn chạy.
+- **Voice interview** (hiện trạng): chỉ bật khi có `OPENAI_API_KEY`, để trống thì chat vẫn chạy. ⚒ Theo [design-mentor-verification.md](design-mentor-verification.md) (D10) chế độ chat của mentor bị **xoá**, vòng 1 xác thực là giọng nói, nên mentor mới **cần** `OPENAI_API_KEY`; e2e và demo dùng OpenAI giả lập.
 
 ## 4. Gợi ý demo tập trung
 
 1. Mentee đăng ký → tải CV → chatbot làm rõ mục tiêu → hồ sơ mục tiêu.
 2. AI Matching gợi ý mentor (giải thích điểm khớp).
-3. Mentor mới phỏng vấn xác thực bằng chat → được gợi ý hạng.
+3. Mentor mới phỏng vấn xác thực bằng chat → được gợi ý hạng. (⚒ Sau khi hiện thực thiết kế mới: vòng 1 AI giọng nói, admin đề xuất giờ, vòng 2 admin phỏng vấn qua Jitsi → duyệt, không còn hạng.)
 4. Mentee gửi yêu cầu → mentor chấp nhận → đặt lịch → nhắn tin → đánh giá.
 
 Dữ liệu demo: `python3 scripts/seed_demo.py`. Chạy AI ở chế độ rule-based (không cần khoá) để demo ổn định, offline.
