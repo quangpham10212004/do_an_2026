@@ -122,6 +122,9 @@ class RankStat(CamelModel):
     impressions: int
     not_relevant: int
     not_relevant_rate: float
+    # D11 — dưới ENOUGH_DATA_THRESHOLD lượt hiển thị thì notRelevantRate quá nhiễu để đọc ngưỡng
+    # (≤10% hạng 1-3, ≤15% hạng 4-5, docs/design-ai-matching-spec.md §8); False = "chưa đủ dữ liệu".
+    enough_data: bool = False
 
 
 class EvaluationStats(CamelModel):

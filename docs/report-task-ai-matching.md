@@ -14,7 +14,7 @@
 | T2c | chưa làm | |
 | T3 | ĐẠT | (xem §T3) |
 | T4 | ĐẠT | (xem §T4) |
-| T5 | chưa làm | |
+| T5 | ĐẠT | (xem §T5) |
 | T6 | chưa làm | |
 | T7 | chưa làm | |
 | T8 | chưa làm | |
@@ -243,6 +243,35 @@ python -c "... gọi API thật, đo thời gian client, so với pipeline.tookM
 - `pytest tests/` đầy đủ: `112 passed, 1 failed` (111 trước T4 + 1 test mới; 1 fail là lỗi mã hoá đã biết).
 - e2e: `35/35 PASS`.
 - Gọi API thật (mentee mới, domain riêng): server báo `tookMs = 158.1`, client đo tổng thời gian round-trip `181.7 ms` (gồm cả độ trễ mạng/HTTP, xác thực) → `tookMs ≤ thời gian client đo` — đúng quan hệ kỳ vọng ở §11.1.
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.1.
+
+---
+
+## T5 — cờ `enoughData` trong `byRank` (D11)
+
+**Input (theo §11.1):** impression giả lập — hạng 1 có 150 lượt, hạng 2 có 30 lượt.
+
+**Thay đổi:**
+- `feedback_service.py`: hằng số `ENOUGH_DATA_THRESHOLD = 100`; hàm nội bộ `_row()` dùng chung cho `byRank`, `byRankInBudget`, `byRankOverBudget` — mỗi hạng có `enoughData = impressions >= 100`.
+- `schemas/matching.py` (`RankStat`): thêm `enough_data: bool = False`.
+- `tests/test_matching_db.py`: sửa 3 assertion so sánh dict chính xác (thêm khoá `enoughData`); thêm `test_evaluation_stats_enough_data_flag` — chèn trực tiếp 150 dòng hạng 1 + 30 dòng hạng 2 vào `match_impressions` (qua `get_matching_pool()`, không chạy lại pipeline 180 lần cho nhanh), đúng input ví dụ của spec.
+
+**Lệnh đã chạy:**
+```
+pytest tests/ -q -k "enough_data or evaluation or budget"
+pytest tests/ -q
+docker compose build matching-service && docker compose up -d matching-service
+python scripts/e2e_s2_profile_matching.py
+python -c "... gọi admin/evaluation qua API thật ..."
+```
+
+**Output thật:**
+- `pytest -k "enough_data or evaluation or budget"`: `10 passed`.
+- `pytest tests/` đầy đủ: `113 passed, 1 failed` (112 trước T5 + 1 test mới; 1 fail lỗi mã hoá đã biết).
+- Test `test_evaluation_stats_enough_data_flag`: `byRank[0].impressions=150, enoughData=True`; `byRank[1].impressions=30, enoughData=False` — đúng input/expected ở §11.1.
+- e2e: `35/35 PASS`.
+- API thật (`admin/evaluation`): mỗi hạng trả thêm `enoughData` (ví dụ hạng 1 có 33 lượt trong môi trường hiện tại → `enoughData: False`, đúng vì dưới 100).
 
 **Kết luận:** ĐẠT theo output mong đợi ở §11.1.
 

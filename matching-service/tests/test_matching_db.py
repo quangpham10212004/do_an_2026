@@ -304,7 +304,8 @@ async def test_hidden_mentor_is_excluded_for_30_days_and_list_still_full(conn):
     assert hidden in ids(await match(mentee, limit=4))
 
     stats = await feedback_service.evaluation_stats(days=1)
-    assert stats["byRank"][0] == {"rank": 1, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
+    assert stats["byRank"][0] == {"rank": 1, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0,
+                                  "enoughData": False}  # D11 — 1 lượt << ngưỡng 100
     assert stats["reasons"] == {"SCHEDULE": 1}
     assert set(mentors) >= ids(first)
     # G6 — không dùng maxRate ở test này nên không mentor nào vượt ngân sách: byRankInBudget phải
@@ -363,6 +364,34 @@ async def test_over_budget_mentors_come_last_not_dropped(conn):
     assert result["stats"]["over_budget"] == 3 and result["stats"]["returned"] == 8
 
 
+async def test_evaluation_stats_enough_data_flag(conn):
+    """D11 — hạng đủ 100 lượt hiển thị (enoughData=True) mới đáng đọc notRelevantRate; dưới ngưỡng
+    thì đánh dấu False để không đọc nhầm một tỉ lệ còn nhiễu. Input đúng ví dụ ở spec §11.1: hạng 1
+    có 150 lượt, hạng 2 có 30 lượt."""
+    import uuid as uuid_mod
+
+    from app import db
+    from app.services import feedback_service
+
+    mentee_id = str(uuid_mod.uuid4())
+    pool = await db.get_matching_pool()
+    rows = [
+        (str(uuid_mod.uuid4()), mentee_id, str(uuid_mod.uuid4()), rank, 0.5, "{}", "{}", "{}", "model", False)
+        for rank, count in ((1, 150), (2, 30)) for _ in range(count)
+    ]
+    await pool.executemany(
+        """
+        INSERT INTO match_impressions (impression_id, mentee_id, mentor_id, rank, final_score, score_parts, filters,
+                                       weights, model, over_budget)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10)
+        """,
+        rows,
+    )
+    stats = await feedback_service.evaluation_stats(days=1)
+    assert stats["byRank"][0]["impressions"] == 150 and stats["byRank"][0]["enoughData"] is True
+    assert stats["byRank"][1]["impressions"] == 30 and stats["byRank"][1]["enoughData"] is False
+
+
 async def test_evaluation_stats_split_by_budget_group(conn):
     """G6 — match_impressions.over_budget đúng theo nhóm; admin/evaluation tách byRank theo nhóm,
     không trộn hạng của nhóm vượt ngân sách (hạng trong danh sách đã NỐI) vào byRankInBudget."""
@@ -383,12 +412,15 @@ async def test_evaluation_stats_split_by_budget_group(conn):
 
     stats = await feedback_service.evaluation_stats(days=1)
     # Hạng 3 trong byRank CHUNG trộn lẫn: đúng là mentor vượt ngân sách bị "Không phù hợp" ở hạng 3.
-    assert stats["byRank"][2] == {"rank": 3, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
+    assert stats["byRank"][2] == {"rank": 3, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0,
+                                  "enoughData": False}
     # Tách theo nhóm: hạng 3 của nhóm TRONG ngân sách không có lượt hiển thị nào (0 mentor trong ngân
     # sách đứng hạng 3) — không bị tính nhầm là "100% không phù hợp ở hạng 3 của nhóm trong ngân sách".
-    assert stats["byRankInBudget"][2] == {"rank": 3, "impressions": 0, "notRelevant": 0, "notRelevantRate": 0.0}
+    assert stats["byRankInBudget"][2] == {"rank": 3, "impressions": 0, "notRelevant": 0, "notRelevantRate": 0.0,
+                                          "enoughData": False}
     # Nhóm VƯỢT ngân sách: đúng 1 lượt hiển thị ở hạng 3, bị "Không phù hợp".
-    assert stats["byRankOverBudget"][2] == {"rank": 3, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0}
+    assert stats["byRankOverBudget"][2] == {"rank": 3, "impressions": 1, "notRelevant": 1, "notRelevantRate": 1.0,
+                                            "enoughData": False}
     assert set(cheap) <= {str(m["mentor_id"]) for m in mentors}
 
 

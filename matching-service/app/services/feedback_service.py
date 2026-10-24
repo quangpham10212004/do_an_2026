@@ -18,6 +18,10 @@ log = logging.getLogger(__name__)
 HIDE_DAYS = 30
 REASONS = ("WRONG_DOMAIN", "TOO_EXPENSIVE", "SCHEDULE", "OTHER")
 
+# D11 (docs/design-ai-matching-spec.md §8) — dưới ngưỡng này thì notRelevantRate của một hạng quá
+# nhiễu để so với ngưỡng (≤10% hạng 1-3, ≤15% hạng 4-5); RankStat.enough_data báo False.
+ENOUGH_DATA_THRESHOLD = 100
+
 
 async def hidden_mentor_ids(mentee_id: str, now: datetime | None = None) -> list[str]:
     now = now or datetime.now(timezone.utc)
@@ -161,21 +165,17 @@ async def evaluation_stats(days: int, max_rank: int = 10) -> dict:
         )
     shown_by = {r["rank"]: r["n"] for r in shown}
     rejected_by = {r["rank"]: r["n"] for r in rejected}
-    by_rank = []
-    for rank in range(1, max_rank + 1):
-        n, bad = shown_by.get(rank, 0), rejected_by.get(rank, 0)
-        by_rank.append({"rank": rank, "impressions": n, "notRelevant": bad,
-                        "notRelevantRate": round(bad / n, 4) if n else 0.0})
+    def _row(rank: int, n: int, bad: int) -> dict:
+        return {"rank": rank, "impressions": n, "notRelevant": bad,
+                "notRelevantRate": round(bad / n, 4) if n else 0.0,
+                "enoughData": n >= ENOUGH_DATA_THRESHOLD}
+
+    by_rank = [_row(rank, shown_by.get(rank, 0), rejected_by.get(rank, 0)) for rank in range(1, max_rank + 1)]
 
     def _by_budget(over_budget: bool) -> list[dict]:
         shown_g = {r["rank"]: r["n"] for r in shown_budget if r["over_budget"] == over_budget}
         rejected_g = {r["rank"]: r["n"] for r in rejected_budget if r["over_budget"] == over_budget}
-        out = []
-        for rank in range(1, max_rank + 1):
-            n, bad = shown_g.get(rank, 0), rejected_g.get(rank, 0)
-            out.append({"rank": rank, "impressions": n, "notRelevant": bad,
-                        "notRelevantRate": round(bad / n, 4) if n else 0.0})
-        return out
+        return [_row(rank, shown_g.get(rank, 0), rejected_g.get(rank, 0)) for rank in range(1, max_rank + 1)]
 
     return {
         "days": days,
