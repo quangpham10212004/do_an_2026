@@ -81,6 +81,7 @@ async def get_matches(
     sessionType: SessionType | None = Query(None),
     minRating: float | None = Query(None, ge=0, le=5),
     useProfileDefaults: bool = Query(True),
+    includeOverBudget: bool = Query(True),
     caller: Caller = Depends(require_user),
 ) -> MatchingResponse:
     _parse_uuid(menteeId, "menteeId")
@@ -108,7 +109,8 @@ async def get_matches(
     }
 
     result = await pipeline.match_mentors_for_mentee(
-        menteeId, limit=limit, requested=requested, use_profile_defaults=useProfileDefaults
+        menteeId, limit=limit, requested=requested, use_profile_defaults=useProfileDefaults,
+        include_over_budget=includeOverBudget,
     )
     if result is None:
         raise HTTPException(
@@ -141,6 +143,8 @@ async def get_matches(
             rating_used=m.get("rating_used", float(m["rating"])),
             score_parts=m.get("score_parts", {}),
             headline=m.get("headline"),
+            over_budget=m.get("over_budget", False),
+            over_budget_by=m.get("over_budget_by"),
         )
         for m in result["mentors"]
     ]
@@ -155,6 +159,7 @@ async def get_matches(
             excluded=stats["excluded"],
             hidden=stats.get("hidden", 0),
             eligible=stats["eligible"],
+            over_budget=stats.get("over_budget", 0),
             k=stats["k"],
             retrieved=stats["retrieved"],
             returned=stats["returned"],

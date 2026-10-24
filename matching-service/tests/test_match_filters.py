@@ -136,3 +136,28 @@ def test_echo_uses_filter_names():
     assert echo["min_rating"] == 4.0 and echo["max_rate"] == 150000.0
     assert echo["days"] == [2, 6] and echo["language"] == ["vi"]
     assert set(echo["from_profile_defaults"]) == {"maxRate", "days", "timeOfDay", "language"}
+
+
+# ---------------- ưu tiên mềm theo giá (vượt ngân sách xếp cuối, không bị loại) ----------------
+
+def test_soft_rate_keeps_over_budget_mentors_and_drops_maxrate_from_excluded_by():
+    f = mf.resolve({"maxRate": 150000, "language": ["en"]}, None)
+    rows = [
+        row(),                                  # qua hết
+        row(rate_ok=False),                     # chỉ vượt ngân sách => ở lại
+        row(language_ok=False),                 # trượt ngôn ngữ => bị loại
+        row(rate_ok=False, language_ok=False),  # chỉ trượt ngôn ngữ (giá không còn loại ai) => bị loại
+    ]
+    kept, excluded_by = mf.apply(rows, f, soft_rate=True)
+    assert len(kept) == 2
+    assert excluded_by == {"language": 2}  # maxRate không còn là bộ lọc loại ai
+
+    strict_kept, strict_excluded = mf.apply(rows, f)  # mặc định vẫn lọc cứng
+    assert len(strict_kept) == 1 and strict_excluded == {"maxRate": 1, "language": 1}
+
+
+def test_over_budget_flag_needs_active_budget():
+    f = mf.resolve({"maxRate": 150000}, None)
+    assert mf.over_budget(row(rate_ok=False), f)
+    assert not mf.over_budget(row(), f)
+    assert not mf.over_budget(row(rate_ok=False), MatchFilters())  # không có ngân sách thì không có "vượt"

@@ -11,7 +11,7 @@ import MatchingFilters, { NO_FILTERS, biggestBlocker, describeFilter, dropFilter
 import { mentoringApi } from "@/features/mentoring/api";
 import { profileApi } from "@/features/profile/api";
 import { CompletenessCard } from "@/features/profile/ProfileExtras";
-import { formatRate } from "@/lib/format";
+import { formatMoney, formatRate } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
 import type { Completeness, ExclusionReason, MatchFilterName, MatchFilterValues, NotRelevantReason, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
 
@@ -157,6 +157,9 @@ function MentorMeta({ m }: { m: RankedMentor }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-ink-muted">
       <span>{m.yearsExperience} năm kinh nghiệm</span>
       <span className="font-medium text-ink tabular">{formatRate(m.hourlyRate)}</span>
+      {m.overBudget && m.overBudgetBy != null && (
+        <Badge tone="warning" title="Giá cao hơn ngân sách bạn đặt">Vượt ngân sách +{formatMoney(m.overBudgetBy)}/giờ</Badge>
+      )}
       {/* US-41 (PRD-REV-5) — sao chỉ hiện khi ≥ 3 đánh giá */}
       {m.ratingCount >= 3 ? <Stars value={m.rating} count={m.ratingCount} /> : <span>Mentor mới</span>}
     </div>
@@ -302,9 +305,12 @@ function Matching({ user }: { user: SessionUser }) {
   const excludedEntries = Object.entries(excluded) as [ExclusionReason, number][];
   const excludedTotal = excludedEntries.reduce((sum, [, n]) => sum + n, 0);
   // US-18 — kết quả ít hơn LIMIT: chỉ ra bộ lọc loại nhiều mentor nhất và cho nới bằng một cú nhấp.
-  const blocker = data && data.mentors.length < LIMIT ? biggestBlocker(data.excludedBy) : null;
+  // Mentor trong ngân sách đứng đầu; mentor phù hợp nhưng vượt ngân sách xếp riêng ở cuối (không bị loại).
+  const fit = (data?.mentors ?? []).filter((m) => !m.overBudget);
+  const over = (data?.mentors ?? []).filter((m) => m.overBudget);
+  const blocker = data && fit.length < LIMIT ? biggestBlocker(data.excludedBy) : null;
   const reasons = distinctReasons(data?.mentors ?? []);
-  const tags = highlightTags(data?.mentors ?? []);
+  const tags = highlightTags(fit);
   const filtersOn = data ? activeFilters(data.filters) : [];
 
   const notRelevant = (m: RankedMentor) => async (reason: NotRelevantReason, note: string) => {
@@ -346,7 +352,7 @@ function Matching({ user }: { user: SessionUser }) {
             {hiddenMsg && <Alert tone="success">{hiddenMsg}</Alert>}
             {blocker && (
               <Alert tone="warning" action={<Button size="sm" disabled={busy} onClick={() => search(dropFilter(data.filters, blocker[0]))}>Nới điều kiện</Button>}>
-                Chỉ tìm thấy {data.mentors.length} mentor: {blocker[1]} mentor bị loại bởi {describeFilter(blocker[0], data.filters)}.
+                Chỉ tìm thấy {fit.length} mentor: {blocker[1]} mentor bị loại bởi {describeFilter(blocker[0], data.filters)}.
               </Alert>
             )}
             {data.mentors.length === 0 ? (
@@ -357,22 +363,46 @@ function Matching({ user }: { user: SessionUser }) {
               </Card>
             ) : (
               <>
-                <section className="flex flex-col gap-3" aria-labelledby="top-title">
-                  <h2 id="top-title" className="text-title-2 font-semibold">
-                    {Math.min(TOP, data.mentors.length)} mentor phù hợp nhất với bạn
-                  </h2>
-                  <div className="match-top">
-                    {data.mentors.slice(0, TOP).map((m, i) => (
-                      <TopMatchCard key={m.mentorId} m={m} best={i === 0} tag={tags.get(m.mentorId)}
-                        reasons={reasons.get(m.mentorId) ?? []} requested={requested.has(m.mentorId)} onNotRelevant={notRelevant(m)} />
-                    ))}
-                  </div>
-                </section>
-                {data.mentors.length > TOP && (
+                {fit.length === 0 && (
+                  <Alert tone="warning">
+                    Chưa có mentor nào trong ngân sách {data.filters.maxRate !== null ? `${formatMoney(data.filters.maxRate)}/giờ` : "của bạn"}.
+                    Dưới đây là các mentor phù hợp nhưng giá cao hơn.
+                  </Alert>
+                )}
+                {fit.length > 0 && (
+                  <section className="flex flex-col gap-3" aria-labelledby="top-title">
+                    <h2 id="top-title" className="text-title-2 font-semibold">
+                      {Math.min(TOP, fit.length)} mentor phù hợp nhất với bạn
+                    </h2>
+                    <div className="match-top">
+                      {fit.slice(0, TOP).map((m, i) => (
+                        <TopMatchCard key={m.mentorId} m={m} best={i === 0} tag={tags.get(m.mentorId)}
+                          reasons={reasons.get(m.mentorId) ?? []} requested={requested.has(m.mentorId)} onNotRelevant={notRelevant(m)} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {fit.length > TOP && (
                   <section className="flex flex-col gap-3" aria-labelledby="more-title">
                     <h2 id="more-title" className="text-title-3 font-semibold">Lựa chọn khác</h2>
                     <Card>
-                      {data.mentors.slice(TOP).map((m) => (
+                      {fit.slice(TOP).map((m) => (
+                        <MatchRow key={m.mentorId} m={m} reasons={reasons.get(m.mentorId) ?? []}
+                          requested={requested.has(m.mentorId)} onNotRelevant={notRelevant(m)} />
+                      ))}
+                    </Card>
+                  </section>
+                )}
+                {over.length > 0 && (
+                  <section className="flex flex-col gap-3" aria-labelledby="over-title">
+                    <h2 id="over-title" className="text-title-3 font-semibold">Phù hợp nhưng vượt ngân sách</h2>
+                    <p className="text-small text-ink-muted">
+                      Các mentor này khớp với hồ sơ của bạn nhưng giá cao hơn mức {data.filters.maxRate !== null ? `${formatMoney(data.filters.maxRate)}/giờ ` : ""}
+                      bạn đặt. Họ đứng cuối để bạn vẫn thấy được lựa chọn.
+                      {data.pipeline.overBudget > over.length && ` Còn ${data.pipeline.overBudget - over.length} mentor khác cũng vượt ngân sách.`}
+                    </p>
+                    <Card>
+                      {over.map((m) => (
                         <MatchRow key={m.mentorId} m={m} reasons={reasons.get(m.mentorId) ?? []}
                           requested={requested.has(m.mentorId)} onNotRelevant={notRelevant(m)} />
                       ))}

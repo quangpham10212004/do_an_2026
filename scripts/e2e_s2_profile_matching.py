@@ -119,6 +119,8 @@ def main():
     rate_of = {m["id"]: m["rate"] for m in mentors}
 
     def search(**params):
+        # Các kiểm tra US-17/US-18 bên dưới là chế độ lọc cứng theo giá; chế độ ưu tiên mềm kiểm riêng ở cuối US-17.
+        params.setdefault("includeOverBudget", False)
         query = [("menteeId", mentee_id)]
         for k, v in params.items():
             for item in (v if isinstance(v, list) else [v]):
@@ -157,6 +159,18 @@ def main():
           len(res["mentors"]) == 34 and "maxRate" not in res["filters"]["fromProfileDefaults"], (len(res["mentors"]), res["filters"]))
     p = call("GET", f"{PROFILE}/api/profile/mentee/{mentee_id}", token=me)
     check("Ghi đè không làm đổi hồ sơ", float(p["budgetMaxPerHour"]) == 150000, p["budgetMaxPerHour"])
+
+    # Ưu tiên mềm theo giá: mentor vượt ngân sách không bị loại mà đứng cuối, kèm cờ overBudget.
+    res = search(limit=10, maxRate=150000, useProfileDefaults=False, includeOverBudget=True)
+    flags = [bool(m["overBudget"]) for m in res["mentors"]]
+    check("Mềm: 10 mentor trong ngân sách đứng đầu, 3 mentor vượt ngân sách đứng cuối",
+          flags == [False] * 10 + [True] * 3, flags)
+    tail = res["mentors"][10:]
+    check("Mềm: mentor vượt ngân sách là mentor 300.000đ, overBudgetBy = 150.000",
+          all(m["hourlyRate"] == 300000 and m["overBudgetBy"] == 150000 for m in tail),
+          [(m["hourlyRate"], m["overBudgetBy"]) for m in tail])
+    check("Mềm: maxRate không còn loại ai (excludedBy rỗng), pipeline.overBudget = 6",
+          res["excludedBy"] == {} and res["pipeline"]["overBudget"] == 6, (res["excludedBy"], res["pipeline"]))
 
     res = search(limit=50, useProfileDefaults=False)
     check("useProfileDefaults=false => không bộ lọc người dùng, đủ 36 mentor",

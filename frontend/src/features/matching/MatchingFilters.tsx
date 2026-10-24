@@ -26,7 +26,7 @@ export function dropFilter(filters: MatchFilterValues, name: MatchFilterName): M
 export function describeFilter(name: MatchFilterName, f: MatchFilterValues): string {
   switch (name) {
     case "maxRate":
-      return `giá ≤ ${(f.maxRate ?? 0).toLocaleString("vi-VN")}đ`;
+      return `ngân sách ≤ ${(f.maxRate ?? 0).toLocaleString("vi-VN")}đ`;
     case "days":
       return `ngày ${f.days.map((d) => SHORT_DAYS[d]).join(", ")}`;
     case "timeOfDay":
@@ -79,7 +79,7 @@ export default function MatchingFilters({ value, fromProfile, busy, onSearch, on
       <Card>
         <CardBody className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label={<>Giá tối đa (đ/giờ){tag("maxRate")}</>} id="mf-rate">
+            <Field label={<>Ngân sách tối đa (đ/giờ){tag("maxRate")}</>} id="mf-rate" hint="Mentor vượt ngân sách vẫn hiện ở cuối danh sách.">
               <Input id="mf-rate" type="number" min={0} step={10000} value={rate} placeholder="Không giới hạn" onChange={(e) => setRate(e.target.value)} />
             </Field>
             <Field label={<>Buổi{tag("timeOfDay")}</>} id="mf-time">

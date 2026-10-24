@@ -291,12 +291,14 @@ async def match_mentors_for_mentee(
     requested: dict | None = None,
     use_profile_defaults: bool = True,
     exclude_ids: list[str] | None = None,
+    include_over_budget: bool = True,
 ) -> dict | None:
     """
     Chạy toàn bộ pipeline. Trả về None nếu mentee chưa có hồ sơ/embedding.
 
     requested: bộ lọc từ query (khoá = match_filters.FILTER_NAMES, None = không truyền); bộ lọc thiếu
     lấy từ sở thích hồ sơ khi use_profile_defaults. exclude_ids: mentor không bao giờ được trả về.
+    include_over_budget: mentor vượt ngân sách không bị loại mà đứng cuối danh sách (xem _run).
     """
     mentee = await get_mentee(mentee_id)
     if mentee is None:
@@ -312,17 +314,14 @@ async def match_mentors_for_mentee(
     filters = match_filters.resolve(requested or {}, mentee, use_profile_defaults)
     # US-36 — mentor mentee đã bấm "Không phù hợp" bị ẩn 30 ngày, loại TRƯỚC khi xếp hạng.
     hidden = await feedback_service.hidden_mentor_ids(mentee_id)
-    result = await _run(mentee, filters, limit, list(exclude_ids or []) + hidden)
+    result = await _run(mentee, filters, limit, list(exclude_ids or []) + hidden, include_over_budget)
     result["stats"]["hidden"] = len(hidden)
     return result
 
 
-async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: list[str]) -> dict:
-    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids)
-    eligible, excluded_by = match_filters.apply(base, filters)
-
-    k = max(DEFAULT_K, limit * 5)
-    by_id = {c["mentor_id"]: c for c in eligible}
+async def _retrieve_and_rank(mentee: dict, pool: list[dict], k: int, platform_median: float | None) -> list[dict]:
+    """Bước 2 + 3 + 4 cho một nhóm mentor đã qua bộ lọc: top-K theo vector → re-rank → lý do. Chưa cắt theo limit."""
+    by_id = {c["mentor_id"]: c for c in pool}
     nearest = await rank_by_similarity(str(mentee["user_id"]), list(by_id), k)
     now = datetime.now(timezone.utc)
     availability, blocked = await schedule_inputs([r["mentor_id"] for r in nearest], now)
@@ -333,20 +332,56 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
         c["schedule_fit"] = signals.schedule_fit(now, mentee, c.get("timezone"), availability.get(r["mentor_id"], []),
                                                  blocked.get(r["mentor_id"], []))
         candidates.append(c)
-    ranked = re_rank(candidates, await platform_median_rating())[:limit]
+    ranked = re_rank(candidates, platform_median)
     for c in ranked:
         c["reasons"], c["matched_skills"] = explain(c, mentee)
+    return ranked
 
+
+async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: list[str],
+               include_over_budget: bool = False) -> dict:
+    """
+    include_over_budget: maxRate trở thành ưu tiên mềm. Mentor vượt ngân sách (nhưng qua mọi bộ lọc khác) không bị loại
+    mà được xếp RIÊNG và đặt SAU mọi mentor trong ngân sách, kèm over_budget / over_budget_by. Hai nhóm lấy top-K riêng
+    để mentor vượt ngân sách không chiếm chỗ của mentor trong ngân sách. False = lọc cứng như trước (US-17).
+    """
+    soft = include_over_budget and filters.max_rate is not None
+    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids)
+    eligible, excluded_by = match_filters.apply(base, filters, soft_rate=soft)
+
+    k = max(DEFAULT_K, limit * 5)
+    in_budget = [c for c in eligible if not match_filters.over_budget(c, filters)]
+    over = [c for c in eligible if match_filters.over_budget(c, filters)]
+    median = await platform_median_rating()
+
+    ranked_in = await _retrieve_and_rank(mentee, in_budget, k, median)
+    ranked = ranked_in[:limit]
+    retrieved = len(ranked_in)
+
+    shown_over: list[dict] = []
+    if over:
+        # Đủ chỗ để mentee thấy lựa chọn ngoài ngân sách: tối thiểu OVER_BUDGET_SHOWN, và bù cho đủ `limit`
+        # khi mentor trong ngân sách ít.
+        slots = max(config.OVER_BUDGET_SHOWN, limit - len(ranked))
+        ranked_over = await _retrieve_and_rank(mentee, over, k, median)
+        retrieved += len(ranked_over)
+        shown_over = ranked_over[:slots]
+        for c in shown_over:
+            c["over_budget"] = True
+            c["over_budget_by"] = round(float(c["hourly_rate"]) - float(filters.max_rate), 2)
+
+    mentors = ranked + shown_over
     return {
-        "mentors": ranked,
+        "mentors": mentors,
         "filters": filters,
         "excluded_by": excluded_by,
         "stats": {
             "considered": len(base) + sum(excluded.values()),
             "excluded": excluded,
             "eligible": len(eligible),
-            "retrieved": len(candidates),
-            "returned": len(ranked),
+            "over_budget": len(over),
+            "retrieved": retrieved,
+            "returned": len(mentors),
             "k": k,
         },
     }
@@ -358,7 +393,9 @@ async def similar_mentors(mentee_id: str, exclude_mentor_id: str, limit: int = 3
     Áp sở thích hồ sơ làm bộ lọc; nếu chưa đủ `limit` thì nới hết bộ lọc người dùng (vẫn giữ 5 ràng
     buộc hệ thống) để bổ sung, kết quả vòng đầu đứng trước. Mentee chưa có hồ sơ/chỉ mục => rỗng.
     """
-    first = await match_mentors_for_mentee(mentee_id, limit=limit, exclude_ids=[exclude_mentor_id])
+    # Gợi ý thay thế (mentoring-service) giữ lọc cứng theo ngân sách: không đề xuất mentor mà mentee không trả nổi.
+    first = await match_mentors_for_mentee(mentee_id, limit=limit, exclude_ids=[exclude_mentor_id],
+                                           include_over_budget=False)
     if first is None:
         return []
     mentors = list(first["mentors"])

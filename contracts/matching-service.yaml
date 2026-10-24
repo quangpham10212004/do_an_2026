@@ -52,6 +52,8 @@ components:
           description: Phần đóng góp của từng tín hiệu (similarity, rating, experience, scheduleFit, responsiveness); cộng lại = finalScore
           additionalProperties: { type: number }
         headline: { type: string, nullable: true }
+        overBudget: { type: boolean, default: false, description: "Giá vượt ngân sách maxRate: vẫn được gợi ý nhưng đứng cuối danh sách" }
+        overBudgetBy: { type: number, nullable: true, description: "Số đồng vượt ngân sách mỗi giờ (hourlyRate − maxRate); null khi trong ngân sách" }
     MatchFeedback:
       type: object
       description: US-36 (PRD-MATCH-6) — lượt "Không phù hợp" đang hiệu lực
@@ -89,7 +91,8 @@ components:
             theo thứ tự): notVerified, unavailable (status hiệu lực ≠ ACCEPTING — PAUSED/ON_LEAVE/SUSPENDED),
             noSchedule, fullCapacity, domainMismatch
           additionalProperties: { type: integer }
-        eligible: { type: integer, description: Số mentor qua mọi ràng buộc hệ thống VÀ mọi bộ lọc người dùng }
+        eligible: { type: integer, description: Số mentor qua mọi ràng buộc hệ thống VÀ mọi bộ lọc người dùng (gồm cả mentor vượt ngân sách khi includeOverBudget=true) }
+        overBudget: { type: integer, default: 0, description: "Số mentor qua mọi bộ lọc nhưng vượt ngân sách maxRate (includeOverBudget=true); chỉ một phần được trả về, xếp cuối" }
         k: { type: integer, description: "Số mentor hợp lệ gần nhất về vector được đưa vào re-rank = max(50, 5 × limit)" }
         retrieved: { type: integer, description: Số mentor hợp lệ đã có vector và được lấy ở bước top-K (≤ k) }
         returned: { type: integer }
@@ -111,7 +114,7 @@ components:
         US-17 — bộ lọc người dùng THỰC SỰ áp dụng cho lượt tìm (request + sở thích hồ sơ). Tên trường = tên
         query param. Giá trị null / mảng rỗng / false = bộ lọc không bật.
       properties:
-        maxRate: { type: number, nullable: true, description: "hourlyRate ≤ maxRate (VND/giờ)" }
+        maxRate: { type: number, nullable: true, description: "Ngân sách tối đa (VND/giờ). includeOverBudget=true: ưu tiên mềm, mentor vượt ngân sách xếp cuối; false: hourlyRate ≤ maxRate (lọc cứng)" }
         days: { type: array, items: { type: integer, minimum: 1, maximum: 7 }, description: "ISO 1 = Thứ Hai … 7 = Chủ Nhật" }
         timeOfDay: { allOf: [{ $ref: "#/components/schemas/TimeOfDay" }], nullable: true }
         language: { type: array, items: { type: string, enum: [vi, en] }, description: Mentor nói ít nhất một ngôn ngữ trong danh sách }
@@ -255,7 +258,15 @@ paths:
       parameters:
         - { name: menteeId, in: query, required: true, schema: { type: string, format: uuid } }
         - { name: limit, in: query, required: false, schema: { type: integer, default: 10, minimum: 1, maximum: 50 } }
-        - { name: maxRate, in: query, required: false, schema: { type: number, minimum: 0 }, description: "hourlyRate ≤ maxRate (VND/giờ)" }
+        - { name: maxRate, in: query, required: false, schema: { type: number, minimum: 0 }, description: "Ngân sách tối đa (VND/giờ); xem includeOverBudget" }
+        - name: includeOverBudget
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+          description: >
+            true (mặc định): maxRate là ưu tiên mềm — mentor vượt ngân sách nhưng qua mọi bộ lọc khác KHÔNG bị loại mà được
+            xếp riêng SAU mọi mentor trong ngân sách (tối thiểu 3, bù cho đủ limit khi mentor trong ngân sách ít), kèm
+            overBudget / overBudgetBy; maxRate không xuất hiện trong excludedBy. false: lọc cứng hourlyRate ≤ maxRate như trước.
         - name: days
           in: query
           required: false

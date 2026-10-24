@@ -54,6 +54,9 @@ class RankedMentor(CamelModel):
     rating_used: float = 0.0
     score_parts: dict[str, float] = {}
     headline: str | None = None
+    # Giá vượt ngân sách (maxRate) của mentee: vẫn được gợi ý nhưng đứng cuối danh sách. over_budget_by = số đồng vượt / giờ.
+    over_budget: bool = False
+    over_budget_by: float | None = None
 
 
 class PipelineStats(CamelModel):
@@ -61,6 +64,7 @@ class PipelineStats(CamelModel):
     excluded: dict[str, int]
     hidden: int = 0
     eligible: int = 0
+    over_budget: int = 0
     k: int
     retrieved: int
     returned: int

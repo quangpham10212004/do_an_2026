@@ -95,10 +95,12 @@ async def add_mentee(conn, **prefs) -> str:
     return user_id
 
 
-async def match(mentee_id, limit=10, use_profile_defaults=True, **requested):
+async def match(mentee_id, limit=10, use_profile_defaults=True, include_over_budget=False, **requested):
+    """Mặc định lọc cứng theo giá (US-17); include_over_budget=True kiểm chế độ ưu tiên mềm."""
     await index_service.reconcile(batch=500)
     return await matching_pipeline.match_mentors_for_mentee(
-        mentee_id, limit=limit, requested=requested, use_profile_defaults=use_profile_defaults)
+        mentee_id, limit=limit, requested=requested, use_profile_defaults=use_profile_defaults,
+        include_over_budget=include_over_budget)
 
 
 def ids(result) -> set[str]:
@@ -319,3 +321,63 @@ async def test_platform_median_rating_for_cold_start(conn):
         await add_mentor(conn, rating=r, rating_count=10)
     await add_mentor(conn, rating=5.0, rating_count=1)
     assert await matching_pipeline.platform_median_rating() == 4.0
+
+
+async def test_over_budget_mentors_come_last_not_dropped(conn):
+    """
+    Vượt ngân sách không còn là lý do loại: mentor trong ngân sách đứng đầu (dù sát mentee kém hơn), mentor vượt
+    ngân sách xếp SAU, kèm over_budget / over_budget_by và không có maxRate trong excludedBy.
+    """
+    cheap = [await add_mentor(conn, rate=100000) for _ in range(5)]                       # vuông góc mentee
+    pricey = [await add_mentor(conn, rate=2000000, bio="Chuyên gia Kafka") for _ in range(3)]  # sát mentee nhất
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee, limit=5, include_over_budget=True, maxRate=150000)
+    mentors = result["mentors"]
+    assert [str(m["mentor_id"]) for m in mentors[:5]] and set(ids(result)) == set(cheap) | set(pricey)
+    assert all(not m.get("over_budget") for m in mentors[:5])
+    assert {str(m["mentor_id"]) for m in mentors[:5]} == set(cheap)
+    tail = mentors[5:]
+    assert {str(m["mentor_id"]) for m in tail} == set(pricey)
+    assert all(m["over_budget"] and m["over_budget_by"] == 1850000 for m in tail)
+    assert result["excluded_by"] == {}
+    assert result["stats"]["over_budget"] == 3 and result["stats"]["returned"] == 8
+
+
+async def test_over_budget_fills_list_up_to_limit_when_few_in_budget(conn):
+    for _ in range(2):
+        await add_mentor(conn, rate=100000)
+    for _ in range(10):
+        await add_mentor(conn, rate=900000, bio="Chuyên gia Kafka")
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee, limit=6, include_over_budget=True, maxRate=150000)
+    flags = [bool(m.get("over_budget")) for m in result["mentors"]]
+    assert flags == [False, False, True, True, True, True]  # 2 trong ngân sách + bù đủ limit = 6
+    assert result["stats"]["over_budget"] == 10
+
+
+async def test_over_budget_group_does_not_steal_in_budget_slots(conn):
+    """60 mentor đắt gần mentee hơn 30 mentor rẻ: top-K riêng từng nhóm nên 10 chỗ đầu vẫn là mentor trong ngân sách."""
+    for _ in range(60):
+        await add_mentor(conn, rate=500000, bio="Chuyên gia Kafka")
+    cheap = {await add_mentor(conn, rate=100000) for _ in range(30)}
+    mentee = await add_mentee(conn)
+
+    result = await match(mentee, limit=10, include_over_budget=True, maxRate=150000)
+    assert len(result["mentors"]) == 13  # 10 trong ngân sách + OVER_BUDGET_SHOWN (3) vượt ngân sách
+    assert {str(m["mentor_id"]) for m in result["mentors"][:10]} <= cheap
+    assert all(m["over_budget"] for m in result["mentors"][10:])
+
+
+async def test_budget_from_profile_is_soft_too(conn):
+    cheap = await add_mentor(conn, rate=100000)
+    pricey = await add_mentor(conn, rate=800000, bio="Chuyên gia Kafka")
+    mentee = await add_mentee(conn, budget=150000)
+
+    soft = await match(mentee, include_over_budget=True)
+    assert [str(m["mentor_id"]) for m in soft["mentors"]] == [cheap, pricey]
+    assert soft["filters"].from_profile_defaults == ("maxRate",)
+
+    strict = await match(mentee)
+    assert [str(m["mentor_id"]) for m in strict["mentors"]] == [cheap]

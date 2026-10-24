@@ -75,3 +75,7 @@ def dev_secret_warnings() -> list[str]:
 
 # US-46 (NFR-10): số lần gọi GET /api/matching/mentors tối đa mỗi phút cho một người dùng
 MATCHING_PER_MINUTE = int(os.getenv("MATCHING_RATE_LIMIT_PER_MINUTE", "20"))
+
+# Mentor phù hợp nhưng VƯỢT ngân sách (maxRate) không bị loại mà đứng cuối danh sách: số mentor tối thiểu được
+# hiển thị ở nhóm này. Nếu mentor trong ngân sách ít hơn `limit`, nhóm này được bổ sung cho đủ `limit`.
+OVER_BUDGET_SHOWN = int(os.getenv("MATCH_OVER_BUDGET_SHOWN", "3"))

@@ -26,6 +26,10 @@ export interface RankedMentor {
   /** Phần đóng góp từng tín hiệu vào finalScore (cộng lại = finalScore). */
   scoreParts: Partial<Record<keyof PipelineWeights, number>>;
   headline: string | null;
+  /** Giá vượt ngân sách (maxRate): vẫn được gợi ý nhưng đứng cuối danh sách. */
+  overBudget: boolean;
+  /** Số đồng vượt ngân sách mỗi giờ; null khi trong ngân sách. */
+  overBudgetBy: number | null;
 }
 
 export type ExclusionReason = "notVerified" | "unavailable" | "noSchedule" | "fullCapacity" | "domainMismatch";
@@ -48,6 +52,8 @@ export interface PipelineStats {
   hidden: number;
   /** Qua mọi ràng buộc hệ thống và mọi bộ lọc người dùng. */
   eligible: number;
+  /** Số mentor qua mọi bộ lọc nhưng vượt ngân sách (được xếp cuối danh sách). */
+  overBudget: number;
   k: number;
   retrieved: number;
   returned: number;

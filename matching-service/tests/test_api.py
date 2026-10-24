@@ -29,8 +29,10 @@ def client():
 def fake_pipeline(monkeypatch):
     calls = []
 
-    async def fake_match(mentee_id: str, limit: int = 10, requested=None, use_profile_defaults=True, exclude_ids=None):
-        calls.append({"limit": limit, "requested": requested, "use_profile_defaults": use_profile_defaults})
+    async def fake_match(mentee_id: str, limit: int = 10, requested=None, use_profile_defaults=True, exclude_ids=None,
+                         include_over_budget=True):
+        calls.append({"limit": limit, "requested": requested, "use_profile_defaults": use_profile_defaults,
+                      "include_over_budget": include_over_budget})
         if mentee_id == OTHER_ID:
             return None
         filters = match_filters.resolve(requested or {}, {"budget_max_per_hour": 150000}, use_profile_defaults)
@@ -40,10 +42,11 @@ def fake_pipeline(monkeypatch):
                 "skills": ["Java"], "similarity_score": 0.8, "final_score": 0.82, "rating": 4.0,
                 "rating_count": 2, "years_experience": 6, "hourly_rate": 200000,
                 "matched_skills": ["Java"], "reasons": ["Trùng kỹ năng: Java"],
+                "over_budget": True, "over_budget_by": 50000.0,
             }],
             "filters": filters,
             "excluded_by": {name: 12 for name in sorted(filters.active())},
-            "stats": {"considered": 20, "excluded": {"notVerified": 4}, "eligible": 3, "k": 50,
+            "stats": {"considered": 20, "excluded": {"notVerified": 4}, "eligible": 3, "over_budget": 1, "k": 50,
                       "retrieved": 3, "returned": 1},
         }
 
@@ -111,6 +114,7 @@ def test_matching_echoes_effective_filters_and_excluded_by(client, fake_pipeline
     assert fake_pipeline[-1] == {
         "limit": 5,
         "use_profile_defaults": False,
+        "include_over_budget": True,
         "requested": {"maxRate": 500000, "days": [1, 3, 5], "timeOfDay": "EVENING", "language": ["en"],
                       "sessionType": "CODE_REVIEW", "minRating": 4},
     }
@@ -341,3 +345,15 @@ def test_evaluation_stats_admin_only(client, monkeypatch):
     res = client.get("/api/matching/admin/evaluation?days=7", headers={"Authorization": f"Bearer {token(OTHER_ID, 'ADMIN')}"})
     assert res.status_code == 200
     assert res.json()["byRank"][0]["notRelevantRate"] == 0.3333
+
+
+def test_over_budget_is_exposed_and_toggle_reaches_pipeline(client, fake_pipeline):
+    """Mentor vượt ngân sách đứng cuối vẫn được trả về, kèm cờ + số tiền vượt; includeOverBudget=false tắt chế độ này."""
+    headers = {"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"}
+    body = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}", headers=headers).json()
+    assert body["mentors"][0]["overBudget"] is True and body["mentors"][0]["overBudgetBy"] == 50000.0
+    assert body["pipeline"]["overBudget"] == 1
+    assert fake_pipeline[-1]["include_over_budget"] is True  # mặc định bật
+
+    client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}&includeOverBudget=false", headers=headers)
+    assert fake_pipeline[-1]["include_over_budget"] is False

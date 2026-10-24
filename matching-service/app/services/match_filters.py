@@ -160,15 +160,20 @@ def passes(row: dict, active: set[str]) -> bool:
     return True
 
 
-def apply(rows: list[dict], filters: MatchFilters) -> tuple[list[dict], dict[str, int]]:
+def apply(rows: list[dict], filters: MatchFilters, soft_rate: bool = False) -> tuple[list[dict], dict[str, int]]:
     """
     (mentor còn lại sau mọi bộ lọc người dùng, excludedBy).
 
     excludedBy[f] = số mentor đã qua ràng buộc hệ thống và qua MỌI bộ lọc khác nhưng trượt riêng f —
     tức là số mentor sẽ xuất hiện thêm nếu chỉ bỏ f (US-18 "Nới điều kiện"). Có mặt cho mọi bộ lọc
     đang bật, kể cả khi bằng 0. Một mentor trượt ≥ 2 bộ lọc không được tính cho bộ lọc nào.
+
+    soft_rate: giá (maxRate) không loại ai — mentor vượt ngân sách vẫn ở lại (cờ rate_ok = False) để pipeline
+    đặt họ cuối danh sách; vì vậy maxRate cũng không xuất hiện trong excludedBy.
     """
     active = filters.active()
+    if soft_rate:
+        active = active - {MAX_RATE}
     kept = [r for r in rows if passes(r, active)]
     rejected = [r for r in rows if not passes(r, active)]
     excluded_by = {
@@ -176,6 +181,11 @@ def apply(rows: list[dict], filters: MatchFilters) -> tuple[list[dict], dict[str
         for name in FILTER_NAMES if name in active
     }
     return kept, excluded_by
+
+
+def over_budget(row: dict, filters: MatchFilters) -> bool:
+    """Ngân sách (maxRate) đang bật và giá mentor vượt ngân sách đó."""
+    return filters.max_rate is not None and not row["rate_ok"]
 
 
 def biggest_blocker(excluded_by: dict[str, int]) -> str | None:
