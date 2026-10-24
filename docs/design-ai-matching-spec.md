@@ -1,8 +1,11 @@
 # Đặc tả kỹ thuật: AI Matching
 
 > **Trạng thái: ĐẶC TẢ HIỆN TRẠNG kèm ĐỀ XUẤT (⚒).** Soạn 24/10/2026 trên branch `feature-core/ai-matching`.
-> Các mục ghi "hiện trạng" mô tả code đang có, đã đối chiếu với mã nguồn nhưng **chưa chạy lại test, benchmark hay e2e** trong lần soạn này.
-> Các mục đánh dấu ⚒ là đề xuất, chưa hiện thực. Giải thích kiến trúc tổng quan nằm ở [ai-features.md](ai-features.md) §1; đặc tả này là chuẩn nghiệm thu cho bộ tiêu chí.
+> D9–D13 và G1, G2, G6, G10 đã hiện thực và kiểm chứng (pytest, e2e, API thật — chi tiết ở
+> [report-task-ai-matching.md](report-task-ai-matching.md)). Còn ⚒ chưa hiện thực: T2c (so sánh model
+> trên bộ eval đầy đủ), T9–T11 (nhãn thật từ hai người chấm, ngưỡng M1–M3 xác nhận bằng dữ liệu thật),
+> G7–G9, G11 (xem §9).
+> Giải thích kiến trúc tổng quan nằm ở [ai-features.md](ai-features.md) §1; đặc tả này là chuẩn nghiệm thu cho bộ tiêu chí.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -19,11 +22,11 @@
 | Hạng mục | Hiện trạng | Đề xuất ⚒ |
 |---|---|---|
 | 5 luật bắt buộc | Đã hiện thực (SQL CTE) | Không đổi |
-| 4 bộ lọc người dùng | Đã hiện thực; `minRating` lọc theo rating thô | G1 |
+| 4 bộ lọc người dùng | Đã hiện thực; `minRating` theo `effective_rating` (đã sửa G1) | Không còn, xem G1 |
 | Ẩn "Không phù hợp" 30 ngày | Đã hiện thực | Không đổi |
-| Ngân sách mềm | Đã hiện thực (chưa commit) | G6 đánh dấu nhóm trong impression |
-| 5 tín hiệu chấm điểm | Đã hiện thực, trọng số mặc định tổng 1,00 | G2 kiểm tra tổng khi khởi động |
-| Chỉ số đánh giá | Có công cụ offline và endpoint tỉ lệ "Không phù hợp"; nhãn còn nháp | G3, G4, G5 |
+| Ngân sách mềm | Đã hiện thực và commit; `match_impressions.over_budget` đánh dấu nhóm (đã làm G6) | Không còn, xem G6 |
+| 5 tín hiệu chấm điểm | Đã hiện thực; tổng trọng số được kiểm tra khi khởi động (đã làm G2); model đổi sang đa ngôn ngữ (đã làm G10) | T2c khi có nhãn thật |
+| Chỉ số đánh giá | `tookMs` (M4) và `enoughData` theo hạng (M3) đã có; M1/M2 có công cụ offline, nhãn còn nháp | T9–T11 (nhãn thật, dữ liệu người dùng), G11 |
 
 ## 2. Quyết định đã chốt
 
@@ -189,12 +192,12 @@ Nhãn dùng cho M1, M2: trung bình `rater1`/`rater2`; nếu chưa ai chấm th�
 
 | # | Vấn đề | Đề xuất |
 |---|---|---|
-| G1 | `minRating` lọc theo `rating` thô, mentor mới (dưới 3 đánh giá, rating 0) bị loại khi bật bộ lọc | Lọc theo `effective_rating` (D9); giao diện hiện nhãn "Mentor mới" |
-| G2 | Không kiểm tra tổng trọng số bằng 1,00 | Kiểm tra trong `config.py` lúc khởi động, sai thì dừng |
-| G3 | `/admin/evaluation` không trả P@5, NDCG@10, độ trễ | Giữ P@5, NDCG@10 ở chế độ offline và ghi rõ; đo độ trễ bằng log hoặc histogram của service |
+| G1 | ~~`minRating` lọc theo `rating` thô, mentor mới (dưới 3 đánh giá, rating 0) bị loại khi bật bộ lọc~~ **Đã xử lý (T2, 24/10/2026):** lọc theo `effective_rating` (D9) | — |
+| G2 | ~~Không kiểm tra tổng trọng số bằng 1,00~~ **Đã xử lý (T1):** `config.weight_errors()`, dừng khởi động khi sai | — |
+| G3 | `/admin/evaluation` không trả P@5, NDCG@10. **Một phần đã xử lý (T4):** `pipeline.tookMs` đo độ trễ mỗi lượt gọi | P@5, NDCG@10 vẫn ở chế độ offline (chờ nhãn thật, T9–T11) |
 | G4 | Báo cáo eval cũ (08/10/2026, đã gỡ khỏi `docs/`) lỗi thời: chưa có tín hiệu phản hồi và khớp lịch như code hiện tại; nhãn còn nháp | Chạy lại với trọng số hiện tại, thu nhãn `rater1`/`rater2`, rồi đặt ngưỡng M1, M2 |
 | G5 | ~~Số độ trễ ở §8 (93,8 ms) khác số ở `ai-features.md` §1.9 (4,8 ms)~~ **Đã xử lý (T8, 24/10/2026):** chạy lại `benchmark_matching.py`, số mới ở §8 (trung bình 255,5 ms, p95 377,3 ms, ~5.007 mentor) thay cho cả hai số cũ. Tăng mạnh so với 4,8 ms cũ chủ yếu do model đa ngôn ngữ nặng hơn (G10) và máy đo không rảnh (chỉ 15 mẫu, xem ghi chú ở §8); vẫn đạt NFR-1 (max 521 ms << 2.000 ms). Cần đo lại trên máy rảnh, đủ 50 mẫu, sau khi xử lý G11 | Đo lại sau G11 |
-| G6 | `match_impressions` không đánh dấu nhóm vượt ngân sách; hạng của nhóm này là hạng trong danh sách đã nối, làm lệch M3 | Migration `003`, tách M3 theo nhóm |
+| G6 | ~~`match_impressions` không đánh dấu nhóm vượt ngân sách~~ **Đã xử lý (T3):** migration `004` (không phải `003` như ghi tạm lúc soạn — xem T2b), `byRankInBudget`/`byRankOverBudget` tách M3 theo nhóm | — |
 | G7 | Mentee chưa chọn ngày: C15 tính trên mọi ngày nên điểm thấp đều | Ghi là hạn chế hoặc trung tính hóa khi thiếu dữ liệu |
 | G8 | Lọc ngày và buổi so theo giờ địa phương của mentor, chưa quy đổi múi giờ mentee | Ghi là hạn chế đã biết |
 | G9 | `rating` và `median_response_hours` là cột đồng bộ | Ghi nguồn; cân nhắc cảnh báo khi dữ liệu quá cũ |
