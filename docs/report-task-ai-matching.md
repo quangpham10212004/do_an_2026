@@ -16,7 +16,7 @@
 | T4 | ĐẠT | (xem §T4) |
 | T5 | ĐẠT | (xem §T5) |
 | T6 | ĐẠT | (xem §T6) |
-| T7 | chưa làm | |
+| T7 | ĐẠT (sửa lại 1 câu trong spec) | (xem §T7) |
 | T8 | chưa làm | |
 | T9–T16 | chưa làm (cần người chấm/dữ liệu thật, hoặc tuỳ chọn) | |
 
@@ -301,5 +301,42 @@ cd frontend && rm -rf .next && ./node_modules/.bin/tsc --noEmit
 - Response thật của `admin/evaluation` (đã gọi ở T3/T5) đã khớp hợp đồng mới (`byRank`, `byRankInBudget`, `byRankOverBudget`, mỗi mục có `enoughData`).
 
 **Kết luận:** ĐẠT theo output mong đợi ở §11.1.
+
+---
+
+## T7 — Test cho từng tiêu chí C01–C16
+
+**Input (theo §11.1):** bảng ánh xạ tiêu chí ở `docs/design-ai-matching-spec.md` §10.
+
+**Thay đổi:** gắn mã C01–C16 vào docstring của các test đại diện ĐÃ CÓ (không đổi tên hàm, không thêm test mới — spec chỉ yêu cầu "ít nhất một test"):
+
+| Mã | Test |
+|---|---|
+| C01–C05 | `test_matching_db.py::test_system_constraints_are_counted_over_all_mentors` |
+| C06 | `test_matching_db.py::test_days_and_time_of_day_windows` |
+| C07, C08 | `test_matching_db.py::test_language_session_type_and_rating` |
+| C09 | `test_matching_db.py::test_language_session_type_and_rating`, `test_min_rating_uses_effective_rating_for_new_mentors` |
+| C10 | `test_matching_db.py::test_hidden_mentor_is_excluded_for_30_days_and_list_still_full` |
+| C11 | `test_matching_db.py::test_over_budget_mentors_come_last_not_dropped` |
+| C12–C16 | `test_pipeline.py::test_re_rank_formula` (công thức đầy đủ) |
+| C13 | `test_ranking_signals.py::test_effective_rating_cold_start` |
+| C15 | `test_ranking_signals.py::test_full_fit_when_mentor_free_every_evening` |
+| C16 | `test_ranking_signals.py::test_responsiveness_buckets` |
+
+**Phát hiện quan trọng — sửa lại chính spec:** câu "output mong đợi" tôi viết ở §11.1 cho T7 nói *"chạy `pytest -k C09` ra đúng test của tiêu chí đó"*. Việc này **sai**: `pytest -k` chỉ khớp TÊN hàm test, không khớp docstring. Đã xác nhận bằng thực nghiệm: `pytest -k C09 --collect-only` → `no tests collected (114 deselected)`, dù đã có 2 test chứa "C09" trong docstring. Đã sửa lại §11.1 trong spec, đổi cách xác nhận sang `grep -rn "C09" matching-service/tests/` — đây mới là cách đúng khớp cả tên và docstring.
+
+**Lệnh đã chạy:**
+```
+grep -rn "C01\|C02\|...\|C16" tests/     # xác nhận đủ 16 mã
+pytest tests/ -q -k C09 --collect-only   # xác nhận -k KHÔNG khớp docstring (phát hiện ở trên)
+pytest tests/ -q                          # hồi quy
+```
+
+**Output thật:**
+- `grep`: đủ 16 mã, mỗi mã ≥1 dòng (liệt kê ở bảng trên).
+- `pytest -k C09 --collect-only`: `no tests collected (114 deselected)` — xác nhận `-k` không dùng được cho mục đích này.
+- `pytest tests/` đầy đủ: `113 passed, 1 failed` (không đổi so với T5 — T7 chỉ thêm docstring, không thêm/sửa logic).
+
+**Kết luận:** ĐẠT về nội dung (đủ 16 mã, mỗi mã có test thật sự kiểm tra đúng hành vi). **Không đạt đúng câu chữ "output mong đợi" cũ của spec** (vì câu đó sai) — đã sửa câu đó trong spec thành cách xác nhận đúng (`grep`), không phải lỗi của T7.
 
 ---

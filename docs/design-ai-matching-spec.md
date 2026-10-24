@@ -234,7 +234,7 @@ Thứ tự: T0 → T1 → T2 → T2b → T3 → T4 → T5 → T6 → T7 → T8; 
 
 | # | Task | Phụ thuộc | Input | Output mong đợi |
 |---|---|---|---|---|
-| T7 | Test cho từng tiêu chí C01–C16 | T1–T3 | Bảng ánh xạ ở §10 | Mỗi mã C01–C16 có ít nhất một test có tên hoặc docstring chứa mã đó; chạy `pytest -k C09` (ví dụ) ra đúng test của tiêu chí đó |
+| T7 | Test cho từng tiêu chí C01–C16 | T1–T3 | Bảng ánh xạ ở §10 | Mỗi mã C01–C16 có ít nhất một test có tên hoặc docstring chứa mã đó; xác nhận bằng `grep -rn "C09" matching-service/tests/` (ví dụ) — không dùng `pytest -k`, vì `-k` chỉ khớp TÊN test, không khớp docstring |
 | T8 | Chạy toàn bộ test, e2e, benchmark | T1–T7 | `pytest matching-service/tests`; `scripts/e2e_s2_profile_matching.py`; `scripts/benchmark_matching.py --mentors 5000 --requests 50` | Mọi test và e2e pass. Benchmark in trung bình, p50, p95, max; p95 < 2.000 ms (D12). Số đo và cấu hình đo được ghi vào §8, thay số cũ (G5) |
 | T2c | So sánh model cũ và mới trên bộ eval | T2b, T8 | Bộ eval có thêm nhãn ngôn ngữ cho từng cặp (vi–vi, vi–en, en–vi, en–en); chạy `capture.py` và `metrics.py` với cả hai model | Bảng P@5 và NDCG@10 theo từng loại cặp, cho cả hai model. Model mới không thấp hơn model cũ ở cặp en–en và cao hơn ở cặp khác ngôn ngữ. Nếu không đạt thì quay lại D13 |
 

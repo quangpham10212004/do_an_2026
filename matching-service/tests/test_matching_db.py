@@ -131,6 +131,7 @@ async def test_filters_apply_before_vector_ranking(conn):
 
 
 async def test_system_constraints_are_counted_over_all_mentors(conn):
+    """C01 (notVerified), C02 (unavailable), C03 (noSchedule), C04 (fullCapacity), C05 (domainMismatch)."""
     ok = await add_mentor(conn)
     await add_mentor(conn, verification="PENDING_REVIEW")
     await add_mentor(conn, verification="REJECTED")
@@ -149,6 +150,7 @@ async def test_system_constraints_are_counted_over_all_mentors(conn):
 
 
 async def test_days_and_time_of_day_windows(conn):
+    """C06 — ngày và buổi trong ngày."""
     monday_evening = await add_mentor(conn, slots=((1, "19:00", "21:00"),))
     saturday_morning = await add_mentor(conn, slots=((6, "08:00", "10:00"),))
     split = await add_mentor(conn, slots=((1, "08:00", "10:00"), (6, "19:00", "21:00")))
@@ -173,6 +175,7 @@ async def test_days_and_time_of_day_windows(conn):
 
 
 async def test_language_session_type_and_rating(conn):
+    """C07 (ngôn ngữ), C08 (sessionType), C09 (minRating)."""
     en = await add_mentor(conn, languages=("vi", "en"), rating=4.5, rating_count=10)
     vi = await add_mentor(conn, languages=("vi",), session_types=("CODE_REVIEW",), rating=3.9, rating_count=3)
     new = await add_mentor(conn, languages=("en",), session_types=("MOCK_INTERVIEW",))
@@ -192,7 +195,7 @@ async def test_language_session_type_and_rating(conn):
 
 
 async def test_min_rating_uses_effective_rating_for_new_mentors(conn):
-    """G1/D9 — mentor mới (dưới 3 đánh giá) so minRating bằng trung vị nền tảng, không bằng rating thô (0)."""
+    """C09, G1/D9 — mentor mới (dưới 3 đánh giá) so minRating bằng trung vị nền tảng, không bằng rating thô (0)."""
     # Không mentor nào đủ 3 đánh giá => platform_median_rating() trả None => fallback 3.5 (FALLBACK_MEDIAN_RATING).
     new_only = await add_mentor(conn, rating=0.0, rating_count=0)
     mentee = await add_mentee(conn)
@@ -277,7 +280,7 @@ async def test_suspended_mentor_is_never_suggested_nor_similar(conn):
 
 
 async def test_hidden_mentor_is_excluded_for_30_days_and_list_still_full(conn):
-    """AC US-36: mentor bị "Không phù hợp" không xuất hiện với mentee đó trong 30 ngày; vẫn trả đủ limit."""
+    """C10, AC US-36: mentor bị "Không phù hợp" không xuất hiện với mentee đó trong 30 ngày; vẫn trả đủ limit."""
     from datetime import datetime, timedelta, timezone
 
     from app.services import feedback_service
@@ -345,7 +348,7 @@ async def test_platform_median_rating_for_cold_start(conn):
 
 async def test_over_budget_mentors_come_last_not_dropped(conn):
     """
-    Vượt ngân sách không còn là lý do loại: mentor trong ngân sách đứng đầu (dù sát mentee kém hơn), mentor vượt
+    C11 — vượt ngân sách không còn là lý do loại: mentor trong ngân sách đứng đầu (dù sát mentee kém hơn), mentor vượt
     ngân sách xếp SAU, kèm over_budget / over_budget_by và không có maxRate trong excludedBy.
     """
     cheap = [await add_mentor(conn, rate=100000) for _ in range(5)]                       # vuông góc mentee

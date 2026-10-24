@@ -33,6 +33,7 @@ def test_fit_does_not_depend_on_time_of_call():
 
 
 def test_full_fit_when_mentor_free_every_evening():
+    """C15 — khớp lịch."""
     availability = [(d, time(18, 0), time(22, 0)) for d in range(1, 8)]
     assert rs.schedule_fit(NOW, EVENING_MON_WED, "Asia/Ho_Chi_Minh", availability, []) == 1.0
 
@@ -73,6 +74,7 @@ def test_no_availability_is_zero():
 
 
 def test_responsiveness_buckets():
+    """C16 — tốc độ phản hồi."""
     assert rs.responsiveness(None) == 0.5
     assert rs.responsiveness(3) == 1.0
     assert rs.responsiveness(24) == 1.0
@@ -82,6 +84,7 @@ def test_responsiveness_buckets():
 
 
 def test_effective_rating_cold_start():
+    """C13 — rating (thật nếu ≥3 đánh giá, ngược lại trung vị nền tảng)."""
     assert rs.effective_rating(5.0, 2, 4.1) == 4.1
     assert rs.effective_rating(5.0, 2, None) == rs.FALLBACK_MEDIAN_RATING
     assert rs.effective_rating(3.0, 10, 4.1) == 3.0

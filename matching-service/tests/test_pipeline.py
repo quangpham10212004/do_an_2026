@@ -38,6 +38,7 @@ def test_re_rank_orders_by_final_score():
 
 
 def test_re_rank_formula():
+    """C12 (similarity), C13 (rating), C14 (experience), C15 (scheduleFit), C16 (responsiveness) — công thức đầy đủ."""
     [c] = re_rank([mentor(distance=0.2, rating=4.0, rating_count=3, years_experience=20, schedule_fit=0.5,
                           median_response_hours=10)])
     # US-35: 0.6*0.8 + 0.15*(4/5) + 0.1*1.0 + 0.1*0.5 + 0.05*1 = 0.48 + 0.12 + 0.1 + 0.05 + 0.05
