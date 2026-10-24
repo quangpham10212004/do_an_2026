@@ -180,12 +180,27 @@ async def test_language_session_type_and_rating(conn):
 
     assert ids(await match(mentee, language=["en"])) == {en, new}
     assert ids(await match(mentee, sessionType="CODE_REVIEW")) == {en, vi}
+    # G1/D9: minRating so với rating HIỆU LỰC — trung vị nền tảng của en (4.5) và vi (3.9, đã ≥ 3 đánh
+    # giá nên tính thật) là 4.2, nên `new` (chưa đủ 3 đánh giá) qua được minRating=4 nhờ trung vị, dù
+    # rating thô của nó là 0. `vi` vẫn bị loại vì rating THẬT của nó (3.9) dưới 4.
     result = await match(mentee, minRating=4)
-    assert ids(result) == {en}  # mentor chưa có đánh giá (rating 0) không qua minRating
-    assert result["excluded_by"] == {"minRating": 2}
+    assert ids(result) == {en, new}
+    assert result["excluded_by"] == {"minRating": 1}
     result = await match(mentee, language=["en"], sessionType="CODE_REVIEW")
     assert ids(result) == {en}
     assert result["excluded_by"] == {"language": 1, "sessionType": 1}
+
+
+async def test_min_rating_uses_effective_rating_for_new_mentors(conn):
+    """G1/D9 — mentor mới (dưới 3 đánh giá) so minRating bằng trung vị nền tảng, không bằng rating thô (0)."""
+    # Không mentor nào đủ 3 đánh giá => platform_median_rating() trả None => fallback 3.5 (FALLBACK_MEDIAN_RATING).
+    new_only = await add_mentor(conn, rating=0.0, rating_count=0)
+    mentee = await add_mentee(conn)
+    result = await match(mentee, minRating=3.0)
+    assert ids(result) == {new_only}  # 3.5 (fallback) >= 3.0
+    result = await match(mentee, minRating=4.0)
+    assert ids(result) == set()  # 3.5 (fallback) < 4.0
+    assert result["excluded_by"] == {"minRating": 1}
 
 
 async def test_profile_preferences_are_defaults_and_can_be_overridden(conn):

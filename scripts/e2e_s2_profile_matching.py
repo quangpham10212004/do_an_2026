@@ -186,8 +186,13 @@ def main():
     check("Ngôn ngữ en + loại phiên => đúng mentor tiếng Anh",
           [m["mentorId"] for m in res["mentors"]] == [english["id"]], res["excludedBy"])
     res = search(limit=50, useProfileDefaults=False, minRating=4)
-    check("minRating=4: mentor chưa có đánh giá bị loại", res["mentors"] == [] and res["excludedBy"] == {"minRating": 36},
-          res["excludedBy"])
+    # G1/D9: minRating so với rating HIỆU LỰC, không phải rating thô — 36 mentor này chưa đủ 3 đánh
+    # giá nên so bằng trung vị nền tảng (None trong DB hiện tại vì chưa mentor nào đủ 3 đánh giá =>
+    # fallback 3.5), vẫn dưới 4 nên vẫn bị loại hết. Nếu môi trường có mentor khác đủ 3 đánh giá với
+    # rating >= 4, trung vị nền tảng (tính TOÀN hệ thống, không theo domain của lần chạy này) có thể
+    # đổi và làm check này cần cập nhật lại ngưỡng.
+    check("minRating=4: mentor chưa đủ 3 đánh giá so bằng trung vị nền tảng (3.5 < 4) vẫn bị loại",
+          res["mentors"] == [] and res["excludedBy"] == {"minRating": 36}, res["excludedBy"])
     ok, d = expect_error(lambda: search(days=9), 400)
     check("Tham số lọc sai (days=9) => 400", ok, d)
 

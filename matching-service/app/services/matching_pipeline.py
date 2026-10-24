@@ -82,6 +82,7 @@ async def get_mentee(mentee_id: str) -> dict | None:
 # kiểm tra ràng buộc (docs/ai-features.md §1.5). Giờ lịch rảnh so theo giờ địa phương của mentor.
 #   $1 lĩnh vực mentee   $2 maxRate    $3 days int[]   $4/$5 cửa sổ giờ (bắt đầu/kết thúc)
 #   $6 ngôn ngữ text[]   $7 sessionType $8 minRating   $9 ID mentor bỏ qua hoàn toàn (similar-mentors)
+#   $10 MIN_REVIEWS (ngưỡng rating thật)   $11 trung vị nền tảng đã có fallback (G1, D9)
 _CANDIDATES_CTE = """
 WITH c AS (
     SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.capacity, m.active_mentee_count,
@@ -99,7 +100,12 @@ WITH c AS (
            ($2::numeric IS NULL OR m.hourly_rate <= $2::numeric) AS rate_ok,
            (cardinality($6::text[]) = 0 OR m.languages && $6::text[]) AS language_ok,
            ($7::text IS NULL OR $7::text = ANY (m.session_types)) AS session_ok,
-           ($8::real IS NULL OR m.rating >= $8::real) AS rating_ok,
+           -- G1/D9: minRating so với rating HIỆU LỰC (effective_rating) — cùng khái niệm với tín hiệu
+           -- chấm điểm C13, không so với rating thô. Mentor dưới MIN_REVIEWS đánh giá được so bằng
+           -- trung vị nền tảng (đã có fallback ở Python), không phải rating thô (thường là 0).
+           ($8::real IS NULL OR
+            (CASE WHEN m.rating_count >= $10::int THEN m.rating ELSE $11::real END) >= $8::real
+           ) AS rating_ok,
            EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id
                    AND (cardinality($3::int[]) = 0 OR a.day_of_week = ANY ($3::int[]))) AS days_ok,
            EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id
@@ -113,7 +119,9 @@ WITH c AS (
 """
 
 
-def _filter_params(mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str]) -> list:
+def _filter_params(
+    mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str], effective_median: float,
+) -> list:
     window_start, window_end = filters.time_window()
     return [
         mentee_domain,
@@ -125,17 +133,24 @@ def _filter_params(mentee_domain: str | None, filters: MatchFilters, exclude_ids
         filters.session_type,
         filters.min_rating,
         exclude_ids,
+        signals.MIN_REVIEWS,
+        effective_median,
     ]
 
 
 async def eligible_candidates(
-    mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str] | None = None
+    mentee_domain: str | None, filters: MatchFilters, exclude_ids: list[str] | None = None,
+    platform_median: float | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
     """
     Bước 1 — trên profile_db: (mentor đã qua 5 ràng buộc hệ thống, kèm cờ của từng bộ lọc người dùng;
     số mentor bị loại theo từng lý do hệ thống). Bộ lọc người dùng được áp ở match_filters.apply.
+
+    platform_median: trung vị rating nền tảng (None khi chưa đủ dữ liệu) — dùng để tính rating_ok
+    (G1/D9) giống đúng effective_rating ở bước chấm điểm, có fallback FALLBACK_MEDIAN_RATING khi None.
     """
-    params = _filter_params(mentee_domain, filters, exclude_ids or [])
+    effective_median = platform_median if platform_median is not None else signals.FALLBACK_MEDIAN_RATING
+    params = _filter_params(mentee_domain, filters, exclude_ids or [], effective_median)
     pool = await get_profile_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(_CANDIDATES_CTE + "SELECT * FROM c WHERE reason IS NULL", *params)
@@ -346,13 +361,15 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
     để mentor vượt ngân sách không chiếm chỗ của mentor trong ngân sách. False = lọc cứng như trước (US-17).
     """
     soft = include_over_budget and filters.max_rate is not None
-    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids)
+    # G1/D9: trung vị nền tảng tính TRƯỚC để minRating (SQL, rating_ok) và chấm điểm (re_rank, C13)
+    # dùng cùng một effective_rating cho mentor mới — không còn hai nguồn sự thật khác nhau.
+    median = await platform_median_rating()
+    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids, platform_median=median)
     eligible, excluded_by = match_filters.apply(base, filters, soft_rate=soft)
 
     k = max(DEFAULT_K, limit * 5)
     in_budget = [c for c in eligible if not match_filters.over_budget(c, filters)]
     over = [c for c in eligible if match_filters.over_budget(c, filters)]
-    median = await platform_median_rating()
 
     ranked_in = await _retrieve_and_rank(mentee, in_budget, k, median)
     ranked = ranked_in[:limit]
