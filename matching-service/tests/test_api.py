@@ -252,6 +252,27 @@ def test_prod_mode_rejects_dev_secrets(monkeypatch):
     assert config.prod_secret_errors() == []
 
 
+def test_weight_errors_default_sums_to_one():
+    """G2 — trọng số mặc định (0.6/0.15/0.1/0.1/0.05) phải cộng đúng 1,00."""
+    assert config.weight_errors() == []
+
+
+def test_weight_errors_rejects_wrong_total(monkeypatch):
+    """G2 — tổng MATCH_WEIGHT_* lệch 1,00 thì bị báo lỗi, dù không ở prod."""
+    monkeypatch.setattr(config, "MATCH_WEIGHT_SIMILARITY", 0.7)  # tổng thành 1.1
+    problems = config.weight_errors()
+    assert any("MATCH_WEIGHT_SIMILARITY=0.7" in p for p in problems)
+    assert any(p.startswith("tổng=1.1") for p in problems)
+
+
+def test_weight_errors_blocks_startup(monkeypatch):
+    """G2 — khởi động (lifespan) thất bại khi tổng trọng số sai, trước cả khi kiểm tra khoá dev."""
+    monkeypatch.setattr(config, "MATCH_WEIGHT_SIMILARITY", 0.7)
+    with pytest.raises(RuntimeError, match="G2"):
+        with TestClient(app):
+            pass
+
+
 @pytest.fixture
 def fake_similar(monkeypatch):
     calls = []

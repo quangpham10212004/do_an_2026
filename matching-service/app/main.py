@@ -19,6 +19,12 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # G2 — finalScore chỉ đúng nghĩa khi tổng 5 trọng số = 1,00; sai thì dừng hẳn, không tự sửa.
+    weight_problems = config.weight_errors()
+    if weight_problems:
+        raise RuntimeError(
+            f"G2: tổng MATCH_WEIGHT_* phải bằng 1,00, đang sai: {', '.join(weight_problems)}"
+        )
     problems = config.prod_secret_errors()
     if problems:
         # NFR-9: không bao giờ chạy production với khoá dev công khai trong mã nguồn.

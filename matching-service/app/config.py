@@ -46,6 +46,28 @@ def is_prod() -> bool:
     return APP_ENV == "prod"
 
 
+# G2 (docs/design-ai-matching-spec.md D-tổng trọng số) — finalScore chỉ có nghĩa khi 5 trọng số
+# cộng lại đúng 1,00; sai lệch (vd. đặt biến môi trường thiếu cẩn thận) làm điểm vượt khỏi [0, 1]
+# mà không ai nhận ra. Kiểm tra lúc khởi động, không tự chuẩn hoá — người đặt biến môi trường cần
+# biết ngay khi tổng sai, không phải lặng lẽ sửa giúp.
+_WEIGHT_TOLERANCE = 1e-6
+
+
+def weight_errors() -> list[str]:
+    """Tên các biến MATCH_WEIGHT_* khi tổng của chúng lệch 1,00 quá _WEIGHT_TOLERANCE (rỗng = an toàn)."""
+    weights = {
+        "MATCH_WEIGHT_SIMILARITY": MATCH_WEIGHT_SIMILARITY,
+        "MATCH_WEIGHT_RATING": MATCH_WEIGHT_RATING,
+        "MATCH_WEIGHT_EXPERIENCE": MATCH_WEIGHT_EXPERIENCE,
+        "MATCH_WEIGHT_SCHEDULE": MATCH_WEIGHT_SCHEDULE,
+        "MATCH_WEIGHT_RESPONSIVENESS": MATCH_WEIGHT_RESPONSIVENESS,
+    }
+    total = sum(weights.values())
+    if abs(total - 1.0) > _WEIGHT_TOLERANCE:
+        return [f"{name}={value}" for name, value in weights.items()] + [f"tổng={total}"]
+    return []
+
+
 def prod_secret_errors() -> list[str]:
     """NFR-9 — tên các biến còn dùng giá trị dev mặc định khi chạy ở APP_ENV=prod (rỗng = an toàn)."""
     if not is_prod():

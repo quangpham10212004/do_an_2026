@@ -7,8 +7,8 @@
 
 | Task | Trạng thái | Commit |
 |---|---|---|
-| T0 | ĐẠT | (sẽ điền sau khi commit) |
-| T1 | chưa làm | |
+| T0 | ĐẠT | `270b2e2` (code), `7a20457` (tài liệu) |
+| T1 | ĐẠT | `(xem §T1)` |
 | T2 | chưa làm | |
 | T2b | chưa làm | |
 | T2c | chưa làm | |
@@ -51,5 +51,29 @@ python e2e_s2_profile_matching.py
 **Phát hiện phụ (không thuộc T0, ghi nhận cho T1/T2):**
 - `test_migrations.py` có lỗi mã hoá khi chạy trên Windows — không sửa trong phạm vi các task này (ngoài 16 task đã liệt kê), chỉ ghi nhận.
 - Test case "US-17 ... minRating=4: mentor chưa có đánh giá bị loại" trong e2e **đang xác nhận đúng hành vi G1** (lọc theo rating thô, loại mentor mới). Đây chính là hành vi T2 sẽ đổi — khi làm T2 cần sửa luôn assertion này trong e2e, nếu không T2 sẽ làm e2e hiện tại FAIL (đã đúng theo thiết kế mới, không phải lỗi).
+
+---
+
+## T1 — G2: kiểm tra tổng trọng số khi khởi động
+
+**Input (theo §11.1):** khởi động service với `MATCH_WEIGHT_SIMILARITY=0.7` (4 biến còn lại giữ mặc định, tổng thành 1,10); và khởi động với 5 biến mặc định (tổng 1,00).
+
+**Thay đổi:**
+- `app/config.py`: thêm `weight_errors()` — trả danh sách tên=giá trị của 5 biến `MATCH_WEIGHT_*` kèm tổng thực tế khi `|tổng − 1| > 1e-6`; rỗng khi an toàn. Không tự chuẩn hoá (đúng quyết định đã chốt: dừng, không âm thầm sửa).
+- `app/main.py` (`lifespan`): gọi `weight_errors()` **trước** `prod_secret_errors()`, dừng khởi động bằng `RuntimeError("G2: ...")` nếu sai — áp dụng ở mọi `APP_ENV`, không chỉ prod, vì đây là lỗi đúng/sai của công thức tính điểm, không phải vấn đề bảo mật.
+- `tests/test_api.py`: 3 test mới — `test_weight_errors_default_sums_to_one`, `test_weight_errors_rejects_wrong_total`, `test_weight_errors_blocks_startup` (theo đúng khuôn của `test_prod_mode_rejects_dev_secrets` đã có).
+
+**Lệnh đã chạy:**
+```
+cd matching-service
+MATCHING_DB_URL=... PROFILE_DB_URL=... PROFILE_DB_ADMIN_URL=... \
+python -m pytest tests/ -q
+```
+
+**Output thật:** `107 passed, 1 failed` (104 cũ + 3 test mới của T1, cùng 1 lỗi mã hoá cp1252 đã ghi nhận ở T0, không liên quan). Chạy riêng `-k weight`: `3 passed`.
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.1 — service từ chối khởi động khi tổng lệch, thông báo nêu tên biến và tổng; mặc định 0,60/0,15/0,10/0,10/0,05 khởi động bình thường; sai lệch do làm tròn số thực không bị coi là lỗi (dung sai 1e-6).
+
+**Lưu ý kỹ thuật:** `matching_pipeline.py` cache 5 trọng số thành hằng số module (`WEIGHT_SIMILARITY = config.MATCH_WEIGHT_SIMILARITY`, v.v.) ngay lúc import, nên `monkeypatch` `config.MATCH_WEIGHT_*` trong test chỉ ảnh hưởng `config.weight_errors()` và `lifespan`, không ảnh hưởng hằng số đã cache trong `matching_pipeline`. Không phải vấn đề cho T1 (kiểm tra chạy đúng lúc khởi động, trước khi pipeline dùng các hằng số đó), chỉ ghi chú để tránh nhầm khi đọc lại test.
 
 ---
