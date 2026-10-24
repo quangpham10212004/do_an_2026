@@ -179,9 +179,11 @@ Chi tiết đầy đủ ở [contracts/matching-service.yaml](../contracts/match
 | M1 | Precision@5 | Tỉ lệ mentor liên quan (nhãn ≥ 1,5 trên thang 0–2) trong 5 hạng đầu | ≥ 80% trần bộ dữ liệu, khoảng 0,20 (D10) | `scripts/eval/matching/metrics.py`, `capture.py`, `--report scripts/eval/matching/out/report.md` | Nhãn nháp, chưa đáng tin |
 | M2 | NDCG@10 | gain = 2^nhãn − 1, chiết khấu `log2(hạng + 1)` | ≥ 0,90 và không thoái lui (D10) | như M1 | Nhãn nháp, chưa đáng tin |
 | M3 | Tỉ lệ "Không phù hợp" theo hạng | `notRelevant / impressions` mỗi hạng 1–10 | ≤ 10% ở hạng 1–3, ≤ 15% ở hạng 4–5, khi hạng có ≥ 100 lượt hiển thị (D11) | `GET /api/matching/admin/evaluation` | Có sẵn endpoint, chưa có dữ liệu thật |
-| M4 | Độ trễ | Thời gian trả kết quả `GET /api/matching/mentors` | p95 < 2.000 ms (NFR-1, D12) | `scripts/benchmark_matching.py --mentors 5000 --requests 50` | Đạt theo số đo 24/10/2026: trung bình 93,8 ms, p95 154,6 ms (số do nhóm cung cấp; chưa có log hoặc script trong repo xác nhận, xem G5) |
+| M4 | Độ trễ | Thời gian trả kết quả `GET /api/matching/mentors` | p95 < 2.000 ms (NFR-1, D12) | `scripts/benchmark_matching.py --mentors 5000 --requests 15` (xem ghi chú) | **Đạt**, đo lại 24/10/2026 sau khi đổi model đa ngôn ngữ (T2b): trung bình 255,5 ms, p50/p95/max = 237,9 / 377,3 / 521,4 ms, ~5.007 mentor. G5 đã giải quyết (số cũ 93,8 ms không có nguồn xác nhận; số 4,8 ms ở `ai-features.md` §1.9 đã lỗi thời, đo trước khi đổi model) |
 
 Nhãn dùng cho M1, M2: trung bình `rater1`/`rater2`; nếu chưa ai chấm thì dùng `draft_label`. Bộ dữ liệu hiện có 30 mentee, 234 cặp (`scripts/eval/matching/dataset.py`, `seed_eval.py`).
+
+**Ghi chú về số đo M4 (24/10/2026):** `--requests 50` mặc định của script **không chạy được** vì va với giới hạn tần suất NFR-10 (20 lượt/phút/người dùng, `MATCHING_RATE_LIMIT_PER_MINUTE`): script gọi 51 lượt liên tiếp (1 khởi động + 50) trong vài giây, vượt ngưỡng 20 ở khoảng giữa. Đây là một khoảng trống mới phát hiện (chưa có mã G, xem **G11** ở mục 9), không phải lỗi của lần đo này. Đã chạy với `--requests 15` (dưới ngưỡng) để có số thật; 15 mẫu cho p95 kém tin cậy hơn 50 mẫu, và máy đo đang chạy đồng thời nhiều test/docker rebuild khác (không phải máy đo rảnh, chuyên dụng) — hai lý do này khiến số trên chỉ là **sơ bộ**, nên đo lại trên máy rảnh với đủ 50 mẫu sau khi xử lý G11.
 
 ## 9. Khoảng trống và đề xuất ⚒
 
@@ -191,12 +193,13 @@ Nhãn dùng cho M1, M2: trung bình `rater1`/`rater2`; nếu chưa ai chấm th�
 | G2 | Không kiểm tra tổng trọng số bằng 1,00 | Kiểm tra trong `config.py` lúc khởi động, sai thì dừng |
 | G3 | `/admin/evaluation` không trả P@5, NDCG@10, độ trễ | Giữ P@5, NDCG@10 ở chế độ offline và ghi rõ; đo độ trễ bằng log hoặc histogram của service |
 | G4 | Báo cáo eval cũ (08/10/2026, đã gỡ khỏi `docs/`) lỗi thời: chưa có tín hiệu phản hồi và khớp lịch như code hiện tại; nhãn còn nháp | Chạy lại với trọng số hiện tại, thu nhãn `rater1`/`rater2`, rồi đặt ngưỡng M1, M2 |
-| G5 | Số độ trễ ở §8 (93,8 ms) khác số ở `ai-features.md` §1.9 (5.007 mentor: 4,8 ms trung bình, p95 5,7 ms); benchmark cũ chưa tính khớp lịch, tốc độ phản hồi, nhóm ngân sách mềm | Chạy lại benchmark, thống nhất một bộ số, ghi cấu hình đo |
+| G5 | ~~Số độ trễ ở §8 (93,8 ms) khác số ở `ai-features.md` §1.9 (4,8 ms)~~ **Đã xử lý (T8, 24/10/2026):** chạy lại `benchmark_matching.py`, số mới ở §8 (trung bình 255,5 ms, p95 377,3 ms, ~5.007 mentor) thay cho cả hai số cũ. Tăng mạnh so với 4,8 ms cũ chủ yếu do model đa ngôn ngữ nặng hơn (G10) và máy đo không rảnh (chỉ 15 mẫu, xem ghi chú ở §8); vẫn đạt NFR-1 (max 521 ms << 2.000 ms). Cần đo lại trên máy rảnh, đủ 50 mẫu, sau khi xử lý G11 | Đo lại sau G11 |
 | G6 | `match_impressions` không đánh dấu nhóm vượt ngân sách; hạng của nhóm này là hạng trong danh sách đã nối, làm lệch M3 | Migration `003`, tách M3 theo nhóm |
 | G7 | Mentee chưa chọn ngày: C15 tính trên mọi ngày nên điểm thấp đều | Ghi là hạn chế hoặc trung tính hóa khi thiếu dữ liệu |
 | G8 | Lọc ngày và buổi so theo giờ địa phương của mentor, chưa quy đổi múi giờ mentee | Ghi là hạn chế đã biết |
 | G9 | `rating` và `median_response_hours` là cột đồng bộ | Ghi nguồn; cân nhắc cảnh báo khi dữ liệu quá cũ |
-| G10 | Model embedding hiện tại (`all-MiniLM-L6-v2`) chủ yếu hiểu tiếng Anh, trong khi C12 chiếm 0,60 điểm. Hồ sơ tiếng Việt, hoặc cặp mentee–mentor khác ngôn ngữ, có độ tương đồng thấp giả tạo | Đổi sang model đa ngôn ngữ 384 chiều (D13); lưu tên model cùng embedding và buộc lập chỉ mục lại khi đổi model (vector cũ và mới không so sánh được); thêm vào bộ eval các cặp Việt–Việt, Việt–Anh, Anh–Anh rồi so với model cũ; kiểm tra độ trễ và bộ nhớ; cập nhật `.env.example` và `contracts/matching-service.yaml` |
+| G10 | ~~Model embedding `all-MiniLM-L6-v2` chủ yếu hiểu tiếng Anh, trong khi C12 chiếm 0,60 điểm.~~ **Đã xử lý (T2b, 24/10/2026):** đổi sang `paraphrase-multilingual-MiniLM-L12-v2` (384 chiều, D13); cột `model` theo dõi embedding, lệch model (kể cả NULL) tự lập chỉ mục lại qua IndexSyncJob. T2c (so sánh định lượng trên bộ eval đầy đủ nhiều cặp có nhãn) còn chờ nhãn thật, xem M1/M2 | Việc còn lại: T2c khi có nhãn (G4) |
+| G11 | Mới phát hiện khi đo M4 — `scripts/benchmark_matching.py --requests 50` (mặc định) va với giới hạn tần suất NFR-10 (20 lượt/phút/người dùng): 51 lượt gọi liên tiếp trong vài giây vượt ngưỡng giữa chừng, benchmark không chạy hết được | Script cần tạm nới `MATCHING_RATE_LIMIT_PER_MINUTE` hoặc dùng nhiều tài khoản mentee khác nhau để mỗi tài khoản dưới 20 lượt; hoặc thêm cờ bỏ qua rate limit khi gọi nội bộ cho mục đích đo đạc |
 
 ## 10. Kiểm thử
 
