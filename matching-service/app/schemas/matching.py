@@ -69,6 +69,10 @@ class PipelineStats(CamelModel):
     retrieved: int
     returned: int
     weights: dict[str, float]
+    # M4 (NFR-1) — thời gian xử lý pipeline (hard filter, top-K, re-rank, giải thích, ghi impression)
+    # tính trên server, phục vụ đo độ trễ (docs/design-ai-matching-spec.md §8) mà không cần dựng
+    # histogram riêng; không tính overhead xác thực/rate-limit phía router.
+    took_ms: float = 0.0
 
 
 class EffectiveFilters(CamelModel):

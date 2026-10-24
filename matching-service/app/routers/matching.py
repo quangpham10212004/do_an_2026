@@ -1,3 +1,4 @@
+import time
 import uuid
 from typing import Literal
 
@@ -108,6 +109,9 @@ async def get_matches(
         match_filters.MIN_RATING: minRating,
     }
 
+    # M4 (NFR-1, docs/design-ai-matching-spec.md §8) — đo đúng phần việc của pipeline (hard filter,
+    # top-K vector, re-rank, giải thích), không tính overhead xác thực/rate-limit phía trên.
+    started = time.perf_counter()
     result = await pipeline.match_mentors_for_mentee(
         menteeId, limit=limit, requested=requested, use_profile_defaults=useProfileDefaults,
         include_over_budget=includeOverBudget,
@@ -151,6 +155,7 @@ async def get_matches(
     stats = result["stats"]
     filters_echo = match_filters.to_echo(result["filters"])
     impression_id = await feedback_service.log_impressions(menteeId, result["mentors"], filters_echo, pipeline.WEIGHTS)
+    took_ms = round((time.perf_counter() - started) * 1000, 1)
     return MatchingResponse(
         mentee_id=menteeId,
         mentors=mentors,
@@ -164,6 +169,7 @@ async def get_matches(
             retrieved=stats["retrieved"],
             returned=stats["returned"],
             weights=pipeline.WEIGHTS,
+            took_ms=took_ms,
         ),
         filters=EffectiveFilters(**filters_echo),
         excluded_by=result["excluded_by"],

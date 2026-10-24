@@ -130,6 +130,14 @@ def test_matching_without_filter_params_passes_none(client, fake_pipeline):
     assert set(fake_pipeline[-1]["requested"].values()) == {None}
 
 
+def test_matching_reports_took_ms(client, fake_pipeline):
+    """M4 (NFR-1) — pipeline.tookMs là số không âm, đo đúng phần việc của pipeline + ghi impression."""
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    took_ms = res.json()["pipeline"]["tookMs"]
+    assert isinstance(took_ms, (int, float)) and took_ms >= 0.0
+
+
 def test_matching_rejects_invalid_filter_values(client, fake_pipeline):
     headers = {"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"}
     for query in ("days=0", "days=8", "days=abc", "timeOfDay=NIGHT", "language=fr", "sessionType=PAIRING",

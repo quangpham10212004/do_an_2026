@@ -13,7 +13,7 @@
 | T2b | ĐẠT | (xem §T2b) |
 | T2c | chưa làm | |
 | T3 | ĐẠT | (xem §T3) |
-| T4 | chưa làm | |
+| T4 | ĐẠT | (xem §T4) |
 | T5 | chưa làm | |
 | T6 | chưa làm | |
 | T7 | chưa làm | |
@@ -217,5 +217,33 @@ python -c "... call admin/evaluation ..."
 - Gọi `GET /api/matching/admin/evaluation?days=30` qua API thật (admin seed): trả đủ `byRank`, `byRankInBudget`, `byRankOverBudget` — `byRankInBudget` khớp `byRank` (chưa có mentee nào dùng `maxRate` trong môi trường hiện tại), `byRankOverBudget` toàn 0 ở mọi hạng — đúng vì chưa có dữ liệu ngân sách mềm thật trong môi trường này. `byRank` cũ không đổi cấu trúc (xác nhận tương thích ngược).
 
 **Kết luận:** ĐẠT theo output mong đợi ở §11.1 — migration chạy đúng một lần, dòng cũ `over_budget=false`; impression mới ghi đúng cờ theo nhóm; `admin/evaluation` trả thêm số liệu tách nhóm, trường cũ không đổi.
+
+---
+
+## T4 — thêm `tookMs` vào `pipeline`
+
+**Input (theo §11.1):** mọi lần gọi `GET /api/matching/mentors`.
+
+**Thay đổi:**
+- `routers/matching.py`: đo `time.perf_counter()` ngay trước khi gọi `pipeline.match_mentors_for_mentee` và ngay sau khi ghi `match_impressions` (phần việc của pipeline + ghi nhật ký, không tính overhead xác thực/rate-limit ở trên); gán vào `PipelineStats.took_ms`.
+- `schemas/matching.py`: `PipelineStats` thêm `took_ms: float = 0.0` (có default nên không phá vỡ test/khách hàng cũ chưa biết trường này).
+- `tests/test_api.py`: thêm `test_matching_reports_took_ms` — xác nhận `pipeline.tookMs` là số không âm qua `fake_pipeline`.
+
+**Lệnh đã chạy:**
+```
+pytest tests/ -q -k took          # test mới
+pytest tests/ -q                  # DB tạm, hồi quy
+docker compose build matching-service && docker compose up -d matching-service
+python scripts/e2e_s2_profile_matching.py
+python -c "... gọi API thật, đo thời gian client, so với pipeline.tookMs ..."
+```
+
+**Output thật:**
+- `pytest -k took`: `1 passed`.
+- `pytest tests/` đầy đủ: `112 passed, 1 failed` (111 trước T4 + 1 test mới; 1 fail là lỗi mã hoá đã biết).
+- e2e: `35/35 PASS`.
+- Gọi API thật (mentee mới, domain riêng): server báo `tookMs = 158.1`, client đo tổng thời gian round-trip `181.7 ms` (gồm cả độ trễ mạng/HTTP, xác thực) → `tookMs ≤ thời gian client đo` — đúng quan hệ kỳ vọng ở §11.1.
+
+**Kết luận:** ĐẠT theo output mong đợi ở §11.1.
 
 ---
