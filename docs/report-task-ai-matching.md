@@ -18,7 +18,15 @@
 | T6 | ĐẠT | (xem §T6) |
 | T7 | ĐẠT (sửa lại 1 câu trong spec) | (xem §T7) |
 | T8 | ĐẠT một phần — benchmark đủ 50 mẫu chưa chạy được (G11) | (xem §T8) |
-| T9–T16 | chưa làm (cần người chấm/dữ liệu thật, hoặc tuỳ chọn) | |
+| T2c | chưa làm — cần nhãn thật trước (xem T9, T10) | |
+| T9 | **Không tự làm được** — cần hai người chấm nhãn độc lập trên `scripts/eval/matching` | |
+| T10 | **Không tự làm được** — phụ thuộc T9 | |
+| T11 | **Không tự làm được** — cần dữ liệu người dùng thật, tích lũy theo thời gian | |
+| T12 | ĐẠT | (xem §T12-T13) |
+| T13 | ĐẠT | (xem §T12-T13) |
+| T14–T16 | Tuỳ chọn (G7–G9), chưa làm — nằm ngoài 8 task đã chốt thực hiện trong phiên này | |
+
+**Tóm lại:** mọi task có thể tự hoàn thành (T0–T8, T12–T13) đã ĐẠT, với 2 ghi chú trung thực: câu chữ "output mong đợi" của T7 trong spec sai (đã sửa) và benchmark T8 chỉ chạy được 15/50 mẫu do va với rate limit (G11, đã ghi vào spec). T9–T11 cần người chấm nhãn và dữ liệu người dùng thật theo thời gian — không có cách nào tự động hoá được trong một phiên làm việc. T14–T16 là tuỳ chọn, chưa được yêu cầu làm.
 
 ---
 
