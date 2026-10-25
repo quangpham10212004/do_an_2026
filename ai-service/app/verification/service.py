@@ -20,6 +20,7 @@ from app.interview.views import InterviewStats, InterviewView, interview_view
 from app.security import AuthUser
 from app.verification import repository as repo
 from app.verification import rules
+from app.verification import video_repository as video_repo
 from app.verification.views import ApplicationView, Round1ReviewInput, VerificationStatusView
 
 log = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ def _iso(value: datetime) -> str:
 async def _interview_view(db, interview, for_admin: bool) -> InterviewView:
     turns = await irepo.turns_of(db, interview["id"])
     name = await profile.display_name(interview["mentor_id"]) if for_admin else None
-    return interview_view(interview, turns, for_admin, name)
+    return interview_view(interview, turns, for_admin, name, await video_repo.find_by_interview(db, interview["id"]))
 
 
 # ---------- trạng thái và điều kiện bắt đầu ----------
@@ -114,6 +115,14 @@ async def on_round1_completed(conn, application_id: UUID | None) -> None:
     """Buổi vòng 1 vừa nộp bản chép lời xong (trong cùng transaction): đợt sang ROUND1_REVIEW chờ admin duyệt."""
     if application_id is not None:
         await repo.set_status(conn, application_id, rules.ROUND1_REVIEW, expected=rules.ROUND1)
+
+
+async def notify_ready_for_review(interview) -> None:
+    """Buổi vòng 1 đã sẵn sàng cho admin (bản chép lời + video đã xử lý xong, đợt ở ROUND1_REVIEW): báo admin."""
+    await mentoring.notify_role(
+        "ADMIN", "INTERVIEW_PENDING_REVIEW", "Có kết quả AI Interview cần duyệt",
+        f"Mentor lĩnh vực {interview['domain']} đạt {interview['overall_score']:.1f}/100 điểm (phỏng vấn giọng nói, "
+        f"AI khuyến nghị: {interview['recommendation']}).", f"/admin/verification/{interview['application_id']}")
 
 
 async def on_attempt_failed(application_id: UUID | None, mentor_id: UUID) -> None:

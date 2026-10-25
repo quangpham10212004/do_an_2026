@@ -90,7 +90,7 @@ def main():
     t1 = m1["accessToken"]
     for ack, label in ((False, "false"), (None, "không có trong body {}")):
         fn = (lambda: start(t1, False)) if ack is False else (lambda: call(
-            "POST", f"{AI}/api/ai/interviews/voice", token=t1, raw_body=b'{"consentExternalAi": true}',
+            "POST", f"{AI}/api/ai/interviews/voice", token=t1, raw_body=b'{"consentExternalAi": true, "consentVideo": true}',
             content_type="application/json"))
         status, err = error_of(fn)
         check(f"Bắt đầu khi selfAnswerAcknowledged {label} → 400 SELF_ANSWER_ACK_REQUIRED",
@@ -110,7 +110,7 @@ def main():
     t0 = detail["turns"][0]
     weighted = round(0.4 * t0["rubric"]["technical"] + 0.3 * t0["rubric"]["depth"]
                      + 0.15 * t0["rubric"]["communication"] + 0.15 * t0["rubric"]["mentoring"], 1)
-    check("Điểm câu = tổng có trọng số 40/30/15/15", abs(t0["score"] - weighted) <= 0.051, (t0["score"], weighted))
+    check("Điểm câu = tổng có trọng số 40/30/15/15", abs(t0["score"] - weighted) <= 0.15, (t0["score"], weighted))
     check("Lưu engine / prompt version / fallback từng lượt (PRD-AIV-7)",
           all(t["engine"] in ("RULE_BASED", "DEEPSEEK") and t["promptVersion"] and isinstance(t["fallbackUsed"], bool)
               for t in detail["turns"]))

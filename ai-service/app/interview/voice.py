@@ -51,9 +51,10 @@ class TranscriptInput(CamelModel):
 
 
 class VoiceConsentInput(CamelModel):
-    """FR-7.7 — mentor xác nhận tự trả lời + đồng ý âm thanh được OpenAI (Mỹ) xử lý."""
+    """FR-7.7 — mentor xác nhận tự trả lời + đồng ý âm thanh được OpenAI (Mỹ) xử lý + đồng ý quay camera (video lưu 60 ngày)."""
     self_answer_acknowledged: bool = False
     consent_external_ai: bool = False
+    consent_video: bool = False
 
 
 TOOLS = [
@@ -71,6 +72,12 @@ def require_consent(consent_external_ai: bool) -> None:
     if not consent_external_ai:
         raise errors.bad_request("VOICE_CONSENT_REQUIRED",
                                  "Bạn cần đồng ý để âm thanh buổi phỏng vấn được OpenAI (Mỹ) xử lý trước khi bắt đầu")
+
+
+def require_video_consent(consent_video: bool) -> None:
+    if not consent_video:
+        raise errors.bad_request("VIDEO_CONSENT_REQUIRED",
+                                 "Bạn cần đồng ý bật camera để quay video buổi phỏng vấn (lưu 60 ngày, admin xem được) trước khi bắt đầu")
 
 
 def ensure_available() -> None:

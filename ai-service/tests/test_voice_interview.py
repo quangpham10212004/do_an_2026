@@ -24,7 +24,8 @@ def mentor_id():
 
 
 def start_voice(client, mentor_id, ack=True, consent=True):
-    return client.post("/api/ai/interviews/voice", json={"selfAnswerAcknowledged": ack, "consentExternalAi": consent},
+    return client.post("/api/ai/interviews/voice",
+                       json={"selfAnswerAcknowledged": ack, "consentExternalAi": consent, "consentVideo": True},
                        headers=auth(mentor_id, "MENTOR"))
 
 
@@ -233,8 +234,9 @@ def test_transcript_goes_to_pending_review(client, db, fake_profile, fake_mentor
     assert done["turns"][0]["answer"] == STRONG_ANSWER + " Toi dung ETag va versioning."
     assert done["turns"][2]["answer"] == voice.NO_ANSWER
     assert (mentor_id, "PENDING_REVIEW") in fake_profile.verifications
-    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
     assert (str(mentor_id), "INTERVIEW_COMPLETED") in fake_mentoring.notifications
+    # Admin chỉ được báo khi video cũng đã chốt và xử lý xong (đợt mới sang ROUND1_REVIEW)
+    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") not in fake_mentoring.notifications
 
     admin_view = client.get(f"/api/ai/interviews/{iv['id']}", headers=auth(uuid.uuid4(), "ADMIN")).json()
     turns = admin_view["turns"]

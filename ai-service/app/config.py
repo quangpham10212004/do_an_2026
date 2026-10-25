@@ -52,6 +52,23 @@ VERIFICATION_RETRY_DAYS = float(os.getenv("VERIFICATION_RETRY_DAYS", "15"))
 VERIFICATION_ROUND1_MAX_RETAKE = int(os.getenv("VERIFICATION_ROUND1_MAX_RETAKE", "2"))
 # Tạm thời tới khi vòng 2 hiện thực (PR 4): tắt thì admin cho qua vòng 1 là duyệt luôn mentor.
 VERIFICATION_ROUND2_ENABLED = os.getenv("VERIFICATION_ROUND2_ENABLED", "false").lower() == "true"
+
+# Vòng 1 có camera (docs/design-mentor-verification.md §5): video + âm thanh quay theo đoạn, lưu trên đĩa (docker volume).
+# Có thể thay bằng object storage khi triển khai thật. Thư mục đọc lúc gọi (test đổi được), không cố định lúc import.
+VERIFICATION_STORAGE_DIR = os.getenv("VERIFICATION_STORAGE_DIR", "./data/verification")
+VIDEO_RETENTION_DAYS = float(os.getenv("VIDEO_RETENTION_DAYS", "60"))
+# Camera/micro ngắt: khoảng trống giữa hai đoạn > VIDEO_MAX_GAP_SECONDS bật cờ CAMERA_OFF; tổng thời gian mất >
+# VIDEO_RECONNECT_SECONDS thì lần làm bị vô hiệu (INVALIDATED, tính vào số lần).
+VIDEO_MAX_GAP_SECONDS = float(os.getenv("VIDEO_MAX_GAP_SECONDS", "10"))
+VIDEO_RECONNECT_SECONDS = float(os.getenv("VIDEO_RECONNECT_SECONDS", "60"))
+VIDEO_MAX_CHUNK_BYTES = int(os.getenv("VIDEO_MAX_CHUNK_BYTES", str(8 * 1024 * 1024)))
+VIDEO_PLAY_TOKEN_SECONDS = int(os.getenv("VIDEO_PLAY_TOKEN_SECONDS", "600"))
+# Mentor đã nộp bản chép lời mà không gọi finish (đóng tab): sau chừng này phút job nền tự chốt video.
+VIDEO_FINISH_GRACE_MINUTES = float(os.getenv("VIDEO_FINISH_GRACE_MINUTES", "10"))
+# Chép lời lại phía server từ âm thanh đã tải (D12): tỉ lệ khác biệt theo từ vượt ngưỡng => cờ TRANSCRIPT_MISMATCH.
+TRANSCRIPT_MISMATCH_THRESHOLD = float(os.getenv("TRANSCRIPT_MISMATCH_THRESHOLD", "0.30"))
+TRANSCRIBE_TIMEOUT_SECONDS = float(os.getenv("TRANSCRIBE_TIMEOUT_SECONDS", "90"))
+TRANSCRIBE_MAX_BYTES = 24 * 1024 * 1024  # API chép lời nhận tối đa 25 MB
 MAX_ANSWER_LENGTH = 5000
 
 # Lưu file CV (docker volume). Có thể thay bằng object storage (S3/MinIO) khi triển khai thật.

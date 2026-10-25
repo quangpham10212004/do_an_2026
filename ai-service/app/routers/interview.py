@@ -28,7 +28,7 @@ async def get(interview_id: UUID, user: AuthUser = Depends(require_user)) -> Int
 async def start_voice(body: voice.VoiceConsentInput | None = None,
                       user: AuthUser = Depends(require_role("MENTOR"))) -> VoiceInterviewStart:
     body = body or voice.VoiceConsentInput()
-    return await service.start_voice(user, body.self_answer_acknowledged, body.consent_external_ai)
+    return await service.start_voice(user, body.self_answer_acknowledged, body.consent_external_ai, body.consent_video)
 
 
 @router.post("/interviews/{interview_id}/voice-transcript", response_model=InterviewView, response_model_by_alias=True)

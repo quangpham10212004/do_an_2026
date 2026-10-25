@@ -11,7 +11,7 @@
 | 1a | Đã xong | `feature/profile-remove-tier` |
 | 1b | Đã xong | `feature/ai-remove-chat-interview` (xếp trên 1a) |
 | 2 | Đã xong | `feature/ai-verification-application` (xếp trên 1b) |
-| 3 | chưa làm | |
+| 3 | Đã xong (phần tự động; còn kiểm tay camera) | `feature/ai-verification-round1-video` (xếp trên 2) |
 | 4 | chưa làm | |
 
 ---
@@ -87,5 +87,22 @@ docker compose exec -T profile-db pg_dump -U postgres -d profile_db > .backups/p
 **Quyết định thiết kế đáng chú ý:** "lần" chỉ tính lần không hoàn thành hợp lệ (đúng spec §4); `POST /interviews/voice` tự mở đợt (đồng thời với việc tạo buổi, một transaction) nên frontend không cần bước riêng; mentor đã `APPROVED` ở profile-service (demo seed) không phỏng vấn lại (`ALREADY_APPROVED`).
 
 **Kết luận:** ĐẠT.
+
+---
+
+## PR 3 — Vòng 1 có camera: video, chép lời kép, cờ
+
+**Input:** Spec §5, D5, D12 — camera bắt buộc, video lưu 60 ngày, không phân tích khuôn mặt, server chép lời lại để đối chiếu.
+
+**Phạm vi:** ai-service: migration `014_interview_videos.sql`; `app/verification/{media_storage,video_rules,video_repository,video_service}.py` (tải đoạn, chốt, xử lý một lần khi đủ bản chép lời + video, chép lời lại qua `/audio/transcriptions`, token phát ngắn hạn + Range, xoá, job 60 ngày); endpoint trong `routers/verification.py`; `consentVideo` bắt buộc; đợt chỉ sang `ROUND1_REVIEW` khi video xử lý xong; lần mất camera > 60 giây → `INVALIDATED`; volume `verification-media`. Frontend: `useRealtimeVoice` ghi hình tuỳ chọn (mặc định tắt, luồng camera sống qua các lần nối lại WebRTC), `VideoCard` (admin: phát, cờ, hai bản chép lời, xoá; mentor: xem video của mình), xem trước camera, proxy Next chuyển tiếp `Range` và stream video. Docs: `video-data-policy.md` mới, contracts, api-reference, database-design, deployment-guide, ai-features.
+
+**Kết quả:**
+- pytest ai-service (Postgres tạm 15438): **316 PASS** + 3 fail cũ; mới: `test_video_rules` (19), `test_verification_video` (17: đồng ý, tải đoạn, thứ tự bản chép lời/video, job bỏ quên, CAMERA_OFF, INVALIDATED, chép lời kép OK/MISMATCH/UNAVAILABLE với OpenAI giả, phát Range, quyền, xoá, hạn 60 ngày).
+- Frontend `tsc`, `lint`, `next build` sạch.
+- e2e (stack dựng lại): mới `e2e_v2_verification_video` **21/21**; `e2e_v2_verification_round1` 20/20, `e2e_v2_voice` 26/26, `e2e_acceptance` 69/69, `e2e_s4_ai_auth` 23/23, `e2e_s5_ai_auth` 40/40, `e2e_p0_mentoring` 32/32, `e2e_s2_mentoring` 51/51, `e2e_s3_mentoring` 56/56, `e2e_v2_booking` 31/31, `e2e_v2_room_referral` 37/37, `e2e_v2_trial` 18/18; `e2e_s3_ai_auth` 27/28 → nới dung sai làm tròn của check điểm câu (stack dùng DeepSeek thật).
+
+**Chưa kiểm được (cần người, trình duyệt/OpenAI thật):** quay camera 30 phút trên Chrome/Edge/Safari và mạng yếu; file âm thanh ~7 MB webm/opus có được API chép lời nhận không; ngưỡng `TRANSCRIPT_MISMATCH_THRESHOLD`; phát lại file ghép khi camera bị ngắt rồi mở lại (WebM nhiều header). Giao diện quay/phát chưa được thử trong trình duyệt thật (môi trường này không có trình duyệt điều khiển được) — chỉ qua kiểm tra kiểu, lint, build.
+
+**Kết luận:** ĐẠT phần tự động.
 
 ---

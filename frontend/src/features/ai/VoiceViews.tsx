@@ -42,6 +42,22 @@ export function VoiceConsent({ checked, onChange, disabled }: { checked: boolean
   );
 }
 
+/** Đồng ý bắt buộc: bật camera, video buổi phỏng vấn lưu 60 ngày, admin xem được, mentor chỉ xem — lưu thành consentVideo. */
+export function VideoConsent({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <Checkbox checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
+      label="Tôi đồng ý bật camera để quay video buổi phỏng vấn. Video được lưu 60 ngày, quản trị viên xem được, tôi chỉ xem được video của mình. Hệ thống không phân tích khuôn mặt." />
+  );
+}
+
+/** Xem trước camera của chính mình trong lúc phỏng vấn (không phát tiếng). */
+export function CameraPreview({ stream }: { stream: MediaStream | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => { if (ref.current) ref.current.srcObject = stream; }, [stream]);
+  if (!stream) return null;
+  return <video ref={ref} className="w-40 rounded-md bg-black" autoPlay muted playsInline aria-label="Camera của bạn" />;
+}
+
 const PHASE_BADGE: Partial<Record<VoicePhase, ReactNode>> = {
   connecting: <Badge>Đang kết nối…</Badge>,
   live: <Badge tone="success">Đang nói chuyện</Badge>,
@@ -49,8 +65,8 @@ const PHASE_BADGE: Partial<Record<VoicePhase, ReactNode>> = {
 };
 
 /** Bản ghi trực tiếp của cuộc gọi: lời người phỏng vấn AI, lời ứng viên và mốc từng chủ đề. */
-export function VoiceCallCard({ entries, phase, topics, error, footer, title = "Hội thoại" }: {
-  entries: VoiceEntry[]; phase: VoicePhase; topics: string[]; error?: string; footer: ReactNode; title?: string;
+export function VoiceCallCard({ entries, phase, topics, error, footer, title = "Hội thoại", preview }: {
+  entries: VoiceEntry[]; phase: VoicePhase; topics: string[]; error?: string; footer: ReactNode; title?: string; preview?: MediaStream | null;
 }) {
   const bottom = useRef<HTMLDivElement>(null);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [entries]);
@@ -60,6 +76,7 @@ export function VoiceCallCard({ entries, phase, topics, error, footer, title = "
       <CardHeader title={title} actions={PHASE_BADGE[phase]} />
       <CardBody className="flex flex-col gap-3">
         {error && <Alert>{error}</Alert>}
+        {preview && <CameraPreview stream={preview} />}
         {entries.length === 0 && <p className="text-small text-ink-muted">Bản ghi lời nói sẽ hiện ở đây khi buổi phỏng vấn bắt đầu.</p>}
         {entries.map((x) => x.role === "marker"
           ? <div key={x.id} className="text-small font-medium text-ink-muted">— {topicName(x.topicNo)} —</div>

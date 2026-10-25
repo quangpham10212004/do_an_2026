@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Mic, PhoneOff } from "lucide-react";
 import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, DescriptionList, Loading, PageHeader, StatusBadge, Table } from "@/components/ui";
 import { AssessmentCard, InterviewTranscript, RUBRIC } from "@/features/ai/InterviewViews";
-import { TopicPlan, VOICE_DISABLED, VoiceCallCard, VoiceConsent } from "@/features/ai/VoiceViews";
+import { TopicPlan, VOICE_DISABLED, VideoConsent, VoiceCallCard, VoiceConsent } from "@/features/ai/VoiceViews";
+import { VideoCard } from "@/features/ai/VideoCard";
 import { aiApi } from "@/features/ai/api";
 import { useRealtimeVoice } from "@/features/ai/useRealtimeVoice";
 import { STATUS_LABELS, formatDateTime } from "@/lib/format";
@@ -14,9 +15,10 @@ import { ApiError, errorMessage } from "@/lib/api";
 import type { Interview, VerificationState, VoiceSession, VoiceTranscriptItem } from "@/types";
 
 /** US-22 (PRD-AIV-1, PRD-AIV-4): màn hình giới thiệu trước khi bắt đầu + quy tắc số lần phỏng vấn. */
-function IntroCard({ eligibility, busy, onStart }: { eligibility: VerificationState | null; busy: boolean; onStart: (consent: boolean) => void }) {
+function IntroCard({ eligibility, busy, onStart }: { eligibility: VerificationState | null; busy: boolean; onStart: (consent: boolean, consentVideo: boolean) => void }) {
   const [ack, setAck] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [consentVideo, setConsentVideo] = useState(false);
   const voiceOff = eligibility != null && !eligibility.voiceAvailable;
   const blocked = eligibility != null && !eligibility.canStart;
   const max = eligibility?.maxAttempts ?? 2;
@@ -26,8 +28,8 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: VerificationSt
       <CardHeader title="Trước khi bắt đầu" description="Đọc kỹ cách chấm điểm và quy tắc số lần phỏng vấn." />
       <CardBody className="flex flex-col gap-5">
         <p className="text-small text-ink-muted">
-          Bạn trò chuyện trực tiếp với người phỏng vấn AI qua micro. Buổi phỏng vấn làm trong <strong>một lần</strong>: rớt mạng thì kết nối lại được
-          trong 30 phút; quá 30 phút chưa kết thúc thì buổi bị huỷ và tính là một lần. Cần trình duyệt có micro (Chrome, Edge, Safari mới).
+          Bạn trò chuyện trực tiếp với người phỏng vấn AI qua micro và <strong>bật camera</strong> (bắt buộc, để quản trị viên xem lại). Buổi phỏng vấn làm trong <strong>một lần</strong>: rớt mạng thì kết nối lại được
+          trong 30 phút; quá 30 phút chưa kết thúc thì buổi bị huỷ và tính là một lần. Cần trình duyệt có camera và micro (Chrome, Edge, Safari mới); trên máy khác cần mở bằng https hoặc localhost. Camera ngắt quá 60 giây tổng cộng thì lần phỏng vấn không hợp lệ.
         </p>
         {voiceOff && <Alert tone="warning">{VOICE_DISABLED}.</Alert>}
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
@@ -56,9 +58,10 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: VerificationSt
         {eligibility?.reason === "COOLDOWN" && <Alert tone="info">Bạn có thể xác thực lại từ {formatDateTime(eligibility.retryAfter)}.</Alert>}
         <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={blocked} label="Tôi tự trả lời, không có sự trợ giúp từ bên ngoài" />
         <VoiceConsent checked={consent} onChange={setConsent} disabled={blocked || voiceOff} />
+        <VideoConsent checked={consentVideo} onChange={setConsentVideo} disabled={blocked || voiceOff} />
       </CardBody>
       <CardFooter>
-        <Button variant="primary" icon={Mic} onClick={() => onStart(consent)} loading={busy} disabled={!ack || blocked || !consent || voiceOff}>
+        <Button variant="primary" icon={Mic} onClick={() => onStart(consent, consentVideo)} loading={busy} disabled={!ack || blocked || !consent || !consentVideo || voiceOff}>
           {busy ? "Đang chuẩn bị câu hỏi…" : "Bắt đầu phỏng vấn"}
         </Button>
       </CardFooter>
@@ -72,18 +75,31 @@ function Interview() {
   const [error, setError] = useState<ReactNode>("");
   const [eligibility, setEligibility] = useState<VerificationState | null>(null);
   const [session, setSession] = useState<VoiceSession | null>(null);
-  const call = useRealtimeVoice(submitTranscript);
+  const interviewId = useRef<string | null>(null);
+  // Vòng 1 có camera: quay theo đoạn 10 giây, mỗi đoạn tải lên (thử lại 2 lần); đoạn lỗi bị bỏ qua và lộ ra thành khoảng trống
+  const call = useRealtimeVoice(submitTranscript, {
+    onChunk: async (kind, n, blob, startMs, durMs) => {
+      const id = interviewId.current;
+      if (!id) return;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await aiApi.uploadVideoChunk(id, kind, n, blob, startMs, durMs);
+          return;
+        } catch { /* thử lại */ }
+      }
+    },
+  });
 
   useEffect(() => {
     aiApi.myInterview().then(setInterview).catch(() => setInterview(null));
     aiApi.verificationStatus().then(setEligibility).catch(() => setEligibility(null));
   }, []);
 
-  async function start(consent = false) {
+  async function start(consent = false, consentVideo = false) {
     setBusy(true);
     setError("");
     try {
-      await startVoice(consent);
+      await startVoice(consent, consentVideo);
     } catch (err) {
       setError(err instanceof ApiError && err.code === "PROFILE_REQUIRED" ? <>{errorMessage(err)} <Link href="/profile">Tạo hồ sơ</Link></> : errorMessage(err));
       aiApi.verificationStatus().then(setEligibility).catch(() => {});
@@ -93,9 +109,10 @@ function Interview() {
   }
 
   /** FR-7.7 — tạo buổi giọng nói (hoặc nhận lại buổi đang dở < 30 phút với client secret mới) rồi gọi WebRTC. */
-  async function startVoice(consent: boolean) {
-    const res = await aiApi.startVoiceInterview(true, consent);
+  async function startVoice(consent: boolean, consentVideo: boolean) {
+    const res = await aiApi.startVoiceInterview(true, consent, consentVideo);
     if (res.interview.id !== interview?.id) call.reset(); // buổi mới => bản ghi mới; kết nối lại => giữ bản ghi cũ
+    interviewId.current = res.interview.id;
     setInterview(res.interview);
     setSession(res.voice);
     if (!res.voice) {
@@ -109,7 +126,7 @@ function Interview() {
     setBusy(true);
     setError("");
     try {
-      await startVoice(true);
+      await startVoice(true, true);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -123,6 +140,14 @@ function Interview() {
     setError("");
     try {
       setInterview(await aiApi.submitVoiceTranscript(interview.id, items));
+      // Chờ các đoạn quay cuối tải xong rồi chốt video: đợt chỉ sang bước admin duyệt khi video đã chốt
+      await call.drain();
+      try {
+        await aiApi.finishVideo(interview.id);
+      } catch (err) {
+        setError(`Đã nộp bài nhưng chưa chốt được video: ${errorMessage(err)}. Hệ thống sẽ tự chốt sau ít phút.`);
+      }
+      setInterview(await aiApi.interview(interview.id));
       aiApi.verificationStatus().then(setEligibility).catch(() => {});
     } catch (err) {
       setError(errorMessage(err));
@@ -153,7 +178,7 @@ function Interview() {
       {interview && (
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           {inProgress ? (
-            <VoiceCallCard entries={call.entries} phase={call.phase} topics={session?.topics ?? []} error={call.error}
+            <VoiceCallCard entries={call.entries} phase={call.phase} topics={session?.topics ?? []} error={call.error} preview={call.stream}
               footer={
                 call.phase === "live" ? <Button variant="danger" icon={PhoneOff} onClick={call.finish}>Kết thúc và nộp bài</Button>
                   : call.phase === "connecting" ? <Button loading disabled>Đang kết nối…</Button>
@@ -205,6 +230,7 @@ function Interview() {
               </Alert>
             )}
             <AssessmentCard interview={interview} />
+            {!inProgress && interview.video && <VideoCard interview={interview} onChange={(video) => setInterview({ ...interview, video })} />}
             <Card>
               <CardBody>
                 <DescriptionList items={[

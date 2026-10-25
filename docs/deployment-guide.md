@@ -238,7 +238,7 @@ Máy đã chạy bản cũ sẽ có `profile_db` còn cột `embedding`, `embedd
 và matching-service cần `matching-db` (cổng 5439).
 
 > ⚠️ **Mất dữ liệu**: `docker compose down -v` xoá **mọi** volume của dự án — 7 CSDL (tài khoản, hồ sơ,
-> phiên, giao dịch, phỏng vấn…) và volume `cv-storage` (file CV). Chỉ làm trên máy dev/demo. Nếu cần giữ
+> phiên, giao dịch, phỏng vấn…) và volume `cv-storage` (file CV), `verification-media` (video + âm thanh vòng 1 xác thực mentor, giữ 60 ngày — [video-data-policy.md](video-data-policy.md)). Chỉ làm trên máy dev/demo. Nếu cần giữ
 > dữ liệu, sao lưu trước bằng `docker compose exec <db> pg_dump -U postgres <tên_db> > backup.sql` —
 > nhưng bản sao lưu của `profile_db` cũ không khôi phục thẳng vào schema mới được.
 

@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call, make_pdf,
-                    multipart_file, admin_pass_round1, start_voice_interview, voice_transcript)
+                    multipart_file, admin_pass_round1, start_voice_interview, upload_video_chunks, finish_video, voice_transcript)
 
 RUN = uuid.uuid4().hex[:6]
 results = []
@@ -67,6 +67,8 @@ def us43(ctx):
           iv["resumeDeadline"] and iv["mode"] == "VOICE", iv)
     iv = call("POST", f"{AI}/api/ai/interviews/{iv['id']}/voice-transcript", voice_transcript(iv["maxTurns"], STRONG),
               token=m["accessToken"])
+    upload_video_chunks(m["accessToken"], iv["id"])
+    finish_video(m["accessToken"], iv["id"])
     check("US-43", "Thời gian từng chủ đề được ghi lại", all(t["durationSeconds"] is not None for t in iv["turns"]))
     check("US-43", "Chờ duyệt: mentor chưa thấy điểm / nhận xét từng câu", iv["status"] == "PENDING_REVIEW"
           and not iv["feedbackVisible"] and all(t["score"] is None and t["feedback"] is None for t in iv["turns"]), iv["status"])

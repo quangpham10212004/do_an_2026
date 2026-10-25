@@ -73,6 +73,7 @@ components:
         mentorId: { type: string, format: uuid }
         mentorName: { type: string, nullable: true, description: Chỉ trả về cho admin }
         applicationId: { type: string, format: uuid, nullable: true, description: "Đợt xác thực chứa buổi này (null với buổi trước migration 013)" }
+        video: { allOf: [{ $ref: "#/components/schemas/InterviewVideo" }], nullable: true }
         domain: { type: string }
         skills: { type: array, items: { type: string } }
         status:
@@ -129,6 +130,27 @@ components:
         depth: { type: number, minimum: 0, maximum: 10, description: "Chiều sâu / kinh nghiệm (30%)" }
         communication: { type: number, minimum: 0, maximum: 10, description: "Giao tiếp (15%)" }
         mentoring: { type: number, minimum: 0, maximum: 10, description: "Năng lực hướng dẫn (15%)" }
+    InterviewVideo:
+      type: object
+      description: >
+        Video vòng 1 (docs/design-mentor-verification.md §5). Mentor chỉ thấy trạng thái; `flags`, `transcriptCheck`,
+        `transcriptDiff`, `serverTranscript` chỉ trả cho admin. Đợt chỉ sang ROUND1_REVIEW khi cả bản chép lời lẫn video đã xử lý xong.
+      properties:
+        consentVideo: { type: boolean }
+        finished: { type: boolean, description: Video đã được chốt (POST finish hoặc job nền) }
+        processed: { type: boolean, description: Đã chép lời lại + chốt cờ }
+        available: { type: boolean, description: Còn file để phát }
+        sizeBytes: { type: integer, format: int64 }
+        durationSeconds: { type: number, nullable: true }
+        chunkCount: { type: integer }
+        gapDetected: { type: boolean }
+        gapTotalSeconds: { type: number }
+        flags: { type: array, items: { type: string, enum: [CAMERA_OFF, TRANSCRIPT_MISMATCH] } }
+        transcriptCheck: { type: string, nullable: true, enum: [PENDING, OK, MISMATCH, UNAVAILABLE] }
+        transcriptDiff: { type: number, nullable: true, description: Tỉ lệ khác biệt theo từ giữa hai bản chép lời (0..1) }
+        serverTranscript: { type: string, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        deletedAt: { type: string, format: date-time, nullable: true }
     VerificationStatus:
       type: object
       description: >
@@ -521,8 +543,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [selfAnswerAcknowledged, consentExternalAi]
+              required: [selfAnswerAcknowledged, consentExternalAi, consentVideo]
               properties:
+                consentVideo: { type: boolean, description: "Phải là true — bật camera, video lưu 60 ngày, admin xem được (400 VIDEO_CONSENT_REQUIRED)" }
                 selfAnswerAcknowledged: { type: boolean, description: Phải là true }
                 consentExternalAi: { type: boolean, description: "Phải là true — âm thanh được OpenAI (Mỹ) xử lý" }
       responses:
@@ -644,6 +667,102 @@ paths:
         "403": { description: FORBIDDEN }
         "404": { description: PRACTICE_NOT_FOUND }
         "409": { description: PRACTICE_NOT_IN_PROGRESS (đã nộp hoặc đã bị huỷ do quá 30 phút) }
+  /api/ai/verification/videos/{id}/chunks/{n}:
+    put:
+      summary: >-
+        (MENTOR, chủ buổi) Tải một đoạn video (có tiếng) — thân nhị phân thô, Content-Type = MIME của MediaRecorder. `id` = id buổi
+        phỏng vấn. Cùng `n` thì thay (tải lại idempotent). Chỉ khi buổi IN_PROGRESS | PENDING_REVIEW và video chưa chốt.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: n, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 9999 } }
+        - { name: startMs, in: query, required: true, schema: { type: integer, minimum: 0 }, description: Mốc bắt đầu đoạn tính từ lúc bắt đầu buổi }
+        - { name: durMs, in: query, required: true, schema: { type: integer, minimum: 0, maximum: 120000 } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Đã lưu }
+        "400": { description: EMPTY_CHUNK | VALIDATION_ERROR }
+        "403": { description: Không phải chủ buổi }
+        "404": { description: VIDEO_NOT_FOUND }
+        "409": { description: VIDEO_FINISHED | VIDEO_UPLOAD_CLOSED }
+        "413": { description: "CHUNK_TOO_LARGE (VIDEO_MAX_CHUNK_BYTES, mặc định 8 MB)" }
+  /api/ai/verification/videos/{id}/audio-chunks/{n}:
+    put:
+      summary: (MENTOR, chủ buổi) Tải một đoạn của luồng CHỈ ÂM THANH (nhỏ, ~32 kbps) để server chép lời lại. Quy tắc như /chunks/{n}.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: n, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 9999 } }
+        - { name: startMs, in: query, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: durMs, in: query, required: true, schema: { type: integer, minimum: 0, maximum: 120000 } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Đã lưu }
+        "409": { description: VIDEO_FINISHED | VIDEO_UPLOAD_CLOSED }
+  /api/ai/verification/videos/{id}/finish:
+    post:
+      summary: >-
+        (MENTOR, chủ buổi) Chốt video: ghép đoạn, tính khoảng trống camera (cờ CAMERA_OFF khi trống > VIDEO_MAX_GAP_SECONDS; tổng mất
+        > VIDEO_RECONNECT_SECONDS thì lần làm INVALIDATED). Nếu bản chép lời đã nộp, chép lời lại phía server rồi chuyển đợt sang
+        ROUND1_REVIEW và báo admin; chưa nộp thì bên nào đến sau chạy. Idempotent. Mentor quên gọi: job nền tự chốt sau VIDEO_FINISH_GRACE_MINUTES.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Video sau khi chốt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InterviewVideo" }
+        "404": { description: VIDEO_NOT_FOUND }
+  /api/ai/verification/videos/{id}/play-token:
+    post:
+      summary: >-
+        (MENTOR chủ buổi | ADMIN) Lấy link phát có token JWT ngắn hạn (VIDEO_PLAY_TOKEN_SECONDS = 10 phút) vì thẻ video không gửi
+        được header Authorization. Admin lấy token thì ghi audit VIDEO_VIEWED.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, description: "Đường dẫn tương đối tới /stream kèm query token" }
+                  expiresAt: { type: string, format: date-time }
+        "403": { description: Không phải chủ buổi / admin }
+        "404": { description: VIDEO_NOT_FOUND (chưa chốt) }
+        "410": { description: VIDEO_DELETED }
+  /api/ai/verification/videos/{id}/stream:
+    get:
+      summary: Phát video, hỗ trợ Range (200 | 206). Xác thực bằng `token` ở query (không cần Authorization).
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: token, in: query, required: true, schema: { type: string } }
+        - { name: Range, in: header, required: false, schema: { type: string }, description: "bytes=start-end" }
+      responses:
+        "200": { description: Toàn bộ file }
+        "206": { description: Một phần (Content-Range) }
+        "401": { description: Token sai / hết hạn / của video khác }
+        "404": { description: VIDEO_NOT_FOUND }
+        "410": { description: VIDEO_DELETED }
+  /api/ai/admin/verification/videos/{id}:
+    delete:
+      summary: (ADMIN) Xoá sớm video và âm thanh vĩnh viễn; bản ghi, cờ, hai bản chép lời vẫn giữ. Ghi audit VIDEO_DELETED. Idempotent.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InterviewVideo" }
+        "404": { description: VIDEO_NOT_FOUND }
   /api/ai/admin/verification/applications:
     get:
       summary: (ADMIN) Danh sách đợt xác thực (mới nhất trước; lọc theo trạng thái thì cũ nhất trước)

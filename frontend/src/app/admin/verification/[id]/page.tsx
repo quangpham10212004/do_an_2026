@@ -7,6 +7,7 @@ import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Descripti
 import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 import { PlanCard } from "@/features/ai/VoiceViews";
+import { VideoCard } from "@/features/ai/VideoCard";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { Recommendation, Round1Decision, VerificationApplication } from "@/types";
@@ -87,6 +88,10 @@ function ApplicationReview({ id }: { id: string }) {
             </Card>
           )}
           {interview && <AssessmentCard interview={interview} />}
+          {interview?.video && (
+            <VideoCard interview={interview} admin
+              onChange={(video) => setApp((cur) => cur && cur.interview ? { ...cur, interview: { ...cur.interview, video } } : cur)} />
+          )}
           {interview?.plan && <PlanCard plan={interview.plan} description="AI soạn từ hồ sơ và CV của mentor (nếu mentor đồng ý gửi AI bên ngoài); chủ đề mentoring luôn lấy từ ngân hàng câu hỏi." />}
           <Card>
             <CardHeader title="Đợt xác thực" />

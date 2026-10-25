@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, Round1Decision, Uuid, VerificationApplication, VerificationState, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewVideo, Round1Decision, Uuid, VerificationApplication, VerificationState, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -17,8 +17,17 @@ export const aiApi = {
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // FR-7.7 — phỏng vấn giọng nói (cách duy nhất): gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
   // 400 SELF_ANSWER_ACK_REQUIRED / VOICE_CONSENT_REQUIRED; 409 INTERVIEW_COOLDOWN / INTERVIEW_LOCKED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.
-  startVoiceInterview: (selfAnswerAcknowledged: boolean, consentExternalAi: boolean) =>
-    api<VoiceInterviewStart>("/api/ai/interviews/voice", { method: "POST", body: { selfAnswerAcknowledged, consentExternalAi } }),
+  // consentVideo bắt buộc (400 VIDEO_CONSENT_REQUIRED): camera quay video buổi phỏng vấn, lưu 60 ngày, admin xem được.
+  startVoiceInterview: (selfAnswerAcknowledged: boolean, consentExternalAi: boolean, consentVideo: boolean) =>
+    api<VoiceInterviewStart>("/api/ai/interviews/voice", { method: "POST", body: { selfAnswerAcknowledged, consentExternalAi, consentVideo } }),
+  // Tải đoạn video (kind = chunks) hoặc âm thanh riêng (audio-chunks) theo chỉ số n; startMs / durMs tính từ lúc bắt đầu buổi.
+  uploadVideoChunk: (id: Uuid, kind: "chunks" | "audio-chunks", n: number, blob: Blob, startMs: number, durMs: number) =>
+    api<null>(`/api/ai/verification/videos/${id}/${kind}/${n}?startMs=${Math.round(startMs)}&durMs=${Math.round(durMs)}`,
+      { method: "PUT", raw: blob, headers: { "Content-Type": blob.type || "application/octet-stream" } }),
+  finishVideo: (id: Uuid) => api<InterviewVideo>(`/api/ai/verification/videos/${id}/finish`, { method: "POST" }),
+  // Link phát video có token ngắn hạn (thẻ <video> không gửi được header Authorization); admin xem được ghi nhật ký.
+  videoPlayUrl: (id: Uuid) => api<{ url: string; expiresAt: string }>(`/api/ai/verification/videos/${id}/play-token`, { method: "POST" }),
+  deleteVideo: (id: Uuid) => api<InterviewVideo>(`/api/ai/admin/verification/videos/${id}`, { method: "DELETE" }),
   // Bản ghi → chấm theo chủ đề → PENDING_REVIEW. 400 EMPTY_TRANSCRIPT
   submitVoiceTranscript: (id: Uuid, items: VoiceTranscriptItem[]) =>
     api<Interview>(`/api/ai/interviews/${id}/voice-transcript`, { method: "POST", body: { items } }),

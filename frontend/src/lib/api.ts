@@ -83,6 +83,8 @@ export interface ApiOptions {
   body?: unknown;
   /** Thân multipart (upload file). */
   form?: FormData;
+  /** Thân nhị phân thô (vd. đoạn video); đặt Content-Type qua `headers`. */
+  raw?: Blob;
   /** false: không gắn access token (đăng nhập, xác thực email...). */
   auth?: boolean;
   /** Header bổ sung (vd. Idempotency-Key cho POST /api/payment/charge). */
@@ -98,6 +100,8 @@ async function send(path: string, options: ApiOptions, retried = false): Promise
   let payload: BodyInit | undefined;
   if (form) {
     payload = form;
+  } else if (options.raw !== undefined) {
+    payload = options.raw;
   } else if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);

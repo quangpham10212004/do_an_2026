@@ -17,6 +17,29 @@ export interface RubricScores {
 }
 
 export type InterviewFlag = "PROMPT_INJECTION" | "COPIED_ANSWER";
+/** Cờ của video vòng 1 (docs/design-mentor-verification.md §5.3–5.4): camera ngắt, hai bản chép lời lệch nhau. */
+export type VideoFlag = "CAMERA_OFF" | "TRANSCRIPT_MISMATCH";
+export type TranscriptCheck = "PENDING" | "OK" | "MISMATCH" | "UNAVAILABLE";
+
+/** Video vòng 1 của một buổi phỏng vấn. Mentor chỉ thấy trạng thái; cờ và bản chép lời của server chỉ admin. */
+export interface InterviewVideo {
+  consentVideo: boolean;
+  finished: boolean;
+  processed: boolean;
+  /** Còn file để phát (đã chốt, chưa hết hạn / chưa bị xoá). */
+  available: boolean;
+  sizeBytes: number;
+  durationSeconds: number | null;
+  chunkCount: number;
+  gapDetected: boolean;
+  gapTotalSeconds: number;
+  flags: VideoFlag[];
+  transcriptCheck: TranscriptCheck | null;
+  transcriptDiff: number | null;
+  serverTranscript: string | null;
+  expiresAt: IsoDateTime;
+  deletedAt: IsoDateTime | null;
+}
 
 export interface InterviewTurn {
   turnNo: number;
@@ -46,6 +69,8 @@ export interface Interview {
   mentorName: string | null;
   /** Đợt xác thực chứa buổi này (null với buổi cũ trước migration 013). */
   applicationId?: Uuid | null;
+  /** Video vòng 1 (camera bắt buộc); null với buổi trước migration 014. */
+  video?: InterviewVideo | null;
   domain: string;
   skills: string[];
   status: InterviewStatus;

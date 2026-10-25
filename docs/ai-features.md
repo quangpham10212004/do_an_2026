@@ -495,6 +495,14 @@ ngược lại                                                → PIVOT  (chủ 
 - `GET /api/ai/verification/status` thay `GET /interviews/eligibility`. Logic thuần ở `app/verification/rules.py`
   (`tests/test_verification_rules.py`), API ở `tests/test_verification_flow.py`, e2e `scripts/e2e_v2_verification_round1.py`.
 
+### 2.7b Vòng 1 có camera (PR 3, [video-data-policy.md](video-data-policy.md))
+- Camera + micro **bắt buộc**; mentor tick `consentVideo` (tách khỏi `consentExternalAi`). Trình duyệt quay hai luồng (video có tiếng; chỉ âm thanh), cắt đoạn mỗi 10 giây và tải lên;
+  camera/micro sống qua các lần kết nối lại WebRTC nên rớt mạng không đứt video.
+- `POST .../finish` chốt video; đợt chỉ sang `ROUND1_REVIEW` khi **cả** bản chép lời và video đã chốt và xử lý xong. Mentor quên `finish`: job nền tự chốt sau `VIDEO_FINISH_GRACE_MINUTES = 10`.
+- Cờ `CAMERA_OFF` (khoảng trống giữa các đoạn > `VIDEO_MAX_GAP_SECONDS = 10`); tổng mất camera > `VIDEO_RECONNECT_SECONDS = 60` → lần làm `INVALIDATED` (tính 1 lần, không vào hàng chờ admin).
+- Chép lời lại phía server (`/audio/transcriptions`) so với bản trình duyệt: lệch > `TRANSCRIPT_MISMATCH_THRESHOLD = 0.30` → cờ `TRANSCRIPT_MISMATCH`; lỗi/không có khoá → `UNAVAILABLE` (không chặn). Có cờ → khuyến nghị buộc `NEEDS_REVIEW`.
+- Logic thuần: `app/verification/video_rules.py` (`tests/test_video_rules.py`); API: `tests/test_verification_video.py`; e2e `scripts/e2e_v2_verification_video.py`.
+
 ### 2.8 Ví dụ (kiểm thử e2e, engine rule-based)
 Mentor backend (Java, Spring Boot, Redis, System Design), trả lời chi tiết có số liệu và trade-off:
 chuỗi chiến lược thu được gồm cả `DEEPEN` và `PIVOT`, buổi phỏng vấn dừng đúng sau 5 lượt với trạng

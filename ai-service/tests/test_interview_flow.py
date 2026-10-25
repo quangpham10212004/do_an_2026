@@ -18,9 +18,10 @@ def mentor_id():
     return uuid.uuid4()
 
 
-def start(client, mentor_id, ack=True, consent=True):
+def start(client, mentor_id, ack=True, consent=True, video=True):
     """POST /api/ai/interviews/voice — trả response ({interview, voice})."""
-    return client.post("/api/ai/interviews/voice", json={"selfAnswerAcknowledged": ack, "consentExternalAi": consent},
+    return client.post("/api/ai/interviews/voice",
+                       json={"selfAnswerAcknowledged": ack, "consentExternalAi": consent, "consentVideo": video},
                        headers=auth(mentor_id, "MENTOR"))
 
 
@@ -39,11 +40,32 @@ def transcript(topics, text=STRONG_ANSWER):
     return {"items": items}
 
 
-def submit(client, interview, mentor_id, text=STRONG_ANSWER, body=None):
+def upload_video(client, mentor_id, interview_id, chunks=2, start_at=0):
+    """Tải `chunks` đoạn video + âm thanh liên tiếp (mỗi đoạn 10 giây) như trình duyệt, bắt đầu từ `start_at` ms."""
+    headers = {**auth(mentor_id, "MENTOR"), "Content-Type": "video/webm"}
+    for n in range(chunks):
+        params = {"startMs": start_at + n * 10_000, "durMs": 10_000}
+        for kind in ("chunks", "audio-chunks"):
+            res = client.put(f"/api/ai/verification/videos/{interview_id}/{kind}/{n}", params=params,
+                             content=b"webm-bytes-%d" % n, headers=headers)
+            assert res.status_code == 204, res.text
+
+
+def finish_video(client, mentor_id, interview_id):
+    res = client.post(f"/api/ai/verification/videos/{interview_id}/finish", headers=auth(mentor_id, "MENTOR"))
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def submit(client, interview, mentor_id, text=STRONG_ANSWER, body=None, video=True):
+    """Nộp bản chép lời rồi (mặc định) tải + chốt video như trình duyệt => đợt sang ROUND1_REVIEW."""
     res = client.post(f"/api/ai/interviews/{interview['id']}/voice-transcript",
                       json=body or transcript(interview["maxTurns"], text), headers=auth(mentor_id, "MENTOR"))
     assert res.status_code == 200, res.text
-    return res.json()
+    if video:
+        upload_video(client, mentor_id, interview["id"])
+        finish_video(client, mentor_id, interview["id"])
+    return client.get(f"/api/ai/interviews/{interview['id']}", headers=auth(mentor_id, "MENTOR")).json()
 
 
 def finish(client, mentor_id, text=STRONG_ANSWER):
@@ -66,7 +88,7 @@ def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id
     assert all(t["score"] is None and t["feedback"] is None for t in final["turns"])
     assert final["feedbackVisible"] is False and final["resumeDeadline"] is None
     assert (mentor_id, "PENDING_REVIEW") in fake_profile.verifications
-    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications
+    assert ("ADMIN", "INTERVIEW_PENDING_REVIEW") in fake_mentoring.notifications  # sau khi video xử lý xong
 
 
 def test_admin_review_syncs_verification(client, db, fake_profile, fake_mentoring, mentor_id):

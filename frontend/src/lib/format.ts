@@ -124,6 +124,9 @@ export const STATUS_LABELS: Record<string, string> = {
   ROUND2_SCHEDULED: "Đã hẹn vòng 2",
   CLOSED: "Đã đóng (hết lượt)",
   PASS: "Cho qua vòng 1",
+  MISMATCH: "Lệch nhiều",
+  UNAVAILABLE: "Không chép lại được",
+  OK: "Khớp",
   RETAKE: "Yêu cầu làm lại",
   REQUEST_RETAKE: "Yêu cầu làm lại",
   PROMPT_INJECTION: "Nghi chèn lệnh cho AI",
@@ -136,8 +139,8 @@ export const ROLE_LABELS: Record<Role, string> = { MENTEE: "Mentee", MENTOR: "Me
 export type StatusTone = "success" | "danger" | "warning" | "info" | "neutral";
 
 export function statusTone(status: string): StatusTone {
-  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE", "PASSED", "PASS"].includes(status)) return "success";
+  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE", "PASSED", "PASS", "OK"].includes(status)) return "success";
   if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "SUSPENDED", "CLOSED"].includes(status)) return "danger";
-  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER", "ROUND1", "ROUND1_REVIEW", "ROUND2_PENDING_SLOTS", "ROUND2_PENDING_CHOICE", "ROUND2_SCHEDULED", "RETAKE", "ABANDONED", "INVALIDATED"].includes(status)) return "warning";
+  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER", "ROUND1", "ROUND1_REVIEW", "ROUND2_PENDING_SLOTS", "ROUND2_PENDING_CHOICE", "ROUND2_SCHEDULED", "RETAKE", "ABANDONED", "INVALIDATED", "MISMATCH"].includes(status)) return "warning";
   return "neutral";
 }

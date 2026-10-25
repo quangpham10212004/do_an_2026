@@ -293,7 +293,7 @@ flowchart TB
         ai -.- m
         r[(redis)]
       end
-      vols[(named volumes: *-db-data, cv-storage)]
+      vols[(named volumes: *-db-data, cv-storage, verification-media)]
     end
     user((Người dùng)) -->|localhost:3000| fe
 ```

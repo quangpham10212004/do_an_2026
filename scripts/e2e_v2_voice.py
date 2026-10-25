@@ -12,7 +12,7 @@ import sys
 import time
 import uuid
 
-from common import AI, AUTH, PROFILE, ApiError, call
+from common import AI, AUTH, PROFILE, ApiError, call, finish_video, upload_video_chunks
 
 RUN = uuid.uuid4().hex[:6]
 results = []
@@ -60,14 +60,14 @@ def mentor_voice(at):
         "hourlyRate": 0, "capacity": 3, "portfolioLinks": []}, token=mt)
 
     status, code = status_code(lambda: call("POST", f"{AI}/api/ai/interviews/voice",
-                                            {"selfAnswerAcknowledged": True, "consentExternalAi": False}, token=mt))
+                                            {"selfAnswerAcknowledged": True, "consentExternalAi": False, "consentVideo": True}, token=mt))
     check("Thiếu đồng ý OpenAI xử lý âm thanh → 400 VOICE_CONSENT_REQUIRED", status == 400 and code == "VOICE_CONSENT_REQUIRED", (status, code))
 
-    started = call("POST", f"{AI}/api/ai/interviews/voice", {"selfAnswerAcknowledged": True, "consentExternalAi": True}, token=mt)
+    started = call("POST", f"{AI}/api/ai/interviews/voice", {"selfAnswerAcknowledged": True, "consentExternalAi": True, "consentVideo": True}, token=mt)
     iv = started["interview"]
     check("Không có OPENAI_API_KEY (ngoài prod) → buổi VOICE được tạo, voice = null",
           started["voice"] is None and iv["mode"] == "VOICE" and iv["status"] == "IN_PROGRESS" and iv["consentExternalAi"], started)
-    again = call("POST", f"{AI}/api/ai/interviews/voice", {"selfAnswerAcknowledged": True, "consentExternalAi": True}, token=mt)
+    again = call("POST", f"{AI}/api/ai/interviews/voice", {"selfAnswerAcknowledged": True, "consentExternalAi": True, "consentVideo": True}, token=mt)
     check("Gọi lại trong 30 phút → cùng buổi (kết nối lại)", again["interview"]["id"] == iv["id"], again["interview"]["id"])
     status, _ = status_code(lambda: call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=mt))
     check("Luồng chat đã gỡ: POST /api/ai/interviews → 404/405", status in (404, 405), status)
@@ -84,6 +84,8 @@ def mentor_voice(at):
     p = call("GET", f"{PROFILE}/api/profile/mentor/{uid}", token=mt)
     check("Đồng bộ PENDING_REVIEW sang profile-service như chat", p["verificationStatus"] == "PENDING_REVIEW", p["verificationStatus"])
 
+    upload_video_chunks(mt, iv["id"])
+    finish_video(mt, iv["id"])
     detail = call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=at)
     check("Admin thấy mode VOICE + rubric từng lượt", detail["mode"] == "VOICE" and all(t["rubric"] for t in detail["turns"]))
     pending = call("GET", f"{AI}/api/ai/admin/verification/applications?status=ROUND1_REVIEW", token=at)

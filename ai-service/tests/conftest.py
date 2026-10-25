@@ -8,6 +8,7 @@ os.environ["DEEPSEEK_API_KEY"] = ""
 os.environ["OPENAI_API_KEY"] = ""
 os.environ.setdefault("AI_DB_URL", "postgresql://postgres:postgres@localhost:5438/ai_db")
 os.environ["CV_STORAGE_DIR"] = tempfile.mkdtemp(prefix="cv-test-")
+os.environ["VERIFICATION_STORAGE_DIR"] = tempfile.mkdtemp(prefix="verification-test-")
 
 import asyncpg  # noqa: E402
 import jwt  # noqa: E402
@@ -19,7 +20,7 @@ from app.main import app  # noqa: E402
 
 from app import migrations  # noqa: E402
 
-TABLES = "practice_interviews, interview_turns, interviews, verification_applications, enrichment_messages, enrichment_conversations, cv_documents"
+TABLES = "practice_interviews, interview_videos, interview_turns, interviews, verification_applications, enrichment_messages, enrichment_conversations, cv_documents"
 
 
 async def _reset_schema() -> None:

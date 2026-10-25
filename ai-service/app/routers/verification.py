@@ -1,13 +1,13 @@
 """Xác thực mentor 2 vòng (docs/design-mentor-verification.md): phía mentor và phía admin."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 
 from app import config
 from app.interview import service as interview_service
-from app.interview.views import InterviewStats
+from app.interview.views import InterviewStats, VideoView
 from app.security import AuthUser, require_internal, require_role
-from app.verification import service
+from app.verification import service, video_service
 from app.verification.views import ApplicationView, Round1ReviewInput, VerificationStatusView
 
 router = APIRouter(prefix="/api/ai")
@@ -23,6 +23,48 @@ async def my_status(user: AuthUser = Depends(require_role("MENTOR"))) -> Verific
 async def start_application(user: AuthUser = Depends(require_role("MENTOR"))) -> VerificationStatusView:
     await interview_service.abandon_stale(user.user_id)
     return await service.start_application(user)
+
+
+async def _chunk(request: Request, user: AuthUser, interview_id: UUID, kind: str, n: int, start_ms: int, dur_ms: int) -> Response:
+    declared = int(request.headers.get("content-length") or 0)
+    if declared > config.VIDEO_MAX_CHUNK_BYTES:  # từ chối sớm, không đọc cả body
+        raise HTTPException(status_code=413, detail={"code": "CHUNK_TOO_LARGE", "message": "Đoạn tải lên quá lớn"})
+    await video_service.upload_chunk(user, interview_id, kind, n, start_ms, dur_ms, await request.body(),
+                                     request.headers.get("content-type"))
+    return Response(status_code=204)
+
+
+@router.put("/verification/videos/{interview_id}/chunks/{n}", status_code=204)
+async def upload_video_chunk(interview_id: UUID, n: int, request: Request, start_ms: int = Query(alias="startMs"),
+                             dur_ms: int = Query(alias="durMs"), user: AuthUser = Depends(require_role("MENTOR"))) -> Response:
+    return await _chunk(request, user, interview_id, "video", n, start_ms, dur_ms)
+
+
+@router.put("/verification/videos/{interview_id}/audio-chunks/{n}", status_code=204)
+async def upload_audio_chunk(interview_id: UUID, n: int, request: Request, start_ms: int = Query(alias="startMs"),
+                             dur_ms: int = Query(alias="durMs"), user: AuthUser = Depends(require_role("MENTOR"))) -> Response:
+    return await _chunk(request, user, interview_id, "audio", n, start_ms, dur_ms)
+
+
+@router.post("/verification/videos/{interview_id}/finish", response_model=VideoView, response_model_by_alias=True)
+async def finish_video(interview_id: UUID, user: AuthUser = Depends(require_role("MENTOR"))) -> VideoView:
+    return await video_service.finish(user, interview_id)
+
+
+@router.post("/verification/videos/{interview_id}/play-token")
+async def video_play_token(interview_id: UUID, user: AuthUser = Depends(require_role("MENTOR", "ADMIN"))) -> dict:
+    token = await video_service.play_token(user, interview_id)
+    return {"url": token["url"], "expiresAt": token["expires_at"]}
+
+
+@router.get("/verification/videos/{interview_id}/stream")
+async def stream_video(interview_id: UUID, token: str, range: str | None = Header(default=None)) -> Response:
+    return await video_service.stream(interview_id, token, range)
+
+
+@router.delete("/admin/verification/videos/{interview_id}", response_model=VideoView, response_model_by_alias=True)
+async def admin_delete_video(interview_id: UUID, user: AuthUser = Depends(require_role("ADMIN"))) -> VideoView:
+    return await video_service.delete_video(user, interview_id)
 
 
 @router.get("/admin/verification/applications", response_model=list[ApplicationView], response_model_by_alias=True)

@@ -15,6 +15,25 @@ from app.interview.voice import VoiceSessionView
 from app.schemas import CamelModel
 
 
+class VideoView(CamelModel):
+    """Video vòng 1 (docs/design-mentor-verification.md §5). Mentor chỉ thấy trạng thái; cờ và bản chép lời của server chỉ admin."""
+    consent_video: bool
+    finished: bool
+    processed: bool
+    available: bool  # còn file để phát (đã chốt, chưa hết hạn / chưa bị xoá)
+    size_bytes: int
+    duration_seconds: float | None = None
+    chunk_count: int = 0
+    gap_detected: bool = False
+    gap_total_seconds: float = 0
+    flags: list[str] = []
+    transcript_check: str | None = None  # PENDING | OK | MISMATCH | UNAVAILABLE (chỉ admin)
+    transcript_diff: float | None = None
+    server_transcript: str | None = None
+    expires_at: datetime
+    deleted_at: datetime | None = None
+
+
 class InterviewTurnView(CamelModel):
     turn_no: int
     topic: str
@@ -64,6 +83,7 @@ class InterviewView(CamelModel):
     self_answer_acknowledged: bool = False
     # v2.1 — kế hoạch câu hỏi do AI soạn (chỉ admin; buổi trước 011 => None)
     plan: list[PlanTopicView] | None = None
+    video: VideoView | None = None
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
@@ -130,8 +150,27 @@ def _resume_deadline(interview: asyncpg.Record) -> datetime:
     return interview["created_at"] + timedelta(minutes=config.VOICE_SESSION_MINUTES)
 
 
+def video_view(video: asyncpg.Record | None, for_admin: bool) -> VideoView | None:
+    if video is None:
+        return None
+    import json
+    chunks = video["chunks"]
+    count = len(json.loads(chunks) if isinstance(chunks, str) else chunks or [])
+    finished = video["finished_at"] is not None
+    deleted = video["deleted_at"] is not None
+    return VideoView(
+        consent_video=video["consent_video"], finished=finished, processed=video["processed_at"] is not None,
+        available=finished and not deleted, size_bytes=video["size_bytes"], duration_seconds=_r1(video["duration_s"]),
+        chunk_count=count, gap_detected=video["gap_detected"], gap_total_seconds=_r1(video["gap_total_seconds"]) or 0,
+        flags=list(video["flags"] or []) if for_admin else [],
+        transcript_check=video["transcript_check"] if for_admin else None,
+        transcript_diff=video["transcript_diff"] if for_admin else None,
+        server_transcript=video["server_transcript"] if for_admin else None,
+        expires_at=video["expires_at"], deleted_at=video["deleted_at"])
+
+
 def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_admin: bool,
-                   mentor_name: str | None = None) -> InterviewView:
+                   mentor_name: str | None = None, video: asyncpg.Record | None = None) -> InterviewView:
     """
     US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét / rubric từng câu SAU KHI admin quyết định (APPROVED,
     REJECTED, RETAKE_REQUESTED) — trong lúc làm và lúc chờ duyệt đều ẩn (tránh "học tủ" theo phản hồi). Tổng điểm và
@@ -151,9 +190,11 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         turns=turn_views, overall_score=_r1(interview["overall_score"]), summary=interview["summary"],
         strengths=_split(interview["strengths"]), weaknesses=_split(interview["weaknesses"]),
         recommendation=interview["recommendation"], review_note=interview["review_note"],
-        flagged=for_admin and any(is_flagged(list(t["flags"] or [])) for t in turns),
+        flagged=for_admin and (any(is_flagged(list(t["flags"] or [])) for t in turns)
+                               or bool(video is not None and video["flags"])),
         self_answer_acknowledged=interview["self_answer_acknowledged"],
         plan=planner.plan_view(interview["plan"]) if for_admin else None,
+        video=video_view(video, for_admin),
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"],
         resume_deadline=None if not in_progress else _resume_deadline(interview),

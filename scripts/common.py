@@ -218,17 +218,32 @@ def voice_transcript(topics, answer=STRONG_VOICE_ANSWER):
     return {"items": items}
 
 
-def start_voice_interview(token, ack=True, consent=True):
+def start_voice_interview(token, ack=True, consent=True, video=True):
     """FR-7.7 — POST /api/ai/interviews/voice. Không có OPENAI_API_KEY (ngoài prod) thì `voice` = null."""
     return call("POST", f"{AI}/api/ai/interviews/voice",
-                {"selfAnswerAcknowledged": ack, "consentExternalAi": consent}, token=token)
+                {"selfAnswerAcknowledged": ack, "consentExternalAi": consent, "consentVideo": video}, token=token)
 
 
-def complete_voice_interview(token, answer=STRONG_VOICE_ANSWER):
-    """Mentor bắt đầu buổi giọng nói rồi nộp bản ghi giả lập => buổi PENDING_REVIEW (chờ admin)."""
+def upload_video_chunks(token, interview_id, starts_ms=(0, 10_000), dur_ms=10_000):
+    """Tải các đoạn video + âm thanh giả lập như trình duyệt (mỗi đoạn `dur_ms` bắt đầu tại các mốc `starts_ms`)."""
+    for n, start in enumerate(starts_ms):
+        for kind in ("chunks", "audio-chunks"):
+            call("PUT", f"{AI}/api/ai/verification/videos/{interview_id}/{kind}/{n}?startMs={start}&durMs={dur_ms}",
+                 token=token, raw_body=b"webm-chunk-%d" % n, content_type="video/webm")
+
+
+def finish_video(token, interview_id):
+    return call("POST", f"{AI}/api/ai/verification/videos/{interview_id}/finish", token=token)
+
+
+def complete_voice_interview(token, answer=STRONG_VOICE_ANSWER, starts_ms=(0, 10_000)):
+    """Mentor bắt đầu buổi giọng nói, nộp bản chép lời giả lập và tải + chốt video => đợt ROUND1_REVIEW (chờ admin)."""
     interview = start_voice_interview(token)["interview"]
-    return call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
+    done = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
                 voice_transcript(interview["maxTurns"], answer), token=token)
+    upload_video_chunks(token, interview["id"], starts_ms)
+    finish_video(token, interview["id"])
+    return call("GET", f"{AI}/api/ai/interviews/{interview['id']}", token=token) or done
 
 
 def round1_review(admin_token, interview, decision, note=None):

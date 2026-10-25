@@ -15,6 +15,7 @@ from app.errors import AiError
 from app.llm.deepseek import get_client
 from app.practice import service as practice_service
 from app.routers import cv, enrichment, interview, practice, verification
+from app.verification import video_service
 
 observability.setup_logging("ai-service")  # US-46: log JSON có requestId
 log = logging.getLogger(__name__)
@@ -36,11 +37,14 @@ async def lifespan(_: FastAPI):
     practice_job = asyncio.create_task(practice_service.abandon_stale_forever())
     # US-45 (PRD-CV-6) — xoá file + văn bản gốc của CV quá 12 tháng
     retention_job = asyncio.create_task(purge_expired_cvs_forever())
+    # Vòng 1 có camera — chốt video bị bỏ quên, xoá video quá 60 ngày
+    video_job = asyncio.create_task(video_service.maintenance_forever())
     yield
     retry_job.cancel()
     abandon_job.cancel()
     practice_job.cancel()
     retention_job.cancel()
+    video_job.cancel()
     await close_clients()
     await close_pool()
 

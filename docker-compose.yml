@@ -282,9 +282,16 @@ services:
       VERIFICATION_RETRY_DAYS: ${VERIFICATION_RETRY_DAYS:-15}
       VERIFICATION_ROUND1_MAX_RETAKE: ${VERIFICATION_ROUND1_MAX_RETAKE:-2}
       VERIFICATION_ROUND2_ENABLED: ${VERIFICATION_ROUND2_ENABLED:-false}
+      # Vòng 1 có camera: video + âm thanh quay theo đoạn, lưu trên volume riêng (không dùng chung với CV)
+      VERIFICATION_STORAGE_DIR: /data/verification
+      VIDEO_RETENTION_DAYS: ${VIDEO_RETENTION_DAYS:-60}
+      VIDEO_RECONNECT_SECONDS: ${VIDEO_RECONNECT_SECONDS:-60}
+      VIDEO_MAX_GAP_SECONDS: ${VIDEO_MAX_GAP_SECONDS:-10}
+      TRANSCRIPT_MISMATCH_THRESHOLD: ${TRANSCRIPT_MISMATCH_THRESHOLD:-0.30}
       PRACTICE_FREE_LIMIT: ${PRACTICE_FREE_LIMIT:-1}
     volumes:
       - cv-storage:/data/cv
+      - verification-media:/data/verification
     depends_on:
       ai-db: { condition: service_healthy }
     healthcheck:
@@ -386,3 +393,4 @@ volumes:
   learning-db-data:
   ai-db-data:
   cv-storage:
+  verification-media:

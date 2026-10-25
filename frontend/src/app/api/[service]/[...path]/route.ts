@@ -28,7 +28,8 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
 
   const headers = new Headers();
   // idempotency-key: US-13 — POST /api/payment/charge bắt buộc header này
-  for (const name of ["authorization", "content-type", "accept", "idempotency-key"]) {
+  // range: phát video (GET /api/ai/verification/videos/{id}/stream) cần tua được
+  for (const name of ["authorization", "content-type", "accept", "idempotency-key", "range"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
@@ -49,6 +50,14 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
     for (const name of ["content-type", "content-disposition", "cache-control", "retry-after", "x-request-id"]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
+    }
+    // Video: chuyển tiếp dạng stream (không đệm cả file vào bộ nhớ) cùng Range / Content-Range
+    if (params.service === "ai" && /^verification\/videos\/[^/]+\/stream$/.test(params.path.join("/"))) {
+      for (const name of ["accept-ranges", "content-range", "content-length"]) {
+        const value = upstream.headers.get(name);
+        if (value) responseHeaders.set(name, value);
+      }
+      return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
     }
     const body = upstream.status === 204 ? null : await upstream.arrayBuffer();
     return new Response(body, { status: upstream.status, headers: responseHeaders });

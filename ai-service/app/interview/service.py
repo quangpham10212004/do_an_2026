@@ -26,6 +26,8 @@ from app.interview.voice import TranscriptItem
 from app.security import AuthUser
 from app.verification import repository as vrepo
 from app.verification import service as verification
+from app.verification import video_repository as video_repo
+from app.verification import video_service
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ async def _view(db, interview, for_admin: bool) -> InterviewView:
     """`db` là pool hoặc connection — asyncpg.Pool proxy sẵn fetch/fetchrow/execute."""
     turns = await repo.turns_of(db, interview["id"])
     name = await profile.display_name(interview["mentor_id"]) if for_admin else None
-    return interview_view(interview, turns, for_admin, name)
+    return interview_view(interview, turns, for_admin, name, await video_repo.find_by_interview(db, interview["id"]))
 
 
 def _context(domain: str, skills: list[str], mentor: dict | None, max_turns: int) -> InterviewContext:
@@ -110,12 +112,14 @@ async def _after_start(user: AuthUser, mentor: dict) -> None:
         await profile.update_verification(user.user_id, "PENDING_INTERVIEW")
 
 
-async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_external_ai: bool) -> VoiceInterviewStart:
+async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_external_ai: bool,
+                      consent_video: bool) -> VoiceInterviewStart:
     """
     FR-7.7 — bắt đầu buổi phỏng vấn giọng nói: Gọi lại khi đang có buổi giọng
     nói chưa quá VOICE_SESSION_MINUTES phút => cùng buổi đó với client secret mới (kết nối lại khi rớt cuộc gọi).
     """
     voice.require_consent(consent_external_ai)
+    voice.require_video_consent(consent_video)
     voice.ensure_available()
     s = await _prepare_start(user, self_answer_acknowledged)
     if s.in_progress is not None:
@@ -133,19 +137,14 @@ async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_ex
         application = await verification.get_or_create_open(conn, user.user_id)
         interview = await repo.insert(conn, user.user_id, mentor["domain"], skills, len(plan.topics), engines.select(None),
                                       plan=planner.dump(plan), application_id=application["id"])
+        await video_service.create(conn, interview["id"], user.user_id, consent_video)
     await _after_start(user, mentor)
     return VoiceInterviewStart(interview=await _view(s.pool, interview, for_admin=False), voice=session)
 
 
 async def _on_completed(mentor_id: UUID, updated) -> None:
-    """Buổi vừa sang PENDING_REVIEW: đồng bộ trạng thái xác thực + thông báo admin và mentor."""
+    """Buổi vừa sang PENDING_REVIEW: đồng bộ trạng thái xác thực + báo mentor. Admin được báo khi video xử lý xong."""
     await profile.update_verification(mentor_id, "PENDING_REVIEW")
-    via = " (phỏng vấn giọng nói)"
-    await mentoring.notify_role(
-        "ADMIN", "INTERVIEW_PENDING_REVIEW", "Có kết quả AI Interview cần duyệt",
-        f"Mentor lĩnh vực {updated['domain']} đạt {updated['overall_score']:.1f}/100 điểm{via} "
-        f"(AI khuyến nghị: {updated['recommendation']}).",
-        f"/admin/verification/{updated['application_id']}")
     await mentoring.notify_user(
         mentor_id, "INTERVIEW_COMPLETED", "Bạn đã hoàn thành AI Interview",
         "Kết quả đang chờ quản trị viên xem xét trước khi kích hoạt tài khoản mentor.", "/interview")
@@ -195,10 +194,16 @@ async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: lis
         await repo.set_current_turn(conn, interview_id, len(scored))
         updated = await repo.complete(conn, interview_id, final.overall_score, final.summary, "\n".join(final.strengths),
                                       "\n".join(final.weaknesses), final.recommendation)
-        await verification.on_round1_completed(conn, updated["application_id"])
+        has_video = await video_repo.find_by_interview(conn, interview_id) is not None
+        if not has_video:  # buổi không có video: sẵn sàng cho admin ngay
+            await verification.on_round1_completed(conn, updated["application_id"])
 
     await _on_completed(user.user_id, updated)
-    return await _view(pool, updated, for_admin=False)
+    if has_video:
+        await video_service.try_process(interview_id)  # video đã chốt trước đó thì xử lý ngay, chưa thì chờ finish
+    else:
+        await verification.notify_ready_for_review(updated)
+    return await _view(pool, await _find(pool, interview_id), for_admin=False)
 
 
 async def latest_for(user: AuthUser) -> InterviewView | None:
