@@ -1,12 +1,10 @@
 """
-AI Interview xác thực năng lực mentor (FR-7.1 → FR-7.5).
+Vòng 1 của xác thực mentor: AI phỏng vấn bằng giọng nói (FR-7.7).
 
-Vòng đời: mentor bắt đầu → trả lời lần lượt {maxTurns} câu (engine chấm từng câu và sinh
-câu kế tiếp) → sau lượt cuối engine tổng hợp điểm & nhận xét → trạng thái PENDING_REVIEW,
-thông báo admin → admin APPROVE/REJECT → đồng bộ trạng thái xác thực sang profile-service
-(mentor chỉ xuất hiện trong matching khi APPROVED).
+Vòng đời: mentor bắt đầu (tạo đợt xác thực nếu chưa có, xem app.verification) → nói chuyện với người phỏng vấn AI →
+trình duyệt gửi bản chép lời, engine chấm từng chủ đề và tổng hợp → buổi PENDING_REVIEW, đợt sang ROUND1_REVIEW, thông báo
+admin → admin duyệt vòng 1 (app.verification.service.round1_review).
 
-ai-service sở hữu cả luồng lẫn dữ liệu: buổi phỏng vấn và từng lượt hỏi-đáp nằm trong ai_db.
 Lời gọi engine (DeepSeek) mất vài giây nên luôn thực hiện NGOÀI transaction.
 """
 import asyncio
@@ -15,29 +13,21 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from pydantic import TypeAdapter
-
 from app import config, engines, errors
 from app.clients import audit, mentoring, profile
 from app.db import get_pool
 from app.cv import repository as cv_repo
-from app.interview import attempts, planner, rubric, voice
+from app.interview import planner, voice
 from app.interview import engine as interview_engine
 from app.interview import repository as repo
 from app.interview.models import InterviewContext, TurnRecord
-from app.interview.views import (EligibilityView, InterviewStats, InterviewView, ReviewInterviewInput,
-                                 VoiceInterviewStart, interview_view)
+from app.interview.views import InterviewView, VoiceInterviewStart, interview_view
 from app.interview.voice import TranscriptItem
 from app.security import AuthUser
+from app.verification import repository as vrepo
+from app.verification import service as verification
 
 log = logging.getLogger(__name__)
-
-_DATETIME = TypeAdapter(datetime)
-
-
-def _iso(value: datetime) -> str:
-    """Cùng định dạng với datetime trong response model (vd. 2026-11-17T03:00:00Z)."""
-    return _DATETIME.dump_python(value, mode="json")
 
 
 async def _view(db, interview, for_admin: bool) -> InterviewView:
@@ -53,24 +43,6 @@ def _context(domain: str, skills: list[str], mentor: dict | None, max_turns: int
                             bio=(mentor or {}).get("bio"))
 
 
-async def _eligibility(db, mentor_id: UUID) -> attempts.Eligibility:
-    rows = await repo.outcomes_since_unlock(db, mentor_id)
-    outcomes = [attempts.InterviewOutcome(r["status"], r["created_at"], r["reviewed_at"]) for r in rows]
-    return attempts.evaluate(outcomes, datetime.now(timezone.utc), config.INTERVIEW_MAX_ATTEMPTS,
-                             timedelta(days=config.INTERVIEW_COOLDOWN_DAYS))
-
-
-def _eligibility_view(e: attempts.Eligibility, latest) -> EligibilityView:
-    status = None if latest is None else latest["status"]
-    reason = ("IN_PROGRESS" if status == "IN_PROGRESS" else "PENDING_REVIEW" if status == "PENDING_REVIEW"
-              else "ALREADY_APPROVED" if status == "APPROVED" else "LOCKED" if e.locked
-              else "COOLDOWN" if e.cooldown_until is not None else None)
-    return EligibilityView(attempts_used=e.attempts_used, attempts_left=e.attempts_left, max_attempts=e.max_attempts,
-                           cooldown_until=e.cooldown_until, locked=e.locked,
-                           can_start=reason in (None, "IN_PROGRESS"), reason=reason,
-                           voice_available=voice.available())
-
-
 async def abandon_stale(mentor_id: UUID | None = None) -> int:
     """FR-7.7 — buổi giọng nói quá VOICE_SESSION_MINUTES phút chưa gửi bản ghi → ABANDONED (tính là 1 lần phỏng vấn)."""
     pool = await get_pool()
@@ -79,6 +51,7 @@ async def abandon_stale(mentor_id: UUID | None = None) -> int:
     for r in rows:
         await audit.record(None, "SYSTEM", "INTERVIEW_ABANDONED", "INTERVIEW", str(r["id"]),
                            None, {"mentorId": str(r["mentor_id"])})
+        await verification.on_attempt_failed(r["application_id"], r["mentor_id"])  # hết lượt thì đóng đợt
     if rows and mentor_id is None:
         log.info("Abandoned %d stale interviews", len(rows))
     return len(rows)
@@ -94,24 +67,18 @@ async def abandon_stale_forever(interval_seconds: float = 600) -> None:
         await asyncio.sleep(interval_seconds)
 
 
-async def eligibility(mentor_id: UUID) -> EligibilityView:
-    """US-22 — GET /api/ai/interviews/eligibility (mentor) và bản admin cho 1 mentor bất kỳ."""
-    await abandon_stale(mentor_id)
-    pool = await get_pool()
-    return _eligibility_view(await _eligibility(pool, mentor_id), await repo.latest_for_mentor(pool, mentor_id))
-
-
 @dataclass
 class _Start:
     pool: object
     mentor: dict
     in_progress: object | None  # buổi IN_PROGRESS còn hạn => tiếp tục thay vì tạo mới
+    application: object | None = None  # đợt đang mở (None => start_voice tạo đợt cùng lúc với buổi)
 
 
 async def _prepare_start(user: AuthUser, self_answer_acknowledged: bool) -> _Start:
     """
-    Kiểm tra trước khi bắt đầu phỏng vấn giọng nói (FR-7.7): xác nhận tự trả lời, hồ sơ mentor, buổi chờ duyệt,
-    số lần / thời gian chờ (xác thực) hoặc mốc 90 ngày (xin nâng cấp). Không tạo dữ liệu.
+    Kiểm tra trước khi bắt đầu phỏng vấn giọng nói (FR-7.7): xác nhận tự trả lời, hồ sơ mentor, trạng thái và thời gian chờ
+    của đợt xác thực (docs/design-mentor-verification.md §4). Không tạo dữ liệu.
     """
     if not self_answer_acknowledged:
         raise errors.bad_request("SELF_ANSWER_ACK_REQUIRED",
@@ -119,26 +86,18 @@ async def _prepare_start(user: AuthUser, self_answer_acknowledged: bool) -> _Sta
     mentor = await profile.find_mentor(user.user_id)
     if mentor is None:
         raise errors.bad_request("PROFILE_REQUIRED", "Bạn cần hoàn thành hồ sơ mentor trước khi phỏng vấn")
+    if mentor.get("verificationStatus") == "APPROVED":
+        raise errors.conflict("ALREADY_APPROVED", "Tài khoản mentor đã được kích hoạt")
 
-    await abandon_stale(user.user_id)  # US-43 — quá hạn thì không tiếp tục được nữa
+    await abandon_stale(user.user_id)  # quá hạn thì không tiếp tục được nữa
     pool = await get_pool()
-    latest = await repo.latest_for_mentor(pool, user.user_id)
-    if latest is not None:
-        if latest["status"] == "IN_PROGRESS":
-            return _Start(pool, mentor, latest)
-        if latest["status"] == "PENDING_REVIEW":
-            raise errors.conflict("INTERVIEW_PENDING_REVIEW", "Kết quả phỏng vấn đang chờ admin xem xét")
-        if latest["status"] == "APPROVED":
-            raise errors.conflict("ALREADY_APPROVED", "Tài khoản mentor đã được kích hoạt")
-    # REJECTED / RETAKE_REQUESTED / chưa có buổi nào — kiểm tra số lần và thời gian chờ (US-22)
-    rule = await _eligibility(pool, user.user_id)
-    if rule.locked:
-        raise errors.conflict("INTERVIEW_LOCKED",
-                              f"Bạn đã bị từ chối {rule.max_attempts} lần. Vui lòng liên hệ quản trị viên để được mở khoá.")
-    if rule.cooldown_until is not None:
-        raise errors.conflict("INTERVIEW_COOLDOWN", "Bạn cần chờ hết thời gian chờ sau lần bị từ chối trước khi phỏng vấn lại",
-                              extra={"retryAfter": _iso(rule.cooldown_until)})
-    return _Start(pool, mentor, None)
+    state, open_app, _ = await verification.start_state(pool, user.user_id)
+    verification.raise_if_blocked(state)
+    in_progress = None
+    if open_app is not None:
+        row = await vrepo.in_progress_interview(pool, open_app["id"])
+        in_progress = None if row is None else await repo.find(pool, row["id"])
+    return _Start(pool, mentor, in_progress, open_app)
 
 
 def _plan_of(interview) -> planner.InterviewPlan:
@@ -170,8 +129,10 @@ async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_ex
     plan = await planner.mentor_plan(mentor, await cv_repo.confirmed_for_external_ai(s.pool, user.user_id))
     # Tạo client secret TRƯỚC khi ghi CSDL: OpenAI lỗi (502) thì không có buổi nào bị tính.
     session = await voice.mint(user.user_id, voice.build_instructions(mentor, plan.topics), [t.name for t in plan.topics])
-    interview = await repo.insert(s.pool, user.user_id, mentor["domain"], skills, len(plan.topics), engines.select(None),
-                                  plan=planner.dump(plan))
+    async with s.pool.acquire() as conn, conn.transaction():
+        application = await verification.get_or_create_open(conn, user.user_id)
+        interview = await repo.insert(conn, user.user_id, mentor["domain"], skills, len(plan.topics), engines.select(None),
+                                      plan=planner.dump(plan), application_id=application["id"])
     await _after_start(user, mentor)
     return VoiceInterviewStart(interview=await _view(s.pool, interview, for_admin=False), voice=session)
 
@@ -184,7 +145,7 @@ async def _on_completed(mentor_id: UUID, updated) -> None:
         "ADMIN", "INTERVIEW_PENDING_REVIEW", "Có kết quả AI Interview cần duyệt",
         f"Mentor lĩnh vực {updated['domain']} đạt {updated['overall_score']:.1f}/100 điểm{via} "
         f"(AI khuyến nghị: {updated['recommendation']}).",
-        f"/admin/interviews/{updated['id']}")
+        f"/admin/verification/{updated['application_id']}")
     await mentoring.notify_user(
         mentor_id, "INTERVIEW_COMPLETED", "Bạn đã hoàn thành AI Interview",
         "Kết quả đang chờ quản trị viên xem xét trước khi kích hoạt tài khoản mentor.", "/interview")
@@ -234,6 +195,7 @@ async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: lis
         await repo.set_current_turn(conn, interview_id, len(scored))
         updated = await repo.complete(conn, interview_id, final.overall_score, final.summary, "\n".join(final.strengths),
                                       "\n".join(final.weaknesses), final.recommendation)
+        await verification.on_round1_completed(conn, updated["application_id"])
 
     await _on_completed(user.user_id, updated)
     return await _view(pool, updated, for_admin=False)
@@ -252,101 +214,6 @@ async def get(user: AuthUser, interview_id: UUID) -> InterviewView:
     if not user.is_admin and not user.is_internal and interview["mentor_id"] != user.user_id:
         raise errors.forbidden("Bạn không có quyền xem buổi phỏng vấn này")
     return await _view(pool, interview, for_admin=user.is_admin)
-
-
-async def list_interviews(status: str | None) -> list[InterviewView]:
-    pool = await get_pool()
-    rows = await repo.list_all(pool, status.upper() if status else None)
-    return [await _view(pool, row, for_admin=True) for row in rows]
-
-
-_DECISION_STATUS = {"APPROVE": "APPROVED", "REJECT": "REJECTED", "REQUEST_RETAKE": "RETAKE_REQUESTED"}
-# Trạng thái xác thực đồng bộ sang profile-service: làm lại => quay về PENDING_INTERVIEW.
-_DECISION_VERIFICATION = {"APPROVE": "APPROVED", "REJECT": "REJECTED", "REQUEST_RETAKE": "PENDING_INTERVIEW"}
-MIN_OVERRULE_NOTE = 10
-
-
-async def review(admin: AuthUser, interview_id: UUID, decision: ReviewInterviewInput) -> InterviewView:
-    """FR-7.5 / NFR-8 / US-23 — admin xác nhận cuối cùng: APPROVE | REJECT | REQUEST_RETAKE."""
-    choice = decision.decision
-    note = (decision.note or "").strip() or None
-    pool = await get_pool()
-    current = await _find(pool, interview_id)
-    if current["status"] != "PENDING_REVIEW":
-        raise errors.conflict("INTERVIEW_NOT_PENDING_REVIEW", "Buổi phỏng vấn không ở trạng thái chờ duyệt")
-    if rubric.note_required(choice, current["recommendation"]) and len(note or "") < MIN_OVERRULE_NOTE:
-        raise errors.bad_request("REVIEW_NOTE_REQUIRED",
-                                 f"Quyết định khác khuyến nghị của AI ({current['recommendation']}) — "
-                                 f"vui lòng ghi rõ lý do (ít nhất {MIN_OVERRULE_NOTE} ký tự)")
-    updated = await repo.review(pool, interview_id, _DECISION_STATUS[choice], admin.user_id, note)
-    if updated is None:
-        raise errors.conflict("INTERVIEW_NOT_PENDING_REVIEW", "Buổi phỏng vấn không ở trạng thái chờ duyệt")
-
-    await profile.update_verification(updated["mentor_id"], _DECISION_VERIFICATION[choice])
-    suffix = "" if note is None else f" Nhận xét: {note}"
-    if choice == "APPROVE":
-        notice = ("MENTOR_APPROVED", "Tài khoản mentor đã được kích hoạt",
-                  "Chúc mừng! Bạn có thể chọn mức giá cho buổi mentoring, xuất hiện trong kết quả gợi ý và nhận mentee." + suffix)
-    elif choice == "REJECT":
-        days = config.INTERVIEW_COOLDOWN_DAYS
-        notice = ("MENTOR_REJECTED", "Hồ sơ mentor chưa được duyệt",
-                  f"Bạn có thể cập nhật hồ sơ và phỏng vấn lại sau {days:g} ngày." + suffix)
-    else:
-        notice = ("INTERVIEW_RETAKE_REQUESTED", "Quản trị viên đề nghị bạn phỏng vấn lại",
-                  "Bạn có thể bắt đầu buổi phỏng vấn mới ngay; lần này không bị tính vào số lần phỏng vấn." + suffix)
-    await mentoring.notify_user(updated["mentor_id"], *notice, "/interview")
-    await audit.record(admin.user_id, "ADMIN", f"INTERVIEW_{_DECISION_STATUS[choice]}", "INTERVIEW", str(interview_id),
-                       {"status": current["status"], "recommendation": current["recommendation"],
-                        "overallScore": current["overall_score"]},
-                       {"status": updated["status"], "decision": choice, "note": note,
-                        "mentorId": str(updated["mentor_id"]),
-                        "agreesWithAi": rubric.agrees(choice, current["recommendation"])})
-    return await _view(pool, updated, for_admin=True)
-
-
-async def unlock(admin: AuthUser, mentor_id: UUID, note: str | None) -> EligibilityView:
-    """US-22 — admin mở khoá mentor đã bị từ chối đủ số lần tối đa (ghi audit log)."""
-    note = (note or "").strip() or None
-    pool = await get_pool()
-    before = await _eligibility(pool, mentor_id)
-    if not before.locked:
-        raise errors.conflict("INTERVIEW_NOT_LOCKED", "Mentor này không bị khoá phỏng vấn")
-    await repo.insert_unlock(pool, mentor_id, admin.user_id, note)
-    after = await eligibility(mentor_id)
-    await audit.record(admin.user_id, "ADMIN", "INTERVIEW_ATTEMPTS_UNLOCKED", "MENTOR", str(mentor_id),
-                       {"locked": True, "attemptsUsed": before.attempts_used},
-                       {"locked": after.locked, "attemptsUsed": after.attempts_used, "note": note})
-    return after
-
-
-_STATUS_DECISION = {v: k for k, v in _DECISION_STATUS.items()}
-
-
-def agreement(rows: list[tuple[str, str | None, int]]) -> dict:
-    """US-24 — (status đã quyết định, khuyến nghị AI, số buổi) → các con số đồng thuận (hàm thuần)."""
-    total = comparable = agreeing = 0
-    for status, recommendation, count in rows:
-        total += count
-        agrees = rubric.agrees(_STATUS_DECISION[status], recommendation)
-        if agrees is not None:
-            comparable += count
-            agreeing += count if agrees else 0
-    return {"decisions_total": total, "decisions_comparable": comparable, "decisions_agreeing": agreeing,
-            "decisions_on_needs_review": total - comparable,
-            "agreement_rate": round(agreeing / comparable, 4) if comparable else None}
-
-
-async def stats() -> InterviewStats:
-    pool = await get_pool()
-    counts = await repo.count_by_status(pool)
-    reviewed = await repo.review_counts(pool)
-    return InterviewStats(
-        interviews_in_progress=counts.get("IN_PROGRESS", 0),
-        interviews_pending_review=counts.get("PENDING_REVIEW", 0),
-        mentors_approved=counts.get("APPROVED", 0),
-        mentors_rejected=counts.get("REJECTED", 0),
-        retakes_requested=counts.get("RETAKE_REQUESTED", 0),
-        **agreement([(r["status"], r["recommendation"], r["total"]) for r in reviewed]))
 
 
 async def dev_age(interview_id: UUID, hours: float) -> InterviewView:

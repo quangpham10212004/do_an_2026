@@ -10,7 +10,7 @@
 | Bước 0 | Đã xong | — |
 | 1a | Đã xong | `feature/profile-remove-tier` |
 | 1b | Đã xong | `feature/ai-remove-chat-interview` (xếp trên 1a) |
-| 2 | chưa làm | |
+| 2 | Đã xong | `feature/ai-verification-application` (xếp trên 1b) |
 | 3 | chưa làm | |
 | 4 | chưa làm | |
 
@@ -69,5 +69,23 @@ docker compose exec -T profile-db pg_dump -U postgres -d profile_db > .backups/p
 **Sự cố ghi nhận:** lệnh `pytest` đầu tiên của PR này dùng URL mặc định của `conftest.py` (`localhost:5438` = `ai-db` thật của stack đang chạy) nên đã TRUNCATE các bảng phỏng vấn/CV/practice và áp migration 012 lên `ai_db` thật (chỉ dữ liệu test/demo; `mentor_profiles.verification_status` ở `profile_db` không bị đụng). Từ đó mọi lần chạy pytest dùng `AI_DB_URL` trỏ Postgres tạm (15438). Nên đổi mặc định của `conftest.py` sang cổng khác 5438 ở một PR riêng.
 
 **Kết luận:** ĐẠT. Mentor chỉ phỏng vấn bằng giọng nói; luật 3 lần/7 ngày/mở khoá còn nguyên đến PR 2.
+
+---
+
+## PR 2 — Mô hình đợt xác thực, luật 2 lần / 15 ngày, admin duyệt vòng 1
+
+**Input:** Spec §3–4, §7, D6, D7, D13 — thay luật 3 lượt / 7 ngày / mở khoá bằng đợt xác thực; admin duyệt vòng 1 (PASS / REJECT / RETAKE).
+
+**Phạm vi:** ai-service gói mới `app/verification/` (`rules.py` hàm thuần, `repository.py`, `service.py`, `views.py`) + `routers/verification.py`; migration `013_verification_applications.sql` (bảng đợt, `interviews.application_id`, trạng thái buổi `PASSED`/`INVALIDATED`, bỏ `interview_attempt_unlocks`); gỡ `interview/attempts.py`, `GET /interviews/eligibility`, `/admin/interviews/**` (list, review, unlock); config `VERIFICATION_*` (bỏ `INTERVIEW_MAX_ATTEMPTS`, `INTERVIEW_COOLDOWN_DAYS`); cờ tạm `VERIFICATION_ROUND2_ENABLED=false` (PASS = duyệt luôn, PR 4 xoá cờ); dev endpoint `POST /internal/dev/verification/{id}/age`; frontend: `/interview` đọc `GET /verification/status`, trang mới `/admin/verification` (+ chi tiết, thay `/admin/interviews`); contracts; docs; helper `round1_review`/`admin_pass_round1` trong `scripts/common.py`.
+
+**Kết quả:**
+- pytest ai-service (Postgres tạm 15438): **277 PASS** + 3 fail cũ (`test_migrations` x2, `test_observability[trio]`); gồm `test_verification_rules` (13) và `test_verification_flow` (13) mới.
+- `npx tsc --noEmit`, `npm run lint`, `npx next build`: sạch.
+- e2e (stack dựng lại): mới `e2e_v2_verification_round1` **20/20** (2 lần bỏ dở → đóng đợt; chờ 15 ngày + lùi mốc; RETAKE x2 không tính lần, lần 3 bị chặn; PASS → APPROVED; REJECT chờ 15 ngày; quyền admin), `e2e_acceptance` **69/69**, `e2e_v2_voice` **26/26**, `e2e_s4_ai_auth` **23/23**, `e2e_s5_ai_auth` **40/40**, `e2e_p0_mentoring` **32/32**, `e2e_s2_mentoring` **51/51**, `e2e_s3_mentoring` **56/56**, `e2e_v2_booking` **31/31**, `e2e_v2_room_referral` **37/37**, `e2e_v2_trial` **18/18**. `e2e_s3_ai_auth` **27/28**: check "điểm câu = tổng trọng số" lệch 0,1 khi stack dùng DeepSeek thật (đã ghi ở PR 1b).
+- Sửa `service_logs` trong `e2e_s5_ai_auth.py` (giải mã utf-8 + chống `None`): lỗi gián đoạn `AttributeError` trên Windows khi log có tiếng Việt.
+
+**Quyết định thiết kế đáng chú ý:** "lần" chỉ tính lần không hoàn thành hợp lệ (đúng spec §4); `POST /interviews/voice` tự mở đợt (đồng thời với việc tạo buổi, một transaction) nên frontend không cần bước riêng; mentor đã `APPROVED` ở profile-service (demo seed) không phỏng vấn lại (`ALREADY_APPROVED`).
+
+**Kết luận:** ĐẠT.
 
 ---

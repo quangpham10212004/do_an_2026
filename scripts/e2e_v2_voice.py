@@ -86,8 +86,8 @@ def mentor_voice(at):
 
     detail = call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=at)
     check("Admin thấy mode VOICE + rubric từng lượt", detail["mode"] == "VOICE" and all(t["rubric"] for t in detail["turns"]))
-    pending = call("GET", f"{AI}/api/ai/admin/interviews?status=PENDING_REVIEW", token=at)
-    check("Buổi giọng nói nằm trong danh sách chờ duyệt", any(i["id"] == iv["id"] for i in pending))
+    pending = call("GET", f"{AI}/api/ai/admin/verification/applications?status=ROUND1_REVIEW", token=at)
+    check("Buổi giọng nói nằm trong danh sách chờ duyệt vòng 1", any(x["interview"]["id"] == iv["id"] for x in pending))
     status, code = status_code(lambda: call("POST", f"{AI}/api/ai/interviews/{iv['id']}/voice-transcript", transcript(STRONG), token=mt))
     check("Gửi bản ghi lần hai → 409 INTERVIEW_NOT_IN_PROGRESS", status == 409 and code == "INTERVIEW_NOT_IN_PROGRESS", (status, code))
     status, _ = status_code(lambda: call("POST", f"{AI}/api/ai/voice-interviews/session", {}, token=mt))

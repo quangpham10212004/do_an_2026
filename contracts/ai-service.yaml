@@ -72,9 +72,15 @@ components:
         id: { type: string, format: uuid }
         mentorId: { type: string, format: uuid }
         mentorName: { type: string, nullable: true, description: Chỉ trả về cho admin }
+        applicationId: { type: string, format: uuid, nullable: true, description: "Đợt xác thực chứa buổi này (null với buổi trước migration 013)" }
         domain: { type: string }
         skills: { type: array, items: { type: string } }
-        status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED, ABANDONED] }
+        status:
+          type: string
+          enum: [IN_PROGRESS, PENDING_REVIEW, PASSED, REJECTED, RETAKE_REQUESTED, ABANDONED, INVALIDATED]
+          description: >-
+            Kết quả MỘT lần làm vòng 1: PENDING_REVIEW = đã nộp, chờ admin duyệt vòng 1; PASSED | REJECTED | RETAKE_REQUESTED =
+            quyết định duyệt vòng 1; ABANDONED | INVALIDATED = không hoàn thành hợp lệ (tính vào số lần). Duyệt cuối thuộc đợt xác thực.
         mode:
           type: string
           enum: [VOICE]
@@ -123,21 +129,47 @@ components:
         depth: { type: number, minimum: 0, maximum: 10, description: "Chiều sâu / kinh nghiệm (30%)" }
         communication: { type: number, minimum: 0, maximum: 10, description: "Giao tiếp (15%)" }
         mentoring: { type: number, minimum: 0, maximum: 10, description: "Năng lực hướng dẫn (15%)" }
-    InterviewEligibility:
+    VerificationStatus:
       type: object
       description: >
-        US-22 (PRD-AIV-4). Một lần = buổi đã có kết quả (PENDING_REVIEW/APPROVED/REJECTED); IN_PROGRESS và
-        RETAKE_REQUESTED không tính. Bị từ chối INTERVIEW_MAX_ATTEMPTS (3) lần => locked cho tới khi admin mở khoá
-        (chỉ tính các buổi sau lần mở khoá gần nhất). Buổi gần nhất REJECTED => chờ INTERVIEW_COOLDOWN_DAYS (7) ngày.
+        Trạng thái đợt xác thực của mentor (docs/design-mentor-verification.md §3–4). Một lần = một lượt làm vòng 1 KHÔNG hoàn
+        thành hợp lệ (ABANDONED | INVALIDATED); tối đa maxAttempts (VERIFICATION_MAX_ATTEMPTS_PER_ROUND = 2) lần, hết lượt thì đóng
+        đợt (CLOSED) và chờ VERIFICATION_RETRY_DAYS (15) ngày. Admin RETAKE không tính vào số lần, tối đa retakeLimit (2) lần mỗi đợt.
+        Bị admin từ chối (REJECTED) cũng chờ 15 ngày. Không còn mở khoá.
       properties:
+        applicationId: { type: string, format: uuid, nullable: true }
+        status: { type: string, nullable: true, enum: [ROUND1, ROUND1_REVIEW, ROUND2_PENDING_SLOTS, ROUND2_PENDING_CHOICE, ROUND2_SCHEDULED, APPROVED, REJECTED, CLOSED] }
         attemptsUsed: { type: integer }
         attemptsLeft: { type: integer }
         maxAttempts: { type: integer }
-        cooldownUntil: { type: string, format: date-time, nullable: true }
-        locked: { type: boolean }
+        retakeCount: { type: integer }
+        retakeLimit: { type: integer }
+        retryAfter: { type: string, format: date-time, nullable: true, description: Đang chờ tới thời điểm này }
         canStart: { type: boolean, description: true khi được bắt đầu buổi mới hoặc đang có buổi dở }
-        reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, LOCKED, COOLDOWN] }
-        voiceAvailable: { type: boolean, description: "FR-7.7 — server có OPENAI_API_KEY (lựa chọn Giọng nói dùng được)" }
+        reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, COOLDOWN] }
+        voiceAvailable: { type: boolean, description: "Server có OPENAI_API_KEY (phỏng vấn giọng nói dùng được)" }
+    VerificationApplication:
+      type: object
+      description: Một đợt xác thực (ADMIN). `interview` = buổi vòng 1 mới nhất; chi tiết có thêm `interviews` (mọi lần làm).
+      properties:
+        id: { type: string, format: uuid }
+        mentorId: { type: string, format: uuid }
+        mentorName: { type: string, nullable: true }
+        status: { type: string, enum: [ROUND1, ROUND1_REVIEW, ROUND2_PENDING_SLOTS, ROUND2_PENDING_CHOICE, ROUND2_SCHEDULED, APPROVED, REJECTED, CLOSED] }
+        attemptsUsed: { type: integer }
+        attemptsLeft: { type: integer }
+        maxAttempts: { type: integer }
+        retakeCount: { type: integer }
+        retakeLimit: { type: integer }
+        round1Decision: { type: string, nullable: true, enum: [PASS, REJECT, RETAKE] }
+        round1Note: { type: string, nullable: true }
+        round1ReviewedAt: { type: string, format: date-time, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        closedAt: { type: string, format: date-time, nullable: true }
+        retryAfter: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        interview: { allOf: [{ $ref: "#/components/schemas/Interview" }], nullable: true }
+        interviews: { type: array, items: { $ref: "#/components/schemas/Interview" } }
     VoiceSession:
       type: object
       description: >
@@ -442,15 +474,27 @@ paths:
         "200": { description: "{ status, service, dbConnected, llmEnabled, llmProvider, model }" }
 
   # ---------------- AI Interview (FR-7.x) ----------------
-  /api/ai/interviews/eligibility:
+  /api/ai/verification/status:
     get:
-      summary: US-22 (MENTOR) Số lần phỏng vấn đã dùng / còn lại, thời gian chờ, bị khoá
+      summary: "(MENTOR) Đợt xác thực hiện tại: bước, số lần còn lại, thời gian chờ 15 ngày, có bắt đầu được không"
       responses:
         "200":
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/InterviewEligibility" }
+              schema: { $ref: "#/components/schemas/VerificationStatus" }
+  /api/ai/verification/applications:
+    post:
+      summary: (MENTOR) Mở đợt xác thực mới (idempotent — đã có đợt mở thì trả lại trạng thái hiện tại). POST /interviews/voice cũng tự mở đợt.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerificationStatus" }
+        "400": { description: PROFILE_REQUIRED }
+        "409":
+          description: ALREADY_APPROVED | INTERVIEW_PENDING_REVIEW | INTERVIEW_COOLDOWN (kèm `retryAfter`)
   /api/ai/interviews/me:
     get:
       summary: (MENTOR) Buổi phỏng vấn gần nhất của tôi
@@ -468,7 +512,7 @@ paths:
     post:
       summary: >
         FR-7.7 (MENTOR) Bắt đầu AI Interview bằng giọng nói — cách duy nhất (luồng chat đã bỏ). Điều kiện: số lần, chờ 7 ngày,
-        khoá, chờ duyệt. Tạo buổi IN_PROGRESS mode VOICE (maxTurns = số chủ đề, VOICE_INTERVIEW_TOPICS)
+        chờ duyệt (xem VerificationStatus). Tạo đợt xác thực nếu chưa có cùng lúc với buổi IN_PROGRESS mode VOICE (maxTurns = số chủ đề, VOICE_INTERVIEW_TOPICS)
         và trả client secret. Gọi lại khi đang có buổi giọng nói chưa quá 30 phút => cùng buổi, client secret mới (kết nối lại).
         Quá 30 phút chưa gửi bản ghi => ABANDONED (tính là 1 lần).
       requestBody:
@@ -600,22 +644,37 @@ paths:
         "403": { description: FORBIDDEN }
         "404": { description: PRACTICE_NOT_FOUND }
         "409": { description: PRACTICE_NOT_IN_PROGRESS (đã nộp hoặc đã bị huỷ do quá 30 phút) }
-  /api/ai/admin/interviews:
+  /api/ai/admin/verification/applications:
     get:
-      summary: (ADMIN) Danh sách buổi phỏng vấn
+      summary: (ADMIN) Danh sách đợt xác thực (mới nhất trước; lọc theo trạng thái thì cũ nhất trước)
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED, ABANDONED] } }
+        - { name: status, in: query, schema: { type: string, enum: [ROUND1, ROUND1_REVIEW, ROUND2_PENDING_SLOTS, ROUND2_PENDING_CHOICE, ROUND2_SCHEDULED, APPROVED, REJECTED, CLOSED] } }
       responses:
-        "200": { description: "Interview[]" }
-  /api/ai/admin/interviews/{id}/review:
+        "200":
+          description: VerificationApplication[] (kèm buổi vòng 1 mới nhất)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/VerificationApplication" } }
+  /api/ai/admin/verification/applications/{id}:
+    get:
+      summary: "(ADMIN) Chi tiết đợt: mọi lần làm vòng 1 (bản chép lời, rubric, cờ), quyết định đã có"
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: VerificationApplication
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerificationApplication" }
+        "404": { description: VERIFICATION_NOT_FOUND }
+  /api/ai/admin/verification/applications/{id}/round1-review:
     post:
       summary: >
-        FR-7.5 / US-23 (ADMIN) Quyết định cuối cùng; đồng bộ trạng thái xác thực sang profile-service
-        (APPROVE → APPROVED, REJECT → REJECTED, REQUEST_RETAKE → PENDING_INTERVIEW) và ghi audit log
-        INTERVIEW_APPROVED | INTERVIEW_REJECTED | INTERVIEW_RETAKE_REQUESTED (targetType INTERVIEW).
-        REQUEST_RETAKE: buổi chuyển RETAKE_REQUESTED, không tính vào số lần, mentor bắt đầu lại được ngay.
-        Bắt buộc note ≥ 10 ký tự khi quyết định ngược khuyến nghị AI: APPROVE khi AI = REJECT, REJECT khi AI = APPROVE,
-        REQUEST_RETAKE khi AI = APPROVE/REJECT. AI = NEEDS_REVIEW (hoặc buổi cũ không có khuyến nghị) => không bắt buộc.
+        (ADMIN) Duyệt vòng 1 — đợt phải ở ROUND1_REVIEW. PASS: sang vòng 2 (VERIFICATION_ROUND2_ENABLED=false thì duyệt luôn,
+        mentor APPROVED); REJECT: đóng đợt REJECTED, chờ 15 ngày; RETAKE: đợt về ROUND1, không tính vào số lần làm, tối đa
+        VERIFICATION_ROUND1_MAX_RETAKE (2) lần. Đồng bộ trạng thái xác thực sang profile-service (APPROVED | REJECTED |
+        PENDING_INTERVIEW | PENDING_REVIEW) và ghi audit log VERIFICATION_ROUND1_PASSED | _REJECTED | _RETAKE_REQUESTED
+        (targetType VERIFICATION). Bắt buộc note ≥ 10 ký tự khi RETAKE hoặc quyết định ngược khuyến nghị AI
+        (PASS khi AI = REJECT, REJECT khi AI = APPROVE); AI = NEEDS_REVIEW thì chỉ RETAKE bắt buộc.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -625,46 +684,20 @@ paths:
               type: object
               required: [decision]
               properties:
-                decision: { type: string, enum: [APPROVE, REJECT, REQUEST_RETAKE] }
+                decision: { type: string, enum: [PASS, REJECT, RETAKE] }
                 note: { type: string, maxLength: 2000 }
       responses:
-        "200": { description: Interview }
+        "200":
+          description: VerificationApplication sau quyết định
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerificationApplication" }
         "400": { description: REVIEW_NOTE_REQUIRED | VALIDATION_ERROR }
-        "409": { description: INTERVIEW_NOT_PENDING_REVIEW }
-  /api/ai/admin/interviews/mentors/{mentorId}/eligibility:
-    get:
-      summary: US-22 (ADMIN) Quy tắc số lần phỏng vấn của một mentor
-      parameters: [{ name: mentorId, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/InterviewEligibility" }
-  /api/ai/admin/interviews/mentors/{mentorId}/unlock:
-    post:
-      summary: >
-        US-22 (ADMIN) Mở khoá mentor bị từ chối đủ số lần tối đa: số lần đã dùng tính lại từ 0, không còn thời gian chờ.
-        Ghi audit log INTERVIEW_ATTEMPTS_UNLOCKED (targetType MENTOR).
-      parameters: [{ name: mentorId, in: path, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                note: { type: string, maxLength: 2000 }
-      responses:
-        "200":
-          description: Quy tắc sau khi mở khoá
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/InterviewEligibility" }
-        "409": { description: INTERVIEW_NOT_LOCKED }
+        "404": { description: VERIFICATION_NOT_FOUND }
+        "409": { description: VERIFICATION_NOT_PENDING_REVIEW | RETAKE_LIMIT_REACHED }
   /api/ai/admin/stats:
     get:
-      summary: (ADMIN) Thống kê AI Interview cho bảng điều khiển quản trị
+      summary: (ADMIN) Thống kê xác thực mentor cho bảng điều khiển quản trị (đếm theo đợt; đồng thuận admin–AI theo quyết định duyệt vòng 1)
       responses:
         "200":
           description: OK

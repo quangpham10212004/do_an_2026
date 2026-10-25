@@ -24,7 +24,6 @@ class ApiError(Exception):
         self.body = body
 
 
-_AI_REVIEW = re.compile(r"/api/ai/admin/interviews/[^/]+/review/?$")
 MIN_OVERRULE_NOTE = 10
 
 
@@ -40,21 +39,6 @@ def _review_compat(method, url, body):
     if method == "POST" and isinstance(body, dict) and _SESSION_REVIEW.search(url) and "knowledge" not in body:
         r = body.get("rating")
         return {**body, "knowledge": r, "clarity": r, "preparation": r}
-    return body
-
-
-def _ai_interview_compat(method, url, body):
-    """
-    Tương thích cho các script seed/e2e dựng mentor đã duyệt (Sprint 3, Team C):
-    - US-23: admin APPROVE ngược khuyến nghị AI cần ghi chú >= 10 ký tự — các script "duyệt cho đủ điều kiện" với
-      note ngắn ("ok") được bổ sung ghi chú. Script kiểm tra chính các quy tắc này (e2e_s3_ai_auth.py) luôn gửi body
-      đầy đủ nên không bị ảnh hưởng.
-    """
-    if method != "POST":
-        return body
-    if (isinstance(body, dict) and _AI_REVIEW.search(url) and body.get("decision") == "APPROVE"
-            and len((body.get("note") or "").strip()) < MIN_OVERRULE_NOTE):
-        return {**body, "note": ((body.get("note") or "").strip() + " (e2e: admin duyệt mentor thử nghiệm)").strip()}
     return body
 
 
@@ -80,7 +64,7 @@ def _auto_verify(url, res):
 
 
 def call(method, url, body=None, token=None, internal=False, raw_body=None, content_type=None, headers=None):
-    body = _review_compat(method, url, _ai_interview_compat(method, url, body)) if raw_body is None else body
+    body = _review_compat(method, url, body) if raw_body is None else body
     headers = dict(headers or {})
     keep_unverified = headers.pop(KEEP_UNVERIFIED, None) is not None
     headers = {"Accept": "application/json", **headers}
@@ -245,3 +229,14 @@ def complete_voice_interview(token, answer=STRONG_VOICE_ANSWER):
     interview = start_voice_interview(token)["interview"]
     return call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
                 voice_transcript(interview["maxTurns"], answer), token=token)
+
+
+def round1_review(admin_token, interview, decision, note=None):
+    """Admin duyệt vòng 1 của đợt chứa buổi `interview`: decision = PASS | REJECT | RETAKE."""
+    return call("POST", f"{AI}/api/ai/admin/verification/applications/{interview['applicationId']}/round1-review",
+                {"decision": decision, "note": note}, token=admin_token)
+
+
+def admin_pass_round1(admin_token, interview, note="Duyet cho e2e: mentor thu nghiem"):
+    """Cho mentor qua vòng 1. Vòng 2 chưa bật (VERIFICATION_ROUND2_ENABLED=false) thì đây là duyệt luôn: mentor APPROVED."""
+    return round1_review(admin_token, interview, "PASS", note)

@@ -1,10 +1,12 @@
 import type { IsoDateTime, Uuid } from "./common";
 
 // contracts/ai-service.yaml — AI Interview
-export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "RETAKE_REQUESTED" | "ABANDONED";
+export type InterviewStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "PASSED" | "REJECTED" | "RETAKE_REQUESTED" | "ABANDONED" | "INVALIDATED";
 export type InterviewStrategy = "OPENING" | "DEEPEN" | "PIVOT";
 export type Recommendation = "APPROVE" | "REJECT" | "NEEDS_REVIEW";
-export type ReviewDecision = "APPROVE" | "REJECT" | "REQUEST_RETAKE";
+/** Duyệt vòng 1 của admin (docs/design-mentor-verification.md §7). */
+export type Round1Decision = "PASS" | "REJECT" | "RETAKE";
+export type ApplicationStatus = "ROUND1" | "ROUND1_REVIEW" | "ROUND2_PENDING_SLOTS" | "ROUND2_PENDING_CHOICE" | "ROUND2_SCHEDULED" | "APPROVED" | "REJECTED" | "CLOSED";
 
 /** US-23: điểm 4 tiêu chí rubric (0–10). */
 export interface RubricScores {
@@ -42,13 +44,15 @@ export interface Interview {
   id: Uuid;
   mentorId: Uuid;
   mentorName: string | null;
+  /** Đợt xác thực chứa buổi này (null với buổi cũ trước migration 013). */
+  applicationId?: Uuid | null;
   domain: string;
   skills: string[];
   status: InterviewStatus;
-  /** FR-7.7 — CHAT | VOICE (phỏng vấn giọng nói, OpenAI Realtime). */
+  /** FR-7.7 — luôn VOICE (phỏng vấn giọng nói, OpenAI Realtime). */
   mode?: InterviewMode;
   consentExternalAi?: boolean;
-  /** v2.1 — kế hoạch câu hỏi của buổi giọng nói kèm nguồn (chỉ admin); null = chat hoặc buổi cũ */
+  /** v2.1 — kế hoạch câu hỏi của buổi giọng nói kèm nguồn (chỉ admin); null = buổi cũ */
   plan?: PlanTopic[] | null;
   engine: "DEEPSEEK" | "RULE_BASED";
   maxTurns: number;
@@ -68,7 +72,7 @@ export interface Interview {
   createdAt: IsoDateTime;
   completedAt: IsoDateTime | null;
   reviewedAt: IsoDateTime | null;
-  /** US-43 (PRD-AIV-3): hạn tiếp tục (hoạt động gần nhất + 72 giờ); null khi không còn IN_PROGRESS. */
+  /** US-43 (PRD-AIV-3): hạn tiếp tục (bắt đầu + VOICE_SESSION_MINUTES phút); null khi không còn IN_PROGRESS. */
   resumeDeadline?: IsoDateTime | null;
   /** US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định. */
   feedbackVisible?: boolean;
@@ -77,17 +81,43 @@ export interface Interview {
 
 export type InterviewMode = "VOICE";
 
-/** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
-export interface InterviewEligibility {
+/** GET /api/ai/verification/status — mentor đang ở đâu trong đợt xác thực, còn mấy lần, bao giờ được làm lại. */
+export interface VerificationState {
+  applicationId: Uuid | null;
+  status: ApplicationStatus | null;
+  /** Số lần làm vòng 1 không hoàn thành hợp lệ (bỏ dở); admin yêu cầu làm lại không tính. */
   attemptsUsed: number;
   attemptsLeft: number;
   maxAttempts: number;
-  cooldownUntil: IsoDateTime | null;
-  locked: boolean;
+  retakeCount: number;
+  retakeLimit: number;
+  retryAfter: IsoDateTime | null;
   canStart: boolean;
-  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | null;
-  /** FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được). */
-  voiceAvailable?: boolean;
+  reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "COOLDOWN" | null;
+  /** Server có OPENAI_API_KEY (phỏng vấn giọng nói dùng được). */
+  voiceAvailable: boolean;
+}
+
+/** Một đợt xác thực mentor (admin): trạng thái, số lần, buổi vòng 1 mới nhất (chi tiết có đủ các lần làm). */
+export interface VerificationApplication {
+  id: Uuid;
+  mentorId: Uuid;
+  mentorName: string | null;
+  status: ApplicationStatus;
+  attemptsUsed: number;
+  attemptsLeft: number;
+  maxAttempts: number;
+  retakeCount: number;
+  retakeLimit: number;
+  round1Decision: Round1Decision | null;
+  round1Note: string | null;
+  round1ReviewedAt: IsoDateTime | null;
+  reviewedAt: IsoDateTime | null;
+  closedAt: IsoDateTime | null;
+  retryAfter: IsoDateTime | null;
+  createdAt: IsoDateTime;
+  interview: Interview | null;
+  interviews: Interview[];
 }
 
 /** Phỏng vấn giọng nói (OpenAI Realtime): client secret ngắn hạn, trình duyệt kết nối WebRTC trực tiếp tới OpenAI. */

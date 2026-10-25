@@ -45,9 +45,13 @@ PRACTICE_FREE_LIMIT = int(os.getenv("PRACTICE_FREE_LIMIT", "1"))
 # FR-7.3 / FR-8.4 — số lượt hỏi-đáp cố định của mỗi tính năng.
 ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))
 
-# US-22 (PRD-AIV-4) — số lần phỏng vấn tối đa (lần = buổi đã có kết quả) và thời gian chờ sau khi bị từ chối.
-INTERVIEW_MAX_ATTEMPTS = int(os.getenv("INTERVIEW_MAX_ATTEMPTS", "3"))
-INTERVIEW_COOLDOWN_DAYS = float(os.getenv("INTERVIEW_COOLDOWN_DAYS", "7"))
+# Xác thực mentor 2 vòng (docs/design-mentor-verification.md §4, §11): số lần làm vòng 1 (chỉ lần không hoàn thành hợp lệ
+# tính), thời gian chờ sau khi bị đóng đợt hoặc từ chối, số lần admin được yêu cầu làm lại vòng 1 (không tính vào số lần làm).
+VERIFICATION_MAX_ATTEMPTS_PER_ROUND = int(os.getenv("VERIFICATION_MAX_ATTEMPTS_PER_ROUND", "2"))
+VERIFICATION_RETRY_DAYS = float(os.getenv("VERIFICATION_RETRY_DAYS", "15"))
+VERIFICATION_ROUND1_MAX_RETAKE = int(os.getenv("VERIFICATION_ROUND1_MAX_RETAKE", "2"))
+# Tạm thời tới khi vòng 2 hiện thực (PR 4): tắt thì admin cho qua vòng 1 là duyệt luôn mentor.
+VERIFICATION_ROUND2_ENABLED = os.getenv("VERIFICATION_ROUND2_ENABLED", "false").lower() == "true"
 MAX_ANSWER_LENGTH = 5000
 
 # Lưu file CV (docker volume). Có thể thay bằng object storage (S3/MinIO) khi triển khai thật.

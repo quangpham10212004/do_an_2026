@@ -95,9 +95,13 @@ def finished(client, mentor_id, text=STRONG_ANSWER):
     return finish(client, mentor_id, text=text)
 
 
-def review(client, interview_id, decision, note=None):
-    return client.post(f"/api/ai/admin/interviews/{interview_id}/review",
-                       json={"decision": decision, "note": note}, headers=ADMIN)
+_ROUND1 = {"APPROVE": "PASS", "REJECT": "REJECT", "REQUEST_RETAKE": "RETAKE"}
+
+
+def review(client, application_id, decision, note=None):
+    """Admin duyệt vòng 1; `decision` dùng từ vựng của rubric (APPROVE | REJECT | REQUEST_RETAKE) cho khớp rubric.agrees."""
+    return client.post(f"/api/ai/admin/verification/applications/{application_id}/round1-review",
+                       json={"decision": _ROUND1[decision], "note": note}, headers=ADMIN)
 
 
 def test_rule_based_turns_have_rubric_and_reproducibility_info(client, db, fake_profile, fake_mentoring, mentor_id):
@@ -117,7 +121,7 @@ def test_rule_based_turns_have_rubric_and_reproducibility_info(client, db, fake_
     assert mine["feedbackVisible"] is False
     assert mine["turns"][0]["rubric"] is None and mine["turns"][0]["score"] is None and mine["turns"][0]["engine"] is None
     assert mine["overallScore"] is not None  # tổng điểm vẫn hiện
-    review(client, interview["id"], rubric.recommend(expected, False) if rubric.recommend(expected, False) != "NEEDS_REVIEW"
+    review(client, interview["applicationId"], rubric.recommend(expected, False) if rubric.recommend(expected, False) != "NEEDS_REVIEW"
            else "APPROVE", "Ghi chú đủ dài cho quyết định của admin")
     mine = client.get(f"/api/ai/interviews/{interview['id']}", headers=auth(mentor_id, "MENTOR")).json()
     assert mine["feedbackVisible"] is True
@@ -138,39 +142,40 @@ def test_injection_flag_forces_needs_review(client, db, fake_profile, fake_mento
 def test_note_required_when_overruling_ai(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
     interview = finished(client, mentor_id, text=WEAK_ANSWER)
     assert interview["recommendation"] == "REJECT"
-    res = review(client, interview["id"], "APPROVE", "ok")
+    res = review(client, interview["applicationId"], "APPROVE", "ok")
     assert res.status_code == 400 and res.json()["error"]["code"] == "REVIEW_NOTE_REQUIRED"
     assert fake_audit.records == []
-    res = review(client, interview["id"], "APPROVE", "Đã phỏng vấn trực tiếp, đạt yêu cầu")
+    res = review(client, interview["applicationId"], "APPROVE", "Đã phỏng vấn trực tiếp, đạt yêu cầu")
     assert res.status_code == 200 and res.json()["status"] == "APPROVED"
     entry = fake_audit.records[-1]
-    assert entry["action"] == "INTERVIEW_APPROVED" and entry["targetType"] == "INTERVIEW"
-    assert entry["targetId"] == interview["id"] and entry["actorRole"] == "ADMIN"
-    assert entry["before"]["status"] == "PENDING_REVIEW" and entry["after"]["agreesWithAi"] is False
+    assert entry["action"] == "VERIFICATION_ROUND1_PASSED" and entry["targetType"] == "VERIFICATION"
+    assert entry["targetId"] == interview["applicationId"] and entry["actorRole"] == "ADMIN"
+    assert entry["before"]["status"] == "ROUND1_REVIEW" and entry["after"]["agreesWithAi"] is False
 
 
 def test_matching_decision_needs_no_note(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
     interview = finished(client, mentor_id, text=WEAK_ANSWER)
-    res = review(client, interview["id"], "REJECT")
+    res = review(client, interview["applicationId"], "REJECT")
     assert res.status_code == 200 and res.json()["status"] == "REJECTED"
-    assert fake_audit.records[-1]["action"] == "INTERVIEW_REJECTED"
+    assert fake_audit.records[-1]["action"] == "VERIFICATION_ROUND1_REJECTED"
     assert fake_audit.records[-1]["after"]["agreesWithAi"] is True
 
 
 def test_request_retake_allows_immediate_restart_without_using_attempt(client, db, fake_profile, fake_mentoring,
                                                                          fake_audit, mentor_id):
     interview = finished(client, mentor_id, text=WEAK_ANSWER)
-    assert review(client, interview["id"], "REQUEST_RETAKE").status_code == 400  # AI: REJECT => cần ghi chú
-    res = review(client, interview["id"], "REQUEST_RETAKE", "Mạng lỗi giữa chừng, làm lại giúp mình")
-    assert res.status_code == 200 and res.json()["status"] == "RETAKE_REQUESTED"
+    assert review(client, interview["applicationId"], "REQUEST_RETAKE").status_code == 400  # RETAKE luôn cần ghi chú
+    res = review(client, interview["applicationId"], "REQUEST_RETAKE", "Mạng lỗi giữa chừng, làm lại giúp mình")
+    assert res.status_code == 200 and res.json()["status"] == "ROUND1" and res.json()["retakeCount"] == 1
     assert fake_profile.verifications[-1] == (mentor_id, "PENDING_INTERVIEW")
-    assert fake_audit.records[-1]["action"] == "INTERVIEW_RETAKE_REQUESTED"
+    assert fake_audit.records[-1]["action"] == "VERIFICATION_ROUND1_RETAKE_REQUESTED"
     assert (str(mentor_id), "INTERVIEW_RETAKE_REQUESTED") in fake_mentoring.notifications
 
-    e = client.get("/api/ai/interviews/eligibility", headers=auth(mentor_id, "MENTOR")).json()
-    assert e["attemptsUsed"] == 0 and e["canStart"] and e["cooldownUntil"] is None
+    e = client.get("/api/ai/verification/status", headers=auth(mentor_id, "MENTOR")).json()
+    assert e["attemptsUsed"] == 0 and e["canStart"] and e["retryAfter"] is None and e["retakeCount"] == 1
     again = start(client, mentor_id)
     assert again.status_code == 200 and again.json()["interview"]["id"] != interview["id"]
+    assert again.json()["interview"]["applicationId"] == interview["applicationId"]  # cùng một đợt
 
 
 async def _insert_legacy(mentor_id):
@@ -197,16 +202,13 @@ def test_legacy_interview_without_rubric_still_displays(client, db, fake_profile
     assert res.status_code == 200
     turn = res.json()["turns"][0]
     assert turn["score"] == pytest.approx(6.2) and turn["rubric"] is None and turn["flags"] == []
-    assert res.json()["selfAnswerAcknowledged"] is False
-    # NEEDS_REVIEW => không bắt buộc ghi chú
-    assert review(client, iid, "APPROVE").status_code == 200
-    assert fake_profile.verifications[-1] == (mentor_id, "APPROVED")
+    assert res.json()["selfAnswerAcknowledged"] is False and res.json()["applicationId"] is None
 
 
 def test_agreement_counts_pure():
-    from app.interview.service import agreement
-    rows = [("APPROVED", "APPROVE", 6), ("REJECTED", "REJECT", 2), ("APPROVED", "REJECT", 1),
-            ("RETAKE_REQUESTED", "APPROVE", 1), ("APPROVED", "NEEDS_REVIEW", 3), ("REJECTED", None, 1)]
+    from app.verification.service import agreement
+    rows = [("PASSED", "APPROVE", 6), ("REJECTED", "REJECT", 2), ("PASSED", "REJECT", 1),
+            ("RETAKE_REQUESTED", "APPROVE", 1), ("PASSED", "NEEDS_REVIEW", 3), ("REJECTED", None, 1)]
     assert agreement(rows) == {"decisions_total": 14, "decisions_comparable": 10, "decisions_agreeing": 8,
                                "decisions_on_needs_review": 4, "agreement_rate": 0.8}
     assert agreement([])["agreement_rate"] is None
@@ -214,10 +216,10 @@ def test_agreement_counts_pure():
 
 def test_admin_stats_report_agreement(client, db, fake_profile, fake_mentoring, mentor_id):
     weak = finished(client, mentor_id, text=WEAK_ANSWER)              # AI: REJECT
-    review(client, weak["id"], "REJECT")                                 # đồng thuận
+    review(client, weak["applicationId"], "REJECT")                                 # đồng thuận
     other = uuid.uuid4()
     weak2 = finished(client, other, text=WEAK_ANSWER)
-    review(client, weak2["id"], "APPROVE", "Phỏng vấn trực tiếp đạt yêu cầu")  # bác AI
+    review(client, weak2["applicationId"], "APPROVE", "Phỏng vấn trực tiếp đạt yêu cầu")  # bác AI
     stats = client.get("/api/ai/admin/stats", headers=ADMIN).json()
     assert stats["decisionsTotal"] == 2 and stats["decisionsComparable"] == 2
     assert stats["decisionsAgreeing"] == 1 and stats["agreementRate"] == 0.5

@@ -54,7 +54,7 @@ function AdminHome() {
             <Stat label="Tổng tài khoản" value={users?.total} href="/admin/users" />
             <Stat label="Mentor" value={users?.mentors} href="/mentors?all=1" />
             <Stat label="Mentee" value={users?.mentees} href="/admin/users" />
-            <Stat label="AI Interview chờ duyệt" value={interviews?.interviewsPendingReview} href="/admin/interviews" />
+            <Stat label="Đợt xác thực chờ duyệt vòng 1" value={interviews?.interviewsPendingReview} href="/admin/verification" />
           </div>
         </section>
         <section>
@@ -64,7 +64,7 @@ function AdminHome() {
             <Stat label="Phiên đã xác nhận" value={mentoring?.confirmedSessions} />
             <Stat label="Phiên hoàn thành" value={mentoring?.completedSessions} />
             <Stat label="Mentor duyệt / từ chối" value={interviews ? `${interviews.mentorsApproved} / ${interviews.mentorsRejected}` : null} />
-            <Stat label="Đồng thuận admin – AI (mục tiêu ≥ 80%)" value={formatAgreement(interviews)} href="/admin/interviews" />
+            <Stat label="Đồng thuận admin – AI (mục tiêu ≥ 80%)" value={formatAgreement(interviews)} href="/admin/verification" />
           </div>
         </section>
         <section>

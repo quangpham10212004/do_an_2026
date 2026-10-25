@@ -366,7 +366,7 @@ sequenceDiagram
 | `app/engines.py`, `app/interview/engine.py` | Chọn engine theo cấu hình, chạy engine trong threadpool, fallback |
 | `app/interview/repository.py` | SQL trên `interviews`, `interview_turns` |
 | `app/interview/service.py` | Luồng FR-7.1 → FR-7.5: bắt đầu, chấm từng lượt, tổng hợp, admin duyệt |
-| `app/routers/interview.py` | Endpoint `/api/ai/interviews/**` và `/api/ai/admin/interviews/**` |
+| `app/routers/interview.py`, `app/routers/verification.py` | Endpoint `/api/ai/interviews/**` (giọng nói) và `/api/ai/verification/**`, `/api/ai/admin/verification/**` (đợt xác thực) |
 
 - Mỗi lượt, `interview/service.py` nạp toàn bộ lịch sử từ `ai_db` và đưa thẳng vào engine (không còn
   vòng HTTP giữa hai service như thiết kế cũ).
@@ -383,8 +383,7 @@ Phần đề xuất cấp độ (Junior/Senior/Expert theo điểm tổng) và k
 `rubric.suggest_tier`, `TIER_PASS_FROM`/`TIER_SENIOR_FROM`/`TIER_EXPERT_FROM`, cột `tier`/`tier_assigned_at`, luồng xin
 nâng cấp sau 90 ngày (`kind = UPGRADE`, `INTERVIEW_UPGRADE_AFTER_DAYS`). Điểm tổng 0–100 vẫn là đầu ra của AI, nhưng
 chỉ còn dùng cho khuyến nghị `APPROVE`/`NEEDS_REVIEW`/`REJECT` (§2.3). Mentor đặt `hourlyRate` tự do. Tiếp tục khi
-gián đoạn trong **24 giờ** (quá hạn → ABANDONED, tính một lượt); làm lại sau **7 ngày**, tối đa 3 lượt — các luật này
-không đổi.
+gián đoạn: buổi giọng nói là một lần ngồi (30 phút, quá hạn → ABANDONED). ~~Làm lại sau 7 ngày, tối đa 3 lượt, mở khoá~~ — **PR 2: thay bằng mô hình đợt xác thực** (§2.7).
 
 ### 2.4 Số lượt (FR-7.3)
 ~~**5 lượt** (cấu hình `INTERVIEW_MAX_TURNS`)~~ — **PR 1b: luồng chat đã bỏ**, số chủ đề do `VOICE_INTERVIEW_TOPICS` (mặc định 4) và `planner`. Mô tả cũ: đủ phủ 3–4 chủ đề chuyên môn + 1 lượt đào sâu, trong đó
@@ -485,14 +484,16 @@ ngược lại                                                → PIVOT  (chủ 
   **"Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"**. API `POST /api/ai/interviews` từ chối (400
   `SELF_ANSWER_ACK_REQUIRED`) nếu body không có `selfAnswerAcknowledged: true`; giá trị được lưu ở
   `interviews.self_answer_acknowledged`.
-- Một **lần** = một buổi đã có kết quả (`PENDING_REVIEW`, `APPROVED`, `REJECTED`). Buổi đang làm và buổi admin
-  yêu cầu làm lại (`RETAKE_REQUESTED`) không tính. Hệ thống chưa có trạng thái `ABANDONED` (PRD-AIV-3 ngoài phạm vi).
-- Tối đa `INTERVIEW_MAX_ATTEMPTS = 3` lần. Buổi gần nhất bị từ chối ⇒ chờ `INTERVIEW_COOLDOWN_DAYS = 7` ngày kể từ lúc
-  admin từ chối (409 `INTERVIEW_COOLDOWN`, body lỗi có thêm `retryAfter`). Bị từ chối 3 lần ⇒ 409 `INTERVIEW_LOCKED`
-  cho tới khi admin bấm **Mở khoá phỏng vấn** trên trang chi tiết (`POST /api/ai/admin/interviews/mentors/{id}/unlock`,
-  ghi audit log `INTERVIEW_ATTEMPTS_UNLOCKED`); sau khi mở khoá chỉ các buổi mới được tính.
-- `GET /api/ai/interviews/eligibility` → `{attemptsUsed, attemptsLeft, maxAttempts, cooldownUntil, locked, canStart, reason}`.
-  Logic thuần ở `app/interview/attempts.py` (unit test `tests/test_interview_attempts.py`).
+**PR 2 — mô hình đợt xác thực** ([design-mentor-verification.md](design-mentor-verification.md) §3–4, thay luật 3 lượt / 7 ngày / mở khoá):
+- Một **đợt** (`verification_applications`, migration `013`) gom các lần làm vòng 1; mỗi mentor tối đa một đợt chưa kết thúc.
+  Trạng thái: `ROUND1` → `ROUND1_REVIEW` (đã nộp, chờ admin) → `APPROVED` | `REJECTED` | `CLOSED` (vòng 2: PR 4).
+- Một **lần** = một lượt làm vòng 1 **không hoàn thành hợp lệ** (`ABANDONED` quá 30 phút, `INVALIDATED`). Tối đa
+  `VERIFICATION_MAX_ATTEMPTS_PER_ROUND = 2` lần; lần thứ hai thất bại → đóng đợt `CLOSED`, chờ `VERIFICATION_RETRY_DAYS = 15` ngày
+  (409 `INTERVIEW_COOLDOWN` kèm `retryAfter`). Điểm thấp **không** loại mentor, chỉ chảy vào khuyến nghị cho admin.
+- Admin duyệt vòng 1: `PASS` | `REJECT` (đóng đợt, chờ 15 ngày) | `RETAKE` (làm lại, **không tính** vào số lần, tối đa
+  `VERIFICATION_ROUND1_MAX_RETAKE = 2`). Không còn nút mở khoá. `VERIFICATION_ROUND2_ENABLED=false` (tạm thời tới PR 4): `PASS` duyệt luôn.
+- `GET /api/ai/verification/status` thay `GET /interviews/eligibility`. Logic thuần ở `app/verification/rules.py`
+  (`tests/test_verification_rules.py`), API ở `tests/test_verification_flow.py`, e2e `scripts/e2e_v2_verification_round1.py`.
 
 ### 2.8 Ví dụ (kiểm thử e2e, engine rule-based)
 Mentor backend (Java, Spring Boot, Redis, System Design), trả lời chi tiết có số liệu và trade-off:

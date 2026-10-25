@@ -54,8 +54,8 @@
 | Đề xuất cấp độ từ điểm AI (thang 0–100) | < 60 không đạt · 60–74 Junior · 75–87 Senior · ≥ 88 Expert | ✅ đã có, nay gỡ |
 | Admin | được chọn cấp khác đề xuất hoặc từ chối; **bắt buộc ghi lý do** (≥ 10 ký tự) | ✅ đã có, nay gỡ |
 | Tiếp tục khi gián đoạn | trong **24 giờ** kể từ lúc bắt đầu; quá hạn → ABANDONED, tính một lượt | ✔ (không đổi) |
-| Làm lại khi không đạt | sau **7 ngày** | ✔ (không đổi) |
-| Số lượt | tối đa 3 lượt; hết lượt cần admin mở khoá | ✔ (không đổi, tới PR gỡ chat/mô hình đợt) |
+| Làm lại khi không đạt | ~~sau 7 ngày~~ → **PR 2: chờ 15 ngày** kể từ lúc đóng đợt hoặc bị từ chối | ✔ |
+| Số lượt | ~~tối đa 3 lượt; hết lượt cần admin mở khoá~~ → **PR 2: vòng 1 tối đa 2 lần không hoàn thành hợp lệ**, hết lượt đóng đợt; admin `RETAKE` tối đa 2 lần không tính; **không còn mở khoá** | ✔ |
 | Xin nâng cấp | mentor đã duyệt được phỏng vấn lại để nâng cấp sau **90 ngày** | ✅ đã có, nay gỡ |
 | Dấu hiệu bất thường | cờ của AI (trả lời quá nhanh, trùng mẫu…) → hàng chờ admin xem xét, không tự từ chối | ✔ (không đổi) |
 
@@ -306,8 +306,8 @@ cuộc hỏi**; chấm điểm vẫn do engine hiện có (DeepSeek / rule-based
 
 | Nội dung | Chốt | Hiện tại |
 |---|---|---|
-| Chọn chế độ | trên `/interview` mentor chọn **chat** (như cũ) hoặc **giọng nói**; trang thử nghiệm `/interview/voice` bị gỡ | ⚒ |
-| Quy tắc chung với chat | 3 lượt, chờ 7 ngày khi không đạt, xin nâng cấp sau 90 ngày, admin duyệt, cùng rubric và trọng số | ✔ dùng lại |
+| Chọn chế độ | ~~chat hoặc giọng nói~~ → PR 1b: chỉ còn **giọng nói**; trang thử nghiệm `/interview/voice` bị gỡ | ✔ |
+| Quy tắc chung | ~~3 lượt, chờ 7 ngày, xin nâng cấp sau 90 ngày~~ → PR 2: đợt xác thực (2 lần, chờ 15 ngày, admin duyệt vòng 1 PASS/REJECT/RETAKE), cùng rubric và trọng số | ✔ |
 | Tiếp tục khi gián đoạn | **không** áp dụng 24 giờ — buổi giọng nói là một lần ngồi. Rớt cuộc gọi trong **30 phút** đầu thì vào lại cùng buổi (client secret mới); quá 30 phút chưa gửi bản chép lời → `ABANDONED`, **tính một lượt** | ⚒ |
 | Số chủ đề | 4 chủ đề (`VOICE_INTERVIEW_TOPICS`). **AI soạn** (DeepSeek, một lần lúc bắt đầu, chốt 23/10/2026): 3 chủ đề kỹ thuật cốt lõi của lĩnh vực — đúng một chủ đề đào sâu dự án của chính mentor nếu CV / giới thiệu có dự án — cùng độ khó cho mọi mentor; chủ đề "năng lực hướng dẫn" **luôn lấy từ ngân hàng câu hỏi** để điểm giữa các mentor so sánh được. Không có DeepSeek / AI soạn lỗi → ngân hàng câu hỏi theo lĩnh vực | ⚒ |
 | Phản hồi cho mentor | như chat: chỉ thấy nhận xét từng câu sau khi admin quyết định | ✔ |

@@ -11,7 +11,6 @@ from app import config
 from app.interview import planner, voice
 from app.interview.voice import TranscriptItem
 from tests.conftest import auth
-from tests.test_interview_attempts import finish, reject
 from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, finish
 
 
@@ -142,7 +141,7 @@ def test_without_openai_key_outside_prod_the_interview_is_created_with_voice_nul
     iv = body["interview"]
     assert iv["mode"] == "VOICE" and iv["status"] == "IN_PROGRESS" and iv["consentExternalAi"] is True
     assert iv["maxTurns"] == config.VOICE_INTERVIEW_TOPICS and iv["turns"] == [] and iv["resumeDeadline"]
-    assert client.get("/api/ai/interviews/eligibility", headers=auth(mentor_id, "MENTOR")).json()["voiceAvailable"] is False
+    assert client.get("/api/ai/verification/status", headers=auth(mentor_id, "MENTOR")).json()["voiceAvailable"] is False
 
 
 def test_without_openai_key_in_prod_returns_503_and_creates_nothing(client, db, fake_profile, mentor_id, monkeypatch):
@@ -182,8 +181,8 @@ def test_calling_again_within_30_minutes_reconnects_to_the_same_interview(client
 def test_voice_after_30_minutes_without_transcript_is_abandoned_and_counts(client, db, fake_profile, fake_audit, mentor_id):
     first = start_voice(client, mentor_id).json()["interview"]
     asyncio.run(_age(first["id"], config.VOICE_SESSION_MINUTES + 1))
-    e = client.get("/api/ai/interviews/eligibility", headers=auth(mentor_id, "MENTOR")).json()
-    assert e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2
+    e = client.get("/api/ai/verification/status", headers=auth(mentor_id, "MENTOR")).json()
+    assert e["attemptsUsed"] == 1 and e["attemptsLeft"] == 1
     assert fake_audit.records[-1]["action"] == "INTERVIEW_ABANDONED"
     res = post_transcript(client, mentor_id, first["id"])
     assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_ABANDONED"
@@ -191,20 +190,14 @@ def test_voice_after_30_minutes_without_transcript_is_abandoned_and_counts(clien
     assert second["id"] != first["id"]
 
 
-def test_voice_follows_the_cooldown_and_lock(client, db, fake_profile, fake_mentoring, mentor_id):
+def test_voice_in_cooldown_after_rejection_is_blocked(client, db, fake_profile, fake_mentoring, mentor_id):
+    interview = finish(client, mentor_id, text=WEAK_ANSWER)
     admin = auth(uuid.uuid4(), "ADMIN")
-    reject(client, finish(client, mentor_id)["id"], admin)
+    res = client.post(f"/api/ai/admin/verification/applications/{interview['applicationId']}/round1-review",
+                      json={"decision": "REJECT", "note": "Cần trả lời chi tiết hơn"}, headers=admin)
+    assert res.status_code == 200, res.text
     res = start_voice(client, mentor_id)
     assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_COOLDOWN" and res.json()["error"]["retryAfter"]
-    asyncio.run(_count("""UPDATE interviews SET status = 'REJECTED', reviewed_at = now() - interval '30 days',
-                                                created_at = now() - interval '30 days'
-                           WHERE mentor_id = $1 RETURNING 1""", mentor_id))
-    for _ in range(2):  # thêm 2 buổi bị từ chối => đủ 3 lần => khoá
-        asyncio.run(_count("""INSERT INTO interviews (mentor_id, domain, max_turns, engine, status, reviewed_at, created_at)
-                              VALUES ($1, 'backend', 5, 'RULE_BASED', 'REJECTED', now() - interval '20 days',
-                                      now() - interval '20 days') RETURNING 1""", mentor_id))
-    res = start_voice(client, mentor_id)
-    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_LOCKED"
 
 
 def test_voice_while_pending_review_is_blocked(client, db, fake_profile, fake_mentoring, mentor_id):
@@ -217,8 +210,8 @@ def test_approved_mentor_cannot_start_another_voice_interview(client, db, fake_p
     """D6/D10 — bỏ luồng xin nâng cấp: mentor đã APPROVED không mở được buổi phỏng vấn mới."""
     interview = finish(client, mentor_id)
     admin = auth(uuid.uuid4(), "ADMIN")
-    approved = client.post(f"/api/ai/admin/interviews/{interview['id']}/review",
-                           json={"decision": "APPROVE", "note": None}, headers=admin)
+    approved = client.post(f"/api/ai/admin/verification/applications/{interview['applicationId']}/round1-review",
+                           json={"decision": "PASS", "note": None}, headers=admin)
     assert approved.status_code == 200 and approved.json()["status"] == "APPROVED"
     res = start_voice(client, mentor_id)
     assert res.status_code == 409 and res.json()["error"]["code"] == "ALREADY_APPROVED"

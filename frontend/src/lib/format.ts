@@ -114,7 +114,17 @@ export const STATUS_LABELS: Record<string, string> = {
   TODO: "Chưa bắt đầu",
   DONE: "Đã xong",
   RETAKE_REQUESTED: "Yêu cầu phỏng vấn lại",
-  ABANDONED: "Bỏ dở (quá 72 giờ)",
+  ABANDONED: "Bỏ dở (quá 30 phút)",
+  INVALIDATED: "Không hợp lệ",
+  PASSED: "Đã qua vòng 1",
+  ROUND1: "Đang làm vòng 1",
+  ROUND1_REVIEW: "Chờ duyệt vòng 1",
+  ROUND2_PENDING_SLOTS: "Chờ đề xuất giờ vòng 2",
+  ROUND2_PENDING_CHOICE: "Chờ mentor chọn giờ",
+  ROUND2_SCHEDULED: "Đã hẹn vòng 2",
+  CLOSED: "Đã đóng (hết lượt)",
+  PASS: "Cho qua vòng 1",
+  RETAKE: "Yêu cầu làm lại",
   REQUEST_RETAKE: "Yêu cầu làm lại",
   PROMPT_INJECTION: "Nghi chèn lệnh cho AI",
   COPIED_ANSWER: "Dán nội dung dài",
@@ -126,8 +136,8 @@ export const ROLE_LABELS: Record<Role, string> = { MENTEE: "Mentee", MENTOR: "Me
 export type StatusTone = "success" | "danger" | "warning" | "info" | "neutral";
 
 export function statusTone(status: string): StatusTone {
-  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE"].includes(status)) return "success";
-  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "SUSPENDED"].includes(status)) return "danger";
-  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER"].includes(status)) return "warning";
+  if (["SUCCESS", "CONFIRMED", "ACCEPTED", "APPROVED", "QUALIFIED", "ACTIVE", "COMPLETED", "APPROVE", "DONE", "PASSED", "PASS"].includes(status)) return "success";
+  if (["FAILED", "REJECTED", "CANCELLED", "LOCKED", "REJECT", "NO_SHOW_MENTEE", "NO_SHOW_MENTOR", "DISPUTED", "EXPIRED", "SUSPENDED", "CLOSED"].includes(status)) return "danger";
+  if (["PENDING", "PENDING_REVIEW", "IN_PROGRESS", "PENDING_INTERVIEW", "REGISTERED", "NEEDS_REVIEW", "AWAITING_ATTENDANCE", "ON_HOLD", "PARTIALLY_REFUNDED", "OPEN", "IN_REVIEW", "RETAKE_REQUESTED", "REQUEST_RETAKE", "PROMPT_INJECTION", "COPIED_ANSWER", "ROUND1", "ROUND1_REVIEW", "ROUND2_PENDING_SLOTS", "ROUND2_PENDING_CHOICE", "ROUND2_SCHEDULED", "RETAKE", "ABANDONED", "INVALIDATED"].includes(status)) return "warning";
   return "neutral";
 }

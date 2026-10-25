@@ -11,15 +11,16 @@ import { aiApi } from "@/features/ai/api";
 import { useRealtimeVoice } from "@/features/ai/useRealtimeVoice";
 import { STATUS_LABELS, formatDateTime } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { Interview, InterviewEligibility, VoiceSession, VoiceTranscriptItem } from "@/types";
+import type { Interview, VerificationState, VoiceSession, VoiceTranscriptItem } from "@/types";
 
 /** US-22 (PRD-AIV-1, PRD-AIV-4): màn hình giới thiệu trước khi bắt đầu + quy tắc số lần phỏng vấn. */
-function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligibility | null; busy: boolean; onStart: (consent: boolean) => void }) {
+function IntroCard({ eligibility, busy, onStart }: { eligibility: VerificationState | null; busy: boolean; onStart: (consent: boolean) => void }) {
   const [ack, setAck] = useState(false);
   const [consent, setConsent] = useState(false);
   const voiceOff = eligibility != null && !eligibility.voiceAvailable;
   const blocked = eligibility != null && !eligibility.canStart;
-  const max = eligibility?.maxAttempts ?? 3;
+  const max = eligibility?.maxAttempts ?? 2;
+  const days = 15;
   return (
     <Card className="max-w-[820px]">
       <CardHeader title="Trước khi bắt đầu" description="Đọc kỹ cách chấm điểm và quy tắc số lần phỏng vấn." />
@@ -45,15 +46,14 @@ function IntroCard({ eligibility, busy, onStart }: { eligibility: InterviewEligi
         </div>
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
           <li>Kết quả AI chỉ mang tính hỗ trợ. <strong>Quản trị viên quyết định cuối cùng</strong> trước khi kích hoạt tài khoản.</li>
-          <li>Tối đa {max} lần phỏng vấn. Bị từ chối cần chờ 7 ngày mới được làm lại; bị từ chối {max} lần thì cần quản trị viên mở khoá.</li>
+          <li>Tối đa {max} lần làm vòng 1 không hoàn thành hợp lệ (ví dụ bỏ dở quá 30 phút); hết lượt hoặc bị từ chối thì chờ {days} ngày mới được xác thực lại. Quản trị viên yêu cầu làm lại thì không tính vào số lần.</li>
         </ul>
         {eligibility && (
           <p className="text-small">
-            Đã dùng <strong className="tabular">{eligibility.attemptsUsed}/{eligibility.maxAttempts}</strong> lần, còn lại <strong className="tabular">{eligibility.attemptsLeft}</strong> lần.
+            Đã dùng <strong className="tabular">{eligibility.attemptsUsed}/{eligibility.maxAttempts}</strong> lần không hoàn thành, còn lại <strong className="tabular">{eligibility.attemptsLeft}</strong> lần.
           </p>
         )}
-        {eligibility?.reason === "COOLDOWN" && <Alert tone="info">Bạn có thể phỏng vấn lại từ {formatDateTime(eligibility.cooldownUntil)}.</Alert>}
-        {eligibility?.reason === "LOCKED" && <Alert>Bạn đã bị từ chối {eligibility.maxAttempts} lần. Liên hệ quản trị viên để được mở khoá.</Alert>}
+        {eligibility?.reason === "COOLDOWN" && <Alert tone="info">Bạn có thể xác thực lại từ {formatDateTime(eligibility.retryAfter)}.</Alert>}
         <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={blocked} label="Tôi tự trả lời, không có sự trợ giúp từ bên ngoài" />
         <VoiceConsent checked={consent} onChange={setConsent} disabled={blocked || voiceOff} />
       </CardBody>
@@ -70,13 +70,13 @@ function Interview() {
   const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode>("");
-  const [eligibility, setEligibility] = useState<InterviewEligibility | null>(null);
+  const [eligibility, setEligibility] = useState<VerificationState | null>(null);
   const [session, setSession] = useState<VoiceSession | null>(null);
   const call = useRealtimeVoice(submitTranscript);
 
   useEffect(() => {
     aiApi.myInterview().then(setInterview).catch(() => setInterview(null));
-    aiApi.interviewEligibility().then(setEligibility).catch(() => setEligibility(null));
+    aiApi.verificationStatus().then(setEligibility).catch(() => setEligibility(null));
   }, []);
 
   async function start(consent = false) {
@@ -86,7 +86,7 @@ function Interview() {
       await startVoice(consent);
     } catch (err) {
       setError(err instanceof ApiError && err.code === "PROFILE_REQUIRED" ? <>{errorMessage(err)} <Link href="/profile">Tạo hồ sơ</Link></> : errorMessage(err));
-      aiApi.interviewEligibility().then(setEligibility).catch(() => {});
+      aiApi.verificationStatus().then(setEligibility).catch(() => {});
     } finally {
       setBusy(false);
     }
@@ -123,7 +123,7 @@ function Interview() {
     setError("");
     try {
       setInterview(await aiApi.submitVoiceTranscript(interview.id, items));
-      aiApi.interviewEligibility().then(setEligibility).catch(() => {});
+      aiApi.verificationStatus().then(setEligibility).catch(() => {});
     } catch (err) {
       setError(errorMessage(err));
       call.setPhase("dropped"); // ví dụ EMPTY_TRANSCRIPT: kết nối lại để trả lời tiếp
@@ -185,20 +185,23 @@ function Interview() {
             )}
             {interview.status === "ABANDONED" && (
               <Alert action={retry("Bắt đầu buổi mới", eligibility != null && !eligibility.canStart)}>
-                Buổi phỏng vấn giọng nói quá 30 phút chưa kết thúc nên bị huỷ và tính là một lần phỏng vấn.
+                Buổi phỏng vấn giọng nói quá 30 phút chưa kết thúc nên bị huỷ và tính là một lần không hoàn thành.
+                {eligibility?.status === "CLOSED" && <> Bạn đã hết lượt, có thể xác thực lại từ {formatDateTime(eligibility.retryAfter)}.</>}
               </Alert>
             )}
-            {interview.status === "APPROVED" && (
+            {interview.status === "PASSED" && eligibility?.status === "APPROVED" && (
               <Alert tone="success" title="Tài khoản mentor đã được kích hoạt">Bạn sẽ xuất hiện trong kết quả gợi ý cho mentee.</Alert>
             )}
+            {interview.status === "PASSED" && eligibility?.status !== "APPROVED" && (
+              <Alert tone="info" title="Bạn đã qua vòng 1">Quản trị viên sẽ liên hệ để hẹn phỏng vấn vòng 2.</Alert>
+            )}
             {interview.status === "RETAKE_REQUESTED" && (
-              <Alert tone="info" action={retry("Phỏng vấn lại")}>Quản trị viên đề nghị bạn phỏng vấn lại. Lần này không bị tính vào số lần phỏng vấn.</Alert>
+              <Alert tone="info" action={retry("Làm lại vòng 1")}>Quản trị viên đề nghị bạn làm lại vòng 1. Lần này không bị tính vào số lần làm.</Alert>
             )}
             {interview.status === "REJECTED" && (
               <Alert title="Hồ sơ chưa được duyệt" action={retry("Phỏng vấn lại", eligibility != null && !eligibility.canStart)}>
                 Cập nhật hồ sơ rồi phỏng vấn lại.
-                {eligibility?.reason === "COOLDOWN" && <> Bạn có thể phỏng vấn lại từ {formatDateTime(eligibility.cooldownUntil)}.</>}
-                {eligibility?.reason === "LOCKED" && <> Bạn đã hết số lần phỏng vấn, liên hệ quản trị viên để được mở khoá.</>}
+                {eligibility?.reason === "COOLDOWN" && <> Bạn có thể xác thực lại từ {formatDateTime(eligibility.retryAfter)}.</>}
               </Alert>
             )}
             <AssessmentCard interview={interview} />

@@ -65,7 +65,7 @@ docker compose down -v      # dừng và xoá toàn bộ volume (CSDL, file CV) 
 | `INDEX_SYNC_INTERVAL` | `60` | matching-service: chu kỳ (giây) `IndexSyncJob` đối soát chỉ mục embedding với `profile_db` — cũng là độ trễ tối đa (xấp xỉ) để hồ sơ xuất hiện trong matching khi thông báo reindex bị mất |
 
 Các tham số khác (đặt trong `environment` của service tương ứng trong `docker-compose.yml`):
-`INTERVIEW_MAX_TURNS` (5), `ENRICHMENT_MAX_TURNS` (4), `DEEPSEEK_MAX_TOKENS` (4000),
+`VERIFICATION_MAX_ATTEMPTS_PER_ROUND` (2), `VERIFICATION_RETRY_DAYS` (15), `VERIFICATION_ROUND1_MAX_RETAKE` (2), `VERIFICATION_ROUND2_ENABLED` (false), `ENRICHMENT_MAX_TURNS` (4), `DEEPSEEK_MAX_TOKENS` (4000),
 `DEEPSEEK_TIMEOUT_SECONDS` (60), `PROFILE_SYNC_RETRY_SECONDS` (120), `VOICE_INTERVIEW_TOPICS` (4),
 `VOICE_SESSION_MINUTES` (30), `PRACTICE_FREE_LIMIT` (1) — ai-service; `EMBEDDING_MODEL`,
 `INDEX_SYNC_INTERVAL` (60), `INDEX_SYNC_BATCH` (200), `INDEX_SYNC_ENABLED` (true) — matching-service;

@@ -41,6 +41,7 @@ class InterviewView(CamelModel):
     id: UUID
     mentor_id: UUID
     mentor_name: str | None = None
+    application_id: UUID | None = None
     domain: str
     skills: list[str] = []
     status: str
@@ -72,32 +73,10 @@ class InterviewView(CamelModel):
     feedback_visible: bool = False
 
 
-class EligibilityView(CamelModel):
-    """US-22 (PRD-AIV-4): số lần đã dùng / còn lại, thời điểm hết thời gian chờ, bị khoá hay không."""
-    attempts_used: int
-    attempts_left: int
-    max_attempts: int
-    cooldown_until: datetime | None = None
-    locked: bool
-    can_start: bool
-    reason: str | None = None
-    # FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được)
-    voice_available: bool = False
-
-
 class VoiceInterviewStart(CamelModel):
     """FR-7.7 — POST /api/ai/interviews/voice. voice = null khi chưa cấu hình OPENAI_API_KEY (chỉ ngoài prod)."""
     interview: InterviewView
     voice: VoiceSessionView | None = None
-
-
-class UnlockInput(CamelModel):
-    note: str | None = Field(default=None, max_length=2000)
-
-
-class ReviewInterviewInput(CamelModel):
-    decision: str = Field(pattern="^(APPROVE|REJECT|REQUEST_RETAKE)$")
-    note: str | None = Field(default=None, max_length=2000)
 
 
 class InterviewStats(CamelModel):
@@ -143,7 +122,7 @@ def turn_view(turn: asyncpg.Record, reveal_scores: bool, for_admin: bool = False
         asked_at=turn["asked_at"], answered_at=answered)
 
 
-DECIDED_STATUSES = ("APPROVED", "REJECTED", "RETAKE_REQUESTED")
+DECIDED_STATUSES = ("PASSED", "REJECTED", "RETAKE_REQUESTED")
 
 
 def _resume_deadline(interview: asyncpg.Record) -> datetime:
@@ -163,7 +142,8 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
     turn_views = [turn_view(t, reveal, for_admin) for t in turns]
     current = next((t for t in turn_views if t.answer is None), None) if in_progress else None
     return InterviewView(
-        id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name, domain=interview["domain"],
+        id=interview["id"], mentor_id=interview["mentor_id"], mentor_name=mentor_name,
+        application_id=interview["application_id"], domain=interview["domain"],
         skills=list(interview["skills"] or []), status=interview["status"],
         mode=interview["mode"], consent_external_ai=interview["consent_external_ai"],
         engine=interview["engine"],

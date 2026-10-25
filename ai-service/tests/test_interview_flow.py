@@ -73,20 +73,20 @@ def test_admin_review_syncs_verification(client, db, fake_profile, fake_mentorin
     interview = finish(client, mentor_id)
 
     admin = auth(uuid.uuid4(), "ADMIN")
-    pending = client.get("/api/ai/admin/interviews?status=PENDING_REVIEW", headers=admin).json()
-    assert [i["id"] for i in pending] == [interview["id"]]
-    assert pending[0]["mentorName"] == "Mentor Test"
+    pending = client.get("/api/ai/admin/verification/applications?status=ROUND1_REVIEW", headers=admin).json()
+    assert [a["id"] for a in pending] == [interview["applicationId"]]
+    assert pending[0]["mentorName"] == "Mentor Test" and pending[0]["interview"]["id"] == interview["id"]
 
-    reviewed = client.post(f"/api/ai/admin/interviews/{interview['id']}/review",
-                           json={"decision": "APPROVE", "note": "Tra loi tot"}, headers=admin)
-    assert reviewed.status_code == 200
-    assert reviewed.json()["status"] == "APPROVED"
+    path = f"/api/ai/admin/verification/applications/{interview['applicationId']}/round1-review"
+    reviewed = client.post(path, json={"decision": "PASS", "note": "Tra loi tot"}, headers=admin)
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["status"] == "APPROVED" and reviewed.json()["round1Decision"] == "PASS"
     assert fake_profile.verifications[-1] == (mentor_id, "APPROVED")
+    assert client.get(f"/api/ai/interviews/{interview['id']}", headers=admin).json()["status"] == "PASSED"
 
-    again = client.post(f"/api/ai/admin/interviews/{interview['id']}/review",
-                        json={"decision": "APPROVE"}, headers=admin)
+    again = client.post(path, json={"decision": "PASS"}, headers=admin)
     assert again.status_code == 409
-    assert again.json()["error"]["code"] == "INTERVIEW_NOT_PENDING_REVIEW"
+    assert again.json()["error"]["code"] == "VERIFICATION_NOT_PENDING_REVIEW"
 
 
 def test_stats_count_by_status(client, db, fake_profile, fake_mentoring, mentor_id):

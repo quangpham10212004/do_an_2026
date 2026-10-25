@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call, make_pdf,
-                    multipart_file, start_voice_interview, voice_transcript)
+                    multipart_file, admin_pass_round1, start_voice_interview, voice_transcript)
 
 RUN = uuid.uuid4().hex[:6]
 results = []
@@ -71,8 +71,7 @@ def us43(ctx):
     check("US-43", "Chờ duyệt: mentor chưa thấy điểm / nhận xét từng câu", iv["status"] == "PENDING_REVIEW"
           and not iv["feedbackVisible"] and all(t["score"] is None and t["feedback"] is None for t in iv["turns"]), iv["status"])
     check("US-43", "…nhưng vẫn thấy tổng điểm", iv["overallScore"] is not None)
-    call("POST", f"{AI}/api/ai/admin/interviews/{iv['id']}/review", {"decision": "APPROVE", "note": "Tra loi tot, du kinh nghiem"},
-         token=admin["accessToken"])
+    admin_pass_round1(admin["accessToken"], iv, "Tra loi tot, du kinh nghiem")
     mine = call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=m["accessToken"])
     check("US-43", "Sau khi admin quyết định: thấy điểm + nhận xét từng câu", mine["feedbackVisible"]
           and all(t["score"] is not None for t in mine["turns"]))
@@ -85,8 +84,8 @@ def us43(ctx):
     status, code = error_code(lambda: call("POST", f"{AI}/api/ai/interviews/{iv2['id']}/voice-transcript",
                                            voice_transcript(iv2["maxTurns"], STRONG), token=idle["accessToken"]))
     check("US-43", "Quá thời lượng phiên → 409 INTERVIEW_ABANDONED", status == 409 and code == "INTERVIEW_ABANDONED", (status, code))
-    e = call("GET", f"{AI}/api/ai/interviews/eligibility", token=idle["accessToken"])
-    check("US-43", "Buổi bỏ dở tính là 1 lần phỏng vấn", e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2, e)
+    e = call("GET", f"{AI}/api/ai/verification/status", token=idle["accessToken"])
+    check("US-43", "Buổi bỏ dở tính là 1 lần thất bại (còn 1 lần)", e["attemptsUsed"] == 1 and e["attemptsLeft"] == 1, e)
     iv3 = start(idle)
     check("US-43", "Bắt đầu được buổi mới ngay (không thời gian chờ)", iv3["id"] != iv2["id"] and iv3["status"] == "IN_PROGRESS")
 
@@ -197,8 +196,8 @@ def upload_cv(user):
 def service_logs(services, since="3m"):
     try:
         out = subprocess.run(["docker", "compose", "logs", "--no-log-prefix", "--since", since, *services],
-                             capture_output=True, text=True, timeout=60)
-        return out.stdout.splitlines()
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        return (out.stdout or "").splitlines()
     except (OSError, subprocess.SubprocessError):
         return []
 

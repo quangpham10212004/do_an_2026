@@ -1,18 +1,19 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewEligibility, InterviewStats, InterviewStatus, ReviewDecision, Uuid, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, Round1Decision, Uuid, VerificationApplication, VerificationState, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
   // AI Interview — /interviews/me trả 204 (null) khi mentor chưa phỏng vấn lần nào
   myInterview: () => api<Interview | null>("/api/ai/interviews/me"),
-  interviewEligibility: () => api<InterviewEligibility>("/api/ai/interviews/eligibility"),
-  adminInterviewEligibility: (mentorId: Uuid) => api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/eligibility`),
-  unlockInterviews: (mentorId: Uuid, note: string) =>
-    api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/unlock`, { method: "POST", body: { note } }),
+  // Đợt xác thực: số lần còn lại, thời gian chờ 15 ngày, bước hiện tại. 409 INTERVIEW_COOLDOWN / INTERVIEW_PENDING_REVIEW / ALREADY_APPROVED
+  verificationStatus: () => api<VerificationState>("/api/ai/verification/status"),
+  startVerification: () => api<VerificationState>("/api/ai/verification/applications", { method: "POST" }),
   interview: (id: Uuid) => api<Interview>(`/api/ai/interviews/${id}`),
-  adminInterviews: (status: InterviewStatus | "" = "") => api<Interview[]>(`/api/ai/admin/interviews?status=${status}`),
-  reviewInterview: (id: Uuid, decision: ReviewDecision, note: string) =>
-    api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
+  adminApplications: (status = "") => api<VerificationApplication[]>(`/api/ai/admin/verification/applications?status=${status}`),
+  adminApplication: (id: Uuid) => api<VerificationApplication>(`/api/ai/admin/verification/applications/${id}`),
+  // PASS | REJECT | RETAKE; ghi chú ≥ 10 ký tự khi RETAKE hoặc quyết định ngược khuyến nghị AI (400 REVIEW_NOTE_REQUIRED)
+  round1Review: (id: Uuid, decision: Round1Decision, note: string) =>
+    api<VerificationApplication>(`/api/ai/admin/verification/applications/${id}/round1-review`, { method: "POST", body: { decision, note } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // FR-7.7 — phỏng vấn giọng nói (cách duy nhất): gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
   // 400 SELF_ANSWER_ACK_REQUIRED / VOICE_CONSENT_REQUIRED; 409 INTERVIEW_COOLDOWN / INTERVIEW_LOCKED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.

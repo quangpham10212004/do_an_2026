@@ -27,7 +27,8 @@ def test_invalid_token_is_rejected(client):
 
 @pytest.mark.parametrize("path,role", [
     ("/api/ai/interviews/me", "MENTEE"),
-    ("/api/ai/admin/interviews", "MENTOR"),
+    ("/api/ai/admin/verification/applications", "MENTOR"),
+    ("/api/ai/verification/status", "MENTEE"),
     ("/api/ai/admin/stats", "MENTEE"),
 ])
 def test_role_is_enforced(client, path, role):

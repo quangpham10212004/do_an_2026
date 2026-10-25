@@ -11,7 +11,7 @@ from app.interview.models import TurnEvaluation, TurnRecord
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
                        created_at, completed_at, reviewed_at, self_answer_acknowledged,
-                       mode, consent_external_ai, plan"""
+                       mode, consent_external_ai, plan, application_id"""
 
 
 async def find(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -23,27 +23,16 @@ async def latest_for_mentor(conn: Db, mentor_id: UUID) -> asyncpg.Record | None:
         f"SELECT {INTERVIEW_COLUMNS} FROM interviews WHERE mentor_id = $1 ORDER BY created_at DESC LIMIT 1", mentor_id)
 
 
-async def list_all(conn: Db, status: str | None) -> list[asyncpg.Record]:
-    if status:
-        return await conn.fetch(
-            f"SELECT {INTERVIEW_COLUMNS} FROM interviews WHERE status = $1 ORDER BY completed_at ASC", status)
-    return await conn.fetch(f"SELECT {INTERVIEW_COLUMNS} FROM interviews ORDER BY created_at DESC")
-
-
-async def count_by_status(conn: Db) -> dict[str, int]:
-    rows = await conn.fetch("SELECT status, COUNT(*) AS total FROM interviews GROUP BY status")
-    return {r["status"]: r["total"] for r in rows}
-
-
 async def insert(conn: Db, mentor_id: UUID, domain: str, skills: list[str], max_turns: int,
-                 engine: str, consent_external_ai: bool = True, plan: str | None = None) -> asyncpg.Record:
+                 engine: str, consent_external_ai: bool = True, plan: str | None = None,
+                 application_id: UUID | None = None) -> asyncpg.Record:
     """Chỉ gọi sau khi mentor đã xác nhận tự trả lời (US-22) => self_answer_acknowledged = true.
     plan = kế hoạch câu hỏi của buổi giọng nói (planner.dump)."""
     return await conn.fetchrow(
         f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged,
-                                    mode, consent_external_ai, plan)
-            VALUES ($1, $2, $3, $4, $5, true, 'VOICE', $6, $7::jsonb) RETURNING {INTERVIEW_COLUMNS}""",
-        mentor_id, domain, skills, max_turns, engine, consent_external_ai, plan)
+                                    mode, consent_external_ai, plan, application_id)
+            VALUES ($1, $2, $3, $4, $5, true, 'VOICE', $6, $7::jsonb, $8) RETURNING {INTERVIEW_COLUMNS}""",
+        mentor_id, domain, skills, max_turns, engine, consent_external_ai, plan, application_id)
 
 
 async def lock_in_progress(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -61,23 +50,7 @@ async def abandon_stale(conn: Db, voice_before: datetime, mentor_id: UUID | None
     return await conn.fetch(
         """UPDATE interviews i SET status = 'ABANDONED', abandoned_at = now()
             WHERE i.status = 'IN_PROGRESS' AND ($2::uuid IS NULL OR i.mentor_id = $2) AND i.created_at < $1
-        RETURNING i.id, i.mentor_id""", voice_before, mentor_id)
-
-
-async def outcomes_since_unlock(conn: Db, mentor_id: UUID) -> list[asyncpg.Record]:
-    """US-22 — các buổi xác thực của mentor tạo sau lần admin mở khoá gần nhất (chưa từng mở khoá => tất cả)."""
-    return await conn.fetch(
-        """SELECT status, created_at, reviewed_at FROM interviews i
-            WHERE i.mentor_id = $1
-              AND i.created_at > COALESCE((SELECT max(u.created_at) FROM interview_attempt_unlocks u
-                                            WHERE u.mentor_id = $1), '-infinity'::timestamptz)
-            ORDER BY i.created_at""", mentor_id)
-
-
-async def insert_unlock(conn: Db, mentor_id: UUID, unlocked_by: UUID | None, note: str | None) -> None:
-    await conn.execute(
-        "INSERT INTO interview_attempt_unlocks (mentor_id, unlocked_by, note) VALUES ($1, $2, $3)",
-        mentor_id, unlocked_by, note)
+        RETURNING i.id, i.mentor_id, i.application_id""", voice_before, mentor_id)
 
 
 async def turns_of(conn: Db, interview_id: UUID) -> list[asyncpg.Record]:
@@ -120,27 +93,9 @@ async def complete(conn: Db, interview_id: UUID, overall_score: float, summary: 
         interview_id, overall_score, summary, strengths, weaknesses, recommendation)
 
 
-async def review(conn: Db, interview_id: UUID, status: str, reviewed_by: UUID,
-                 note: str | None) -> asyncpg.Record | None:
-    """Chỉ duyệt được buổi đang PENDING_REVIEW — điều kiện nằm trong WHERE để tránh race.
-    status: APPROVED | REJECTED | RETAKE_REQUESTED."""
-    return await conn.fetchrow(
-        f"""UPDATE interviews SET status = $2, reviewed_by = $3, review_note = $4, reviewed_at = now()
-            WHERE id = $1 AND status = 'PENDING_REVIEW' RETURNING {INTERVIEW_COLUMNS}""",
-        interview_id, status, reviewed_by, note)
-
-
 def to_record(turn: asyncpg.Record) -> TurnRecord:
     """1 lượt trong DB → lịch sử hội thoại đưa vào engine."""
     return TurnRecord(turn_no=turn["turn_no"], topic=turn["topic"], strategy=turn["strategy"],
                       question=turn["question"], answer=turn["answer"],
                       score=None if turn["score"] is None else round(turn["score"], 1),
                       flags=list(turn["flags"] or []))
-
-
-async def review_counts(conn: Db) -> list[asyncpg.Record]:
-    """US-24 — số buổi đã được admin quyết định theo (quyết định, khuyến nghị AI)."""
-    return await conn.fetch(
-        """SELECT status, recommendation, COUNT(*) AS total FROM interviews
-            WHERE status IN ('APPROVED', 'REJECTED', 'RETAKE_REQUESTED') AND reviewed_at IS NOT NULL
-            GROUP BY status, recommendation""")

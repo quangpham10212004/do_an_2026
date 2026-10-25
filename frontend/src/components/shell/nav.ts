@@ -97,7 +97,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       label: "Người dùng",
       items: [
         { href: "/admin/users", label: "Tài khoản", icon: Users },
-        { href: "/admin/interviews", label: "Duyệt mentor", icon: ShieldCheck },
+        { href: "/admin/verification", label: "Duyệt mentor", icon: ShieldCheck },
         { href: "/admin/mentors", label: "Mentor", icon: GraduationCap },
       ],
     },

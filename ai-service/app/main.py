@@ -14,7 +14,7 @@ from app.interview import service as interview_service
 from app.errors import AiError
 from app.llm.deepseek import get_client
 from app.practice import service as practice_service
-from app.routers import cv, enrichment, interview, practice
+from app.routers import cv, enrichment, interview, practice, verification
 
 observability.setup_logging("ai-service")  # US-46: log JSON có requestId
 log = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ async def lifespan(_: FastAPI):
     except OSError as e:  # DB chưa sẵn sàng: pool sẽ được tạo lại ở request đầu tiên
         log.warning("Could not connect to ai_db at startup: %s", e)
     retry_job = asyncio.create_task(retry_profile_sync_forever())
-    # US-43 (PRD-AIV-3) — quét buổi phỏng vấn bỏ dở quá 72 giờ
+    # FR-7.7 — quét buổi phỏng vấn giọng nói bỏ dở quá VOICE_SESSION_MINUTES phút (hết lượt thì đóng đợt)
     abandon_job = asyncio.create_task(interview_service.abandon_stale_forever())
     # FR-10.x — buổi luyện phỏng vấn giọng nói quá 30 phút chưa nộp bản ghi
     practice_job = asyncio.create_task(practice_service.abandon_stale_forever())
@@ -95,6 +95,8 @@ async def health() -> dict:
 
 app.include_router(interview.router)
 app.include_router(interview.dev_router)  # US-43 — chỉ dev/e2e, tự chặn ở APP_ENV=prod
+app.include_router(verification.router)
+app.include_router(verification.dev_router)  # chỉ dev/e2e, tự chặn ở APP_ENV=prod
 app.include_router(cv.router)
 app.include_router(enrichment.router)
 app.include_router(practice.router)

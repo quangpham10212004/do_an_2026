@@ -4,17 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.interview import service, voice
-from app.interview.views import (EligibilityView, InterviewStats, InterviewView, ReviewInterviewInput,
-                                 UnlockInput, VoiceInterviewStart)
+from app.interview.views import InterviewView, VoiceInterviewStart
 from app import config
 from app.security import AuthUser, require_internal, require_role, require_user
 
 router = APIRouter(prefix="/api/ai")
-
-
-@router.get("/interviews/eligibility", response_model=EligibilityView, response_model_by_alias=True)
-async def my_eligibility(user: AuthUser = Depends(require_role("MENTOR"))) -> EligibilityView:
-    return await service.eligibility(user.user_id)
 
 
 @router.get("/interviews/me", response_model=InterviewView, response_model_by_alias=True,
@@ -41,36 +35,6 @@ async def start_voice(body: voice.VoiceConsentInput | None = None,
 async def voice_transcript(interview_id: UUID, body: voice.TranscriptInput,
                            user: AuthUser = Depends(require_role("MENTOR"))) -> InterviewView:
     return await service.submit_voice_transcript(user, interview_id, body.items)
-
-
-@router.get("/admin/interviews", response_model=list[InterviewView], response_model_by_alias=True)
-async def admin_list(status: str | None = None,
-                     _: AuthUser = Depends(require_role("ADMIN"))) -> list[InterviewView]:
-    return await service.list_interviews(status)
-
-
-@router.post("/admin/interviews/{interview_id}/review", response_model=InterviewView, response_model_by_alias=True)
-async def admin_review(interview_id: UUID, body: ReviewInterviewInput,
-                       user: AuthUser = Depends(require_role("ADMIN"))) -> InterviewView:
-    return await service.review(user, interview_id, body)
-
-
-@router.get("/admin/interviews/mentors/{mentor_id}/eligibility", response_model=EligibilityView,
-            response_model_by_alias=True)
-async def admin_eligibility(mentor_id: UUID, _: AuthUser = Depends(require_role("ADMIN"))) -> EligibilityView:
-    return await service.eligibility(mentor_id)
-
-
-@router.post("/admin/interviews/mentors/{mentor_id}/unlock", response_model=EligibilityView,
-             response_model_by_alias=True)
-async def admin_unlock(mentor_id: UUID, body: UnlockInput | None = None,
-                       user: AuthUser = Depends(require_role("ADMIN"))) -> EligibilityView:
-    return await service.unlock(user, mentor_id, body.note if body else None)
-
-
-@router.get("/admin/stats", response_model=InterviewStats, response_model_by_alias=True)
-async def admin_stats(_: AuthUser = Depends(require_role("ADMIN"))) -> InterviewStats:
-    return await service.stats()
 
 
 # Router không có tiền tố /api/ai: /internal/** không bao giờ đi qua proxy của frontend.
