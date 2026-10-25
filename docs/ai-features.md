@@ -387,7 +387,7 @@ gián đoạn trong **24 giờ** (quá hạn → ABANDONED, tính một lượt)
 không đổi.
 
 ### 2.4 Số lượt (FR-7.3)
-**5 lượt** (cấu hình `INTERVIEW_MAX_TURNS`): đủ phủ 3–4 chủ đề chuyên môn + 1 lượt đào sâu, trong đó
+~~**5 lượt** (cấu hình `INTERVIEW_MAX_TURNS`)~~ — **PR 1b: luồng chat đã bỏ**, số chủ đề do `VOICE_INTERVIEW_TOPICS` (mặc định 4) và `planner`. Mô tả cũ: đủ phủ 3–4 chủ đề chuyên môn + 1 lượt đào sâu, trong đó
 luôn có chủ đề "Năng lực mentoring"; thời gian ~15–20 phút.
 
 ### 2.5 Engine rule-based
@@ -834,7 +834,7 @@ và job thử lại mỗi 2 phút (chỉ goal `CONFIRMED`; bỏ qua xác nhận 
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Địa chỉ API DeepSeek |
 | `DEEPSEEK_MODEL` | `deepseek-flash` | Model DeepSeek (ví dụ `deepseek-v4-pro`) |
 | `DEEPSEEK_MAX_TOKENS` / `DEEPSEEK_TIMEOUT_SECONDS` | 4000 / 60 | Giới hạn đầu ra, thời gian chờ mỗi lời gọi |
-| `INTERVIEW_MAX_TURNS` | 5 | Số lượt AI Interview |
+| ~~`INTERVIEW_MAX_TURNS`~~ | — | Đã gỡ ở PR 1b (chỉ phục vụ chat); dùng `VOICE_INTERVIEW_TOPICS` |
 | `ENRICHMENT_MAX_TURNS` | 4 | Số lượt chatbot enrichment |
 | `OPENAI_API_KEY` | (trống) | ai-service (v2.1): trống → tắt phỏng vấn giọng nói (production 503 `VOICE_UNAVAILABLE`; dev trả `voice: null`) |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Địa chỉ API OpenAI (xin client secret) |

@@ -10,7 +10,7 @@ from app.interview.models import TurnEvaluation, TurnRecord
 
 INTERVIEW_COLUMNS = """id, mentor_id, domain, skills, status, max_turns, current_turn, engine, overall_score,
                        summary, strengths, weaknesses, recommendation, reviewed_by, review_note,
-                       created_at, completed_at, reviewed_at, self_answer_acknowledged, kind, from_tier,
+                       created_at, completed_at, reviewed_at, self_answer_acknowledged,
                        mode, consent_external_ai, plan"""
 
 
@@ -31,23 +31,19 @@ async def list_all(conn: Db, status: str | None) -> list[asyncpg.Record]:
 
 
 async def count_by_status(conn: Db) -> dict[str, int]:
-    """Buổi xin nâng cấp đã kết luận không tính vào số mentor được duyệt / bị từ chối (đó là mentor đang hoạt động)."""
-    rows = await conn.fetch(
-        """SELECT status, COUNT(*) AS total FROM interviews
-            WHERE kind = 'VERIFICATION' OR status IN ('IN_PROGRESS', 'PENDING_REVIEW') GROUP BY status""")
+    rows = await conn.fetch("SELECT status, COUNT(*) AS total FROM interviews GROUP BY status")
     return {r["status"]: r["total"] for r in rows}
 
 
 async def insert(conn: Db, mentor_id: UUID, domain: str, skills: list[str], max_turns: int,
-                 engine: str, kind: str = "VERIFICATION", from_tier: str | None = None,
-                 mode: str = "CHAT", consent_external_ai: bool = False, plan: str | None = None) -> asyncpg.Record:
+                 engine: str, consent_external_ai: bool = True, plan: str | None = None) -> asyncpg.Record:
     """Chỉ gọi sau khi mentor đã xác nhận tự trả lời (US-22) => self_answer_acknowledged = true.
-    plan = kế hoạch câu hỏi của buổi giọng nói (planner.dump), chat => NULL."""
+    plan = kế hoạch câu hỏi của buổi giọng nói (planner.dump)."""
     return await conn.fetchrow(
-        f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged, kind, from_tier,
+        f"""INSERT INTO interviews (mentor_id, domain, skills, max_turns, engine, self_answer_acknowledged,
                                     mode, consent_external_ai, plan)
-            VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10::jsonb) RETURNING {INTERVIEW_COLUMNS}""",
-        mentor_id, domain, skills, max_turns, engine, kind, from_tier, mode, consent_external_ai, plan)
+            VALUES ($1, $2, $3, $4, $5, true, 'VOICE', $6, $7::jsonb) RETURNING {INTERVIEW_COLUMNS}""",
+        mentor_id, domain, skills, max_turns, engine, consent_external_ai, plan)
 
 
 async def lock_in_progress(conn: Db, interview_id: UUID) -> asyncpg.Record | None:
@@ -56,42 +52,26 @@ async def lock_in_progress(conn: Db, interview_id: UUID) -> asyncpg.Record | Non
         f"SELECT {INTERVIEW_COLUMNS} FROM interviews WHERE id = $1 AND status = 'IN_PROGRESS' FOR UPDATE", interview_id)
 
 
-async def abandon_stale(conn: Db, before: datetime, mentor_id: UUID | None = None,
-                        voice_before: datetime | None = None) -> list[asyncpg.Record]:
+async def abandon_stale(conn: Db, voice_before: datetime, mentor_id: UUID | None = None) -> list[asyncpg.Record]:
     """
-    US-43 (PRD-AIV-3) — đánh dấu ABANDONED các buổi IN_PROGRESS không có hoạt động (bắt đầu / trả lời) từ trước
-    `before`. FR-7.7 — buổi giọng nói là một lần ngồi: bắt đầu trước `voice_before` mà chưa gửi bản ghi => ABANDONED.
+    FR-7.7 — buổi giọng nói là một lần ngồi: bắt đầu trước `voice_before` mà chưa gửi bản ghi => ABANDONED.
     mentor_id = chỉ của một mentor (kiểm tra lười khi mentor mở trang); None = quét toàn bộ (job nền).
     Trả về (id, mentor_id) các buổi vừa đánh dấu.
     """
     return await conn.fetch(
         """UPDATE interviews i SET status = 'ABANDONED', abandoned_at = now()
-            WHERE i.status = 'IN_PROGRESS' AND ($2::uuid IS NULL OR i.mentor_id = $2)
-              AND CASE WHEN i.mode = 'VOICE' THEN i.created_at < COALESCE($3::timestamptz, $1)
-                       ELSE GREATEST(i.created_at, COALESCE((SELECT max(t.answered_at) FROM interview_turns t
-                                                             WHERE t.interview_id = i.id), i.created_at)) < $1 END
-        RETURNING i.id, i.mentor_id""", before, mentor_id, voice_before)
-
-
-async def last_answered_at(conn: Db, interview_id: UUID) -> datetime | None:
-    return await conn.fetchval("SELECT max(answered_at) FROM interview_turns WHERE interview_id = $1", interview_id)
+            WHERE i.status = 'IN_PROGRESS' AND ($2::uuid IS NULL OR i.mentor_id = $2) AND i.created_at < $1
+        RETURNING i.id, i.mentor_id""", voice_before, mentor_id)
 
 
 async def outcomes_since_unlock(conn: Db, mentor_id: UUID) -> list[asyncpg.Record]:
     """US-22 — các buổi xác thực của mentor tạo sau lần admin mở khoá gần nhất (chưa từng mở khoá => tất cả)."""
     return await conn.fetch(
         """SELECT status, created_at, reviewed_at FROM interviews i
-            WHERE i.mentor_id = $1 AND i.kind = 'VERIFICATION'
+            WHERE i.mentor_id = $1
               AND i.created_at > COALESCE((SELECT max(u.created_at) FROM interview_attempt_unlocks u
                                             WHERE u.mentor_id = $1), '-infinity'::timestamptz)
             ORDER BY i.created_at""", mentor_id)
-
-
-async def last_upgrade_decided_at(conn: Db, mentor_id: UUID) -> datetime | None:
-    """Bản chốt v2.0 §3 — lần xin nâng cấp gần nhất đã có kết quả (admin quyết định hoặc bỏ dở); làm lại thì không tính."""
-    return await conn.fetchval(
-        """SELECT max(COALESCE(reviewed_at, abandoned_at)) FROM interviews
-            WHERE mentor_id = $1 AND kind = 'UPGRADE' AND status IN ('APPROVED', 'REJECTED', 'ABANDONED')""", mentor_id)
 
 
 async def insert_unlock(conn: Db, mentor_id: UUID, unlocked_by: UUID | None, note: str | None) -> None:

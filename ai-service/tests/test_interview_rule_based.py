@@ -1,5 +1,5 @@
 from app.interview import rubric, rule_based
-from app.interview.models import InterviewContext, TurnRecord
+from app.interview.models import InterviewContext, QuestionPlan, TurnRecord
 from app.interview.question_bank import topics_for
 
 BACKEND = InterviewContext(domain="backend", skills=["Java", "Redis"], years_experience=6, bio="bio", max_turns=5)
@@ -14,13 +14,6 @@ latency trang sản phẩm giảm từ 300ms xuống 40ms. Để tránh stampede
 
 def turn(no, topic, strategy, answer, score=None):
     return TurnRecord(turn_no=no, topic=topic, strategy=strategy, question="q", answer=answer, score=score)
-
-
-def test_first_question_prefers_topic_matching_mentor_skills():
-    q = rule_based.first_question(BACKEND)
-    assert q.strategy == "OPENING"
-    assert q.topic == "Caching & hiệu năng"
-    assert "Java" in q.question
 
 
 def test_strong_answer_scores_high_and_deepens_same_topic():
@@ -52,9 +45,10 @@ def test_last_turn_has_no_next_question():
     assert rule_based.evaluate(BACKEND, [], turn(5, "Caching & hiệu năng", "PIVOT", STRONG_ANSWER), True).next is None
 
 
-def test_full_interview_with_weak_answers_visits_five_topics():
+def test_weak_answers_pivot_through_five_distinct_topics():
+    first = topics_for(BACKEND.domain, BACKEND.skills)[0]
+    plan = QuestionPlan(topic=first.name, strategy="OPENING", question=first.question)
     turns = []
-    plan = rule_based.first_question(BACKEND)
     for i in range(1, 6):
         current = turn(i, plan.topic, plan.strategy, "Không biết")
         ev = rule_based.evaluate(BACKEND, turns, current, i == 5)
@@ -102,8 +96,8 @@ def test_mentoring_answer_scores_mentoring_criterion():
 
 
 def test_unknown_domain_falls_back_to_general_questions():
-    q = rule_based.first_question(InterviewContext(domain="blockchain", skills=[], max_turns=5))
-    assert q.topic in {"Kinh nghiệm dự án", "Giải quyết vấn đề", "Năng lực mentoring", "Clean code & review"}
+    q = topics_for("blockchain", [])[0]
+    assert q.name in {"Kinh nghiệm dự án", "Giải quyết vấn đề", "Năng lực mentoring", "Clean code & review"}
 
 
 def test_domain_aliases_are_resolved():

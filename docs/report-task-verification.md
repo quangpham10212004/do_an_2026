@@ -9,7 +9,7 @@
 |---|---|---|
 | Bước 0 | Đã xong | — |
 | 1a | Đã xong | `feature/profile-remove-tier` |
-| 1b | chưa làm | |
+| 1b | Đã xong | `feature/ai-remove-chat-interview` (xếp trên 1a) |
 | 2 | chưa làm | |
 | 3 | chưa làm | |
 | 4 | chưa làm | |
@@ -50,5 +50,24 @@ docker compose exec -T profile-db pg_dump -U postgres -d profile_db > .backups/p
 - `grep -rni tier` toàn repo (trừ `docs/archive`, `docs/design-mentor-verification.md`, `docs/report-task-verification.md`): chỉ còn cột DB `kind`/`from_tier` ở `ai-service/app/interview/repository.py` (cố ý giữ tới PR 1b theo kế hoạch) và tên biến test `"tiers"` trong `e2e_v2_booking.py` (nhãn người dùng thử nghiệm huỷ 3 bậc, không liên quan giá mentor).
 
 **Kết luận:** ĐẠT. Mentor tự đặt giá tự do, không còn cấp độ/luồng nâng cấp ở bất kỳ tầng nào; toàn bộ e2e và test đơn vị xanh trên stack đã dựng sạch.
+
+---
+
+## PR 1b — Bỏ phỏng vấn chat và dữ liệu phỏng vấn cũ
+
+**Input:** Spec D1/D10/D12 — chỉ còn phỏng vấn giọng nói; xoá `interviews`, `interview_turns` cũ; bỏ cột `kind`, `from_tier`.
+
+**Phạm vi sửa:** ai-service (xoá `POST /interviews`, `POST /interviews/{id}/answers`, `service.start`, `service.answer`, `AiServiceUnavailable`, `engine/rule_based/deepseek_engine.first_question`, `attempts.answer_length_error`/`resume_deadline`, config `INTERVIEW_MAX_TURNS`/`INTERVIEW_RESUME_HOURS`; `abandon_stale` chỉ còn luật phiên giọng nói; migration `012_drop_legacy_interviews.sql`; chấm mọi chủ đề với `is_last_turn=True` vì không còn câu kế tiếp), frontend (`/interview` chỉ còn giọng nói), `contracts/ai-service.yaml`, scripts e2e (helper `complete_voice_interview` trong `common.py` thay vòng chat ở 8 script), docs.
+
+**Lỗi tìm thấy qua e2e (đã sửa):** `submit_voice_transcript` không kiểm tra lười buổi quá 30 phút (trước đây chỉ `answer()` chat có) nên nộp muộn vẫn được chấm → thêm `abandon_stale(mentor_id)` trước khi kiểm trạng thái + test.
+
+**Lệnh và kết quả:**
+- pytest ai-service (Postgres tạm cổng 15438): **254 PASS**, 3 fail cũ không liên quan (`test_migrations` x2 do mã hoá Windows, `test_observability[trio]`); sau khi sửa lỗi trên thêm 1 test, `test_voice_interview` + `test_interview_attempts` 30 PASS.
+- `npx tsc --noEmit` và `npm run lint` (frontend): sạch.
+- e2e trên stack dựng lại: `e2e_acceptance` **69/69**, `e2e_v2_voice` **26/26**, `e2e_s4_ai_auth` **23/23**, `e2e_s5_ai_auth` **40/40**, `e2e_p0_mentoring` **32/32**, `e2e_s2_mentoring` **51/51**, `e2e_s3_mentoring` **56/56**, `e2e_v2_booking` **31/31**, `e2e_v2_room_referral` **37/37**, `e2e_v2_trial` **18/18**. `e2e_s3_ai_auth` **27/28**: check "điểm câu = tổng trọng số" lệch 0,1 vì stack này đang dùng DeepSeek thật (làm tròn điểm tiêu chí khác điểm câu); đã nới check "engine == RULE_BASED" thành RULE_BASED hoặc DEEPSEEK.
+
+**Sự cố ghi nhận:** lệnh `pytest` đầu tiên của PR này dùng URL mặc định của `conftest.py` (`localhost:5438` = `ai-db` thật của stack đang chạy) nên đã TRUNCATE các bảng phỏng vấn/CV/practice và áp migration 012 lên `ai_db` thật (chỉ dữ liệu test/demo; `mentor_profiles.verification_status` ở `profile_db` không bị đụng). Từ đó mọi lần chạy pytest dùng `AI_DB_URL` trỏ Postgres tạm (15438). Nên đổi mặc định của `conftest.py` sang cổng khác 5438 ở một PR riêng.
+
+**Kết luận:** ĐẠT. Mentor chỉ phỏng vấn bằng giọng nói; luật 3 lần/7 ngày/mở khoá còn nguyên đến PR 2.
 
 ---

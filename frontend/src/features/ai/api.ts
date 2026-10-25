@@ -5,26 +5,20 @@ import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, In
 export const aiApi = {
   // AI Interview — /interviews/me trả 204 (null) khi mentor chưa phỏng vấn lần nào
   myInterview: () => api<Interview | null>("/api/ai/interviews/me"),
-  // US-22: bắt buộc selfAnswerAcknowledged = true (400 SELF_ANSWER_ACK_REQUIRED); 409 INTERVIEW_COOLDOWN / INTERVIEW_LOCKED
-  startInterview: (selfAnswerAcknowledged: boolean) =>
-    api<Interview>("/api/ai/interviews", { method: "POST", body: { selfAnswerAcknowledged } }),
   interviewEligibility: () => api<InterviewEligibility>("/api/ai/interviews/eligibility"),
   adminInterviewEligibility: (mentorId: Uuid) => api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/eligibility`),
   unlockInterviews: (mentorId: Uuid, note: string) =>
     api<InterviewEligibility>(`/api/ai/admin/interviews/mentors/${mentorId}/unlock`, { method: "POST", body: { note } }),
-  // pastedLargeText: dán > 500 ký tự trong một lần (PRD-AIV-2) — chỉ gắn cờ cho admin, không chặn
-  answerInterview: (id: Uuid, answer: string, pastedLargeText = false) =>
-    api<Interview>(`/api/ai/interviews/${id}/answers`, { method: "POST", body: { answer, pastedLargeText } }),
   interview: (id: Uuid) => api<Interview>(`/api/ai/interviews/${id}`),
   adminInterviews: (status: InterviewStatus | "" = "") => api<Interview[]>(`/api/ai/admin/interviews?status=${status}`),
   reviewInterview: (id: Uuid, decision: ReviewDecision, note: string) =>
     api<Interview>(`/api/ai/admin/interviews/${id}/review`, { method: "POST", body: { decision, note } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
-  // FR-7.7 — phỏng vấn giọng nói: cùng điều kiện với chat; gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
-  // 400 VOICE_CONSENT_REQUIRED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.
+  // FR-7.7 — phỏng vấn giọng nói (cách duy nhất): gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
+  // 400 SELF_ANSWER_ACK_REQUIRED / VOICE_CONSENT_REQUIRED; 409 INTERVIEW_COOLDOWN / INTERVIEW_LOCKED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.
   startVoiceInterview: (selfAnswerAcknowledged: boolean, consentExternalAi: boolean) =>
     api<VoiceInterviewStart>("/api/ai/interviews/voice", { method: "POST", body: { selfAnswerAcknowledged, consentExternalAi } }),
-  // Bản ghi → chấm như chat → PENDING_REVIEW. 400 EMPTY_TRANSCRIPT
+  // Bản ghi → chấm theo chủ đề → PENDING_REVIEW. 400 EMPTY_TRANSCRIPT
   submitVoiceTranscript: (id: Uuid, items: VoiceTranscriptItem[]) =>
     api<Interview>(`/api/ai/interviews/${id}/voice-transcript`, { method: "POST", body: { items } }),
   // FR-10.x — mentee luyện phỏng vấn với AI (1 buổi miễn phí; 409 PRACTICE_FREE_USED)

@@ -77,8 +77,8 @@ components:
         status: { type: string, enum: [IN_PROGRESS, PENDING_REVIEW, APPROVED, REJECTED, RETAKE_REQUESTED, ABANDONED] }
         mode:
           type: string
-          enum: [CHAT, VOICE]
-          description: "FR-7.7 — CHAT (hỏi-đáp bằng chữ) | VOICE (OpenAI Realtime; mỗi chủ đề đã hỏi là một lượt, maxTurns = số chủ đề kế hoạch)"
+          enum: [VOICE]
+          description: "FR-7.7 — luôn VOICE (OpenAI Realtime; mỗi chủ đề đã hỏi là một lượt, maxTurns = số chủ đề kế hoạch). Luồng chat đã bỏ (D1)"
         consentExternalAi: { type: boolean, description: "FR-7.7 — mentor đồng ý âm thanh được OpenAI (Mỹ) xử lý (true với VOICE)" }
         plan:
           type: array
@@ -110,14 +110,10 @@ components:
           format: date-time
           nullable: true
           description: >-
-            US-43 (PRD-AIV-3) — IN_PROGRESS tiếp tục được tới hoạt động gần nhất + INTERVIEW_RESUME_HOURS (24 giờ); VOICE: bắt đầu +
-            VOICE_SESSION_MINUTES (30 phút). Quá hạn → ABANDONED (tính là 1 lần)
+            IN_PROGRESS kết nối lại được tới bắt đầu + VOICE_SESSION_MINUTES (30 phút). Quá hạn → ABANDONED (tính là 1 lần)
         feedbackVisible:
           type: boolean
           description: "US-43 (PRD-AIV-5) — mentor chỉ thấy score / feedback / rubric từng câu khi APPROVED / REJECTED / RETAKE_REQUESTED; admin luôn thấy"
-        answerMinChars: { type: integer, example: 50 }
-        answerMaxChars: { type: integer, example: 3000 }
-        softTimerSeconds: { type: integer, example: 360, description: "US-43 (PRD-AIV-2) — đồng hồ gợi ý mỗi câu, không bắt buộc" }
     RubricScores:
       type: object
       description: "US-23 (PRD 6.1) — mỗi tiêu chí 0-10. Trọng số 40/30/15/15."
@@ -141,7 +137,6 @@ components:
         locked: { type: boolean }
         canStart: { type: boolean, description: true khi được bắt đầu buổi mới hoặc đang có buổi dở }
         reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, LOCKED, COOLDOWN] }
-        questionCount: { type: integer, description: Số câu hỏi của một buổi (INTERVIEW_MAX_TURNS) }
         voiceAvailable: { type: boolean, description: "FR-7.7 — server có OPENAI_API_KEY (lựa chọn Giọng nói dùng được)" }
     VoiceSession:
       type: object
@@ -427,15 +422,6 @@ components:
       properties:
         answer: { type: string, maxLength: 5000, description: "Bắt buộc (không rỗng) trừ khi skipped = true — 400 ANSWER_REQUIRED" }
         skipped: { type: boolean, default: false, description: "US-45 (PRD-CV-3) — “Bỏ qua”: câu được lưu answer rỗng, skipped = true; vẫn sinh goal khi hết câu" }
-    AnswerInput:
-      type: object
-      required: [answer]
-      properties:
-        answer: { type: string, minLength: 1, maxLength: 5000 }
-        pastedLargeText:
-          type: boolean
-          default: false
-          description: "PRD-AIV-2: trình duyệt phát hiện dán > 500 ký tự trong một lần => lượt bị gắn cờ COPIED_ANSWER (không chặn)"
 security:
   - bearerAuth: []
 paths:
@@ -456,32 +442,6 @@ paths:
         "200": { description: "{ status, service, dbConnected, llmEnabled, llmProvider, model }" }
 
   # ---------------- AI Interview (FR-7.x) ----------------
-  /api/ai/interviews:
-    post:
-      summary: FR-7.1 (MENTOR) Bắt đầu phỏng vấn (hoặc trả về buổi đang dở). Cần có hồ sơ mentor.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [selfAnswerAcknowledged]
-              properties:
-                selfAnswerAcknowledged:
-                  type: boolean
-                  description: 'US-22 (PRD-AIV-1): phải là true — "Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"'
-      responses:
-        "200":
-          description: Buổi phỏng vấn với câu hỏi đầu tiên
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Interview" }
-        "400": { description: SELF_ANSWER_ACK_REQUIRED (thiếu body / không phải true) | PROFILE_REQUIRED }
-        "409":
-          description: >
-            INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED (bị từ chối 3 lần, chờ admin mở khoá) |
-            INTERVIEW_COOLDOWN — có thêm `retryAfter` (date-time), vd.
-            {"error":{"code":"INTERVIEW_COOLDOWN","message":"...","retryAfter":"2026-11-17T03:00:00Z"}}
   /api/ai/interviews/eligibility:
     get:
       summary: US-22 (MENTOR) Số lần phỏng vấn đã dùng / còn lại, thời gian chờ, bị khoá
@@ -504,27 +464,11 @@ paths:
       responses:
         "200": { description: Interview }
         "404": { description: INTERVIEW_NOT_FOUND }
-  /api/ai/interviews/{id}/answers:
-    post:
-      summary: >
-        FR-7.2 → FR-7.4 (MENTOR) Trả lời câu hỏi hiện tại. Engine chấm điểm và sinh câu kế tiếp;
-        sau lượt cuối tổng hợp đánh giá, chuyển PENDING_REVIEW và thông báo admin.
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/AnswerInput" }
-      responses:
-        "200": { description: Interview sau lượt trả lời }
-        "400": { description: "US-43 (PRD-AIV-2) — ANSWER_TOO_SHORT (< 50 ký tự sau khi trim) | ANSWER_TOO_LONG (> 3000)" }
-        "409": { description: INTERVIEW_NOT_IN_PROGRESS | INTERVIEW_ABANDONED (quá 72 giờ không hoạt động) | NO_OPEN_QUESTION | ALREADY_ANSWERED }
-        "502": { description: AI_ENGINE_UNAVAILABLE }
   /api/ai/interviews/voice:
     post:
       summary: >
-        FR-7.7 (MENTOR) Bắt đầu AI Interview bằng giọng nói — cùng điều kiện với POST /api/ai/interviews (số lần, chờ 7 ngày,
-        khoá, chờ duyệt). Tạo buổi IN_PROGRESS mode VOICE (maxTurns = số chủ đề, VOICE_INTERVIEW_TOPICS)
+        FR-7.7 (MENTOR) Bắt đầu AI Interview bằng giọng nói — cách duy nhất (luồng chat đã bỏ). Điều kiện: số lần, chờ 7 ngày,
+        khoá, chờ duyệt. Tạo buổi IN_PROGRESS mode VOICE (maxTurns = số chủ đề, VOICE_INTERVIEW_TOPICS)
         và trả client secret. Gọi lại khi đang có buổi giọng nói chưa quá 30 phút => cùng buổi, client secret mới (kết nối lại).
         Quá 30 phút chưa gửi bản ghi => ABANDONED (tính là 1 lần).
       requestBody:
@@ -546,8 +490,8 @@ paths:
         "400": { description: VOICE_CONSENT_REQUIRED | SELF_ANSWER_ACK_REQUIRED | PROFILE_REQUIRED }
         "409":
           description: >
-            Như POST /api/ai/interviews (INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED | INTERVIEW_COOLDOWN) +
-            INTERVIEW_IN_PROGRESS (đang có buổi chat dở; ngược lại POST /api/ai/interviews trả mã này khi đang có buổi giọng nói dở)
+            INTERVIEW_PENDING_REVIEW | ALREADY_APPROVED | INTERVIEW_LOCKED (bị từ chối 3 lần, chờ admin mở khoá) |
+            INTERVIEW_COOLDOWN — có thêm `retryAfter` (date-time)
         "502": { description: VOICE_UNAVAILABLE — OpenAI lỗi / từ chối tạo phiên (không tạo buổi) }
         "503": { description: "VOICE_UNAVAILABLE — APP_ENV=prod và chưa có OPENAI_API_KEY (không tạo buổi)" }
   /api/ai/interviews/{id}/voice-transcript:
@@ -555,7 +499,7 @@ paths:
       summary: >
         FR-7.7 (MENTOR, chủ buổi) Gửi bản ghi buổi giọng nói đang IN_PROGRESS: mỗi chủ đề đã hỏi thành một lượt
         (question = lời người phỏng vấn nối " / ", answer = lời mentor; không trả lời => "(Mentor không trả lời câu hỏi này.)"),
-        chấm bằng engine + rubric như chat, rồi cùng luồng hoàn thành: PENDING_REVIEW, đồng bộ PENDING_REVIEW sang
+        chấm bằng engine + rubric, rồi PENDING_REVIEW, đồng bộ PENDING_REVIEW sang
         profile-service, thông báo admin + mentor. Điểm từng câu ẩn với mentor tới khi admin quyết định.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:

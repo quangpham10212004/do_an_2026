@@ -24,32 +24,12 @@ class ApiError(Exception):
         self.body = body
 
 
-_AI_START = re.compile(r"/api/ai/interviews/?$")
 _AI_REVIEW = re.compile(r"/api/ai/admin/interviews/[^/]+/review/?$")
 MIN_OVERRULE_NOTE = 10
 
 
 _LOGIN = re.compile(r"/api/auth/login/?$")
 _SESSION_REVIEW = re.compile(r"/api/mentoring/sessions/[^/]+/review/?$")
-
-
-_AI_ANSWER = re.compile(r"/api/ai/interviews/[^/]+/answers/?$")
-AI_ANSWER_MIN = 50
-
-
-def _answer_compat(method, url, body):
-    """
-    Tương thích US-43 (Sprint 5): câu trả lời AI Interview cần 50–3000 ký tự. Script cũ cố tình trả lời rất ngắn
-    ("Khong biet...") để có buổi bị đánh giá thấp → lặp lại chính câu đó cho đủ 50 ký tự (nội dung vẫn yếu).
-    """
-    if method == "POST" and isinstance(body, dict) and _AI_ANSWER.search(url):
-        text = (body.get("answer") or "").strip()
-        if 0 < len(text) < AI_ANSWER_MIN:
-            padded = text
-            while len(padded) < AI_ANSWER_MIN:
-                padded += " " + text
-            return {**body, "answer": padded}
-    return body
 
 
 def _review_compat(method, url, body):
@@ -66,15 +46,12 @@ def _review_compat(method, url, body):
 def _ai_interview_compat(method, url, body):
     """
     Tương thích cho các script seed/e2e dựng mentor đã duyệt (Sprint 3, Team C):
-    - US-22: POST /api/ai/interviews bắt buộc {"selfAnswerAcknowledged": true} — script không gửi body thì tự thêm.
     - US-23: admin APPROVE ngược khuyến nghị AI cần ghi chú >= 10 ký tự — các script "duyệt cho đủ điều kiện" với
       note ngắn ("ok") được bổ sung ghi chú. Script kiểm tra chính các quy tắc này (e2e_s3_ai_auth.py) luôn gửi body
       đầy đủ nên không bị ảnh hưởng.
     """
     if method != "POST":
         return body
-    if body is None and _AI_START.search(url):
-        return {"selfAnswerAcknowledged": True}
     if (isinstance(body, dict) and _AI_REVIEW.search(url) and body.get("decision") == "APPROVE"
             and len((body.get("note") or "").strip()) < MIN_OVERRULE_NOTE):
         return {**body, "note": ((body.get("note") or "").strip() + " (e2e: admin duyệt mentor thử nghiệm)").strip()}
@@ -103,8 +80,7 @@ def _auto_verify(url, res):
 
 
 def call(method, url, body=None, token=None, internal=False, raw_body=None, content_type=None, headers=None):
-    body = (_answer_compat(method, url, _review_compat(method, url, _ai_interview_compat(method, url, body)))
-            if raw_body is None else body)
+    body = _review_compat(method, url, _ai_interview_compat(method, url, body)) if raw_body is None else body
     headers = dict(headers or {})
     keep_unverified = headers.pop(KEEP_UNVERIFIED, None) is not None
     headers = {"Accept": "application/json", **headers}
@@ -242,3 +218,30 @@ SAMPLE_CV_LINES = [
     "SKILLS",
     "Java, Spring Boot, SQL, Git, Docker, JavaScript",
 ]
+
+
+STRONG_VOICE_ANSWER = ("Toi dung Redis cache-aside voi TTL, invalidation khi ghi; trade-off consistency va hieu nang; index, "
+                       "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
+
+
+def voice_transcript(topics, answer=STRONG_VOICE_ANSWER):
+    """Bản ghi như trình duyệt gửi: mỗi chủ đề = marker begin_topic + câu hỏi + câu trả lời (bỏ trống nếu answer rỗng)."""
+    items = [{"role": "assistant", "text": "Xin chào, chúng ta bắt đầu buổi phỏng vấn nhé."}]
+    for n in range(1, topics + 1):
+        items += [{"role": "marker", "topicNo": n}, {"role": "assistant", "text": f"Câu hỏi chủ đề {n}?"}]
+        if answer:
+            items.append({"role": "user", "text": answer})
+    return {"items": items}
+
+
+def start_voice_interview(token, ack=True, consent=True):
+    """FR-7.7 — POST /api/ai/interviews/voice. Không có OPENAI_API_KEY (ngoài prod) thì `voice` = null."""
+    return call("POST", f"{AI}/api/ai/interviews/voice",
+                {"selfAnswerAcknowledged": ack, "consentExternalAi": consent}, token=token)
+
+
+def complete_voice_interview(token, answer=STRONG_VOICE_ANSWER):
+    """Mentor bắt đầu buổi giọng nói rồi nộp bản ghi giả lập => buổi PENDING_REVIEW (chờ admin)."""
+    interview = start_voice_interview(token)["interview"]
+    return call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
+                voice_transcript(interview["maxTurns"], answer), token=token)

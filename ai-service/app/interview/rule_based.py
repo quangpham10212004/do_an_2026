@@ -143,12 +143,6 @@ def find_topic(domain: str, name: str) -> Topic | None:
     return _find_topic(InterviewContext(domain=domain, skills=[]), name)
 
 
-def first_question(ctx: InterviewContext) -> QuestionPlan:
-    first = topics_for(ctx.domain, ctx.skills)[0]
-    intro = "" if not ctx.skills else "Bạn đã khai báo kinh nghiệm với " + ", ".join(ctx.skills[:3]) + ". "
-    return QuestionPlan(topic=first.name, strategy="OPENING", question=intro + first.question)
-
-
 def _plan_next(ctx: InterviewContext, history: list[TurnRecord], current: TurnRecord, turn_score: float) -> QuestionPlan:
     all_turns = [*history, current]
     deepened = {t.topic for t in all_turns if t.strategy == "DEEPEN"}

@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call, make_pdf,
-                    multipart_file)
+                    multipart_file, start_voice_interview, voice_transcript)
 
 RUN = uuid.uuid4().hex[:6]
 results = []
@@ -55,27 +55,19 @@ def mentor_with_profile(name):
 
 
 def start(m):
-    return call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=m["accessToken"])
-
-
-def answer(m, iid, text):
-    return call("POST", f"{AI}/api/ai/interviews/{iid}/answers", {"answer": text}, token=m["accessToken"])
+    return start_voice_interview(m["accessToken"])["interview"]
 
 
 def us43(ctx):
-    print("US-43 — giới hạn câu trả lời, tiếp tục trong 24 giờ, nhận xét sau khi admin quyết định")
+    print("US-43 — phỏng vấn giọng nói: tiếp tục trong phiên, bỏ dở tính 1 lần, nhận xét sau khi admin quyết định")
     admin = ctx["admin"]
     m = mentor_with_profile("limits")
     iv = start(m)
-    check("US-43", "Buổi mới có hạn tiếp tục, giới hạn 50–3000, đồng hồ 6 phút",
-          iv["resumeDeadline"] and iv["answerMinChars"] == 50 and iv["answerMaxChars"] == 3000 and iv["softTimerSeconds"] == 360, iv)
-    # common.py tự đệm câu < 50 ký tự cho script cũ, nên kiểm tra giới hạn dưới nằm ở unit test ai-service;
-    # ở đây kiểm tra giới hạn trên.
-    status, code = error_code(lambda: answer(m, iv["id"], "a " * 1600))
-    check("US-43", "Câu trả lời > 3000 ký tự → 400 ANSWER_TOO_LONG", status == 400 and code == "ANSWER_TOO_LONG", (status, code))
-    while iv["status"] == "IN_PROGRESS":
-        iv = answer(m, iv["id"], STRONG)
-    check("US-43", "Thời gian từng câu được ghi lại", all(t["durationSeconds"] is not None for t in iv["turns"]))
+    check("US-43", "Buổi mới có hạn kết nối lại (resumeDeadline) và là phỏng vấn giọng nói",
+          iv["resumeDeadline"] and iv["mode"] == "VOICE", iv)
+    iv = call("POST", f"{AI}/api/ai/interviews/{iv['id']}/voice-transcript", voice_transcript(iv["maxTurns"], STRONG),
+              token=m["accessToken"])
+    check("US-43", "Thời gian từng chủ đề được ghi lại", all(t["durationSeconds"] is not None for t in iv["turns"]))
     check("US-43", "Chờ duyệt: mentor chưa thấy điểm / nhận xét từng câu", iv["status"] == "PENDING_REVIEW"
           and not iv["feedbackVisible"] and all(t["score"] is None and t["feedback"] is None for t in iv["turns"]), iv["status"])
     check("US-43", "…nhưng vẫn thấy tổng điểm", iv["overallScore"] is not None)
@@ -87,11 +79,12 @@ def us43(ctx):
 
     idle = mentor_with_profile("idle")
     iv2 = start(idle)
-    call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=23", internal=True)
-    check("US-43", "Sau 23 giờ vẫn tiếp tục được buổi cũ", start(idle)["id"] == iv2["id"])
-    call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=2", internal=True)
-    status, code = error_code(lambda: answer(idle, iv2["id"], STRONG))
-    check("US-43", "Quá 24 giờ → 409 INTERVIEW_ABANDONED", status == 409 and code == "INTERVIEW_ABANDONED", (status, code))
+    call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=0.1", internal=True)
+    check("US-43", "Trong phiên (6 phút) vẫn kết nối lại được buổi cũ", start(idle)["id"] == iv2["id"])
+    call("POST", f"{AI}/internal/dev/interviews/{iv2['id']}/age?hours=1", internal=True)
+    status, code = error_code(lambda: call("POST", f"{AI}/api/ai/interviews/{iv2['id']}/voice-transcript",
+                                           voice_transcript(iv2["maxTurns"], STRONG), token=idle["accessToken"]))
+    check("US-43", "Quá thời lượng phiên → 409 INTERVIEW_ABANDONED", status == 409 and code == "INTERVIEW_ABANDONED", (status, code))
     e = call("GET", f"{AI}/api/ai/interviews/eligibility", token=idle["accessToken"])
     check("US-43", "Buổi bỏ dở tính là 1 lần phỏng vấn", e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2, e)
     iv3 = start(idle)

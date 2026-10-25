@@ -9,7 +9,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call
+from common import AI, AUTH, MENTORING, PAYMENT, PROFILE, ApiError, call, complete_voice_interview
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -50,11 +50,7 @@ def approved_mentor(admin_token, name, rate):
         "yearsExperience": 6, "hourlyRate": rate, "capacity": 30, "isAvailable": True, "portfolioLinks": []}, token=t)
     call("PUT", f"{PROFILE}/api/profile/mentor/{m['userId']}/availability",
          {"slots": [{"dayOfWeek": d, "startTime": "06:00", "endTime": "23:00"} for d in range(1, 8)]}, token=t)
-    iv = call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=t)
-    answer = ("Toi dung Redis cache-aside voi TTL, invalidation khi ghi; trade-off consistency va hieu nang; index, "
-              "transaction, REST API versioning, pagination, idempotent. Vi du cu the o production.")
-    while iv["status"] == "IN_PROGRESS":
-        iv = call("POST", f"{AI}/api/ai/interviews/{iv['id']}/answers", {"answer": answer}, token=t)
+    iv = complete_voice_interview(t)
     call("POST", f"{AI}/api/ai/admin/interviews/{iv['id']}/review",
          {"decision": "APPROVE", "note": "Duyet cho e2e v2.0 trial"}, token=admin_token)
     return m

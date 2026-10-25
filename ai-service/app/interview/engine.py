@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app import config, engines
 from app.interview import deepseek_engine, rubric, rule_based
-from app.interview.models import FinalAssessment, InterviewContext, QuestionPlan, TurnEvaluation, TurnRecord
+from app.interview.models import FinalAssessment, InterviewContext, TurnEvaluation, TurnRecord
 from app.llm.deepseek import get_client
 
 R = TypeVar("R")
@@ -41,14 +41,6 @@ def _result(value, engine: str, fallback: bool) -> EngineResult:
     return EngineResult(value, engine, fallback)
 
 
-def _first_question(engine: str, ctx: InterviewContext) -> EngineResult[QuestionPlan]:
-    if engine == engines.DEEPSEEK:
-        plan, fallback = deepseek_engine.first_question(get_client(), ctx)
-    else:
-        plan, fallback = rule_based.first_question(ctx), False
-    return _result(plan, engine, fallback)
-
-
 def _evaluate(engine: str, ctx: InterviewContext, history: list[TurnRecord], current: TurnRecord,
               is_last_turn: bool) -> EngineResult[TurnEvaluation]:
     if rubric.detect_injection(current.answer):
@@ -67,10 +59,6 @@ def _summarize(engine: str, ctx: InterviewContext, turns: list[TurnRecord]) -> E
     else:
         result, fallback = rule_based.summarize(ctx, turns), False
     return _result(result, engine, fallback)
-
-
-async def first_question(preferred: str | None, ctx: InterviewContext) -> EngineResult[QuestionPlan]:
-    return await run_in_threadpool(_first_question, engines.select(preferred), ctx)
 
 
 async def evaluate(preferred: str | None, ctx: InterviewContext, history: list[TurnRecord], current: TurnRecord,

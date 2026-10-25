@@ -1,4 +1,4 @@
-"""FR-7.7 — AI Interview của mentor bằng giọng nói: cùng điều kiện bắt đầu và cùng luồng hoàn thành với chat."""
+"""FR-7.7 — AI Interview của mentor bằng giọng nói."""
 import asyncio
 import json
 import uuid
@@ -12,7 +12,7 @@ from app.interview import planner, voice
 from app.interview.voice import TranscriptItem
 from tests.conftest import auth
 from tests.test_interview_attempts import finish, reject
-from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, start
+from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, finish
 
 
 def items(*raw):
@@ -177,9 +177,6 @@ def test_calling_again_within_30_minutes_reconnects_to_the_same_interview(client
     again = start_voice(client, mentor_id).json()
     assert again["interview"]["id"] == first["interview"]["id"]
     assert again["voice"]["clientSecret"] == "ek_2" and again["voice"]["topics"] == first["voice"]["topics"]
-    # Đang có buổi giọng nói dở thì không mở song song buổi chat.
-    res = start(client, mentor_id)
-    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_IN_PROGRESS"
 
 
 def test_voice_after_30_minutes_without_transcript_is_abandoned_and_counts(client, db, fake_profile, fake_audit, mentor_id):
@@ -194,7 +191,7 @@ def test_voice_after_30_minutes_without_transcript_is_abandoned_and_counts(clien
     assert second["id"] != first["id"]
 
 
-def test_voice_follows_the_chat_cooldown_and_lock(client, db, fake_profile, fake_mentoring, mentor_id):
+def test_voice_follows_the_cooldown_and_lock(client, db, fake_profile, fake_mentoring, mentor_id):
     admin = auth(uuid.uuid4(), "ADMIN")
     reject(client, finish(client, mentor_id)["id"], admin)
     res = start_voice(client, mentor_id)
@@ -218,8 +215,7 @@ def test_voice_while_pending_review_is_blocked(client, db, fake_profile, fake_me
 
 def test_approved_mentor_cannot_start_another_voice_interview(client, db, fake_profile, fake_mentoring, mentor_id):
     """D6/D10 — bỏ luồng xin nâng cấp: mentor đã APPROVED không mở được buổi phỏng vấn mới."""
-    from tests.test_interview_flow import answer_all
-    interview, _ = answer_all(client, start(client, mentor_id).json(), mentor_id, text=STRONG_ANSWER)
+    interview = finish(client, mentor_id)
     admin = auth(uuid.uuid4(), "ADMIN")
     approved = client.post(f"/api/ai/admin/interviews/{interview['id']}/review",
                            json={"decision": "APPROVE", "note": None}, headers=admin)
@@ -230,7 +226,7 @@ def test_approved_mentor_cannot_start_another_voice_interview(client, db, fake_p
 
 # ---------- bản ghi → PENDING_REVIEW ----------
 
-def test_transcript_goes_through_the_chat_completion_path(client, db, fake_profile, fake_mentoring, mentor_id):
+def test_transcript_goes_to_pending_review(client, db, fake_profile, fake_mentoring, mentor_id):
     iv = start_voice(client, mentor_id).json()["interview"]
     res = post_transcript(client, mentor_id, iv["id"])
     assert res.status_code == 200, res.text
@@ -265,10 +261,13 @@ def test_transcript_without_any_topic_is_rejected(client, db, fake_profile, ment
     assert res.status_code == 400 and res.json()["error"]["code"] == "EMPTY_TRANSCRIPT"
 
 
-def test_transcript_rules_owner_and_mode(client, db, fake_profile, fake_mentoring, mentor_id):
+def test_transcript_rules_owner(client, db, fake_profile, fake_mentoring, mentor_id):
     iv = start_voice(client, mentor_id).json()["interview"]
     assert post_transcript(client, uuid.uuid4(), iv["id"]).status_code == 403
-    chat_mentor = uuid.uuid4()
-    chat = start(client, chat_mentor).json()
-    res = post_transcript(client, chat_mentor, chat["id"])
-    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_NOT_VOICE"
+
+
+def test_transcript_after_session_window_is_rejected_without_waiting_for_the_sweep(client, db, fake_profile, fake_mentoring, mentor_id):
+    iv = start_voice(client, mentor_id).json()["interview"]
+    asyncio.run(_age(iv["id"], config.VOICE_SESSION_MINUTES + 1))
+    res = post_transcript(client, mentor_id, iv["id"])
+    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_ABANDONED"

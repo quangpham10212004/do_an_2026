@@ -55,7 +55,7 @@ def test_cv_parse_errors_use_common_format(client, db):
 
 def test_validation_error_format(client, db, fake_profile):
     interview = uuid.uuid4()
-    res = client.post(f"/api/ai/interviews/{interview}/answers", json={"answer": ""},
+    res = client.post(f"/api/ai/interviews/{interview}/voice-transcript", json={"items": "x"},
                       headers=auth(uuid.uuid4(), "MENTOR"))
     assert res.status_code == 400 and res.json()["error"]["code"] == "VALIDATION_ERROR"
 

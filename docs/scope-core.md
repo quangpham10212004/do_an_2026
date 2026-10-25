@@ -37,13 +37,13 @@ Bắt buộc đi kèm (nền tảng của 5 chức năng trên, không tính là
 - **payment-service** khó tách: mentoring-service dùng `PaymentClient`, `PaymentOutbox`, `AttendanceService`,
   `DisputeService`, `AccountLockService`; auth-service cũng cấu hình `PAYMENT_SERVICE_URL`; ai-service/matching-service không phụ thuộc.
   Muốn bỏ ví phải sửa luồng đặt lịch của mentoring (cho đặt thẳng, không giữ tiền) — chưa làm.
-- **Voice interview** (hiện trạng): chỉ bật khi có `OPENAI_API_KEY`, để trống thì chat vẫn chạy. ⚒ Theo [design-mentor-verification.md](design-mentor-verification.md) (D10) chế độ chat của mentor bị **xoá**, vòng 1 xác thực là giọng nói, nên mentor mới **cần** `OPENAI_API_KEY`; e2e và demo dùng OpenAI giả lập.
+- **Voice interview** (hiện trạng): cách duy nhất để xác thực mentor (PR 1b đã xoá chat, D10) nên production **cần** `OPENAI_API_KEY` (thiếu → 503 `VOICE_UNAVAILABLE`); ngoài production không có khoá thì `voice: null` và e2e/demo gửi bản chép lời giả lập.
 
 ## 4. Gợi ý demo tập trung
 
 1. Mentee đăng ký → tải CV → chatbot làm rõ mục tiêu → hồ sơ mục tiêu.
 2. AI Matching gợi ý mentor (giải thích điểm khớp).
-3. Mentor mới phỏng vấn xác thực bằng chat → được gợi ý hạng. (⚒ Sau khi hiện thực thiết kế mới: vòng 1 AI giọng nói, admin đề xuất giờ, vòng 2 admin phỏng vấn qua Jitsi → duyệt, không còn hạng.)
+3. Mentor mới phỏng vấn xác thực bằng giọng nói (chat đã gỡ ở PR 1b) → được gợi ý. (⚒ Sau khi hiện thực thiết kế mới: vòng 1 AI giọng nói, admin đề xuất giờ, vòng 2 admin phỏng vấn qua Jitsi → duyệt, không còn hạng.)
 4. Mentee gửi yêu cầu → mentor chấp nhận → đặt lịch → nhắn tin → đánh giá.
 
 Dữ liệu demo: `python3 scripts/seed_demo.py`. Chạy AI ở chế độ rule-based (không cần khoá) để demo ổn định, offline.

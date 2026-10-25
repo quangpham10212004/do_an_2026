@@ -32,7 +32,6 @@ from app.security import AuthUser
 
 log = logging.getLogger(__name__)
 
-MAX_TURNS = config.INTERVIEW_MAX_TURNS
 _DATETIME = TypeAdapter(datetime)
 
 
@@ -68,17 +67,15 @@ def _eligibility_view(e: attempts.Eligibility, latest) -> EligibilityView:
               else "COOLDOWN" if e.cooldown_until is not None else None)
     return EligibilityView(attempts_used=e.attempts_used, attempts_left=e.attempts_left, max_attempts=e.max_attempts,
                            cooldown_until=e.cooldown_until, locked=e.locked,
-                           can_start=reason in (None, "IN_PROGRESS"), reason=reason, question_count=MAX_TURNS,
+                           can_start=reason in (None, "IN_PROGRESS"), reason=reason,
                            voice_available=voice.available())
 
 
 async def abandon_stale(mentor_id: UUID | None = None) -> int:
-    """US-43 (PRD-AIV-3) — buổi IN_PROGRESS không hoạt động quá 24 giờ → ABANDONED (tính là 1 lần phỏng vấn).
-    FR-7.7 — buổi giọng nói quá VOICE_SESSION_MINUTES phút chưa gửi bản ghi cũng vậy."""
+    """FR-7.7 — buổi giọng nói quá VOICE_SESSION_MINUTES phút chưa gửi bản ghi → ABANDONED (tính là 1 lần phỏng vấn)."""
     pool = await get_pool()
     now = datetime.now(timezone.utc)
-    rows = await repo.abandon_stale(pool, now - attempts.RESUME_WINDOW, mentor_id,
-                                    now - timedelta(minutes=config.VOICE_SESSION_MINUTES))
+    rows = await repo.abandon_stale(pool, now - timedelta(minutes=config.VOICE_SESSION_MINUTES), mentor_id)
     for r in rows:
         await audit.record(None, "SYSTEM", "INTERVIEW_ABANDONED", "INTERVIEW", str(r["id"]),
                            None, {"mentorId": str(r["mentor_id"])})
@@ -108,12 +105,12 @@ async def eligibility(mentor_id: UUID) -> EligibilityView:
 class _Start:
     pool: object
     mentor: dict
-    in_progress: object | None  # buổi IN_PROGRESS còn hạn (chat hoặc giọng nói) => tiếp tục thay vì tạo mới
+    in_progress: object | None  # buổi IN_PROGRESS còn hạn => tiếp tục thay vì tạo mới
 
 
 async def _prepare_start(user: AuthUser, self_answer_acknowledged: bool) -> _Start:
     """
-    Kiểm tra chung cho cả chat (FR-7.1) và giọng nói (FR-7.7): xác nhận tự trả lời, hồ sơ mentor, buổi chờ duyệt,
+    Kiểm tra trước khi bắt đầu phỏng vấn giọng nói (FR-7.7): xác nhận tự trả lời, hồ sơ mentor, buổi chờ duyệt,
     số lần / thời gian chờ (xác thực) hoặc mốc 90 ngày (xin nâng cấp). Không tạo dữ liệu.
     """
     if not self_answer_acknowledged:
@@ -149,49 +146,20 @@ def _plan_of(interview) -> planner.InterviewPlan:
     return planner.load(interview["plan"]) or planner.mentor_bank_plan(interview["domain"], list(interview["skills"] or []))
 
 
-def _mode_conflict(in_progress) -> errors.AiError:
-    other = "giọng nói" if in_progress["mode"] == "VOICE" else "chat"
-    return errors.conflict("INTERVIEW_IN_PROGRESS", f"Bạn đang có buổi phỏng vấn {other} dở dang — hãy tiếp tục buổi đó")
-
-
 async def _after_start(user: AuthUser, mentor: dict) -> None:
     if mentor.get("verificationStatus") == "REJECTED":
         await profile.update_verification(user.user_id, "PENDING_INTERVIEW")
 
 
-async def start(user: AuthUser, self_answer_acknowledged: bool) -> InterviewView:
-    """FR-7.1 — bắt đầu (hoặc tiếp tục) buổi phỏng vấn chat của mentor."""
-    s = await _prepare_start(user, self_answer_acknowledged)
-    if s.in_progress is not None:
-        if s.in_progress["mode"] != "CHAT":
-            raise _mode_conflict(s.in_progress)
-        return await _view(s.pool, s.in_progress, for_admin=False)
-
-    mentor = s.mentor
-    skills = list(mentor.get("skills") or [])
-    ctx = _context(mentor["domain"], skills, mentor, MAX_TURNS)
-    first = await interview_engine.first_question(None, ctx)
-
-    async with s.pool.acquire() as conn, conn.transaction():
-        interview = await repo.insert(conn, user.user_id, mentor["domain"], skills, MAX_TURNS, first.engine)
-        plan = first.value
-        await repo.insert_turn(conn, interview["id"], 1, plan.topic, plan.strategy, plan.question)
-
-    await _after_start(user, mentor)
-    return await _view(s.pool, interview, for_admin=False)
-
-
 async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_external_ai: bool) -> VoiceInterviewStart:
     """
-    FR-7.7 — bắt đầu buổi phỏng vấn giọng nói: cùng điều kiện với chat (_prepare_start). Gọi lại khi đang có buổi giọng
+    FR-7.7 — bắt đầu buổi phỏng vấn giọng nói: Gọi lại khi đang có buổi giọng
     nói chưa quá VOICE_SESSION_MINUTES phút => cùng buổi đó với client secret mới (kết nối lại khi rớt cuộc gọi).
     """
     voice.require_consent(consent_external_ai)
     voice.ensure_available()
     s = await _prepare_start(user, self_answer_acknowledged)
     if s.in_progress is not None:
-        if s.in_progress["mode"] != "VOICE":
-            raise _mode_conflict(s.in_progress)
         topics = _plan_of(s.in_progress).topics  # kết nối lại: đúng kế hoạch đã soạn
         session = await voice.mint(user.user_id, voice.build_instructions(s.mentor, topics), [t.name for t in topics])
         return VoiceInterviewStart(interview=await _view(s.pool, s.in_progress, for_admin=False), voice=session)
@@ -203,15 +171,15 @@ async def start_voice(user: AuthUser, self_answer_acknowledged: bool, consent_ex
     # Tạo client secret TRƯỚC khi ghi CSDL: OpenAI lỗi (502) thì không có buổi nào bị tính.
     session = await voice.mint(user.user_id, voice.build_instructions(mentor, plan.topics), [t.name for t in plan.topics])
     interview = await repo.insert(s.pool, user.user_id, mentor["domain"], skills, len(plan.topics), engines.select(None),
-                                  mode="VOICE", consent_external_ai=True, plan=planner.dump(plan))
+                                  plan=planner.dump(plan))
     await _after_start(user, mentor)
     return VoiceInterviewStart(interview=await _view(s.pool, interview, for_admin=False), voice=session)
 
 
 async def _on_completed(mentor_id: UUID, updated) -> None:
-    """Buổi vừa sang PENDING_REVIEW (chat hoặc giọng nói): đồng bộ trạng thái xác thực + thông báo admin và mentor."""
+    """Buổi vừa sang PENDING_REVIEW: đồng bộ trạng thái xác thực + thông báo admin và mentor."""
     await profile.update_verification(mentor_id, "PENDING_REVIEW")
-    via = " (phỏng vấn giọng nói)" if updated["mode"] == "VOICE" else ""
+    via = " (phỏng vấn giọng nói)"
     await mentoring.notify_role(
         "ADMIN", "INTERVIEW_PENDING_REVIEW", "Có kết quả AI Interview cần duyệt",
         f"Mentor lĩnh vực {updated['domain']} đạt {updated['overall_score']:.1f}/100 điểm{via} "
@@ -225,14 +193,14 @@ async def _on_completed(mentor_id: UUID, updated) -> None:
 async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: list[TranscriptItem]) -> InterviewView:
     """
     FR-7.7 — bản ghi buổi giọng nói: gộp theo chủ đề → mỗi chủ đề một lượt (câu hỏi = lời người phỏng vấn nối " / ",
-    câu trả lời = lời mentor), chấm bằng engine + rubric như chat, rồi đúng luồng hoàn thành của chat (PENDING_REVIEW).
+    câu trả lời = lời mentor), chấm bằng engine + rubric rồi sang PENDING_REVIEW.
     """
     pool = await get_pool()
     interview = await _find(pool, interview_id)
     if interview["mentor_id"] != user.user_id:
         raise errors.forbidden("Đây không phải buổi phỏng vấn của bạn")
-    if interview["mode"] != "VOICE":
-        raise errors.conflict("INTERVIEW_NOT_VOICE", "Buổi phỏng vấn này không phải phỏng vấn giọng nói")
+    if interview["status"] == "IN_PROGRESS" and await abandon_stale(user.user_id):
+        interview = await _find(pool, interview_id)  # quá VOICE_SESSION_MINUTES: job nền chưa quét kịp
     if interview["status"] == "ABANDONED":
         raise errors.conflict("INTERVIEW_ABANDONED", "Buổi phỏng vấn giọng nói đã quá hạn nên bị huỷ và tính là một lần phỏng vấn")
     if interview["status"] != "IN_PROGRESS":
@@ -251,7 +219,7 @@ async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: lis
     for i, turn in enumerate(grouped):
         record = TurnRecord(turn_no=i + 1, topic=topics[turn.topic_no - 1].name, strategy="OPENING" if i == 0 else "PIVOT",
                             question=" / ".join(turn.questions), answer=" ".join(turn.answers) or voice.NO_ANSWER)
-        evaluation = await interview_engine.evaluate(interview["engine"], ctx, history, record, i == len(grouped) - 1)
+        evaluation = await interview_engine.evaluate(interview["engine"], ctx, history, record, True)
         history.append(record.model_copy(update={"score": evaluation.value.score, "flags": evaluation.value.flags}))
         scored.append((record, evaluation))
     final = (await interview_engine.summarize(interview["engine"], ctx, history)).value
@@ -268,76 +236,6 @@ async def submit_voice_transcript(user: AuthUser, interview_id: UUID, items: lis
                                       "\n".join(final.weaknesses), final.recommendation)
 
     await _on_completed(user.user_id, updated)
-    return await _view(pool, updated, for_admin=False)
-
-
-async def answer(user: AuthUser, interview_id: UUID, text: str, pasted_large_text: bool = False) -> InterviewView:
-    """FR-7.2 — mentor gửi câu trả lời cho câu hỏi hiện tại.
-    pasted_large_text: trình duyệt phát hiện dán > 500 ký tự trong một lần (PRD-AIV-2) => gắn cờ COPIED_ANSWER."""
-    text = text.strip()
-    pool = await get_pool()
-    interview = await _find(pool, interview_id)
-    if interview["mentor_id"] != user.user_id:
-        raise errors.forbidden("Đây không phải buổi phỏng vấn của bạn")
-    # US-43 (PRD-AIV-3) — quá 72 giờ không hoạt động: buổi bị bỏ dở, không trả lời tiếp được.
-    if interview["status"] == "IN_PROGRESS" and await abandon_stale(user.user_id):
-        interview = await _find(pool, interview_id)
-    if interview["status"] == "ABANDONED":
-        raise errors.conflict("INTERVIEW_ABANDONED",
-                              "Buổi phỏng vấn đã quá 72 giờ không hoạt động nên bị huỷ và tính là một lần phỏng vấn")
-    # US-43 (PRD-AIV-2) — 50–3000 ký tự.
-    length_error = attempts.answer_length_error(text)
-    if length_error == "ANSWER_TOO_SHORT":
-        raise errors.bad_request(length_error, f"Câu trả lời cần ít nhất {attempts.ANSWER_MIN} ký tự")
-    if length_error == "ANSWER_TOO_LONG":
-        raise errors.bad_request(length_error, f"Câu trả lời tối đa {attempts.ANSWER_MAX} ký tự")
-    if interview["status"] != "IN_PROGRESS":
-        raise errors.conflict("INTERVIEW_NOT_IN_PROGRESS", "Buổi phỏng vấn đã kết thúc")
-
-    turns = await repo.turns_of(pool, interview_id)
-    current = next((t for t in turns if t["answer"] is None), None)
-    if current is None:
-        raise errors.conflict("NO_OPEN_QUESTION", "Không có câu hỏi đang chờ trả lời")
-
-    mentor = await profile.find_mentor(user.user_id)
-    ctx = _context(interview["domain"], list(interview["skills"] or []), mentor, interview["max_turns"])
-    history = [repo.to_record(t) for t in turns if t["answer"] is not None]
-    current_record = TurnRecord(turn_no=current["turn_no"], topic=current["topic"], strategy=current["strategy"],
-                                question=current["question"], answer=text)
-    is_last = current["turn_no"] >= interview["max_turns"]
-
-    # Gọi engine TRƯỚC khi mở transaction (DeepSeek có thể mất vài giây).
-    evaluation = await interview_engine.evaluate(interview["engine"], ctx, history, current_record, is_last)
-    flags = list(evaluation.value.flags)
-    if pasted_large_text and rubric.FLAG_COPIED_ANSWER not in flags:
-        flags.append(rubric.FLAG_COPIED_ANSWER)
-    assessment = None
-    if is_last:
-        scored = current_record.model_copy(update={"score": evaluation.value.score, "flags": flags})
-        assessment = await interview_engine.summarize(interview["engine"], ctx, [*history, scored])
-
-    async with pool.acquire() as conn, conn.transaction():
-        written = await repo.answer_turn(conn, current["id"], text, evaluation.value, flags,
-                                         evaluation.used_engine, evaluation.model, evaluation.prompt_version,
-                                         evaluation.fallback_used)
-        if not written:
-            raise errors.conflict("ALREADY_ANSWERED", "Câu hỏi này đã được trả lời")
-        if assessment is None:
-            plan = evaluation.value.next
-            if plan is None:
-                raise AiServiceUnavailable()
-            next_turn = current["turn_no"] + 1
-            await repo.insert_turn(conn, interview_id, next_turn, plan.topic, plan.strategy, plan.question)
-            await repo.set_current_turn(conn, interview_id, next_turn)
-            updated = await _find(conn, interview_id)
-        else:
-            final = assessment.value
-            updated = await repo.complete(conn, interview_id, final.overall_score, final.summary,
-                                          "\n".join(final.strengths), "\n".join(final.weaknesses),
-                                          final.recommendation)
-
-    if updated["status"] == "PENDING_REVIEW":
-        await _on_completed(user.user_id, updated)
     return await _view(pool, updated, for_admin=False)
 
 
@@ -468,9 +366,3 @@ async def _find(db, interview_id: UUID):
     if interview is None:
         raise errors.not_found("INTERVIEW_NOT_FOUND", "Không tìm thấy buổi phỏng vấn")
     return interview
-
-
-class AiServiceUnavailable(errors.AiError):
-    def __init__(self) -> None:
-        super().__init__("AI_ENGINE_UNAVAILABLE",
-                         "Engine AI không sinh được câu hỏi tiếp theo, vui lòng gửi lại câu trả lời", status=502)

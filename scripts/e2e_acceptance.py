@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
-                    charge, make_pdf, multipart_file)
+                    charge, make_pdf, multipart_file, start_voice_interview, voice_transcript)
 
 VN = timezone(timedelta(hours=7))
 # US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
@@ -184,20 +184,13 @@ def main():
                                       {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token), 400)
     check(5, "Không gửi được yêu cầu tới mentor chưa xác thực", ok)
 
-    interview = call("POST", f"{AI}/api/ai/interviews", token=mentor_token)
-    strong = ("Toi dung Redis theo cache-aside voi TTL, invalidation khi ghi. Trong du an thuc te latency giam tu 300ms "
-              "xuong 40ms. Toi can nhac trade-off giua consistency va hieu nang, dung index, transaction, "
-              "REST API versioning va status code 201/404, pagination, idempotent. Vi du cu the o production.")
-    turns = 0
-    strategies = []
-    while interview["status"] == "IN_PROGRESS":
-        turns += 1
-        strategies.append(interview["currentQuestion"]["strategy"])
-        check(4, f"Lượt {turns}: điểm từng câu bị ẩn với mentor khi đang phỏng vấn",
-              all(t["score"] is None for t in interview["turns"])) if turns == 2 else None
-        interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": strong}, token=mentor_token)
-    check(4, f"AI Interview dừng sau đúng {interview['maxTurns']} lượt (FR-7.3)", turns == interview["maxTurns"])
-    check(4, "Câu hỏi thích ứng: có cả DEEPEN và PIVOT (FR-7.2)", "DEEPEN" in strategies and "PIVOT" in strategies, strategies)
+    started = start_voice_interview(mentor_token)
+    interview = started["interview"]
+    check(4, "Phỏng vấn giọng nói được tạo (FR-7.7): IN_PROGRESS, mode VOICE", interview["status"] == "IN_PROGRESS" and interview["mode"] == "VOICE")
+    interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
+                     voice_transcript(interview["maxTurns"]), token=mentor_token)
+    check(4, "Điểm từng câu bị ẩn với mentor khi chờ duyệt (PRD-AIV-5)", all(t["score"] is None for t in interview["turns"]))
+    check(4, f"Chấm đủ {interview['maxTurns']} chủ đề theo kế hoạch (FR-7.3)", len(interview["turns"]) == interview["maxTurns"])
     check(4, "Engine AI được ghi nhận (ai-service: DEEPSEEK hoặc RULE_BASED)", interview["engine"] in ("DEEPSEEK", "RULE_BASED"),
           interview["engine"])
     check(4, "Tổng hợp điểm + nhận xét, chờ admin duyệt (FR-7.4)",

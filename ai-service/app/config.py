@@ -43,7 +43,6 @@ VOICE_SESSION_MINUTES = float(os.getenv("VOICE_SESSION_MINUTES", "30"))
 PRACTICE_FREE_LIMIT = int(os.getenv("PRACTICE_FREE_LIMIT", "1"))
 
 # FR-7.3 / FR-8.4 — số lượt hỏi-đáp cố định của mỗi tính năng.
-INTERVIEW_MAX_TURNS = int(os.getenv("INTERVIEW_MAX_TURNS", "5"))
 ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))
 
 # US-22 (PRD-AIV-4) — số lần phỏng vấn tối đa (lần = buổi đã có kết quả) và thời gian chờ sau khi bị từ chối.

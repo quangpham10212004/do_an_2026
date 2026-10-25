@@ -264,8 +264,6 @@ services:
       MENTORING_SERVICE_URL: http://mentoring-service:8083
       AUTH_SERVICE_URL: http://auth-service:8081
       CV_STORAGE_DIR: /data/cv
-      INTERVIEW_MAX_TURNS: ${INTERVIEW_MAX_TURNS:-5}
-      INTERVIEW_RESUME_HOURS: ${INTERVIEW_RESUME_HOURS:-24}
       ENRICHMENT_MAX_TURNS: ${ENRICHMENT_MAX_TURNS:-4}
       # Để trống DEEPSEEK_API_KEY => AI Interview & CV enrichment dùng engine rule-based (chạy offline)
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

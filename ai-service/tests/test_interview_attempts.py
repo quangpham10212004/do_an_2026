@@ -10,7 +10,7 @@ from app import config
 from app.interview import attempts
 from app.interview.attempts import InterviewOutcome
 from tests.conftest import auth
-from tests.test_interview_flow import WEAK_ANSWER, answer_all, start
+from tests.test_interview_flow import WEAK_ANSWER, finish as _finish, start, start_iv
 
 NOW = datetime(2026, 11, 10, 3, 0, tzinfo=timezone.utc)
 WEEK = timedelta(days=7)
@@ -83,10 +83,7 @@ def reject(client, interview_id, admin):
 
 
 def finish(client, mentor_id):
-    res = start(client, mentor_id)
-    assert res.status_code == 200, res.text
-    interview, _ = answer_all(client, res.json(), mentor_id, text=WEAK_ANSWER)
-    return interview
+    return _finish(client, mentor_id, text=WEAK_ANSWER)
 
 
 @pytest.fixture
@@ -101,20 +98,17 @@ def eligibility(client, mentor_id):
 
 
 def test_start_requires_self_answer_acknowledgement(client, db, fake_profile, mentor_id):
-    for res in (client.post("/api/ai/interviews", headers=auth(mentor_id, "MENTOR")),
-                start(client, mentor_id, ack=False)):
-        assert res.status_code == 400
-        assert res.json()["error"]["code"] == "SELF_ANSWER_ACK_REQUIRED"
+    res = start(client, mentor_id, ack=False)
+    assert res.status_code == 400 and res.json()["error"]["code"] == "SELF_ANSWER_ACK_REQUIRED"
     started = start(client, mentor_id)
-    assert started.status_code == 200 and started.json()["selfAnswerAcknowledged"] is True
+    assert started.status_code == 200 and started.json()["interview"]["selfAnswerAcknowledged"] is True
 
 
 def test_eligibility_cooldown_lock_and_unlock(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
     admin = auth(uuid.uuid4(), "ADMIN")
     assert eligibility(client, mentor_id) == {"attemptsUsed": 0, "attemptsLeft": 3, "maxAttempts": 3,
                                               "cooldownUntil": None, "locked": False, "canStart": True,
-                                              "reason": None, "questionCount": 5,
-                                              "voiceAvailable": False}
+                                              "reason": None, "voiceAvailable": False}
     for n in range(1, 4):
         interview = finish(client, mentor_id)
         assert eligibility(client, mentor_id)["reason"] == "PENDING_REVIEW"
@@ -151,54 +145,27 @@ def test_eligibility_cooldown_lock_and_unlock(client, db, fake_profile, fake_men
     assert start(client, mentor_id).status_code == 200
 
 
-# ---------- US-43 (PRD-AIV-2, AIV-3) ----------
-
-def test_answer_length_rules():
-    assert attempts.answer_length_error("x" * 49) == "ANSWER_TOO_SHORT"
-    assert attempts.answer_length_error("   " + "x" * 50 + "   ") is None
-    assert attempts.answer_length_error("x" * 3000) is None
-    assert attempts.answer_length_error("x" * 3001) == "ANSWER_TOO_LONG"
-
+# ---------- bỏ dở ----------
 
 def test_abandoned_counts_as_attempt():
     e = attempts.evaluate([outcome("ABANDONED", 5)], NOW, 3, WEEK)
     assert e.attempts_used == 1 and e.cooldown_until is None
 
 
-def test_resume_deadline_follows_last_activity():
-    started = NOW - timedelta(hours=100)
-    assert attempts.resume_deadline(started, None) == started + timedelta(hours=24)
-    assert attempts.resume_deadline(started, NOW - timedelta(hours=1)) == NOW + timedelta(hours=23)
-
-
-def test_short_and_long_answers_are_rejected(client, db, fake_profile, fake_mentoring, mentor_id):
-    interview = start(client, mentor_id).json()
-    headers = auth(mentor_id, "MENTOR")
-    short = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": "Khong biet"}, headers=headers)
-    assert short.status_code == 400 and short.json()["error"]["code"] == "ANSWER_TOO_SHORT"
-    long = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": "a " * 1600}, headers=headers)
-    assert long.status_code == 400 and long.json()["error"]["code"] == "ANSWER_TOO_LONG"
-    assert interview["answerMinChars"] == 50 and interview["softTimerSeconds"] == 360
+def test_voice_interview_idle_is_abandoned_and_counts(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
+    interview = start_iv(client, mentor_id)
     assert interview["resumeDeadline"] is not None
-
-
-def test_interview_idle_24h_is_abandoned_and_counts(client, db, fake_profile, fake_mentoring, fake_audit, mentor_id):
-    interview = start(client, mentor_id).json()
     internal = {"X-Internal-Token": config.INTERNAL_API_KEY}
-    aged = client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=25", headers=internal)
+    aged = client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=1", headers=internal)
     assert aged.status_code == 200, aged.text
     headers = auth(mentor_id, "MENTOR")
-    res = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": WEAK_ANSWER}, headers=headers)
-    assert res.status_code == 409 and res.json()["error"]["code"] == "INTERVIEW_ABANDONED"
     e = client.get("/api/ai/interviews/eligibility", headers=headers).json()
     assert e["attemptsUsed"] == 1 and e["attemptsLeft"] == 2 and e["canStart"]
-    again = start(client, mentor_id).json()
-    assert again["id"] != interview["id"] and again["status"] == "IN_PROGRESS"
+    assert start_iv(client, mentor_id)["id"] != interview["id"]
 
 
-def test_interview_resumable_within_24h(client, db, fake_profile, fake_mentoring, mentor_id):
-    interview = start(client, mentor_id).json()
-    client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=23",
+def test_voice_interview_resumable_within_session_window(client, db, fake_profile, fake_mentoring, mentor_id):
+    interview = start_iv(client, mentor_id)
+    client.post(f"/internal/dev/interviews/{interview['id']}/age?hours=0.1",
                 headers={"X-Internal-Token": config.INTERNAL_API_KEY})
-    resumed = start(client, mentor_id).json()
-    assert resumed["id"] == interview["id"] and resumed["status"] == "IN_PROGRESS"
+    assert start_iv(client, mentor_id)["id"] == interview["id"]

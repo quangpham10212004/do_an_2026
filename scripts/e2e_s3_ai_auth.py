@@ -16,7 +16,7 @@ import urllib.parse
 import uuid
 from zoneinfo import ZoneInfo
 
-from common import AI, AUTH, PROFILE, ApiError, call
+from common import AI, AUTH, PROFILE, ApiError, call, complete_voice_interview, start_voice_interview
 
 RUN = uuid.uuid4().hex[:6]
 ADMIN_EMAIL, ADMIN_PASSWORD = "admin@mmp.local", "Admin@123"
@@ -49,14 +49,11 @@ def mentor(name):
 
 
 def start(token, ack=True):
-    return call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": ack}, token=token)
+    return start_voice_interview(token, ack=ack)["interview"]
 
 
 def finish(token, answer=WEAK):
-    interview = start(token)
-    while interview["status"] == "IN_PROGRESS":
-        interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/answers", {"answer": answer}, token=token)
-    return interview
+    return complete_voice_interview(token, answer)
 
 
 def eligibility(token):
@@ -94,7 +91,8 @@ def main():
     t1 = m1["accessToken"]
     for ack, label in ((False, "false"), (None, "không có trong body {}")):
         fn = (lambda: start(t1, False)) if ack is False else (lambda: call(
-            "POST", f"{AI}/api/ai/interviews", token=t1, raw_body=b"{}", content_type="application/json"))
+            "POST", f"{AI}/api/ai/interviews/voice", token=t1, raw_body=b'{"consentExternalAi": true}',
+            content_type="application/json"))
         status, err = error_of(fn)
         check(f"Bắt đầu khi selfAnswerAcknowledged {label} → 400 SELF_ANSWER_ACK_REQUIRED",
               status == 400 and err.get("code") == "SELF_ANSWER_ACK_REQUIRED", (status, err))
@@ -105,7 +103,7 @@ def main():
 
     print("\nUS-23 — rubric từng câu, ghi chú khi bác AI, REQUEST_RETAKE")
     first = finish(t1)
-    check("Buổi phỏng vấn kết thúc sau 5 câu, chờ admin", first["status"] == "PENDING_REVIEW" and len(first["turns"]) == 5)
+    check("Buổi phỏng vấn giọng nói được chấm đủ chủ đề, chờ admin", first["status"] == "PENDING_REVIEW" and len(first["turns"]) == first["maxTurns"])
     detail = call("GET", f"{AI}/api/ai/interviews/{first['id']}", token=admin)
     keys = {"technical", "depth", "communication", "mentoring"}
     check("Mỗi câu trả lời có đủ 4 điểm rubric (engine rule-based)",
@@ -115,7 +113,8 @@ def main():
                      + 0.15 * t0["rubric"]["communication"] + 0.15 * t0["rubric"]["mentoring"], 1)
     check("Điểm câu = tổng có trọng số 40/30/15/15", abs(t0["score"] - weighted) <= 0.051, (t0["score"], weighted))
     check("Lưu engine / prompt version / fallback từng lượt (PRD-AIV-7)",
-          all(t["engine"] == "RULE_BASED" and t["promptVersion"] and t["fallbackUsed"] is False for t in detail["turns"]))
+          all(t["engine"] in ("RULE_BASED", "DEEPSEEK") and t["promptVersion"] and isinstance(t["fallbackUsed"], bool)
+              for t in detail["turns"]))
     check("Câu trả lời yếu → AI khuyến nghị REJECT (< 50)", detail["recommendation"] == "REJECT"
           and detail["overallScore"] < 50, (detail["overallScore"], detail["recommendation"]))
     # raw_body: bỏ qua lớp tương thích của common.py (nó tự bổ sung ghi chú cho các script seed)

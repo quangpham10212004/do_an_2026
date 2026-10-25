@@ -5,7 +5,7 @@ E2E v2.1 — phỏng vấn giọng nói (FR-7.7 mentor, FR-10.x mentee luyện p
     python3 scripts/e2e_v2_voice.py
 
 Không có OPENAI_API_KEY (CI / docker mặc định, APP_ENV khác prod) => endpoint bắt đầu trả `voice: null`, script gửi bản ghi
-giả lập thay cho trình duyệt: mentor giọng nói → PENDING_REVIEW (chấm như chat, admin thấy mode VOICE); mentee luyện
+giả lập thay cho trình duyệt: mentor giọng nói → PENDING_REVIEW (admin thấy mode VOICE); mentee luyện
 miễn phí 1 lần → kết quả hiện ngay → lần thứ hai 409 PRACTICE_FREE_USED.
 """
 import sys
@@ -69,8 +69,8 @@ def mentor_voice(at):
           started["voice"] is None and iv["mode"] == "VOICE" and iv["status"] == "IN_PROGRESS" and iv["consentExternalAi"], started)
     again = call("POST", f"{AI}/api/ai/interviews/voice", {"selfAnswerAcknowledged": True, "consentExternalAi": True}, token=mt)
     check("Gọi lại trong 30 phút → cùng buổi (kết nối lại)", again["interview"]["id"] == iv["id"], again["interview"]["id"])
-    status, code = status_code(lambda: call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=mt))
-    check("Đang có buổi giọng nói dở → chat 409 INTERVIEW_IN_PROGRESS", status == 409 and code == "INTERVIEW_IN_PROGRESS", (status, code))
+    status, _ = status_code(lambda: call("POST", f"{AI}/api/ai/interviews", {"selfAnswerAcknowledged": True}, token=mt))
+    check("Luồng chat đã gỡ: POST /api/ai/interviews → 404/405", status in (404, 405), status)
 
     status, code = status_code(lambda: call("POST", f"{AI}/api/ai/interviews/{iv['id']}/voice-transcript",
                                             {"items": [{"role": "user", "text": "alo"}]}, token=mt))

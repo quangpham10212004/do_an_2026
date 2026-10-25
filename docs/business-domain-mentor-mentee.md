@@ -351,7 +351,7 @@ sequenceDiagram
     participant PS as profile-service
     participant MT as matching-service
 
-    Mt->>AI: POST /api/ai/interviews
+    Mt->>AI: POST /api/ai/interviews/voice (PR 1b: luồng chat đã bỏ; sơ đồ dưới là bản chat cũ, xem design-mentor-verification.md)
     AI->>PS: GET /internal/mentor/{id}
     AI->>E: firstQuestion(domain, skills)
     AI-->>Mt: Câu 1

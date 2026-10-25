@@ -1,4 +1,4 @@
-"""Luồng AI Interview end-to-end trong ai-service (trước đây nằm ở mentoring-service)."""
+"""Luồng AI Interview của mentor (phỏng vấn giọng nói) end-to-end trong ai-service."""
 import uuid
 
 import pytest
@@ -10,7 +10,6 @@ STRONG_ANSWER = (
     "xuong 40ms. Toi can nhac trade-off giua consistency va hieu nang, dung index, transaction, REST API "
     "versioning, status code 201/404, pagination va idempotent. Vi du cu the o production."
 )
-# Câu trả lời yếu nhưng đủ độ dài tối thiểu 50 ký tự (US-43, PRD-AIV-2).
 WEAK_ANSWER = "Khong biet, em chua lam bao gio va cung khong nho gi ca."
 
 
@@ -19,36 +18,48 @@ def mentor_id():
     return uuid.uuid4()
 
 
-def start(client, mentor_id, ack=True):
-    return client.post("/api/ai/interviews", json={"selfAnswerAcknowledged": ack}, headers=auth(mentor_id, "MENTOR"))
+def start(client, mentor_id, ack=True, consent=True):
+    """POST /api/ai/interviews/voice — trả response ({interview, voice})."""
+    return client.post("/api/ai/interviews/voice", json={"selfAnswerAcknowledged": ack, "consentExternalAi": consent},
+                       headers=auth(mentor_id, "MENTOR"))
 
 
-def answer_all(client, interview, mentor_id, text=STRONG_ANSWER):
-    turns = 0
-    while interview["status"] == "IN_PROGRESS":
-        turns += 1
-        res = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": text},
-                          headers=auth(mentor_id, "MENTOR"))
-        assert res.status_code == 200, res.text
-        interview = res.json()
-    return interview, turns
+def start_iv(client, mentor_id):
+    res = start(client, mentor_id)
+    assert res.status_code == 200, res.text
+    return res.json()["interview"]
+
+
+def transcript(topics, text=STRONG_ANSWER):
+    """Bản ghi như trình duyệt gửi: mỗi chủ đề = marker + câu hỏi + câu trả lời."""
+    items = [{"role": "assistant", "text": "Xin chào, chúng ta bắt đầu buổi phỏng vấn nhé."}]
+    for n in range(1, topics + 1):
+        items += [{"role": "marker", "topicNo": n}, {"role": "assistant", "text": f"Câu hỏi chủ đề {n}?"},
+                  {"role": "user", "text": text}]
+    return {"items": items}
+
+
+def submit(client, interview, mentor_id, text=STRONG_ANSWER, body=None):
+    res = client.post(f"/api/ai/interviews/{interview['id']}/voice-transcript",
+                      json=body or transcript(interview["maxTurns"], text), headers=auth(mentor_id, "MENTOR"))
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def finish(client, mentor_id, text=STRONG_ANSWER):
+    """Bắt đầu rồi nộp bản ghi => buổi PENDING_REVIEW."""
+    return submit(client, start_iv(client, mentor_id), mentor_id, text)
 
 
 def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id):
     started = start(client, mentor_id)
     assert started.status_code == 200, started.text
-    interview = started.json()
-    assert interview["status"] == "IN_PROGRESS"
+    interview = started.json()["interview"]
+    assert interview["status"] == "IN_PROGRESS" and interview["mode"] == "VOICE"
     assert interview["engine"] == "RULE_BASED"
-    assert interview["currentQuestion"]["strategy"] == "OPENING"
 
-    # Đang phỏng vấn: mentor không được thấy điểm/nhận xét từng câu.
-    mid = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": STRONG_ANSWER},
-                      headers=auth(mentor_id, "MENTOR")).json()
-    assert all(t["score"] is None and t["feedback"] is None for t in mid["turns"])
-
-    final, turns = answer_all(client, mid, mentor_id)
-    assert turns + 1 == final["maxTurns"]
+    final = submit(client, interview, mentor_id)
+    assert len(final["turns"]) == final["maxTurns"]
     assert final["status"] == "PENDING_REVIEW"
     assert final["overallScore"] is not None and final["summary"]
     # US-43 (PRD-AIV-5): hoàn thành nhưng chờ admin → điểm từng câu vẫn ẩn với mentor (tổng điểm thì có).
@@ -59,8 +70,7 @@ def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id
 
 
 def test_admin_review_syncs_verification(client, db, fake_profile, fake_mentoring, mentor_id):
-    interview = start(client, mentor_id).json()
-    interview, _ = answer_all(client, interview, mentor_id)
+    interview = finish(client, mentor_id)
 
     admin = auth(uuid.uuid4(), "ADMIN")
     pending = client.get("/api/ai/admin/interviews?status=PENDING_REVIEW", headers=admin).json()
@@ -96,16 +106,20 @@ def test_start_requires_mentor_profile(client, db, fake_profile, mentor_id):
 
 
 def test_start_twice_returns_the_open_interview(client, db, fake_profile, mentor_id):
-    first = start(client, mentor_id).json()
-    second = start(client, mentor_id).json()
-    assert first["id"] == second["id"]
+    assert start_iv(client, mentor_id)["id"] == start_iv(client, mentor_id)["id"]
 
 
-def test_cannot_answer_someone_elses_interview(client, db, fake_profile, mentor_id):
-    interview = start(client, mentor_id).json()
-    res = client.post(f"/api/ai/interviews/{interview['id']}/answers", json={"answer": "Xin chao"},
+def test_cannot_submit_someone_elses_interview(client, db, fake_profile, mentor_id):
+    interview = start_iv(client, mentor_id)
+    res = client.post(f"/api/ai/interviews/{interview['id']}/voice-transcript", json=transcript(2),
                       headers=auth(uuid.uuid4(), "MENTOR"))
     assert res.status_code == 403
+
+
+def test_chat_endpoints_are_gone(client, db, fake_profile, mentor_id):
+    headers = auth(mentor_id, "MENTOR")
+    assert client.post("/api/ai/interviews", json={"selfAnswerAcknowledged": True}, headers=headers).status_code in (404, 405)
+    assert client.post(f"/api/ai/interviews/{uuid.uuid4()}/answers", json={"answer": "x"}, headers=headers).status_code == 404
 
 
 def test_latest_for_mentor_is_204_when_empty(client, db, fake_profile, mentor_id):

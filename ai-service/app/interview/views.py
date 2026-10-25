@@ -5,7 +5,7 @@ from uuid import UUID
 import asyncpg
 
 from app import config
-from app.interview import attempts, planner
+from app.interview import planner
 from app.interview.planner import PlanTopicView
 from pydantic import Field
 
@@ -44,8 +44,8 @@ class InterviewView(CamelModel):
     domain: str
     skills: list[str] = []
     status: str
-    # FR-7.7 — CHAT (hỏi-đáp bằng chữ) | VOICE (OpenAI Realtime; max_turns = số chủ đề trong kế hoạch)
-    mode: str = "CHAT"
+    # FR-7.7 — luôn VOICE (OpenAI Realtime; max_turns = số chủ đề trong kế hoạch)
+    mode: str = "VOICE"
     consent_external_ai: bool = False
     engine: str
     max_turns: int
@@ -61,24 +61,15 @@ class InterviewView(CamelModel):
     # US-23: có lượt bị gắn cờ (PROMPT_INJECTION / COPIED_ANSWER) — chỉ admin
     flagged: bool = False
     self_answer_acknowledged: bool = False
-    # v2.1 — kế hoạch câu hỏi do AI soạn (chỉ admin; buổi chat / trước 011 => None)
+    # v2.1 — kế hoạch câu hỏi do AI soạn (chỉ admin; buổi trước 011 => None)
     plan: list[PlanTopicView] | None = None
     created_at: datetime
     completed_at: datetime | None = None
     reviewed_at: datetime | None = None
-    # US-43 (PRD-AIV-3): hạn tiếp tục buổi đang làm (hoạt động gần nhất + 24 giờ; giọng nói: bắt đầu + 30 phút)
+    # US-43 (PRD-AIV-3): hạn tiếp tục buổi đang làm (bắt đầu + VOICE_SESSION_MINUTES phút)
     resume_deadline: datetime | None = None
     # US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định
     feedback_visible: bool = False
-    # US-43 (PRD-AIV-2): giới hạn câu trả lời + đồng hồ gợi ý mỗi câu (không bắt buộc)
-    answer_min_chars: int = 50
-    answer_max_chars: int = 3000
-    soft_timer_seconds: int = 360
-
-
-class StartInterviewInput(CamelModel):
-    """US-22 (PRD-AIV-1): bắt buộc xác nhận "Tôi tự trả lời, không có sự trợ giúp từ bên ngoài"."""
-    self_answer_acknowledged: bool = False
 
 
 class EligibilityView(CamelModel):
@@ -90,7 +81,6 @@ class EligibilityView(CamelModel):
     locked: bool
     can_start: bool
     reason: str | None = None
-    question_count: int = 5
     # FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được)
     voice_available: bool = False
 
@@ -103,12 +93,6 @@ class VoiceInterviewStart(CamelModel):
 
 class UnlockInput(CamelModel):
     note: str | None = Field(default=None, max_length=2000)
-
-
-class AnswerInput(CamelModel):
-    answer: str = Field(min_length=1, max_length=5000)
-    # PRD-AIV-2: trình duyệt phát hiện dán > 500 ký tự trong một lần => gắn cờ COPIED_ANSWER (không chặn)
-    pasted_large_text: bool = False
 
 
 class ReviewInterviewInput(CamelModel):
@@ -162,11 +146,9 @@ def turn_view(turn: asyncpg.Record, reveal_scores: bool, for_admin: bool = False
 DECIDED_STATUSES = ("APPROVED", "REJECTED", "RETAKE_REQUESTED")
 
 
-def _resume_deadline(interview: asyncpg.Record, turns: list[asyncpg.Record]) -> datetime:
-    if interview["mode"] == "VOICE":  # một lần ngồi: kết nối lại được trong VOICE_SESSION_MINUTES phút
-        return interview["created_at"] + timedelta(minutes=config.VOICE_SESSION_MINUTES)
-    return attempts.resume_deadline(interview["created_at"],
-                                    max((t["answered_at"] for t in turns if t["answered_at"]), default=None))
+def _resume_deadline(interview: asyncpg.Record) -> datetime:
+    """Một lần ngồi: kết nối lại được trong VOICE_SESSION_MINUTES phút."""
+    return interview["created_at"] + timedelta(minutes=config.VOICE_SESSION_MINUTES)
 
 
 def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_admin: bool,
@@ -194,5 +176,5 @@ def interview_view(interview: asyncpg.Record, turns: list[asyncpg.Record], for_a
         plan=planner.plan_view(interview["plan"]) if for_admin else None,
         created_at=interview["created_at"], completed_at=interview["completed_at"],
         reviewed_at=interview["reviewed_at"],
-        resume_deadline=None if not in_progress else _resume_deadline(interview, turns),
+        resume_deadline=None if not in_progress else _resume_deadline(interview),
         feedback_visible=reveal)

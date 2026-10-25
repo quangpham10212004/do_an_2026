@@ -73,12 +73,9 @@ export interface Interview {
   /** US-43 (PRD-AIV-5): mentor chỉ thấy điểm / nhận xét từng câu sau khi admin quyết định. */
   feedbackVisible?: boolean;
   /** US-43 (PRD-AIV-2) */
-  answerMinChars?: number;
-  answerMaxChars?: number;
-  softTimerSeconds?: number;
 }
 
-export type InterviewMode = "CHAT" | "VOICE";
+export type InterviewMode = "VOICE";
 
 /** US-22 (PRD-AIV-4): GET /api/ai/interviews/eligibility. */
 export interface InterviewEligibility {
@@ -89,7 +86,6 @@ export interface InterviewEligibility {
   locked: boolean;
   canStart: boolean;
   reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "LOCKED" | "COOLDOWN" | null;
-  questionCount: number;
   /** FR-7.7 — server có OPENAI_API_KEY (lựa chọn "Giọng nói" dùng được). */
   voiceAvailable?: boolean;
 }
