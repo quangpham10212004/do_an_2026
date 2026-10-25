@@ -491,7 +491,7 @@ ngược lại                                                → PIVOT  (chủ 
   `VERIFICATION_MAX_ATTEMPTS_PER_ROUND = 2` lần; lần thứ hai thất bại → đóng đợt `CLOSED`, chờ `VERIFICATION_RETRY_DAYS = 15` ngày
   (409 `INTERVIEW_COOLDOWN` kèm `retryAfter`). Điểm thấp **không** loại mentor, chỉ chảy vào khuyến nghị cho admin.
 - Admin duyệt vòng 1: `PASS` | `REJECT` (đóng đợt, chờ 15 ngày) | `RETAKE` (làm lại, **không tính** vào số lần, tối đa
-  `VERIFICATION_ROUND1_MAX_RETAKE = 2`). Không còn nút mở khoá. `VERIFICATION_ROUND2_ENABLED=false` (tạm thời tới PR 4): `PASS` duyệt luôn.
+  `VERIFICATION_ROUND1_MAX_RETAKE = 2`). Không còn nút mở khoá. `PASS` sang vòng 2 (§2.7c).
 - `GET /api/ai/verification/status` thay `GET /interviews/eligibility`. Logic thuần ở `app/verification/rules.py`
   (`tests/test_verification_rules.py`), API ở `tests/test_verification_flow.py`, e2e `scripts/e2e_v2_verification_round1.py`.
 
@@ -502,6 +502,15 @@ ngược lại                                                → PIVOT  (chủ 
 - Cờ `CAMERA_OFF` (khoảng trống giữa các đoạn > `VIDEO_MAX_GAP_SECONDS = 10`); tổng mất camera > `VIDEO_RECONNECT_SECONDS = 60` → lần làm `INVALIDATED` (tính 1 lần, không vào hàng chờ admin).
 - Chép lời lại phía server (`/audio/transcriptions`) so với bản trình duyệt: lệch > `TRANSCRIPT_MISMATCH_THRESHOLD = 0.30` → cờ `TRANSCRIPT_MISMATCH`; lỗi/không có khoá → `UNAVAILABLE` (không chặn). Có cờ → khuyến nghị buộc `NEEDS_REVIEW`.
 - Logic thuần: `app/verification/video_rules.py` (`tests/test_video_rules.py`); API: `tests/test_verification_video.py`; e2e `scripts/e2e_v2_verification_video.py`.
+
+### 2.7c Vòng 2: admin phỏng vấn qua Jitsi (PR 4, ADR-07/08)
+- Luồng: `ROUND1_REVIEW` → (PASS) `ROUND2_PENDING_SLOTS` → admin đề xuất khung giờ → `ROUND2_PENDING_CHOICE` (mentor chọn trong `VERIFICATION_SLOT_CHOICE_DAYS = 3` ngày) →
+  `ROUND2_SCHEDULED` → admin chấm phiếu và kết luận → `APPROVED` | `REJECTED` (chờ 15 ngày). Mentor đổi giờ ≤ `VERIFICATION_ROUND2_MAX_RESCHEDULE = 2` lần, báo trước ≥ 24 giờ; vắng 2 lần → `CLOSED`.
+- Buổi **không giới hạn thời lượng**; khung giờ chỉ có giờ bắt đầu. Phòng `mentorhub-verify-<uuid>`: mở trước giờ bắt đầu 10 phút, token hết hạn sau `VERIFICATION_ROOM_MAX_HOURS = 4` giờ (trần kỹ thuật).
+  Vắng mặt dựa trên **nhật ký vào phòng** (`verification_interviews.mentor_joined_at`), không phải lời khai.
+- Phiếu chấm (`app/verification/round2_rubric.py`, hằng số trong mã): technical 30%, depth 25%, communication 10%, mentoring 20%, authenticity 15%; điểm tổng 0–100, khuyến nghị cùng ngưỡng vòng 1
+  (≥ 70 / < 50); điều kiện chặn technical hoặc authenticity ≤ 2 → tối đa `NEEDS_REVIEW`; tiêu chí ≤ 2 hoặc ≥ 9 phải có lý do ≥ 10 ký tự; giao diện đặt điểm AI vòng 1 cạnh điểm admin, chênh ≥ 4 là "lệch lớn".
+- Mã: `round2_rules.py` (luật lịch), `round2_rubric.py`, `round2_repository.py`, `round2_service.py`; test `test_round2_rules.py` (22), `test_verification_round2.py` (20); e2e `scripts/e2e_v2_verification_round2.py`.
 
 ### 2.8 Ví dụ (kiểm thử e2e, engine rule-based)
 Mentor backend (Java, Spring Boot, Redis, System Design), trả lời chi tiết có số liệu và trade-off:

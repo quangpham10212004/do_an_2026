@@ -7,12 +7,12 @@
 
 | PR | Trạng thái | Nhánh |
 |---|---|---|
-| Bước 0 | Đã xong | — |
+| Bước 0 | Đã xong (còn kiểm tay Jitsi, xem PR 4) | — |
 | 1a | Đã xong | `feature/profile-remove-tier` |
 | 1b | Đã xong | `feature/ai-remove-chat-interview` (xếp trên 1a) |
 | 2 | Đã xong | `feature/ai-verification-application` (xếp trên 1b) |
 | 3 | Đã xong (phần tự động; còn kiểm tay camera) | `feature/ai-verification-round1-video` (xếp trên 2) |
-| 4 | chưa làm | |
+| 4 | Đã xong (phần tự động; còn kiểm tay Jitsi + camera) | `feature/verification-round2-interview` (xếp trên 3) |
 
 ---
 
@@ -104,5 +104,28 @@ docker compose exec -T profile-db pg_dump -U postgres -d profile_db > .backups/p
 **Chưa kiểm được (cần người, trình duyệt/OpenAI thật):** quay camera 30 phút trên Chrome/Edge/Safari và mạng yếu; file âm thanh ~7 MB webm/opus có được API chép lời nhận không; ngưỡng `TRANSCRIPT_MISMATCH_THRESHOLD`; phát lại file ghép khi camera bị ngắt rồi mở lại (WebM nhiều header). Giao diện quay/phát chưa được thử trong trình duyệt thật (môi trường này không có trình duyệt điều khiển được) — chỉ qua kiểm tra kiểu, lint, build.
 
 **Kết luận:** ĐẠT phần tự động.
+
+---
+
+## PR 4 — Vòng 2: admin phỏng vấn qua Jitsi, lịch, phiếu chấm
+
+**Input:** Spec §6, D2–D4, D8, D9, D11; ADR-07/08.
+
+**Phạm vi:** mentoring-service: `RoomService.issueToken` (tách ra dùng chung với `join`), `POST /internal/rooms/token` (chỉ nhận tên phòng `mentorhub-verify-<32 hex>`), 3 loại thông báo mới trong `EmailClient`; ai-service: migration `015_verification_round2.sql` (khung giờ, buổi vòng 2), `round2_rules.py` + `round2_rubric.py` (hàm thuần/hằng số), `round2_repository.py`, `round2_service.py`, 6 endpoint mới + dev endpoint `move-interview`, `clients/mentoring.issue_room_token`; **xoá cờ tạm** `VERIFICATION_ROUND2_ENABLED` (PASS luôn sang vòng 2). Frontend: `JitsiEmbed` dùng chung (phòng học đã chuyển sang dùng), `/interview/room`, `/admin/verification/[id]/room`, `Round2Panels` (mentor chọn/đổi giờ/vào phòng; admin đề xuất giờ, vào phòng, báo vắng, phiếu chấm có xem trước điểm + khuyến nghị, lịch sử kèm so sánh điểm AI). Docs: ADR-07/08, contracts (ai + mentoring), ban-chot §16.1, scope-core, api-reference, database-design, architecture, ai-features, user-guide, deployment-guide. Script: `approve_mentor` (đủ hai vòng) thay `admin_pass_round1` ở 9 e2e, `seed_verification_demo.py` (mentor demo ở từng bước, không cần OpenAI).
+
+**Kết quả:**
+- mentoring-service `mvn test`: **291 test PASS** (thêm `verificationRoomTokenCarriesTheRoomWindowAndModeratorFlag`).
+- pytest ai-service (Postgres tạm): **358 PASS** + 3 fail cũ; mới `test_round2_rules` (22: lịch, đổi giờ, phòng, vắng, phiếu chấm, điều kiện chặn, so sánh với AI) và `test_verification_round2` (20 API).
+- Frontend `tsc`, `lint`, `next build` sạch (2 route mới).
+- e2e (stack dựng lại, mentoring-service thật ký JWT): mới `e2e_v2_verification_round2` **30/30**; `e2e_v2_verification_video` 21/21, `e2e_v2_verification_round1` 20/20, `e2e_v2_voice` 26/26, `e2e_acceptance` **70/70** (thêm bước qua vòng 2), `e2e_s5_ai_auth` 40/40, `e2e_s3_ai_auth` **28/28**, `e2e_s4_ai_auth` 23/23, `e2e_p0_mentoring` 32/32, `e2e_s2_mentoring` 51/51, `e2e_s3_mentoring` 56/56, `e2e_v2_booking` 31/31, `e2e_v2_room_referral` 37/37, `e2e_v2_trial` 18/18.
+
+**Chưa kiểm được (cần người, trình duyệt thật):**
+1. Hai người thật vào cùng phòng Jitsi (`docker compose --profile jitsi up -d`, mở `https://localhost:8443` chấp nhận chứng chỉ, hai trình duyệt: admin và mentor) — e2e chỉ kiểm JWT, nhật ký vào phòng và khung giờ.
+2. Buổi dài hơn `VERIFICATION_ROOM_MAX_HOURS = 4` giờ: Jitsi/prosody có ngắt người đã vào khi JWT hết hạn không (spec §16 mục 1).
+3. Quay camera 30 phút, mạng yếu; âm thanh ~7 MB với API chép lời; ngưỡng `TRANSCRIPT_MISMATCH_THRESHOLD`; phát lại file ghép khi camera ngắt rồi mở lại (xem PR 3).
+4. Giao diện chưa được thử bằng trình duyệt thật (không có công cụ điều khiển trình duyệt trong môi trường này): chỉ kiểm kiểu/lint/build và API qua e2e. Nên thử tay bằng tài khoản từ `seed_verification_demo.py`.
+5. Trọng số phiếu chấm 30/25/10/20/15 và các ngưỡng cần hiệu chỉnh sau vài chục buổi thật (hằng số trong `round2_rubric.py`).
+
+**Kết luận:** ĐẠT phần tự động; toàn bộ 5 PR đã hiện thực.
 
 ---

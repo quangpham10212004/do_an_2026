@@ -97,6 +97,8 @@ flowchart LR
   (`GET /api/mentoring/sessions/{id}/room`), ghi nhật ký vào phòng (webhook/endpoint `room/joined`). Frontend nhúng iframe/External API; vẫn đi qua proxy `/api/<service>/**`.
 - ~~**profile-service** thêm `tier`, khung giá cấu hình; **ai-service** trả `suggestedTier` và gọi `POST /internal/mentor/{id}/tier` khi admin duyệt.~~
   Đã gỡ (D6, [design-mentor-verification.md](design-mentor-verification.md)): không còn cấp độ, mentor đặt giá tự do.
+- **Phỏng vấn xác thực mentor vòng 2** *(PR 4, ADR-07/08)*: dùng lại hạ tầng Jitsi này. ai-service giữ lịch (`verification_slots`, `verification_interviews`), kiểm quyền và khung giờ rồi xin JWT qua
+  `POST /internal/rooms/token` của mentoring-service (khoá `JITSI_JWT_SECRET` chỉ ở mentoring-service); frontend dùng chung `JitsiEmbed` với phòng học (`/interview/room`, `/admin/verification/[id]/room`).
 - Phạm vi ngoài: rút tiền tự do, KYC, gói/combo buổi (không merge phần `packages` của nhánh `feature/mentoring-intro-reschedule-packages`).
 
 ## 2. Kiến trúc bên trong mỗi service

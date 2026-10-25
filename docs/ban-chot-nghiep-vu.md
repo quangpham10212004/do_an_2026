@@ -312,7 +312,8 @@ cuộc hỏi**; chấm điểm vẫn do engine hiện có (DeepSeek / rule-based
 | Số chủ đề | 4 chủ đề (`VOICE_INTERVIEW_TOPICS`). **AI soạn** (DeepSeek, một lần lúc bắt đầu, chốt 23/10/2026): 3 chủ đề kỹ thuật cốt lõi của lĩnh vực — đúng một chủ đề đào sâu dự án của chính mentor nếu CV / giới thiệu có dự án — cùng độ khó cho mọi mentor; chủ đề "năng lực hướng dẫn" **luôn lấy từ ngân hàng câu hỏi** để điểm giữa các mentor so sánh được. Không có DeepSeek / AI soạn lỗi → ngân hàng câu hỏi theo lĩnh vực | ⚒ |
 | Phản hồi cho mentor | như chat: chỉ thấy nhận xét từng câu sau khi admin quyết định | ✔ |
 | Admin | trang duyệt có nhãn "Giọng nói", xem các lượt (đã gộp theo chủ đề) như hiện nay | ⚒ |
-| Ghi âm | **không** lưu âm thanh ở bản này (bước tiếp theo) | — |
+| Ghi âm / video | ~~không lưu~~ → PR 3: **camera bắt buộc**, video + âm thanh lưu **60 ngày**, không phân tích khuôn mặt; admin xem + xoá, mentor chỉ xem video của mình ([video-data-policy.md](video-data-policy.md)) | ✔ |
+| Vòng 2 | PR 4: sau khi admin cho qua vòng 1, admin đề xuất khung giờ (mặc định 3), mentor chọn trong 3 ngày; admin phỏng vấn trực tiếp qua Jitsi, **không giới hạn thời lượng**; mentor đổi giờ ≤ 2 lần và báo trước ≥ 24 giờ; vắng 2 lần đóng đợt; admin chấm **phiếu 5 tiêu chí** (30/25/10/20/15) rồi APPROVE / REJECT / RESCHEDULE | ✔ |
 
 ### 16.2 Luyện phỏng vấn với AI (mentee)
 

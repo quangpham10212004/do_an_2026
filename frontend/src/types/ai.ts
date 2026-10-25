@@ -106,6 +106,63 @@ export interface Interview {
 
 export type InterviewMode = "VOICE";
 
+/** Khung giờ vòng 2 admin đề xuất (chỉ có giờ bắt đầu — buổi không giới hạn thời lượng). */
+export interface VerificationSlot {
+  id: Uuid;
+  startsAt: IsoDateTime;
+  status: "PROPOSED" | "CHOSEN" | "EXPIRED";
+}
+
+/** Buổi vòng 2 đã chốt giờ (mentor thấy). */
+export interface Round2Schedule {
+  interviewId: Uuid;
+  scheduledAt: IsoDateTime;
+  roomOpensAt: IsoDateTime;
+  canReschedule: boolean;
+  rescheduleBlockedReason: "RESCHEDULE_LIMIT" | "RESCHEDULE_TOO_LATE" | null;
+}
+
+/** Phiếu chấm vòng 2: 5 tiêu chí thang 0–10 (docs/design-mentor-verification.md §6.3). */
+export type Round2Criterion = "technical" | "depth" | "communication" | "mentoring" | "authenticity";
+export type Round2Scores = Record<Round2Criterion, number>;
+export type Round2Decision = "APPROVE" | "REJECT" | "RESCHEDULE";
+
+export interface ScoreComparison {
+  criterion: Round2Criterion;
+  ai: number;
+  admin: number;
+  delta: number;
+  /** chênh ≥ 4 điểm so với AI: chỉ là thông tin để admin xem lại */
+  large: boolean;
+}
+
+export interface Round2Interview {
+  id: Uuid;
+  scheduledAt: IsoDateTime;
+  status: "SCHEDULED" | "COMPLETED" | "MENTOR_NO_SHOW" | "RESCHEDULED";
+  mentorJoinedAt: IsoDateTime | null;
+  adminJoinedAt: IsoDateTime | null;
+  endedAt: IsoDateTime | null;
+  scores: Round2Scores | null;
+  scoreNotes: Partial<Record<Round2Criterion, string>> | null;
+  totalScore: number | null;
+  recommendation: Recommendation | null;
+  blocked: boolean;
+  note: string | null;
+  comparison: ScoreComparison[];
+}
+
+/** Phòng Jitsi của vòng 2: JWT do mentoring-service ký; admin là moderator. */
+export interface Round2Room {
+  provider: string;
+  domain: string;
+  roomName: string;
+  jwt: string;
+  opensAt: IsoDateTime;
+  expiresAt: IsoDateTime;
+  moderator: boolean;
+}
+
 /** GET /api/ai/verification/status — mentor đang ở đâu trong đợt xác thực, còn mấy lần, bao giờ được làm lại. */
 export interface VerificationState {
   applicationId: Uuid | null;
@@ -121,6 +178,12 @@ export interface VerificationState {
   reason: "IN_PROGRESS" | "PENDING_REVIEW" | "ALREADY_APPROVED" | "COOLDOWN" | null;
   /** Server có OPENAI_API_KEY (phỏng vấn giọng nói dùng được). */
   voiceAvailable: boolean;
+  /** Vòng 2: khung giờ admin đề xuất (chỉ khi ROUND2_PENDING_CHOICE), hạn chọn, số lần đã đổi giờ, buổi đã chốt. */
+  slots: VerificationSlot[];
+  choiceDeadline: IsoDateTime | null;
+  rescheduleCount: number;
+  rescheduleLimit: number;
+  round2: Round2Schedule | null;
 }
 
 /** Một đợt xác thực mentor (admin): trạng thái, số lần, buổi vòng 1 mới nhất (chi tiết có đủ các lần làm). */
@@ -143,6 +206,13 @@ export interface VerificationApplication {
   createdAt: IsoDateTime;
   interview: Interview | null;
   interviews: Interview[];
+  rescheduleCount: number;
+  noShowCount: number;
+  choiceDeadline: IsoDateTime | null;
+  slots: VerificationSlot[];
+  round2Interviews: Round2Interview[];
+  /** vd. admin đã có buổi vòng 2 khác bắt đầu trong vòng 60 phút quanh khung giờ vừa đề xuất (chỉ cảnh báo) */
+  warnings: string[];
 }
 
 /** Phỏng vấn giọng nói (OpenAI Realtime): client secret ngắn hạn, trình duyệt kết nối WebRTC trực tiếp tới OpenAI. */

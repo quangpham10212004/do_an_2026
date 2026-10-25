@@ -7,8 +7,9 @@ from app import config
 from app.interview import service as interview_service
 from app.interview.views import InterviewStats, VideoView
 from app.security import AuthUser, require_internal, require_role
-from app.verification import service, video_service
-from app.verification.views import ApplicationView, Round1ReviewInput, VerificationStatusView
+from app.verification import round2_service, service, video_service
+from app.verification.views import (ApplicationView, ProposeSlotsInput, Round1ReviewInput, Round2DecisionInput, RoomView,
+                                    VerificationStatusView)
 
 router = APIRouter(prefix="/api/ai")
 
@@ -67,6 +68,44 @@ async def admin_delete_video(interview_id: UUID, user: AuthUser = Depends(requir
     return await video_service.delete_video(user, interview_id)
 
 
+# ---------- vòng 2: admin phỏng vấn qua Jitsi ----------
+
+@router.post("/verification/slots/{slot_id}/choose", response_model=VerificationStatusView, response_model_by_alias=True)
+async def choose_slot(slot_id: UUID, user: AuthUser = Depends(require_role("MENTOR"))) -> VerificationStatusView:
+    return await round2_service.choose_slot(user, slot_id)
+
+
+@router.post("/verification/round2/reschedule", response_model=VerificationStatusView, response_model_by_alias=True)
+async def reschedule(user: AuthUser = Depends(require_role("MENTOR"))) -> VerificationStatusView:
+    return await round2_service.reschedule(user)
+
+
+@router.get("/verification/round2/room", response_model=RoomView, response_model_by_alias=True)
+async def round2_room(application_id: UUID | None = Query(default=None, alias="applicationId"),
+                      user: AuthUser = Depends(require_role("MENTOR", "ADMIN"))) -> RoomView:
+    return await round2_service.room(user, application_id)
+
+
+@router.post("/admin/verification/applications/{application_id}/slots", response_model=ApplicationView,
+             response_model_by_alias=True)
+async def admin_propose_slots(application_id: UUID, body: ProposeSlotsInput,
+                              user: AuthUser = Depends(require_role("ADMIN"))) -> ApplicationView:
+    return await round2_service.propose_slots(user, application_id, body)
+
+
+@router.post("/admin/verification/applications/{application_id}/mentor-absent", response_model=ApplicationView,
+             response_model_by_alias=True)
+async def admin_mentor_absent(application_id: UUID, user: AuthUser = Depends(require_role("ADMIN"))) -> ApplicationView:
+    return await round2_service.mentor_absent(user, application_id)
+
+
+@router.post("/admin/verification/applications/{application_id}/decision", response_model=ApplicationView,
+             response_model_by_alias=True)
+async def admin_decision(application_id: UUID, body: Round2DecisionInput,
+                         user: AuthUser = Depends(require_role("ADMIN"))) -> ApplicationView:
+    return await round2_service.decision(user, application_id, body)
+
+
 @router.get("/admin/verification/applications", response_model=list[ApplicationView], response_model_by_alias=True)
 async def admin_list(status: str | None = None, _: AuthUser = Depends(require_role("ADMIN"))) -> list[ApplicationView]:
     return await service.list_applications(status)
@@ -92,6 +131,15 @@ async def admin_stats(_: AuthUser = Depends(require_role("ADMIN"))) -> Interview
 
 # Router không có tiền tố /api/ai: /internal/** không bao giờ đi qua proxy của frontend.
 dev_router = APIRouter()
+
+
+@dev_router.post("/internal/dev/verification/{application_id}/move-interview", include_in_schema=False,
+                 response_model=ApplicationView, response_model_by_alias=True)
+async def dev_move_interview(application_id: UUID, minutes: float = 5, _: AuthUser = Depends(require_internal)) -> ApplicationView:
+    """Chỉ dev/e2e — không tồn tại ở APP_ENV=prod: dời giờ buổi vòng 2 tới bây giờ + `minutes` phút (kiểm thử phòng, vắng, đổi giờ)."""
+    if config.is_prod():
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Not found"})
+    return await round2_service.dev_move_interview(application_id, minutes)
 
 
 @dev_router.post("/internal/dev/verification/{application_id}/age", include_in_schema=False,

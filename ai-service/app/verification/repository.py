@@ -7,7 +7,7 @@ from app.db import Db
 from app.verification import rules
 
 COLUMNS = """id, mentor_id, status, retake_count, reschedule_count, no_show_count, round1_decision, round1_reviewed_by,
-             round1_reviewed_at, round1_note, reviewed_by, review_note, reviewed_at, closed_at, retry_after, created_at"""
+             round1_reviewed_at, round1_note, reviewed_by, review_note, reviewed_at, closed_at, retry_after, created_at, choice_deadline"""
 _OPEN = ", ".join(f"'{s}'" for s in rules.OPEN_STATUSES)
 _FAILED = ", ".join(f"'{s}'" for s in rules.FAILED_ATTEMPT_STATUSES)
 

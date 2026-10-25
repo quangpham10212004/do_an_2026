@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call, make_pdf,
-                    multipart_file, admin_pass_round1, start_voice_interview, upload_video_chunks, finish_video, voice_transcript)
+                    multipart_file, approve_mentor, start_voice_interview, upload_video_chunks, finish_video, voice_transcript)
 
 RUN = uuid.uuid4().hex[:6]
 results = []
@@ -73,7 +73,7 @@ def us43(ctx):
     check("US-43", "Chờ duyệt: mentor chưa thấy điểm / nhận xét từng câu", iv["status"] == "PENDING_REVIEW"
           and not iv["feedbackVisible"] and all(t["score"] is None and t["feedback"] is None for t in iv["turns"]), iv["status"])
     check("US-43", "…nhưng vẫn thấy tổng điểm", iv["overallScore"] is not None)
-    admin_pass_round1(admin["accessToken"], iv, "Tra loi tot, du kinh nghiem")
+    approve_mentor(admin["accessToken"], m["accessToken"], iv, "Tra loi tot, du kinh nghiem")
     mine = call("GET", f"{AI}/api/ai/interviews/{iv['id']}", token=m["accessToken"])
     check("US-43", "Sau khi admin quyết định: thấy điểm + nhận xét từng câu", mine["feedbackVisible"]
           and all(t["score"] is not None for t in mine["turns"]))

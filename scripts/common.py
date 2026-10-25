@@ -252,6 +252,30 @@ def round1_review(admin_token, interview, decision, note=None):
                 {"decision": decision, "note": note}, token=admin_token)
 
 
-def admin_pass_round1(admin_token, interview, note="Duyet cho e2e: mentor thu nghiem"):
-    """Cho mentor qua vòng 1. Vòng 2 chưa bật (VERIFICATION_ROUND2_ENABLED=false) thì đây là duyệt luôn: mentor APPROVED."""
-    return round1_review(admin_token, interview, "PASS", note)
+GOOD_ROUND2_SCORES = {"technical": 8, "depth": 7, "communication": 7, "mentoring": 7, "authenticity": 8}
+
+
+def propose_slots(admin_token, application_id, days=3, count=2):
+    """Admin đề xuất `count` khung giờ vòng 2 bắt đầu từ `days` ngày tới (mỗi khung cách nhau 1 giờ)."""
+    from datetime import datetime, timedelta, timezone
+    base = datetime.now(timezone.utc) + timedelta(days=days)
+    return call("POST", f"{AI}/api/ai/admin/verification/applications/{application_id}/slots",
+                {"startsAt": [(base + timedelta(hours=i)).isoformat() for i in range(count)]}, token=admin_token)
+
+
+def choose_first_slot(mentor_token):
+    slots = call("GET", f"{AI}/api/ai/verification/status", token=mentor_token)["slots"]
+    return call("POST", f"{AI}/api/ai/verification/slots/{slots[0]['id']}/choose", token=mentor_token)
+
+
+def round2_decision(admin_token, application_id, decision, scores=None, note=None, score_notes=None):
+    return call("POST", f"{AI}/api/ai/admin/verification/applications/{application_id}/decision",
+                {"decision": decision, "scores": scores, "scoreNotes": score_notes, "note": note}, token=admin_token)
+
+
+def approve_mentor(admin_token, mentor_token, interview, note="Duyet cho e2e: mentor thu nghiem"):
+    """Đưa mentor qua cả hai vòng: PASS vòng 1 → admin đề xuất giờ → mentor chọn → admin chấm phiếu và APPROVE (mentor APPROVED)."""
+    round1_review(admin_token, interview, "PASS", note)
+    propose_slots(admin_token, interview["applicationId"])
+    choose_first_slot(mentor_token)
+    return round2_decision(admin_token, interview["applicationId"], "APPROVE", GOOD_ROUND2_SCORES, note)

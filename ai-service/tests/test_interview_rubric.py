@@ -146,7 +146,7 @@ def test_note_required_when_overruling_ai(client, db, fake_profile, fake_mentori
     assert res.status_code == 400 and res.json()["error"]["code"] == "REVIEW_NOTE_REQUIRED"
     assert fake_audit.records == []
     res = review(client, interview["applicationId"], "APPROVE", "Đã phỏng vấn trực tiếp, đạt yêu cầu")
-    assert res.status_code == 200 and res.json()["status"] == "APPROVED"
+    assert res.status_code == 200 and res.json()["status"] == "ROUND2_PENDING_SLOTS"
     entry = fake_audit.records[-1]
     assert entry["action"] == "VERIFICATION_ROUND1_PASSED" and entry["targetType"] == "VERIFICATION"
     assert entry["targetId"] == interview["applicationId"] and entry["actorRole"] == "ADMIN"

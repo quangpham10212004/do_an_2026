@@ -15,7 +15,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
-                    charge, make_pdf, multipart_file, round1_review, start_voice_interview, upload_video_chunks, finish_video, voice_transcript)
+                    charge, make_pdf, multipart_file, round1_review, start_voice_interview, upload_video_chunks, finish_video, voice_transcript,
+                    propose_slots, choose_first_slot, round2_decision, GOOD_ROUND2_SCORES)
 
 VN = timezone(timedelta(hours=7))
 # US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
@@ -205,7 +206,12 @@ def main():
     check(4, "Admin thấy đợt xác thực trong danh sách chờ duyệt vòng 1", any(a["id"] == interview["applicationId"] for a in pending))
     round1_review(admin_token, interview, "PASS", "Tra loi tot")
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
-    check(4, "Admin duyệt → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED")
+    check(4, "Qua vòng 1 chưa kích hoạt: còn phỏng vấn vòng 2 (PENDING_REVIEW)", mentor_profile["verificationStatus"] == "PENDING_REVIEW")
+    propose_slots(admin_token, interview["applicationId"])
+    choose_first_slot(mentor_token)
+    round2_decision(admin_token, interview["applicationId"], "APPROVE", GOOD_ROUND2_SCORES, "Dat sau phong van vong 2")
+    mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
+    check(4, "Admin duyệt sau vòng 2 → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED")
 
     # ---------------- DoD 6 & 7: Matching ----------------
     print("\nDoD 6/7 — Danh sách đề xuất có điểm, lý do, đã lọc ràng buộc")

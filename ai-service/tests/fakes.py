@@ -71,10 +71,16 @@ class FakeMentoring:
         # Cặp (mentor_id, mentee_id) có yêu cầu mentoring PENDING/ACCEPTED.
         self.relationships: set[tuple[UUID, UUID]] = set()
         self.relationship_checks: list[tuple[UUID, UUID]] = []
+        self.room_tokens: list[dict] = []
 
     async def is_related(self, mentor_id, mentee_id):
         self.relationship_checks.append((mentor_id, mentee_id))
         return (mentor_id, mentee_id) in self.relationships
+
+    async def issue_room_token(self, room, user_id, name, moderator, not_before, expires_at):
+        self.room_tokens.append({"room": room, "userId": user_id, "name": name, "moderator": moderator,
+                                 "notBefore": not_before, "expiresAt": expires_at})
+        return {"provider": "jitsi", "domain": "meet.test", "roomName": room, "jwt": f"jwt-{'mod' if moderator else 'guest'}-{len(self.room_tokens)}"}
 
     async def notify_user(self, user_id, type_, title, message, link=None):
         self.notifications.append((str(user_id), type_))
@@ -98,6 +104,7 @@ def fake_mentoring(monkeypatch) -> FakeMentoring:
     monkeypatch.setattr(mentoring, "notify_user", fake.notify_user)
     monkeypatch.setattr(mentoring, "notify_role", fake.notify_role)
     monkeypatch.setattr(mentoring, "is_related", fake.is_related)
+    monkeypatch.setattr(mentoring, "issue_room_token", fake.issue_room_token)
     return fake
 
 

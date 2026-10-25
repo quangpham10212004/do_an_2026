@@ -111,9 +111,9 @@ def retake_pass_and_reject(admin):
     status, err = error_of(lambda: round1_review(admin, iv, "RETAKE", "Thêm một lần nữa cho chắc"))
     check("RETAKE lần 3 → 409 RETAKE_LIMIT_REACHED", status == 409 and err.get("code") == "RETAKE_LIMIT_REACHED", (status, err))
     done = round1_review(admin, iv, "PASS", "Đã xem video, đạt yêu cầu")
-    check("PASS (vòng 2 chưa bật) → đợt APPROVED, hồ sơ APPROVED", done["status"] == "APPROVED" and profile_status(m) == "APPROVED")
+    check("PASS → đợt ROUND2_PENDING_SLOTS, hồ sơ vẫn PENDING_REVIEW (chưa kích hoạt)", done["status"] == "ROUND2_PENDING_SLOTS" and profile_status(m) == "PENDING_REVIEW", done["status"])
     status, err = error_of(lambda: start_voice_interview(t))
-    check("Mentor đã duyệt không phỏng vấn lại → 409 ALREADY_APPROVED", status == 409 and err.get("code") == "ALREADY_APPROVED", (status, err))
+    check("Đang chờ vòng 2 không phỏng vấn lại → 409 INTERVIEW_PENDING_REVIEW", status == 409 and err.get("code") == "INTERVIEW_PENDING_REVIEW", (status, err))
     status, err = error_of(lambda: round1_review(admin, iv, "PASS", "duyệt lần hai"))
     check("Duyệt lần hai → 409 VERIFICATION_NOT_PENDING_REVIEW", status == 409 and err.get("code") == "VERIFICATION_NOT_PENDING_REVIEW", (status, err))
 
@@ -125,8 +125,8 @@ def retake_pass_and_reject(admin):
     check("REJECT → đợt REJECTED, chờ 15 ngày, hồ sơ REJECTED", done["status"] == "REJECTED" and s["reason"] == "COOLDOWN"
           and s["retryAfter"] and profile_status(r) == "REJECTED", s)
     stats = call("GET", f"{AI}/api/ai/admin/stats", token=admin)
-    check("Thống kê có mentor được duyệt / bị từ chối và tỉ lệ đồng thuận",
-          stats["mentorsApproved"] >= 1 and stats["mentorsRejected"] >= 1 and stats["decisionsTotal"] >= 4, stats)
+    check("Thống kê có mentor bị từ chối và tỉ lệ đồng thuận",
+          stats["mentorsRejected"] >= 1 and stats["decisionsTotal"] >= 4, stats)
 
 
 def main():

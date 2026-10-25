@@ -44,3 +44,20 @@ async def is_related(mentor_id: UUID, mentee_id: UUID) -> bool:
     except (httpx.HTTPError, ValueError, AttributeError) as e:
         log.warning("Could not check mentor %s / mentee %s relationship, denying: %s", mentor_id, mentee_id, e)
         return False
+
+
+async def issue_room_token(room: str, user_id: UUID, name: str, moderator: bool, not_before, expires_at) -> dict:
+    """
+    Xin JWT vào phòng Jitsi cho phỏng vấn xác thực (POST /internal/rooms/token): mentoring-service giữ khoá ký. Khác thông báo,
+    đây là bước bắt buộc để vào phòng nên lỗi được báo lại cho người dùng (502), không nuốt.
+    """
+    from app import errors
+    try:
+        res = await client_for(config.MENTORING_SERVICE_URL).post("/internal/rooms/token", json={
+            "room": room, "userId": str(user_id), "name": name, "moderator": moderator,
+            "notBefore": not_before.isoformat(), "expiresAt": expires_at.isoformat()})
+        res.raise_for_status()
+        return res.json()
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("Could not get room token for %s: %s", room, e)
+        raise errors.AiError("ROOM_UNAVAILABLE", "Không lấy được phòng phỏng vấn, vui lòng thử lại", status=502) from None

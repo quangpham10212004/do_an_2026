@@ -111,6 +111,18 @@ public final class MentoringDtos {
                            OffsetDateTime closesAt, int graceMinutes, boolean moderator) {
     }
 
+    /**
+     * Xác thực mentor vòng 2 (docs/design-mentor-verification.md §6.2) — ai-service xin token vào phòng Jitsi cho admin / mentor.
+     * Phòng và khung giờ do ai-service quyết định (nó giữ lịch phỏng vấn); mentoring-service chỉ ký.
+     */
+    public record RoomTokenInput(@NotBlank @Pattern(regexp = "^mentorhub-verify-[0-9a-f]{32}$") String room,
+                                 @NotNull UUID userId, @NotBlank @Size(max = 120) String name, boolean moderator,
+                                 @NotNull OffsetDateTime notBefore, @NotNull OffsetDateTime expiresAt) {
+    }
+
+    public record RoomTokenView(String provider, String domain, String roomName, String jwt) {
+    }
+
     /** Bản chốt v2.0 §5 — mentor từ chối buổi đang chờ xác nhận (hoàn 100% cho mentee). */
     public record DeclineSessionInput(@Size(max = 300) String reason) {
     }

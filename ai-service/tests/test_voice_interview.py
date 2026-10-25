@@ -11,7 +11,7 @@ from app import config
 from app.interview import planner, voice
 from app.interview.voice import TranscriptItem
 from tests.conftest import auth
-from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, finish
+from tests.test_interview_flow import STRONG_ANSWER, WEAK_ANSWER, approve_mentor, finish
 
 
 def items(*raw):
@@ -211,9 +211,8 @@ def test_approved_mentor_cannot_start_another_voice_interview(client, db, fake_p
     """D6/D10 — bỏ luồng xin nâng cấp: mentor đã APPROVED không mở được buổi phỏng vấn mới."""
     interview = finish(client, mentor_id)
     admin = auth(uuid.uuid4(), "ADMIN")
-    approved = client.post(f"/api/ai/admin/verification/applications/{interview['applicationId']}/round1-review",
-                           json={"decision": "PASS", "note": None}, headers=admin)
-    assert approved.status_code == 200 and approved.json()["status"] == "APPROVED"
+    approved = approve_mentor(client, mentor_id, interview, admin)
+    assert approved["status"] == "APPROVED"
     res = start_voice(client, mentor_id)
     assert res.status_code == 409 and res.json()["error"]["code"] == "ALREADY_APPROVED"
 

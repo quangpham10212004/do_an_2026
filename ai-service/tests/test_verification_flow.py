@@ -53,7 +53,8 @@ def test_fresh_mentor_has_two_attempts_and_can_start(client, db, fake_profile, m
     s = status_of(client, mentor_id)
     assert s == {"applicationId": None, "status": None, "attemptsUsed": 0, "attemptsLeft": 2, "maxAttempts": 2,
                  "retakeCount": 0, "retakeLimit": 2, "retryAfter": None, "canStart": True, "reason": None,
-                 "voiceAvailable": False}
+                 "voiceAvailable": False, "slots": [], "choiceDeadline": None, "rescheduleCount": 0, "rescheduleLimit": 2,
+                 "round2": None}
 
 
 def test_starting_creates_one_application_and_reuses_it(client, db, fake_profile, mentor_id):
@@ -163,12 +164,13 @@ def test_round1_review_only_works_on_a_waiting_application(client, db, fake_prof
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "VERIFICATION_NOT_FOUND"
 
 
-def test_round2_flag_decides_whether_pass_approves_directly(client, db, fake_profile, fake_mentoring, mentor_id, monkeypatch):
-    monkeypatch.setattr(config, "VERIFICATION_ROUND2_ENABLED", True)
+def test_pass_moves_the_application_to_round2_and_keeps_the_profile_pending(client, db, fake_profile, fake_mentoring, mentor_id):
     interview = finish(client, mentor_id)
     res = round1(client, interview["applicationId"], "PASS", "Cho sang vòng 2")
     assert res.status_code == 200 and res.json()["status"] == "ROUND2_PENDING_SLOTS"
     assert fake_profile.verifications[-1] == (mentor_id, "PENDING_REVIEW")
+    s = status_of(client, mentor_id)
+    assert s["status"] == "ROUND2_PENDING_SLOTS" and s["reason"] == "PENDING_REVIEW" and not s["canStart"]
 
 
 def test_already_approved_profile_cannot_start(client, db, fake_profile, mentor_id):

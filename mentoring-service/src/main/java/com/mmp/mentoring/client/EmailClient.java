@@ -51,6 +51,10 @@ public class EmailClient {
             Map.entry("MENTOR_APPROVED", "ACCOUNT"),
             Map.entry("MENTOR_REJECTED", "ACCOUNT"),
             Map.entry("INTERVIEW_RETAKE_REQUESTED", "ACCOUNT"),
+            // Xác thực mentor vòng 2: admin đề xuất khung giờ / đã chốt giờ phỏng vấn (trang trong app là nguồn chính, email chỉ nhắc)
+            Map.entry("MENTOR_ROUND1_PASSED", "ACCOUNT"),
+            Map.entry("MENTOR_INTERVIEW_SLOTS_PROPOSED", "ACCOUNT"),
+            Map.entry("MENTOR_INTERVIEW_SCHEDULED", "ACCOUNT"),
             // US-42 — payment-service gửi qua /internal/notifications khi admin đã chuyển tiền rút
             Map.entry("PAYOUT_PAID", "ACCOUNT"),
             // Bản chốt v2.0 D15 — nhắc trước 30 / 7 ngày: khuyến mãi sắp hết hạn, ví sắp "ngủ" (tiền của người dùng → luôn gửi)

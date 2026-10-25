@@ -94,6 +94,32 @@ class RoomServiceTest {
         assertThat(session.getMenteeJoinedAt()).isNotNull();
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void verificationRoomTokenCarriesTheRoomWindowAndModeratorFlag() {
+        UUID admin = UUID.randomUUID();
+        String room = "mentorhub-verify-" + UUID.randomUUID().toString().replace("-", "");
+        OffsetDateTime start = OffsetDateTime.now().minusMinutes(5);   // đã tới giờ: parser từ chối token có nbf ở tương lai
+        OffsetDateTime end = start.plusHours(4);
+        String jwt = service.issueToken(room, admin, "Admin A", true, start.minusMinutes(1), end);
+
+        Claims claims = parse(jwt);
+        assertThat(claims.getIssuer()).isEqualTo("mentorhub");
+        assertThat(claims.getSubject()).isEqualTo("meet.jitsi");
+        assertThat(claims.getAudience()).containsExactly("jitsi");
+        assertThat(claims.get("room", String.class)).isEqualTo(room);
+        Map<String, Object> user = (Map<String, Object>) ((Map<String, Object>) claims.get("context")).get("user");
+        assertThat(user.get("id")).isEqualTo(admin.toString());
+        assertThat(user.get("name")).isEqualTo("Admin A");
+        assertThat(user.get("moderator")).isEqualTo("true");
+        assertThat(claims.getNotBefore().toInstant().getEpochSecond()).isEqualTo(start.minusMinutes(1).toEpochSecond());
+        assertThat(claims.getExpiration().toInstant().getEpochSecond()).isEqualTo(end.toEpochSecond());
+        assertThat(service.domain()).isEqualTo("meet.example.com");
+
+        Claims guest = parse(service.issueToken(room, UUID.randomUUID(), "Mentor", false, start, end));
+        assertThat(((Map<String, Object>) ((Map<String, Object>) guest.get("context")).get("user")).get("moderator")).isEqualTo("false");
+    }
+
     @Test
     void theFirstJoinTimeIsKept() {
         service.join(mentor, id);

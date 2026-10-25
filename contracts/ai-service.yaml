@@ -170,6 +170,72 @@ components:
         canStart: { type: boolean, description: true khi được bắt đầu buổi mới hoặc đang có buổi dở }
         reason: { type: string, nullable: true, enum: [IN_PROGRESS, PENDING_REVIEW, ALREADY_APPROVED, COOLDOWN] }
         voiceAvailable: { type: boolean, description: "Server có OPENAI_API_KEY (phỏng vấn giọng nói dùng được)" }
+        slots: { type: array, items: { $ref: "#/components/schemas/VerificationSlot" }, description: "Khung giờ chờ chọn (ROUND2_PENDING_CHOICE)" }
+        choiceDeadline: { type: string, format: date-time, nullable: true }
+        rescheduleCount: { type: integer }
+        rescheduleLimit: { type: integer }
+        round2: { allOf: [{ $ref: "#/components/schemas/Round2Schedule" }], nullable: true }
+    VerificationSlot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        startsAt: { type: string, format: date-time, description: "Chỉ có giờ bắt đầu — buổi vòng 2 không giới hạn thời lượng (D8)" }
+        status: { type: string, enum: [PROPOSED, CHOSEN, EXPIRED] }
+    Round2Schedule:
+      type: object
+      properties:
+        interviewId: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time }
+        roomOpensAt: { type: string, format: date-time }
+        canReschedule: { type: boolean }
+        rescheduleBlockedReason: { type: string, nullable: true, enum: [RESCHEDULE_LIMIT, RESCHEDULE_TOO_LATE] }
+    Round2Scores:
+      type: object
+      description: "Phiếu chấm vòng 2 — 5 tiêu chí thang 0–10 (trọng số 30/25/10/20/15, hằng số trong mã: app/verification/round2_rubric.py)"
+      required: [technical, depth, communication, mentoring, authenticity]
+      properties:
+        technical: { type: number, minimum: 0, maximum: 10 }
+        depth: { type: number, minimum: 0, maximum: 10 }
+        communication: { type: number, minimum: 0, maximum: 10 }
+        mentoring: { type: number, minimum: 0, maximum: 10 }
+        authenticity: { type: number, minimum: 0, maximum: 10 }
+    Round2Interview:
+      type: object
+      description: Một buổi vòng 2 (admin xem). Đổi giờ / vắng / admin RESCHEDULE sinh buổi mới; buổi đã COMPLETED không sửa được.
+      properties:
+        id: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time }
+        status: { type: string, enum: [SCHEDULED, COMPLETED, MENTOR_NO_SHOW, RESCHEDULED] }
+        mentorJoinedAt: { type: string, format: date-time, nullable: true, description: Nhật ký vào phòng — căn cứ duy nhất xác định mentor vắng }
+        adminJoinedAt: { type: string, format: date-time, nullable: true }
+        endedAt: { type: string, format: date-time, nullable: true }
+        scores: { allOf: [{ $ref: "#/components/schemas/Round2Scores" }], nullable: true }
+        scoreNotes: { type: object, nullable: true, additionalProperties: { type: string } }
+        totalScore: { type: number, nullable: true }
+        recommendation: { type: string, nullable: true, enum: [APPROVE, REJECT, NEEDS_REVIEW] }
+        blocked: { type: boolean, description: "Điều kiện chặn: technical hoặc authenticity ≤ 2 → khuyến nghị tối đa NEEDS_REVIEW" }
+        note: { type: string, nullable: true }
+        comparison:
+          type: array
+          description: Điểm admin cạnh điểm AI vòng 1 cho 4 tiêu chí chung; delta ≥ 4 là large (chỉ thông tin)
+          items:
+            type: object
+            properties:
+              criterion: { type: string }
+              ai: { type: number }
+              admin: { type: number }
+              delta: { type: number }
+              large: { type: boolean }
+    Round2Room:
+      type: object
+      properties:
+        provider: { type: string, example: jitsi }
+        domain: { type: string }
+        roomName: { type: string, example: mentorhub-verify-0123456789abcdef0123456789abcdef }
+        jwt: { type: string }
+        opensAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        moderator: { type: boolean }
     VerificationApplication:
       type: object
       description: Một đợt xác thực (ADMIN). `interview` = buổi vòng 1 mới nhất; chi tiết có thêm `interviews` (mọi lần làm).
@@ -192,6 +258,12 @@ components:
         createdAt: { type: string, format: date-time }
         interview: { allOf: [{ $ref: "#/components/schemas/Interview" }], nullable: true }
         interviews: { type: array, items: { $ref: "#/components/schemas/Interview" } }
+        rescheduleCount: { type: integer }
+        noShowCount: { type: integer }
+        choiceDeadline: { type: string, format: date-time, nullable: true }
+        slots: { type: array, items: { $ref: "#/components/schemas/VerificationSlot" } }
+        round2Interviews: { type: array, items: { $ref: "#/components/schemas/Round2Interview" } }
+        warnings: { type: array, items: { type: string }, description: "vd. admin đã có buổi vòng 2 khác bắt đầu trong vòng 60 phút quanh khung giờ vừa đề xuất (chỉ cảnh báo)" }
     VoiceSession:
       type: object
       description: >
@@ -763,6 +835,89 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/InterviewVideo" }
         "404": { description: VIDEO_NOT_FOUND }
+  /api/ai/verification/slots/{id}/choose:
+    post:
+      summary: (MENTOR) Chọn một khung giờ admin đã đề xuất (đợt ROUND2_PENDING_CHOICE, trong VERIFICATION_SLOT_CHOICE_DAYS = 3 ngày) → ROUND2_SCHEDULED
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: VerificationStatus, content: { application/json: { schema: { $ref: "#/components/schemas/VerificationStatus" } } } }
+        "403": { description: Không phải khung giờ của mentor }
+        "404": { description: SLOT_NOT_FOUND }
+        "409": { description: "NOT_AWAITING_CHOICE | SLOT_NOT_AVAILABLE | CHOICE_EXPIRED" }
+  /api/ai/verification/round2/reschedule:
+    post:
+      summary: >-
+        (MENTOR) Xin đổi giờ vòng 2: tối đa VERIFICATION_ROUND2_MAX_RESCHEDULE = 2 lần mỗi đợt, báo trước ≥ 24 giờ so với giờ bắt đầu (D9).
+        Buổi đã chốt bị huỷ, đợt về ROUND2_PENDING_SLOTS để admin đề xuất lại.
+      responses:
+        "200": { description: VerificationStatus, content: { application/json: { schema: { $ref: "#/components/schemas/VerificationStatus" } } } }
+        "409": { description: "NOT_SCHEDULED | RESCHEDULE_LIMIT | RESCHEDULE_TOO_LATE" }
+  /api/ai/verification/round2/room:
+    get:
+      summary: >-
+        (MENTOR chủ đợt | ADMIN) Token vào phòng Jitsi vòng 2. Mentor: đợt của mình; admin: bắt buộc ?applicationId. Chỉ trong khung giờ
+        phòng mở (trước giờ bắt đầu 10 phút → giờ bắt đầu + VERIFICATION_ROOM_MAX_HOURS = 4 giờ, trần kỹ thuật chứ không phải thời lượng buổi).
+        Admin là moderator. Lần đầu mỗi bên lấy token ghi nhật ký vào phòng.
+      parameters:
+        - { name: applicationId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Round2Room, content: { application/json: { schema: { $ref: "#/components/schemas/Round2Room" } } } }
+        "400": { description: APPLICATION_REQUIRED (admin thiếu applicationId) }
+        "404": { description: VERIFICATION_NOT_FOUND }
+        "409": { description: "ROOM_NOT_AVAILABLE (chưa chốt giờ) | ROOM_CLOSED (kèm opensAt)" }
+        "502": { description: ROOM_UNAVAILABLE (không lấy được token từ mentoring-service) }
+  /api/ai/admin/verification/applications/{id}/slots:
+    post:
+      summary: >-
+        (ADMIN) Đề xuất khung giờ vòng 2 (1..VERIFICATION_ROUND2_SLOT_COUNT = 3, chỉ giờ bắt đầu, cách hiện tại ≥ 60 phút) khi đợt ở
+        ROUND2_PENDING_SLOTS, hoặc ROUND2_PENDING_CHOICE đã quá hạn chọn (khung cũ hết hiệu lực). Trả `warnings` nếu admin đã có buổi khác
+        bắt đầu trong vòng 60 phút (chỉ cảnh báo). Báo mentor (MENTOR_INTERVIEW_SLOTS_PROPOSED).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startsAt]
+              properties:
+                startsAt: { type: array, minItems: 1, maxItems: 10, items: { type: string, format: date-time } }
+      responses:
+        "200": { description: VerificationApplication, content: { application/json: { schema: { $ref: "#/components/schemas/VerificationApplication" } } } }
+        "400": { description: "SLOTS_REQUIRED | TOO_MANY_SLOTS | DUPLICATE_SLOTS | SLOT_TOO_SOON" }
+        "409": { description: "VERIFICATION_NOT_AT_ROUND2 | CHOICE_PENDING" }
+  /api/ai/admin/verification/applications/{id}/mentor-absent:
+    post:
+      summary: >-
+        (ADMIN) Báo mentor vắng buổi đã chốt: chỉ khi đã qua VERIFICATION_ROOM_GRACE_MINUTES = 10 phút kể từ giờ bắt đầu VÀ nhật ký vào phòng không
+        có mentor. Lần 1 → đợt về ROUND2_PENDING_SLOTS; lần 2 → đóng đợt CLOSED, chờ 15 ngày.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: VerificationApplication, content: { application/json: { schema: { $ref: "#/components/schemas/VerificationApplication" } } } }
+        "409": { description: "NOT_SCHEDULED | GRACE_NOT_ELAPSED | MENTOR_ALREADY_JOINED" }
+  /api/ai/admin/verification/applications/{id}/decision:
+    post:
+      summary: >-
+        (ADMIN) Kết luận sau vòng 2. APPROVE | REJECT bắt buộc phiếu đủ 5 tiêu chí; tiêu chí chấm ≤ 2 hoặc ≥ 9 kèm lý do ≥ 10 ký tự (scoreNotes);
+        quyết định ngược khuyến nghị của phiếu cần note ≥ 10 ký tự. APPROVE → mentor APPROVED (vào matching); REJECT → đóng đợt, chờ 15 ngày;
+        RESCHEDULE (admin hoãn, không cần phiếu) → về ROUND2_PENDING_SLOTS và KHÔNG tính lần của mentor. Ghi audit VERIFICATION_ROUND2_*.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT, RESCHEDULE] }
+                scores: { allOf: [{ $ref: "#/components/schemas/Round2Scores" }], nullable: true }
+                scoreNotes: { type: object, additionalProperties: { type: string } }
+                note: { type: string, maxLength: 2000 }
+      responses:
+        "200": { description: VerificationApplication, content: { application/json: { schema: { $ref: "#/components/schemas/VerificationApplication" } } } }
+        "400": { description: "SCORES_REQUIRED | SCORE_OUT_OF_RANGE | SCORE_NOTE_REQUIRED (kèm criteria) | REVIEW_NOTE_REQUIRED" }
+        "409": { description: NOT_SCHEDULED }
   /api/ai/admin/verification/applications:
     get:
       summary: (ADMIN) Danh sách đợt xác thực (mới nhất trước; lọc theo trạng thái thì cũ nhất trước)
@@ -788,8 +943,8 @@ paths:
   /api/ai/admin/verification/applications/{id}/round1-review:
     post:
       summary: >
-        (ADMIN) Duyệt vòng 1 — đợt phải ở ROUND1_REVIEW. PASS: sang vòng 2 (VERIFICATION_ROUND2_ENABLED=false thì duyệt luôn,
-        mentor APPROVED); REJECT: đóng đợt REJECTED, chờ 15 ngày; RETAKE: đợt về ROUND1, không tính vào số lần làm, tối đa
+        (ADMIN) Duyệt vòng 1 — đợt phải ở ROUND1_REVIEW. PASS: sang vòng 2 (ROUND2_PENDING_SLOTS, hồ sơ vẫn
+        PENDING_REVIEW); REJECT: đóng đợt REJECTED, chờ 15 ngày; RETAKE: đợt về ROUND1, không tính vào số lần làm, tối đa
         VERIFICATION_ROUND1_MAX_RETAKE (2) lần. Đồng bộ trạng thái xác thực sang profile-service (APPROVED | REJECTED |
         PENDING_INTERVIEW | PENDING_REVIEW) và ghi audit log VERIFICATION_ROUND1_PASSED | _REJECTED | _RETAKE_REQUESTED
         (targetType VERIFICATION). Bắt buộc note ≥ 10 ký tự khi RETAKE hoặc quyết định ngược khuyến nghị AI

@@ -101,18 +101,31 @@ public class RoomService {
         OffsetDateTime opensAt = session.getScheduledAt().minus(opensBefore);
         OffsetDateTime closesAt = session.endsAt().plus(closesAfter);
         String room = roomName(session.getId());
-        String jwt = Jwts.builder()
+        String jwt = issueToken(room, user.userId(), name, isMentor, opensAt.minusMinutes(1), closesAt);
+        return new RoomView("jitsi", domain, room, jwt, opensAt, closesAt, (int) graceOf(session).toMinutes(), isMentor);
+    }
+
+    /**
+     * Ký JWT vào phòng Jitsi. Dùng chung cho phiên học ({@link #join}) và phỏng vấn xác thực mentor
+     * (POST /internal/rooms/token do ai-service gọi) để {@code JITSI_JWT_SECRET} chỉ nằm ở một nơi.
+     * Token chỉ có hiệu lực cho đúng một phòng ({@code room}) và trong [notBefore, expiresAt].
+     */
+    public String issueToken(String room, UUID userId, String name, boolean moderator, OffsetDateTime notBefore, OffsetDateTime expiresAt) {
+        return Jwts.builder()
                 .header().type("JWT").and()   // prosody (token auth) từ chối token thiếu typ: "JWT error: Invalid typ"
                 .issuer(appId)
                 .subject(xmppDomain)
                 .claim("aud", "jitsi")
                 .claim("room", room)
-                .claim("context", Map.of("user", Map.of("id", user.userId().toString(), "name", name, "moderator", isMentor ? "true" : "false")))
-                .notBefore(Date.from(opensAt.minusMinutes(1).toInstant()))
-                .expiration(Date.from(closesAt.toInstant()))
+                .claim("context", Map.of("user", Map.of("id", userId.toString(), "name", name, "moderator", moderator ? "true" : "false")))
+                .notBefore(Date.from(notBefore.toInstant()))
+                .expiration(Date.from(expiresAt.toInstant()))
                 .signWith(Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)), Jwts.SIG.HS256)
                 .compact();
-        return new RoomView("jitsi", domain, room, jwt, opensAt, closesAt, (int) graceOf(session).toMinutes(), isMentor);
+    }
+
+    public String domain() {
+        return domain;
     }
 
     /**

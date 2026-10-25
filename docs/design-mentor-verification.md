@@ -1,6 +1,6 @@
 # Thiết kế: xác thực mentor 2 vòng
 
-> **Trạng thái: THIẾT KẾ ĐÃ CHỐT (nhóm xác nhận 24/10/2026), chưa hiện thực (⚒).** Soạn 24/10/2026 cho AI Interview (xác thực mentor). Bản này thay bản 3 vòng
+> **Trạng thái: THIẾT KẾ ĐÃ CHỐT (nhóm xác nhận 24/10/2026) và ĐÃ HIỆN THỰC qua 5 PR (1a, 1b, 2, 3, 4 — xem [report-task-verification.md](report-task-verification.md)).** Còn việc kiểm tay ở mục 16 (camera 30 phút, hai người thật vào phòng Jitsi, buổi dài hơn trần 4 giờ). Soạn 24/10/2026 cho AI Interview (xác thực mentor). Bản này thay bản 3 vòng
 > (trắc nghiệm, AI chat, AI giọng nói) bằng **2 vòng**: AI phỏng vấn giọng nói có camera, rồi phỏng vấn với admin.
 > Hiện trạng đang chạy (một buổi chat 5 lượt, có cấp độ) được mô tả ở [ai-features.md](ai-features.md) §2.
 > Khi hiện thực xong, các quy tắc ở đây thay thế phần tương ứng của [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) §3–4 và §16.1.

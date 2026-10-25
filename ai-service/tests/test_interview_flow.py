@@ -1,5 +1,6 @@
 """Luồng AI Interview của mentor (phỏng vấn giọng nói) end-to-end trong ai-service."""
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -73,6 +74,34 @@ def finish(client, mentor_id, text=STRONG_ANSWER):
     return submit(client, start_iv(client, mentor_id), mentor_id, text)
 
 
+GOOD_SCORES = {"technical": 8, "depth": 7, "communication": 7, "mentoring": 7, "authenticity": 8}
+
+
+def propose_and_choose(client, mentor_id, application_id, admin, days=3, count=2):
+    """Admin đề xuất `count` khung giờ (từ `days` ngày tới), mentor chọn khung đầu; trả về giờ đã chốt."""
+    base = datetime.now(timezone.utc) + timedelta(days=days)
+    starts = [(base + timedelta(hours=i)).isoformat() for i in range(count)]
+    res = client.post(f"/api/ai/admin/verification/applications/{application_id}/slots", json={"startsAt": starts}, headers=admin)
+    assert res.status_code == 200, res.text
+    slots = client.get("/api/ai/verification/status", headers=auth(mentor_id, "MENTOR")).json()["slots"]
+    assert len(slots) == count
+    chosen = client.post(f"/api/ai/verification/slots/{slots[0]['id']}/choose", headers=auth(mentor_id, "MENTOR"))
+    assert chosen.status_code == 200, chosen.text
+    return chosen.json()
+
+
+def approve_mentor(client, mentor_id, interview, admin=None):
+    """Đưa mentor qua cả hai vòng: PASS vòng 1 → đề xuất + chọn giờ → admin chấm phiếu và APPROVE. Trả về đợt sau kết luận."""
+    admin = admin or auth(uuid.uuid4(), "ADMIN")
+    path = f"/api/ai/admin/verification/applications/{interview['applicationId']}"
+    passed = client.post(path + "/round1-review", json={"decision": "PASS", "note": "Đạt vòng 1, sang vòng 2"}, headers=admin)
+    assert passed.status_code == 200, passed.text
+    propose_and_choose(client, mentor_id, interview["applicationId"], admin)
+    res = client.post(path + "/decision", json={"decision": "APPROVE", "scores": GOOD_SCORES, "note": "Đạt yêu cầu sau phỏng vấn"}, headers=admin)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
 def test_full_interview_flow(client, db, fake_profile, fake_mentoring, mentor_id):
     started = start(client, mentor_id)
     assert started.status_code == 200, started.text
@@ -102,8 +131,9 @@ def test_admin_review_syncs_verification(client, db, fake_profile, fake_mentorin
     path = f"/api/ai/admin/verification/applications/{interview['applicationId']}/round1-review"
     reviewed = client.post(path, json={"decision": "PASS", "note": "Tra loi tot"}, headers=admin)
     assert reviewed.status_code == 200, reviewed.text
-    assert reviewed.json()["status"] == "APPROVED" and reviewed.json()["round1Decision"] == "PASS"
-    assert fake_profile.verifications[-1] == (mentor_id, "APPROVED")
+    assert reviewed.json()["status"] == "ROUND2_PENDING_SLOTS" and reviewed.json()["round1Decision"] == "PASS"
+    assert fake_profile.verifications[-1] == (mentor_id, "PENDING_REVIEW")  # chưa kích hoạt: còn vòng 2
+    assert (str(mentor_id), "MENTOR_ROUND1_PASSED") in fake_mentoring.notifications
     assert client.get(f"/api/ai/interviews/{interview['id']}", headers=admin).json()["status"] == "PASSED"
 
     again = client.post(path, json={"decision": "PASS"}, headers=admin)

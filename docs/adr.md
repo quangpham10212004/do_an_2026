@@ -20,6 +20,8 @@ kiểm chứng.
 | [ADR-04](#adr-04--schema-quản-lý-bằng-file-sql-khởi-tạo-không-dùng-công-cụ-migration) | Schema quản lý bằng `db/init/*.sql`, không dùng công cụ migration | Đã thay thế (US-11: Flyway / migrations ai-service) | `deployment-guide.md` §8 |
 | [ADR-05](#adr-05--frontend-proxy-làm-cổng-vào-không-dùng-api-gateway-riêng) | Frontend proxy làm cổng vào, không dùng API Gateway riêng | Đã chấp nhận | SRD D11 |
 | [ADR-06](#adr-06--us-11-migration-cho-profile-service-flyway-và-matching-service-runner-sql) | US-11: profile-service dùng Flyway, matching-service dùng runner SQL đánh số | Đã chấp nhận (thay thế ADR-04 cho 2 service này) | `CONVENTIONS.md` mục 7 |
+| [ADR-07](#adr-07--xác-thực-mentor-2-vòng-ai-giọng-nói-có-camera-rồi-admin-phỏng-vấn-qua-jitsi) | Xác thực mentor 2 vòng: AI giọng nói + camera, rồi admin phỏng vấn qua Jitsi | Đã chấp nhận | [design-mentor-verification.md](design-mentor-verification.md) |
+| [ADR-08](#adr-08--endpoint-nội-bộ-cấp-token-phòng-jitsi-cho-phỏng-vấn-xác-thực) | Endpoint nội bộ cấp token phòng Jitsi cho phỏng vấn xác thực | Đã chấp nhận | `contracts/mentoring-service.yaml` |
 
 ### Quyết định đã ghi trong SRD (không lặp lại ở đây)
 
@@ -274,4 +276,41 @@ Các story P0 (lịch ngoại lệ, trạng thái mentor, cài đặt đặt l�
 - (+) Test CSDL của matching-service dựng `profile_db` từ chính các file Flyway (`tests/schema.py`).
 - (−) Cột/bảng mới mà matching-service đọc phải được `GRANT SELECT` cho `matching_reader` trong
   migration (cột mới trong 3 bảng đã grant tự có quyền vì grant ở mức bảng).
+
+
+## ADR-07 — Xác thực mentor 2 vòng: AI giọng nói có camera, rồi admin phỏng vấn qua Jitsi
+
+**Trạng thái**: Đã chấp nhận (24/10/2026, hiện thực qua 5 PR) · thay thế thiết kế một buổi chat 5 lượt có cấp độ
+
+### Bối cảnh
+Một buổi chat AI không đo được năng lực hướng dẫn và không xác nhận được đúng người thật; cấp độ Junior/Senior/Expert làm phức tạp giá và luồng xin nâng cấp.
+
+### Quyết định
+- **Vòng 1**: AI phỏng vấn giọng nói (OpenAI Realtime) với camera bắt buộc; video lưu 60 ngày, **không phân tích khuôn mặt** (D5); server chép lời lại âm thanh để
+  đối chiếu bản trình duyệt gửi (D12); điểm AI chỉ là khuyến nghị, **admin duyệt vòng 1** (PASS / REJECT / RETAKE ≤ 2 lần không tính).
+- **Vòng 2**: admin phỏng vấn trực tiếp qua phòng Jitsi, **không giới hạn thời lượng** (D8); admin đề xuất khung giờ, mentor chọn / đổi giờ (≤ 2 lần, báo trước ≥ 24 giờ);
+  phiếu chấm thống nhất 5 tiêu chí (30/25/10/20/15) cùng thang và ngưỡng với vòng 1; admin quyết định cuối (NFR-8).
+- Mỗi vòng tối đa 2 lần thất bại, bị đóng đợt hoặc từ chối thì chờ 15 ngày, **không còn mở khoá**; bỏ cấp độ, giá do mentor tự đặt; bỏ chế độ chat và dữ liệu phỏng vấn cũ.
+- Trạng thái nằm ở bảng **đợt xác thực** (`verification_applications`); `mentor_profiles.verification_status` giữ nguyên bốn giá trị và được ai-service đồng bộ.
+
+### Hệ quả
+- (+) Mentor qua được hai lớp: sàng lọc rẻ, mở rộng được và xác nhận bởi người thật; quyết định cuối vẫn là admin.
+- (−) Admin thành điểm nghẽn (mỗi mentor cần hai lần xử lý); vòng 1 phụ thuộc OpenAI (không còn chat dự phòng); video là dữ liệu cá nhân nhạy cảm (xem [video-data-policy.md](video-data-policy.md)).
+
+## ADR-08 — Endpoint nội bộ cấp token phòng Jitsi cho phỏng vấn xác thực
+
+**Trạng thái**: Đã chấp nhận · **Phụ trách**: mentoring-service (chủ khoá ký Jitsi) + ai-service (chủ lịch phỏng vấn)
+
+### Bối cảnh
+`RoomService.join` gắn chặt với bảng `sessions` (đọc phiên, mentor/mentee, trạng thái `CONFIRMED`), không dùng được cho buổi phỏng vấn xác thực; nhưng `JITSI_JWT_SECRET` chỉ được nằm ở mentoring-service.
+
+### Quyết định
+- Tách `RoomService.issueToken(room, userId, name, moderator, notBefore, expiresAt)` dùng chung cho phiên học và phỏng vấn.
+- Thêm `POST /internal/rooms/token` (chỉ `X-Internal-Token`): ai-service kiểm quyền, khung giờ và nhật ký vào phòng, rồi xin token. Endpoint chỉ nhận tên phòng `mentorhub-verify-<32 hex>`
+  nên không lấy được token vào phòng học. Khung giờ do ai-service quyết định: mở trước giờ bắt đầu 10 phút, hết hạn token = giờ bắt đầu + 4 giờ (trần kỹ thuật, không phải thời lượng buổi).
+
+### Hệ quả
+- (+) Khoá ký ở một nơi; test `RoomServiceTest` phủ cả hai luồng.
+- (−) Thêm một lời gọi đồng bộ khi vào phòng (lỗi → 502 `ROOM_UNAVAILABLE`, mentor thử lại).
+- Chưa kiểm: Jitsi/prosody có ngắt người đã vào phòng khi JWT hết hạn không (cần chạy buổi dài hơn trần 4 giờ).
 

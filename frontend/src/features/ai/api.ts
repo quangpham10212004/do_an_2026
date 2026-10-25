@@ -1,5 +1,5 @@
 import { api, apiBlob } from "@/lib/api";
-import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewVideo, Round1Decision, Uuid, VerificationApplication, VerificationState, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
+import type { ConfirmedCvFields, Cv, Conversation, CvSummary, CvUploadResult, Interview, InterviewStats, InterviewVideo, Round1Decision, Round2Decision, Round2Room, Round2Scores, Uuid, VerificationApplication, VerificationState, Practice, PracticeEligibility, PracticeStart, StartPracticeInput, VoiceInterviewStart, VoiceTranscriptItem } from "@/types";
 
 // ai-service (AI Interview: Thắng; CV Parsing + Chatbot enrichment: Quang)
 export const aiApi = {
@@ -14,6 +14,18 @@ export const aiApi = {
   // PASS | REJECT | RETAKE; ghi chú ≥ 10 ký tự khi RETAKE hoặc quyết định ngược khuyến nghị AI (400 REVIEW_NOTE_REQUIRED)
   round1Review: (id: Uuid, decision: Round1Decision, note: string) =>
     api<VerificationApplication>(`/api/ai/admin/verification/applications/${id}/round1-review`, { method: "POST", body: { decision, note } }),
+  // Vòng 2 (admin phỏng vấn qua Jitsi). Admin đề xuất khung giờ (ISO) → mentor chọn / đổi giờ (≤ 2 lần, báo trước ≥ 24 giờ)
+  proposeSlots: (id: Uuid, startsAt: string[]) =>
+    api<VerificationApplication>(`/api/ai/admin/verification/applications/${id}/slots`, { method: "POST", body: { startsAt } }),
+  chooseSlot: (slotId: Uuid) => api<VerificationState>(`/api/ai/verification/slots/${slotId}/choose`, { method: "POST" }),
+  rescheduleRound2: () => api<VerificationState>("/api/ai/verification/round2/reschedule", { method: "POST" }),
+  // 409 ROOM_CLOSED (kèm opensAt) ngoài khung giờ phòng mở; lần đầu mỗi bên lấy token được ghi vào nhật ký vào phòng
+  round2Room: (applicationId?: Uuid) =>
+    api<Round2Room>(`/api/ai/verification/round2/room${applicationId ? `?applicationId=${applicationId}` : ""}`),
+  mentorAbsent: (id: Uuid) => api<VerificationApplication>(`/api/ai/admin/verification/applications/${id}/mentor-absent`, { method: "POST" }),
+  // APPROVE | REJECT cần đủ 5 điểm (tiêu chí ≤ 2 hoặc ≥ 9 kèm lý do ≥ 10 ký tự); RESCHEDULE không cần phiếu
+  round2Decision: (id: Uuid, decision: Round2Decision, scores: Round2Scores | null, scoreNotes: Record<string, string>, note: string) =>
+    api<VerificationApplication>(`/api/ai/admin/verification/applications/${id}/decision`, { method: "POST", body: { decision, scores, scoreNotes, note } }),
   adminStats: () => api<InterviewStats>("/api/ai/admin/stats"),
   // FR-7.7 — phỏng vấn giọng nói (cách duy nhất): gọi lại khi đang có buổi < 30 phút = kết nối lại (client secret mới).
   // 400 SELF_ANSWER_ACK_REQUIRED / VOICE_CONSENT_REQUIRED; 409 INTERVIEW_COOLDOWN / INTERVIEW_LOCKED; 503 VOICE_UNAVAILABLE (prod chưa bật); voice = null khi server chưa có OPENAI_API_KEY.

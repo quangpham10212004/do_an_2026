@@ -1111,6 +1111,39 @@ paths:
       responses:
         "204": { description: OK }
         "400": { description: RECIPIENT_REQUIRED }
+  /internal/rooms/token:
+    post:
+      summary: >-
+        Nội bộ — ký JWT vào phòng Jitsi cho phỏng vấn xác thực mentor vòng 2 (ai-service gọi; ai-service kiểm quyền và khung giờ,
+        mentoring-service giữ JITSI_JWT_SECRET). Chỉ chấp nhận tên phòng mentorhub-verify-<32 hex> nên không lấy được token vào phòng học.
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [room, userId, name, moderator, notBefore, expiresAt]
+              properties:
+                room: { type: string, pattern: "^mentorhub-verify-[0-9a-f]{32}$" }
+                userId: { type: string, format: uuid }
+                name: { type: string, maxLength: 120 }
+                moderator: { type: boolean, description: Admin là moderator, mentor là khách }
+                notBefore: { type: string, format: date-time }
+                expiresAt: { type: string, format: date-time, description: "Trần kỹ thuật (giờ bắt đầu + VERIFICATION_ROOM_MAX_HOURS), không phải thời lượng buổi" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string, example: jitsi }
+                  domain: { type: string }
+                  roomName: { type: string }
+                  jwt: { type: string }
+        "400": { description: "VALIDATION_ERROR (sai mẫu tên phòng) | INVALID_WINDOW (expiresAt không sau notBefore)" }
   /internal/relationships:
     get:
       summary: Nội bộ — mentor và mentee có yêu cầu mentoring đang mở (PENDING hoặc ACCEPTED) hay không

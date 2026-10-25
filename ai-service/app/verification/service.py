@@ -5,7 +5,7 @@ Vòng 1 (phỏng vấn giọng nói) do app.interview.service chạy; module nà
 Tuyệt đối không import app.interview.service (service đó gọi ngược vào đây).
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import asyncpg
@@ -19,9 +19,13 @@ from app.interview import rubric, voice
 from app.interview.views import InterviewStats, InterviewView, interview_view
 from app.security import AuthUser
 from app.verification import repository as repo
+from app.verification import round2_repository as r2repo
+from app.verification import round2_rubric
+from app.verification import round2_rules
 from app.verification import rules
 from app.verification import video_repository as video_repo
-from app.verification.views import ApplicationView, Round1ReviewInput, VerificationStatusView
+from app.verification.views import (ApplicationView, ComparisonRow, Round1ReviewInput, Round2InterviewView, Round2Schedule,
+                                    SlotView, VerificationStatusView)
 
 log = logging.getLogger(__name__)
 
@@ -84,12 +88,47 @@ async def status_view(mentor_id: UUID) -> VerificationStatusView:
     shown = open_app or (latest if state.reason in ("COOLDOWN", "ALREADY_APPROVED") else None)
     failed = await repo.failed_attempts(pool, shown["id"]) if shown else 0
     max_attempts = config.VERIFICATION_MAX_ATTEMPTS_PER_ROUND
+    slots, schedule = [], None
+    if open_app is not None and open_app["status"] == rules.ROUND2_PENDING_CHOICE:
+        slots = [SlotView(id=r["id"], starts_at=r["starts_at"], status=r["status"]) for r in await r2repo.proposed_slots(pool, open_app["id"])]
+    if open_app is not None and open_app["status"] == rules.ROUND2_SCHEDULED:
+        schedule = await round2_schedule(pool, open_app)
     return VerificationStatusView(
         application_id=shown["id"] if shown else None, status=shown["status"] if shown else None,
         attempts_used=failed, attempts_left=rules.attempts_left(failed, max_attempts), max_attempts=max_attempts,
         retake_count=shown["retake_count"] if shown else 0, retake_limit=config.VERIFICATION_ROUND1_MAX_RETAKE,
         retry_after=state.cooldown_until, can_start=state.can_start, reason=state.reason,
-        voice_available=voice.available())
+        voice_available=voice.available(), slots=slots, choice_deadline=shown["choice_deadline"] if shown else None,
+        reschedule_count=shown["reschedule_count"] if shown else 0,
+        reschedule_limit=config.VERIFICATION_ROUND2_MAX_RESCHEDULE, round2=schedule)
+
+
+async def round2_schedule(db, app) -> Round2Schedule | None:
+    """Buổi vòng 2 đã chốt giờ, kèm việc mentor còn đổi giờ được không (D9)."""
+    interview = await r2repo.scheduled_of(db, app["id"])
+    if interview is None:
+        return None
+    window = round2_rules.room_window(interview["scheduled_at"], timedelta(minutes=config.VERIFICATION_ROOM_OPENS_BEFORE_MINUTES),
+                                      config.VERIFICATION_ROOM_MAX_HOURS)
+    blocked = round2_rules.reschedule_error(_now(), interview["scheduled_at"], app["reschedule_count"],
+                                            config.VERIFICATION_ROUND2_MAX_RESCHEDULE,
+                                            timedelta(hours=config.VERIFICATION_ROUND2_RESCHEDULE_NOTICE_HOURS))
+    return Round2Schedule(interview_id=interview["id"], scheduled_at=interview["scheduled_at"], room_opens_at=window[0],
+                          can_reschedule=blocked is None, reschedule_blocked_reason=blocked)
+
+
+async def _round2_interview_views(db, app) -> list[Round2InterviewView]:
+    ai = await r2repo.ai_rubric_average(db, app["id"])
+    views = []
+    for r in await r2repo.interviews_of(db, app["id"]):
+        scores = r2repo.jsonb(r["scores"])
+        views.append(Round2InterviewView(
+            id=r["id"], scheduled_at=r["scheduled_at"], status=r["status"], mentor_joined_at=r["mentor_joined_at"],
+            admin_joined_at=r["admin_joined_at"], ended_at=r["ended_at"], scores=scores, score_notes=r2repo.jsonb(r["score_notes"]),
+            total_score=r["total_score"] if r["total_score"] is None else round(r["total_score"], 1),
+            recommendation=r["recommendation"], blocked=bool(scores) and round2_rubric.blocked(scores), note=r["note"],
+            comparison=[ComparisonRow(**row) for row in round2_rubric.comparison(ai, scores)] if scores else []))
+    return views
 
 
 async def start_application(user: AuthUser) -> VerificationStatusView:
@@ -159,7 +198,10 @@ async def _application_view(db, app, detail: bool) -> ApplicationView:
         round1_decision=app["round1_decision"], round1_note=app["round1_note"],
         round1_reviewed_at=app["round1_reviewed_at"], reviewed_at=app["reviewed_at"], closed_at=app["closed_at"],
         retry_after=app["retry_after"], created_at=app["created_at"],
-        interview=views[-1] if views else None, interviews=views if detail else [])
+        interview=views[-1] if views else None, interviews=views if detail else [],
+        reschedule_count=app["reschedule_count"], no_show_count=app["no_show_count"], choice_deadline=app["choice_deadline"],
+        slots=[SlotView(id=r["id"], starts_at=r["starts_at"], status=r["status"]) for r in await r2repo.slots_of(db, app["id"])] if detail else [],
+        round2_interviews=await _round2_interview_views(db, app) if detail else [])
 
 
 async def list_applications(status: str | None) -> list[ApplicationView]:
@@ -200,12 +242,10 @@ async def round1_review(admin: AuthUser, application_id: UUID, body: Round1Revie
         raise errors.bad_request("REVIEW_NOTE_REQUIRED",
                                  f"Quyết định {why} — vui lòng ghi rõ lý do (ít nhất {MIN_OVERRULE_NOTE} ký tự)")
 
-    final = decision == "PASS" and not config.VERIFICATION_ROUND2_ENABLED
-    new_status = {"RETAKE": rules.ROUND1, "REJECT": rules.REJECTED,
-                  "PASS": rules.APPROVED if final else rules.ROUND2_PENDING_SLOTS}[decision]
+    new_status = {"RETAKE": rules.ROUND1, "REJECT": rules.REJECTED, "PASS": rules.ROUND2_PENDING_SLOTS}[decision]
     async with pool.acquire() as conn, conn.transaction():
         updated = await repo.apply_round1_decision(conn, application_id, decision, admin.user_id, note, new_status,
-                                                   config.VERIFICATION_RETRY_DAYS, final)
+                                                   config.VERIFICATION_RETRY_DAYS, False)
         if updated is None:
             raise errors.conflict("VERIFICATION_NOT_PENDING_REVIEW", "Đợt xác thực không ở bước chờ duyệt vòng 1")
         await conn.execute(
@@ -215,12 +255,9 @@ async def round1_review(admin: AuthUser, application_id: UUID, body: Round1Revie
 
     await profile.update_verification(updated["mentor_id"], rules.profile_status(new_status))
     suffix = "" if note is None else f" Nhận xét: {note}"
-    if decision == "PASS" and final:
-        notice = ("MENTOR_APPROVED", "Tài khoản mentor đã được kích hoạt",
-                  "Chúc mừng! Bạn có thể chọn mức giá cho buổi mentoring, xuất hiện trong kết quả gợi ý và nhận mentee." + suffix)
-    elif decision == "PASS":
-        notice = ("MENTOR_APPROVED", "Bạn đã qua vòng 1",
-                  "Quản trị viên sẽ đề xuất giờ phỏng vấn vòng 2 với bạn." + suffix)
+    if decision == "PASS":
+        notice = ("MENTOR_ROUND1_PASSED", "Bạn đã qua vòng 1",
+                  "Quản trị viên sẽ đề xuất giờ phỏng vấn vòng 2 trực tiếp với bạn; bạn sẽ nhận thông báo khi có khung giờ để chọn." + suffix)
     elif decision == "REJECT":
         notice = ("MENTOR_REJECTED", "Hồ sơ mentor chưa được duyệt",
                   f"Bạn có thể cập nhật hồ sơ và xác thực lại sau {config.VERIFICATION_RETRY_DAYS:g} ngày." + suffix)

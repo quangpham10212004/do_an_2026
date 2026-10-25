@@ -8,6 +8,7 @@ import { aiApi } from "@/features/ai/api";
 import { AssessmentCard, InterviewTranscript } from "@/features/ai/InterviewViews";
 import { PlanCard } from "@/features/ai/VoiceViews";
 import { VideoCard } from "@/features/ai/VideoCard";
+import { AdminRound2Section } from "@/features/ai/Round2Panels";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { Recommendation, Round1Decision, VerificationApplication } from "@/types";
@@ -41,7 +42,7 @@ function ApplicationReview({ id }: { id: string }) {
         return;
       }
       setApp(await aiApi.round1Review(id, decision, note));
-      setMsg({ ok: decision === "PASS" ? "Đã cho mentor qua vòng 1." : decision === "REJECT" ? "Đã từ chối mentor, mentor chờ 15 ngày để xác thực lại." : "Đã yêu cầu mentor làm lại vòng 1 (không tính vào số lần làm)." });
+      setMsg({ ok: decision === "PASS" ? "Đã cho mentor qua vòng 1. Hãy đề xuất khung giờ phỏng vấn vòng 2." : decision === "REJECT" ? "Đã từ chối mentor, mentor chờ 15 ngày để xác thực lại." : "Đã yêu cầu mentor làm lại vòng 1 (không tính vào số lần làm)." });
     } catch (e) {
       setMsg({ error: errorMessage(e) });
     }
@@ -70,7 +71,7 @@ function ApplicationReview({ id }: { id: string }) {
           {app.status === "ROUND1_REVIEW" && (
             <Card>
               <CardHeader title="Duyệt vòng 1"
-                description="Đọc kỹ bản chép lời, AI có thể chấm sai. Mentor chỉ xuất hiện trong AI Matching sau khi được kích hoạt." />
+                description="Đọc kỹ bản chép lời, AI có thể chấm sai. Qua vòng 1 là sang vòng 2 (admin phỏng vấn trực tiếp); mentor chỉ xuất hiện trong AI Matching sau khi được duyệt cuối." />
               <CardBody className="flex flex-col gap-3">
                 <Field label="Nhận xét gửi mentor" id="review-note"
                   hint={`Bắt buộc (từ ${MIN_NOTE} ký tự) khi yêu cầu làm lại hoặc quyết định ngược khuyến nghị AI.`}>
@@ -87,6 +88,7 @@ function ApplicationReview({ id }: { id: string }) {
               </CardFooter>
             </Card>
           )}
+          <AdminRound2Section app={app} onChange={setApp} />
           {interview && <AssessmentCard interview={interview} />}
           {interview?.video && (
             <VideoCard interview={interview} admin

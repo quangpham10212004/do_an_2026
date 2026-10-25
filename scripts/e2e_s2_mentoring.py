@@ -16,7 +16,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from common import AI, AUTH, MATCHING, MENTORING, PAYMENT, PROFILE, ApiError, call, charge, complete_voice_interview, admin_pass_round1
+from common import AI, AUTH, MATCHING, MENTORING, PAYMENT, PROFILE, ApiError, call, charge, complete_voice_interview, approve_mentor
 
 VN = timezone(timedelta(hours=7))
 RUN = uuid.uuid4().hex[:6]
@@ -60,7 +60,7 @@ def approved_mentor(admin_token, name, hourly_rate, capacity=5):
     call("PUT", f"{PROFILE}/api/profile/mentor/{m['userId']}/availability", {
         "slots": [{"dayOfWeek": d, "startTime": "06:00", "endTime": "23:00"} for d in range(1, 8)]}, token=t)
     interview = complete_voice_interview(t)
-    admin_pass_round1(admin_token, interview)
+    approve_mentor(admin_token, t, interview)
     return m
 
 

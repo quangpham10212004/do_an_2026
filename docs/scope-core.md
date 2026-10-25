@@ -27,7 +27,7 @@ Bắt buộc đi kèm (nền tảng của 5 chức năng trên, không tính là
 | Luyện phỏng vấn miễn phí cho mentee (voice) | ai-service (`app/practice`), frontend `practice-interview` | Chưa nghiệm thu; cần `OPENAI_API_KEY`. ⚒ **Phỏng vấn giọng nói của mentor** (vòng 1 xác thực) chuyển vào lõi theo [design-mentor-verification.md](design-mentor-verification.md); phần dùng chung `voice.py` vẫn phải chạy |
 | Ví VND, nạp MoMo/VNPay, thu nhập mentor, referral theo mentor | payment-service, frontend `wallet`, `payment`, `earnings`, `referral` | **Vẫn được mentoring gọi** khi đặt buổi và tính thu nhập — chưa tách được |
 | Buổi trải nghiệm 15 phút (30.000đ) | mentoring-service, payment-service | Phụ thuộc ví |
-| Phòng học Jitsi + nhật ký vào phòng (buổi mentoring) | mentoring-service, compose profile `jitsi` | Đã là compose profile tuỳ chọn. ⚒ Hạ tầng Jitsi và cách ký JWT được **dùng lại cho vòng 2 xác thực mentor** (lõi), nên phải chạy được; video thật mới kiểm tay một lần (22/10) |
+| Phòng học Jitsi + nhật ký vào phòng (buổi mentoring) | mentoring-service, compose profile `jitsi` | Đã là compose profile tuỳ chọn. Hạ tầng Jitsi và cách ký JWT được **dùng lại cho vòng 2 xác thực mentor** (lõi, ADR-07/08) nên phải chạy được: vòng 2 cần profile `jitsi` khi chạy thật; e2e chỉ kiểm JWT, hai người thật vào phòng phải kiểm tay |
 | Khoá học, lộ trình, tiến độ | learning-service, frontend `learning` | Không phụ thuộc ngược từ 5 chức năng lõi |
 | Phỏng vấn thử (mock interview) | mentoring-service, frontend `mock-interviews` | |
 

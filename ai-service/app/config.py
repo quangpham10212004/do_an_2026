@@ -50,8 +50,16 @@ ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))
 VERIFICATION_MAX_ATTEMPTS_PER_ROUND = int(os.getenv("VERIFICATION_MAX_ATTEMPTS_PER_ROUND", "2"))
 VERIFICATION_RETRY_DAYS = float(os.getenv("VERIFICATION_RETRY_DAYS", "15"))
 VERIFICATION_ROUND1_MAX_RETAKE = int(os.getenv("VERIFICATION_ROUND1_MAX_RETAKE", "2"))
-# Tạm thời tới khi vòng 2 hiện thực (PR 4): tắt thì admin cho qua vòng 1 là duyệt luôn mentor.
-VERIFICATION_ROUND2_ENABLED = os.getenv("VERIFICATION_ROUND2_ENABLED", "false").lower() == "true"
+# Vòng 2 — admin phỏng vấn qua Jitsi (docs/design-mentor-verification.md §6, D8, D9): số khung giờ đề xuất, hạn mentor chọn,
+# số lần đổi giờ và báo trước, trần kỹ thuật của token phòng (KHÔNG phải thời lượng buổi), thời gian chờ mentor vào phòng.
+VERIFICATION_ROUND2_SLOT_COUNT = int(os.getenv("VERIFICATION_ROUND2_SLOT_COUNT", "3"))
+VERIFICATION_ROUND2_MAX_RESCHEDULE = int(os.getenv("VERIFICATION_ROUND2_MAX_RESCHEDULE", "2"))
+VERIFICATION_ROUND2_RESCHEDULE_NOTICE_HOURS = float(os.getenv("VERIFICATION_ROUND2_RESCHEDULE_NOTICE_HOURS", "24"))
+VERIFICATION_SLOT_CHOICE_DAYS = float(os.getenv("VERIFICATION_SLOT_CHOICE_DAYS", "3"))
+VERIFICATION_SLOT_MIN_LEAD_MINUTES = float(os.getenv("VERIFICATION_SLOT_MIN_LEAD_MINUTES", "60"))
+VERIFICATION_ROOM_MAX_HOURS = float(os.getenv("VERIFICATION_ROOM_MAX_HOURS", "4"))
+VERIFICATION_ROOM_OPENS_BEFORE_MINUTES = float(os.getenv("VERIFICATION_ROOM_OPENS_BEFORE_MINUTES", "10"))
+VERIFICATION_ROOM_GRACE_MINUTES = float(os.getenv("VERIFICATION_ROOM_GRACE_MINUTES", "10"))
 
 # Vòng 1 có camera (docs/design-mentor-verification.md §5): video + âm thanh quay theo đoạn, lưu trên đĩa (docker volume).
 # Có thể thay bằng object storage khi triển khai thật. Thư mục đọc lúc gọi (test đổi được), không cố định lúc import.

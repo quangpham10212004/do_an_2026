@@ -76,6 +76,7 @@ Mentor chỉ xuất hiện trong kết quả gợi ý khi: đã được admin d
 |---|---|---|
 | Tổng quan | `/admin` | Số liệu người dùng, phỏng vấn chờ duyệt, phiên, doanh thu sandbox; *Bổ sung embedding còn thiếu* / *Sinh lại toàn bộ* |
 | Người dùng | `/admin/users` | Lọc theo vai trò, tìm theo email/tên, *Khoá* / *Mở khoá* tài khoản |
+| Duyệt mentor (vòng 2) | `/admin/verification/{id}` | Sau khi *Cho qua vòng 1*: nhập tối đa 3 khung giờ → *Gửi đề xuất cho mentor* → khi mentor chọn, *Vào phòng phỏng vấn* (Jitsi, bạn là moderator, không giới hạn thời lượng) → chấm phiếu 5 tiêu chí → *Duyệt và kích hoạt* / *Từ chối* / *Dời buổi*; mentor không vào phòng sau 10 phút: *Báo mentor vắng* |
 | Duyệt mentor | `/admin/verification` | Tab theo trạng thái đợt → *Xem* → đọc bản chép lời, điểm AI từng câu, đánh giá tổng hợp → nhập nhận xét → *Cho qua vòng 1*, *Yêu cầu làm lại* (không tính vào số lần, tối đa 2) hoặc *Từ chối* (mentor chờ 15 ngày) |
 | Nội dung | `/admin/learning` | Tạo/xoá khoá học; chọn *Tài liệu* để thêm/xoá tài liệu; tạo/xoá roadmap; chọn *Các bước* để thêm/xoá bước (có thể liên kết khoá học) |
 | Giao dịch | `/admin/transactions` | Lọc giao dịch theo trạng thái; tab *Referral* xem trạng thái và lý do từ chối |

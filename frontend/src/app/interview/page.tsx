@@ -8,6 +8,7 @@ import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox,
 import { AssessmentCard, InterviewTranscript, RUBRIC } from "@/features/ai/InterviewViews";
 import { TopicPlan, VOICE_DISABLED, VideoConsent, VoiceCallCard, VoiceConsent } from "@/features/ai/VoiceViews";
 import { VideoCard } from "@/features/ai/VideoCard";
+import { MentorRound2Card } from "@/features/ai/Round2Panels";
 import { aiApi } from "@/features/ai/api";
 import { useRealtimeVoice } from "@/features/ai/useRealtimeVoice";
 import { STATUS_LABELS, formatDateTime } from "@/lib/format";
@@ -217,9 +218,7 @@ function Interview() {
             {interview.status === "PASSED" && eligibility?.status === "APPROVED" && (
               <Alert tone="success" title="Tài khoản mentor đã được kích hoạt">Bạn sẽ xuất hiện trong kết quả gợi ý cho mentee.</Alert>
             )}
-            {interview.status === "PASSED" && eligibility?.status !== "APPROVED" && (
-              <Alert tone="info" title="Bạn đã qua vòng 1">Quản trị viên sẽ liên hệ để hẹn phỏng vấn vòng 2.</Alert>
-            )}
+            {eligibility && eligibility.status?.startsWith("ROUND2_") && <MentorRound2Card state={eligibility} onChange={setEligibility} />}
             {interview.status === "RETAKE_REQUESTED" && (
               <Alert tone="info" action={retry("Làm lại vòng 1")}>Quản trị viên đề nghị bạn làm lại vòng 1. Lần này không bị tính vào số lần làm.</Alert>
             )}
