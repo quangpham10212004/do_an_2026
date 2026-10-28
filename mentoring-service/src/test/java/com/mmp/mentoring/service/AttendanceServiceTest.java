@@ -163,6 +163,33 @@ class AttendanceServiceTest {
     }
 
     @Test
+    void theNoShowStrikeIsWrittenInsideTheResolvingTransaction() {
+        session.setStatus(Status.AWAITING_ATTENDANCE);
+        session.answerAsMentee(Attendance.MENTOR_NO_SHOW, OffsetDateTime.now().minusHours(47));
+        endedMinutesAgo(48 * 60 + 1);
+        when(f.sessionRepo.findIdsEndedBefore(eq("AWAITING_ATTENDANCE"), any())).thenReturn(List.of(id.toString()));
+        java.util.concurrent.atomic.AtomicBoolean inTx = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.List<String> trace = new java.util.ArrayList<>();
+        doAnswer(inv -> {
+            inTx.set(true);
+            try {
+                return inv.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null);
+            } finally {
+                inTx.set(false);
+            }
+        }).when(f.tx).execute(any());
+        doAnswer(inv -> trace.add("insert:" + inTx.get())).when(f.strikes).insert(any(), any(), any());
+        doAnswer(inv -> {
+            trace.add("after:" + inTx.get());
+            return 1L;
+        }).when(f.strikes).afterCommit(any(), any());
+
+        service.resolveExpired(OffsetDateTime.now());
+
+        assertThat(trace).containsExactly("insert:true", "after:false");
+    }
+
+    @Test
     void mentorNoShowReportedAndMentorSilentRefundsFullyAndStrikes() {
         session.setStatus(Status.AWAITING_ATTENDANCE);
         session.answerAsMentee(Attendance.MENTOR_NO_SHOW, OffsetDateTime.now().minusHours(47));
@@ -174,7 +201,8 @@ class AttendanceServiceTest {
         assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTOR);
         assertThat(session.getRefundPercent()).isEqualTo(100);
         verify(f.outbox).enqueueRefund(id, 100, "MENTOR_NO_SHOW");
-        verify(f.strikes).record(mentorId, id, MentorStrike.Reason.MENTOR_NO_SHOW);
+        verify(f.strikes).insert(mentorId, id, MentorStrike.Reason.MENTOR_NO_SHOW);
+        verify(f.strikes).afterCommit(mentorId, MentorStrike.Reason.MENTOR_NO_SHOW);
     }
 
     @Test
@@ -216,7 +244,8 @@ class AttendanceServiceTest {
 
         assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTOR);
         verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
-        verify(f.strikes).record(mentorId, id, MentorStrike.Reason.MENTOR_NO_SHOW);
+        verify(f.strikes).insert(mentorId, id, MentorStrike.Reason.MENTOR_NO_SHOW);
+        verify(f.strikes).afterCommit(mentorId, MentorStrike.Reason.MENTOR_NO_SHOW);
     }
 
     // ---------- US-25: trạng thái cuối → đồng hồ giải phóng thu nhập ----------
@@ -290,7 +319,7 @@ class AttendanceServiceTest {
 
         assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTEE);
         assertThat(session.getAttendanceResolution()).isEqualTo("JOIN_LOG_MENTEE_ABSENT");
-        verify(f.strikes, never()).record(any(), any(), any());
+        verify(f.strikes, never()).insert(any(), any(), any());
     }
 
     @Test
@@ -303,7 +332,8 @@ class AttendanceServiceTest {
         assertThat(session.getStatus()).isEqualTo(Status.NO_SHOW_MENTOR);
         assertThat(session.getRefundPercent()).isEqualTo(100);
         verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
-        verify(f.strikes).record(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_NO_SHOW);
+        verify(f.strikes).insert(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_NO_SHOW);
+        verify(f.strikes).afterCommit(mentorId, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_NO_SHOW);
     }
 
     @Test
@@ -317,7 +347,7 @@ class AttendanceServiceTest {
         assertThat(session.getCancelReason()).isEqualTo("BOTH_ABSENT");
         assertThat(session.getRefundPercent()).isEqualTo(100);
         verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
-        verify(f.strikes, never()).record(any(), any(), any());
+        verify(f.strikes, never()).insert(any(), any(), any());
     }
 
     @Test

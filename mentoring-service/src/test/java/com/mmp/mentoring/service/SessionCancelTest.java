@@ -86,14 +86,84 @@ class SessionCancelTest {
         verify(f.outbox).enqueueRefund(eq(id), eq(100), eq("SESSION_CANCELLED_BY_MENTOR"));
         verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());   // v2.0: bỏ điểm xin lỗi
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
-        verify(f.strikes).record(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL); // US-02
+        verify(f.strikes).insert(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL); // US-02
     }
 
     @Test
     void menteeOrSystemCancelGivesNoStrike() {
         session.setScheduledAt(OffsetDateTime.now().plusDays(4));
         f.service().cancel(mentee, id, null);
-        verify(f.strikes, never()).record(any(), any(), any());
+        verify(f.strikes, never()).insert(any(), any(), any());
+    }
+
+    @Test
+    void mentorCancellingBeforeAnyoneIsAffectedGetsNoStrike() {
+        // PENDING (chưa thanh toán) và AWAITING_MENTOR (mentor chưa nhận) → huỷ không làm ai mất lịch nên không phạt
+        for (MentoringSession.Status st : new MentoringSession.Status[]{MentoringSession.Status.PENDING, MentoringSession.Status.AWAITING_MENTOR}) {
+            session.setStatus(st);
+            session.setScheduledAt(OffsetDateTime.now().plusHours(3));
+            f.service().cancel(mentor, id, null);
+            assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        }
+        verify(f.strikes, never()).insert(any(), any(), any());
+        verify(f.strikes, never()).afterCommit(any(), any());
+    }
+
+    @Test
+    void mentorStrikeIsWrittenInTheCancelTransactionAndThresholdCheckedAfterCommit() {
+        session.setScheduledAt(OffsetDateTime.now().plusHours(3));
+        java.util.concurrent.atomic.AtomicBoolean inTx = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.List<String> trace = new java.util.ArrayList<>();
+        doAnswer(inv -> {
+            inTx.set(true);
+            try {
+                return inv.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null);
+            } finally {
+                inTx.set(false);
+            }
+        }).when(f.tx).execute(any());
+        when(f.strikes.insert(any(), any(), any())).thenAnswer(inv -> {
+            trace.add("insert:" + inTx.get());
+            return true;
+        });
+        when(f.strikes.afterCommit(any(), any())).thenAnswer(inv -> {
+            trace.add("after:" + inTx.get());
+            return 1L;
+        });
+
+        f.service().cancel(mentor, id, null);
+
+        assertThat(trace).containsExactly("insert:true", "after:false");
+    }
+
+    @Test
+    void anAlreadyRecordedStrikeDoesNotTriggerTheThresholdCheckAgain() {
+        session.setScheduledAt(OffsetDateTime.now().plusHours(3));
+        when(f.strikes.insert(any(), any(), any())).thenReturn(false);
+        f.service().cancel(mentor, id, null);
+        verify(f.strikes, never()).afterCommit(any(), any());
+    }
+
+    @Test
+    void endingTheRelationshipStrikesOnlyTheSessionsStartingWithin24Hours() {
+        when(f.strikes.insert(any(), any(), any())).thenReturn(true);
+        session.setScheduledAt(OffsetDateTime.now().plusDays(3));
+        f.service().cancelWithPolicy(session, CancellationPolicy.Actor.MENTOR, "Kết thúc mentoring", SessionService.StrikeMode.WITHIN_FULL_REFUND_WINDOW);
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.strikes, never()).insert(any(), any(), any());
+
+        session.setStatus(MentoringSession.Status.CONFIRMED);
+        session.setScheduledAt(OffsetDateTime.now().plusHours(10));
+        f.service().cancelWithPolicy(session, CancellationPolicy.Actor.MENTOR, "Kết thúc mentoring", SessionService.StrikeMode.WITHIN_FULL_REFUND_WINDOW);
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.strikes).insert(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL);
+    }
+
+    @Test
+    void strikeModeNoneNeverStrikes() {
+        session.setScheduledAt(OffsetDateTime.now().plusHours(2));
+        f.service().cancelWithPolicy(session, CancellationPolicy.Actor.MENTOR, null, SessionService.StrikeMode.NONE);
+        verify(f.strikes, never()).insert(any(), any(), any());
     }
 
     @Test

@@ -66,6 +66,10 @@ public class SessionService {
     private final TrialService trials;
     private final Duration confirmWithin;
     private final Duration confirmBeforeStart;
+    private final int maxUnpaidPerMentee;
+
+    /** Cách tính strike khi mentor huỷ: theo chính sách; không bao giờ; hoặc chỉ khi phiên bắt đầu trong mốc hoàn 100%. */
+    enum StrikeMode { POLICY, NONE, WITHIN_FULL_REFUND_WINDOW }
 
     public SessionService(SessionRepository sessionRepo, MentoringRequestRepository requestRepo, ReviewRepository reviewRepo,
                           CancellationPolicy policy, PaymentOutboxService outbox,
@@ -77,7 +81,8 @@ public class SessionService {
                           @Value("${app.booking.max-advance}") Duration maxAdvance,
                           @Value("${app.attendance.window:PT24H}") Duration attendanceWindow,
                           @Value("${app.booking.confirm-within:PT24H}") Duration confirmWithin,
-                          @Value("${app.booking.confirm-before-start:PT1H}") Duration confirmBeforeStart) {
+                          @Value("${app.booking.confirm-before-start:PT1H}") Duration confirmBeforeStart,
+                          @Value("${app.booking.max-unpaid-per-mentee:2}") int maxUnpaidPerMentee) {
         this.sessionRepo = sessionRepo;
         this.requestRepo = requestRepo;
         this.reviewRepo = reviewRepo;
@@ -99,6 +104,7 @@ public class SessionService {
         this.trials = trials;
         this.confirmWithin = confirmWithin;
         this.confirmBeforeStart = confirmBeforeStart;
+        this.maxUnpaidPerMentee = maxUnpaidPerMentee;
     }
 
     /**
@@ -144,8 +150,9 @@ public class SessionService {
         Optional<MentoringRequest> accepted = requestRepo.findFirstByMenteeIdAndMentorIdAndStatus(
                 in.menteeId(), in.mentorId(), MentoringRequest.Status.ACCEPTED);
         if (trial) {
-            if (accepted.isPresent()) {
-                throw ApiException.conflict("TRIAL_NOT_ALLOWED", "Bạn đã được mentor này nhận hướng dẫn — hãy đặt buổi học thường");
+            if (accepted.isPresent() || requestRepo.existsByMenteeIdAndMentorIdAndStatusIn(in.menteeId(), in.mentorId(),
+                    Set.of(MentoringRequest.Status.ENDED))) {
+                throw ApiException.conflict("TRIAL_NOT_ALLOWED", "Bạn đã từng được mentor này hướng dẫn — hãy đặt buổi học thường");
             }
         } else if (accepted.isEmpty()) {
             throw ApiException.badRequest("NOT_ACCEPTED", "Bạn cần được mentor chấp nhận trước khi đặt lịch");
@@ -160,7 +167,9 @@ public class SessionService {
             if (!mentor.effectiveTrialEnabled()) {
                 throw ApiException.conflict("TRIAL_DISABLED", "Mentor không nhận buổi trải nghiệm");
             }
-            trials.requireBelowOpenLimit(in.menteeId(), now);
+            if (mentor.effectiveStatus() == ProfileClient.MentorStatus.PAUSED) {
+                throw ApiException.conflict("MENTOR_PAUSED", "Mentor đang tạm dừng nhận mentee mới");
+            }
         }
         String referralCode = MentoringRequestService.trimToNull(in.referralCode());
         if (referralCode != null) {
@@ -179,6 +188,12 @@ public class SessionService {
 
         MentoringSession saved = tx.execute(s -> {
             sessionRepo.lockMentorSchedule(in.mentorId());
+            sessionRepo.lockMenteeSchedule(in.menteeId());   // thứ tự khoá: mentor → mentee
+            if (sessionRepo.countByMenteeIdAndStatus(in.menteeId(), MentoringSession.Status.PENDING) >= maxUnpaidPerMentee) {
+                throw ApiException.conflict("TOO_MANY_UNPAID_SESSIONS", "Bạn đang có " + maxUnpaidPerMentee
+                        + " phiên chưa thanh toán — hãy thanh toán hoặc chờ hết hạn trước khi đặt thêm");
+            }
+            if (trial) trials.requireBelowOpenLimit(in.menteeId(), now);   // trong khoá: hai lần đặt song song không cùng lọt qua
             requireFree(in.mentorId(), in.menteeId(), start, duration, buffer, null);
             MentoringSession session = new MentoringSession();
             session.setRequestId(request == null ? null : request.getId());
@@ -534,14 +549,21 @@ public class SessionService {
      * và thông báo. Không gọi payment-service đồng bộ nên huỷ không còn thất bại vì hoàn tiền.
      */
     MentoringSession cancelWithPolicy(MentoringSession before, CancellationPolicy.Actor actor, String rawReason) {
+        return cancelWithPolicy(before, actor, rawReason, StrikeMode.POLICY);
+    }
+
+    MentoringSession cancelWithPolicy(MentoringSession before, CancellationPolicy.Actor actor, String rawReason, StrikeMode strikeMode) {
         requireCancellable(before);
         String reason = MentoringRequestService.trimToNull(rawReason);
         CancellationPolicy.Decision[] decided = new CancellationPolicy.Decision[1];
+        boolean[] struck = {false};
         MentoringSession session = tx.execute(s -> {
             MentoringSession ss = findForUpdate(before.getId());
             requireCancellable(ss);
-            CancellationPolicy.Decision d = decide(ss, actor, OffsetDateTime.now());
+            OffsetDateTime now = OffsetDateTime.now();
+            CancellationPolicy.Decision d = decide(ss, actor, now);
             decided[0] = d;
+            boolean wasPending = ss.getStatus() == MentoringSession.Status.PENDING;
             boolean reportFinalState = paidLateCancel(ss, d);
             ss.setStatus(MentoringSession.Status.CANCELLED);
             ss.setCancelledBy(actor.name());
@@ -557,13 +579,20 @@ public class SessionService {
                 // US-25 — mentee huỷ muộn (hoàn dưới 100%): mentor được trả phần còn lại → giải phóng thu nhập sau giờ kết thúc dự kiến
                 outbox.enqueueFinalState(ss.getId(), MentoringSession.Status.CANCELLED.name(), ss.endsAt(), false);
             }
-            // Buổi trải nghiệm huỷ mà mentee không mất tiền → hoàn lại lượt dùng
-            if (ss.isTrial() && d.refundPercent() == 100) trials.restore(ss.getId());
+            // Buổi trải nghiệm huỷ mà mentee không mất tiền (hoàn 100%, hoặc huỷ khi chưa thanh toán) → hoàn lại lượt dùng
+            if (ss.isTrial() && (d.refundPercent() == 100 || wasPending)) trials.restore(ss.getId());
+            // Strike ghi trong cùng transaction; ngưỡng PAUSED và thông báo đánh giá sau commit
+            boolean strike = d.strike() && switch (strikeMode) {
+                case POLICY -> true;
+                case NONE -> false;
+                case WITHIN_FULL_REFUND_WINDOW -> policy.withinFullRefundWindow(ss.getScheduledAt(), now);
+            };
+            if (strike) struck[0] = strikes.insert(ss.getMentorId(), ss.getId(), MentorStrike.Reason.MENTOR_CANCEL);
             return ss;
         });
         CancellationPolicy.Decision d = decided[0];
         outbox.flushSession(session.getId());
-        afterCancel(session, d);
+        if (struck[0]) strikes.afterCommit(session.getMentorId(), MentorStrike.Reason.MENTOR_CANCEL);
         String when = session.getScheduledAt().atZoneSameInstant(zone).format(DISPLAY);
         String suffix = (reason != null ? " Lý do: " + reason + "." : "")
                 + (d.refundAmount().signum() > 0 ? " Khoản hoàn " + money(d.refundAmount()) + " (" + d.refundPercent() + "%) đang được hoàn về ví." : "");
@@ -587,18 +616,12 @@ public class SessionService {
         return before.getStatus() == MentoringSession.Status.CONFIRMED && before.getPrice().signum() > 0 && d.refundPercent() < 100;
     }
 
-    /** US-02 — mentor huỷ phiên bị ghi 1 strike (3 strike / 30 ngày → PAUSED). */
-    void afterCancel(MentoringSession session, CancellationPolicy.Decision d) {
-        if (d.strike()) {
-            strikes.record(session.getMentorId(), session.getId(), MentorStrike.Reason.MENTOR_CANCEL);
-        }
-    }
-
     private CancellationPolicy.Decision decide(MentoringSession s, CancellationPolicy.Actor actor, OffsetDateTime now) {
         boolean mentorConfirmed = s.getStatus() != MentoringSession.Status.AWAITING_MENTOR;
         boolean paid = (s.getStatus() == MentoringSession.Status.CONFIRMED || s.getStatus() == MentoringSession.Status.AWAITING_MENTOR)
                 && s.getPrice().signum() > 0;
-        return policy.evaluate(actor, s.getPrice(), paid, s.getScheduledAt(), now, s.isTrial(), mentorConfirmed);
+        return policy.evaluate(actor, s.getPrice(), paid, s.getScheduledAt(), now, s.isTrial(), mentorConfirmed,
+                s.getStatus() == MentoringSession.Status.CONFIRMED);
     }
 
     private static void requireCancellable(MentoringSession s) {

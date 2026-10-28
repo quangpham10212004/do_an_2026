@@ -125,4 +125,10 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     /** Khoá tư vấn (advisory lock) theo mentor trong transaction — tránh 2 mentee đặt trùng 1 khung giờ cùng lúc. */
     @Query(value = "SELECT pg_advisory_xact_lock(hashtext(CAST(:mentorId AS text)))", nativeQuery = true)
     Object lockMentorSchedule(@Param("mentorId") UUID mentorId);
+
+    /** Khoá tư vấn theo mentee trong transaction — kiểm trần phiên chưa thanh toán và trần buổi thử không bị đặt song song vượt qua. */
+    @Query(value = "SELECT pg_advisory_xact_lock(hashtext('mentee:' || CAST(:menteeId AS text)))", nativeQuery = true)
+    Object lockMenteeSchedule(@Param("menteeId") UUID menteeId);
+
+    long countByMenteeIdAndStatus(UUID menteeId, MentoringSession.Status status);
 }

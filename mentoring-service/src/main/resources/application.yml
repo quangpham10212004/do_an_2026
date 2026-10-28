@@ -57,6 +57,7 @@ app:
     confirm-within: ${BOOKING_CONFIRM_WITHIN:PT24H}          # mentor xác nhận buổi trong 24 giờ kể từ lúc học phí được tạm giữ ...
     confirm-before-start: ${BOOKING_CONFIRM_BEFORE_START:PT1H}   # ... hoặc trước giờ bắt đầu 1 giờ (lấy mốc sớm hơn); quá hạn → huỷ + hoàn 100%
     payment-hold: ${BOOKING_PAYMENT_HOLD:PT15M}   # phiên chưa thanh toán / ví thiếu tiền sau 15 phút tự huỷ để giải phóng khung giờ
+    max-unpaid-per-mentee: ${BOOKING_MAX_UNPAID_PER_MENTEE:2}   # tối đa 2 phiên PENDING (chưa thanh toán) mỗi mentee → TOO_MANY_UNPAID_SESSIONS
   cancellation:                    # Bản chốt v2.0 §7 — chính sách huỷ buổi (mentee): ≥ 24h hoàn 100%, 4–24h hoàn 50%, < 4h hoàn 0%
     full-refund-before: ${CANCEL_FULL_REFUND_BEFORE:PT24H}
     half-refund-before: ${CANCEL_HALF_REFUND_BEFORE:PT4H}

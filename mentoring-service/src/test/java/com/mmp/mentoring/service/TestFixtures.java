@@ -58,6 +58,6 @@ class TestFixtures {
         return new SessionService(sessionRepo, requestRepo, reviewRepo, policy, outbox, strikes, proposalRepo, disputeRepo,
                 mockIntakeRepo, profileClient, paymentClient, notifications, tx, matchingClient, trials,
                 "Asia/Ho_Chi_Minh", Duration.ofHours(3), Duration.ofDays(60), Duration.ofHours(24),
-                Duration.ofHours(24), Duration.ofHours(1));
+                Duration.ofHours(24), Duration.ofHours(1), 2);
     }
 }

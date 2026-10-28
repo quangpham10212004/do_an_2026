@@ -81,6 +81,37 @@ class SessionBookingTest {
     }
 
     @Test
+    void menteeWithTwoUnpaidSessionsCannotBookAnother() {
+        givenMentor(mentor(null, null, null, null));
+        when(f.sessionRepo.countByMenteeIdAndStatus(menteeId, MentoringSession.Status.PENDING)).thenReturn(2L);
+
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("TOO_MANY_UNPAID_SESSIONS");
+
+        verify(f.sessionRepo, never()).save(any());
+        verifyNoInteractions(f.paymentClient);
+    }
+
+    @Test
+    void oneUnpaidSessionStillAllowsABooking() {
+        givenMentor(mentor(null, null, null, null));
+        when(f.sessionRepo.countByMenteeIdAndStatus(menteeId, MentoringSession.Status.PENDING)).thenReturn(1L);
+
+        assertThat(code(() -> f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA)))).isEqualTo("OK");
+    }
+
+    @Test
+    void unpaidCapIsCheckedUnderTheMenteeLockAfterTheMentorLock() {
+        givenMentor(mentor(null, null, null, null));
+
+        f.service().book(mentee, input(daysAhead(3, 10), 60, AGENDA));
+
+        var order = inOrder(f.sessionRepo);
+        order.verify(f.sessionRepo).lockMentorSchedule(mentorId);
+        order.verify(f.sessionRepo).lockMenteeSchedule(menteeId);
+        order.verify(f.sessionRepo).countByMenteeIdAndStatus(menteeId, MentoringSession.Status.PENDING);
+    }
+
+    @Test
     void validBookingIsSavedAsPendingWithFormFields() {
         givenMentor(mentor(null, null, null, null));
         f.service().book(mentee, new BookSessionInput(menteeId, mentorId, daysAhead(3, 10), 60, SessionType.MOCK_INTERVIEW,

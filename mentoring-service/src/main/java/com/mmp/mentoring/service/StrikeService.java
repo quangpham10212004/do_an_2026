@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -25,18 +24,15 @@ public class StrikeService {
     private final MentorStrikeRepository repo;
     private final ProfileClient profileClient;
     private final NotificationService notifications;
-    private final TransactionTemplate tx;
     private final int threshold;
     private final Duration window;
 
     public StrikeService(MentorStrikeRepository repo, ProfileClient profileClient, NotificationService notifications,
-                         TransactionTemplate tx,
                          @Value("${app.strikes.threshold:3}") int threshold,
                          @Value("${app.strikes.window:P30D}") Duration window) {
         this.repo = repo;
         this.profileClient = profileClient;
         this.notifications = notifications;
-        this.tx = tx;
         this.threshold = threshold;
         this.window = window;
     }
@@ -46,14 +42,22 @@ public class StrikeService {
         return threshold > 0 && strikesInWindow >= threshold;
     }
 
-    /** Ghi strike (bỏ qua nếu phiên đã có strike cùng lý do) và trả về số strike trong cửa sổ. */
-    public long record(UUID mentorId, UUID sessionId, MentorStrike.Reason reason) {
-        Long count = tx.execute(s -> {
-            if (sessionId != null && repo.existsBySessionIdAndReason(sessionId, reason)) return null;
-            repo.save(new MentorStrike(mentorId, sessionId, reason));
-            return repo.countByMentorIdAndCreatedAtAfter(mentorId, OffsetDateTime.now().minus(window));
-        });
-        if (count == null) return 0;
+    /**
+     * Ghi strike trong transaction của bên gọi (cùng transaction với việc đổi trạng thái phiên, nên không thể mất strike khi
+     * tiến trình chết sau commit). Bỏ qua nếu phiên đã có strike cùng lý do. @return true nếu vừa ghi mới.
+     */
+    public boolean insert(UUID mentorId, UUID sessionId, MentorStrike.Reason reason) {
+        if (sessionId != null && repo.existsBySessionIdAndReason(sessionId, reason)) return false;
+        repo.save(new MentorStrike(mentorId, sessionId, reason));
+        return true;
+    }
+
+    /**
+     * Sau commit: thông báo mentor và, khi đủ ngưỡng trong cửa sổ, đặt PAUSED ở profile-service. Nếu bước này bị mất (tiến trình
+     * chết) thì strike kế tiếp sẽ đánh giá lại ngưỡng. @return số strike trong cửa sổ.
+     */
+    public long afterCommit(UUID mentorId, MentorStrike.Reason reason) {
+        long count = repo.countByMentorIdAndCreatedAtAfter(mentorId, OffsetDateTime.now().minus(window));
         String label = reason == MentorStrike.Reason.MENTOR_CANCEL ? "huỷ phiên" : "vắng mặt";
         notifications.notifyUser(mentorId, "MENTOR_STRIKE", "Bạn bị ghi nhận 1 lần vi phạm",
                 "Lý do: " + label + ". Bạn có " + count + "/" + threshold + " lần vi phạm trong " + window.toDays()

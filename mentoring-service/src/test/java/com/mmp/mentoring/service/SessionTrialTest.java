@@ -107,6 +107,47 @@ class SessionTrialTest {
     }
 
     @Test
+    void pausedMentorDoesNotTakeTrials() {
+        var paused = new ProfileClient.MentorInfo(mentorId, "Mentor", List.of(), "backend", "", 5, new BigDecimal("300000"), 3, 0,
+                true, 0, 0, "APPROVED", allWeek(), "PAUSED", null, null, null, null, "Asia/Ho_Chi_Minh", null, null);
+        when(f.profileClient.findMentor(mentorId)).thenReturn(Optional.of(paused));
+        assertThat(code(() -> f.service().book(mentee, trial(15)))).isEqualTo("MENTOR_PAUSED");
+        verify(f.trials, never()).claim(any(), any(), any());
+    }
+
+    @Test
+    void trialIsRefusedWhenTheRelationshipWithThatMentorAlreadyEnded() {
+        when(f.requestRepo.existsByMenteeIdAndMentorIdAndStatusIn(eq(menteeId), eq(mentorId), any())).thenReturn(true);
+        when(f.profileClient.findMentor(mentorId)).thenReturn(Optional.of(mentor(null, "APPROVED")));
+        assertThat(code(() -> f.service().book(mentee, trial(15)))).isEqualTo("TRIAL_NOT_ALLOWED");
+        verify(f.trials, never()).claim(any(), any(), any());
+    }
+
+    @Test
+    void openTrialLimitIsCheckedInsideTheLockedTransaction() {
+        when(f.profileClient.findMentor(mentorId)).thenReturn(Optional.of(mentor(null, "APPROVED")));
+        java.util.concurrent.atomic.AtomicBoolean inTx = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.List<String> trace = new java.util.ArrayList<>();
+        doAnswer(inv -> {
+            inTx.set(true);
+            try {
+                return inv.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null);
+            } finally {
+                inTx.set(false);
+            }
+        }).when(f.tx).execute(any());
+        when(f.sessionRepo.lockMenteeSchedule(menteeId)).thenAnswer(inv -> {
+            trace.add("lock:" + inTx.get());
+            return null;
+        });
+        doAnswer(inv -> trace.add("limit:" + inTx.get())).when(f.trials).requireBelowOpenLimit(any(), any());
+
+        f.service().book(mentee, trial(15));
+
+        assertThat(trace).containsExactly("lock:true", "limit:true");
+    }
+
+    @Test
     void trialIsRefusedOnceAlreadyAcceptedByThatMentor() {
         MentoringRequest accepted = new MentoringRequest(menteeId, mentorId, "x".repeat(60), SessionType.CAREER_ADVICE,
                 MentoringRequest.Frequency.WEEKLY, 3, null);
@@ -152,6 +193,15 @@ class SessionTrialTest {
         MentoringSession s = trialSession(MentoringSession.Status.CONFIRMED, OffsetDateTime.now().plusHours(5));
         f.service().cancel(mentee, s.getId(), null);
         assertThat(s.getRefundPercent()).isEqualTo(100);
+        verify(f.trials).restore(s.getId());
+    }
+
+    @Test
+    void cancellingAPendingTrialBeforeItWasPaidGivesTheTrialBack() {
+        MentoringSession s = trialSession(MentoringSession.Status.PENDING, OffsetDateTime.now().plusDays(2));
+        f.service().cancel(mentee, s.getId(), null);
+        assertThat(s.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        assertThat(s.getRefundPercent()).isZero();   // chưa thanh toán nên không hoàn tiền, nhưng mentee không mất gì
         verify(f.trials).restore(s.getId());
     }
 

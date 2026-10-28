@@ -95,18 +95,18 @@ class MentorshipEndServiceTest {
         MentoringSession a = upcoming();
         when(f.sessionRepo.findUpcomingHoldingByPair(any(), any(), any())).thenReturn(List.of(a));
         service.end(mentor, requestId, new EndRequestInput(MentoringRequest.EndReason.NOT_A_FIT, null));
-        verify(sessions).cancelWithPolicy(a, CancellationPolicy.Actor.MENTOR, "Kết thúc mentoring");
+        verify(sessions).cancelWithPolicy(a, CancellationPolicy.Actor.MENTOR, "Kết thúc mentoring", SessionService.StrikeMode.WITHIN_FULL_REFUND_WINDOW);
         assertThat(request.getEndedBy()).isEqualTo("MENTOR");
     }
 
     @Test
-    void refundFailureKeepsRelationshipAccepted() {
+    void unexpectedCancelFailureKeepsRelationshipAccepted() {
         MentoringSession a = upcoming();
         when(f.sessionRepo.findUpcomingHoldingByPair(any(), any(), any())).thenReturn(List.of(a));
-        doThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "x"))
+        doThrow(new ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "SESSION_CANCEL_FAILED", "x"))
                 .when(sessions).cancelWithPolicy(any(), any(), any());
         assertThat(code(() -> service.end(mentee, requestId, new EndRequestInput(MentoringRequest.EndReason.OTHER, null))))
-                .isEqualTo("REFUND_FAILED");
+                .isEqualTo("SESSION_CANCEL_FAILED");
         assertThat(request.getStatus()).isEqualTo(MentoringRequest.Status.ACCEPTED);
     }
 

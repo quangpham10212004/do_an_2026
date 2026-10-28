@@ -92,6 +92,28 @@ class CancellationPolicyTest {
     }
 
     @Test
+    void mentorCancelIsStruckOnlyWhenTheSessionIsConfirmed() {
+        OffsetDateTime start = now.plusDays(3);
+        // CONFIRMED (đã thanh toán, mentor đã xác nhận) → strike
+        assertThat(policy.evaluate(Actor.MENTOR, price, true, start, now, false, true, true).strike()).isTrue();
+        // AWAITING_MENTOR (đã thanh toán, mentor chưa xác nhận) → không strike
+        assertThat(policy.evaluate(Actor.MENTOR, price, true, start, now, false, false, false).strike()).isFalse();
+        // PENDING (chưa thanh toán) → không strike
+        assertThat(policy.evaluate(Actor.MENTOR, price, false, start, now, false, true, false).strike()).isFalse();
+        // phiên chưa thanh toán qua lời gọi cũ cũng không strike
+        assertThat(policy.evaluate(Actor.MENTOR, price, false, start, now, false, true).strike()).isFalse();
+        // mentee không bao giờ bị strike
+        assertThat(policy.evaluate(Actor.MENTEE, price, true, start, now, false, true, true).strike()).isFalse();
+    }
+
+    @Test
+    void windowOfLateCancellationIsTheFullRefundMark() {
+        assertThat(policy.withinFullRefundWindow(now.plusHours(10), now)).isTrue();
+        assertThat(policy.withinFullRefundWindow(now.plusHours(24), now)).isFalse();
+        assertThat(policy.withinFullRefundWindow(now.plusDays(3), now)).isFalse();
+    }
+
+    @Test
     void thresholdsAreConfigurable() {
         CancellationPolicy strict = new CancellationPolicy(java.time.Duration.ofHours(48), java.time.Duration.ofHours(12), java.time.Duration.ofHours(2));
         assertThat(strict.evaluate(Actor.MENTEE, price, true, now.plusHours(30), now).refundPercent()).isEqualTo(50);

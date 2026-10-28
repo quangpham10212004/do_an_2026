@@ -32,9 +32,7 @@ class StrikeServiceTest {
         repo = mock(MentorStrikeRepository.class);
         profile = mock(ProfileClient.class);
         notifications = mock(NotificationService.class);
-        TransactionTemplate tx = mock(TransactionTemplate.class);
-        when(tx.execute(any())).thenAnswer(inv -> inv.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
-        service = new StrikeService(repo, profile, notifications, tx, 3, Duration.ofDays(30));
+        service = new StrikeService(repo, profile, notifications, 3, Duration.ofDays(30));
     }
 
     @Test
@@ -48,8 +46,7 @@ class StrikeServiceTest {
     @Test
     void secondStrikeOnlyNotifiesMentor() {
         when(repo.countByMentorIdAndCreatedAtAfter(eq(mentor), any())).thenReturn(2L);
-        assertThat(service.record(mentor, UUID.randomUUID(), MentorStrike.Reason.MENTOR_CANCEL)).isEqualTo(2);
-        verify(repo).save(any(MentorStrike.class));
+        assertThat(service.afterCommit(mentor, MentorStrike.Reason.MENTOR_CANCEL)).isEqualTo(2);
         verify(profile, never()).updateMentorStatus(any(), any(), any());
         verify(notifications, never()).notifyRole(any(), any(), any(), any(), any());
         verify(notifications).notifyUser(eq(mentor), eq("MENTOR_STRIKE"), any(), contains("2/3"), any());
@@ -58,7 +55,7 @@ class StrikeServiceTest {
     @Test
     void thirdStrikeWithin30DaysPausesMentorAndNotifiesAdmins() {
         when(repo.countByMentorIdAndCreatedAtAfter(eq(mentor), any())).thenReturn(3L);
-        service.record(mentor, UUID.randomUUID(), MentorStrike.Reason.MENTOR_CANCEL);
+        service.afterCommit(mentor, MentorStrike.Reason.MENTOR_CANCEL);
         verify(profile).updateMentorStatus(mentor, "PAUSED", "STRIKES");
         verify(notifications).notifyRole(eq("ADMIN"), eq("MENTOR_PAUSED_STRIKES"), any(), any(), any());
         verify(repo).countByMentorIdAndCreatedAtAfter(eq(mentor),
@@ -69,8 +66,17 @@ class StrikeServiceTest {
     void sameSessionIsNotStruckTwice() {
         UUID session = UUID.randomUUID();
         when(repo.existsBySessionIdAndReason(session, MentorStrike.Reason.MENTOR_CANCEL)).thenReturn(true);
-        assertThat(service.record(mentor, session, MentorStrike.Reason.MENTOR_CANCEL)).isZero();
+        assertThat(service.insert(mentor, session, MentorStrike.Reason.MENTOR_CANCEL)).isFalse();
         verify(repo, never()).save(any());
         verifyNoInteractions(profile);
+    }
+
+    @Test
+    void firstStrikeOfASessionIsSaved() {
+        UUID session = UUID.randomUUID();
+        assertThat(service.insert(mentor, session, MentorStrike.Reason.MENTOR_CANCEL)).isTrue();
+        verify(repo).save(any(MentorStrike.class));
+        verifyNoInteractions(profile);
+        verifyNoInteractions(notifications);   // thông báo và ngưỡng PAUSED chỉ chạy ở afterCommit
     }
 }

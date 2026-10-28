@@ -209,7 +209,10 @@ public class AttendanceService {
         boolean disputed = paid && disputeRepo.existsBySessionId(s.getId());
         int refund = paid && !disputed ? AttendanceRules.refundPercent(r.outcome()) : 0;
         switch (r.outcome()) {
-            case NO_SHOW_MENTOR -> s.setRefundPercent(refund);
+            case NO_SHOW_MENTOR -> {
+                s.setRefundPercent(refund);
+                strikes.insert(s.getMentorId(), s.getId(), MentorStrike.Reason.MENTOR_NO_SHOW);   // cùng transaction với kết luận
+            }
             case NO_SHOW_MENTEE -> s.setRefundPercent(0);
             case CANCELLED -> {
                 s.setCancelledBy("SYSTEM");
@@ -251,7 +254,7 @@ public class AttendanceService {
                         "Phiên lúc " + when + " được ghi nhận mentee vắng mặt; bạn vẫn nhận thanh toán.", LINK);
             }
             case NO_SHOW_MENTOR -> {
-                strikes.record(s.getMentorId(), s.getId(), MentorStrike.Reason.MENTOR_NO_SHOW);
+                strikes.afterCommit(s.getMentorId(), MentorStrike.Reason.MENTOR_NO_SHOW);
                 notifications.notifyUser(s.getMenteeId(), "SESSION_NO_SHOW", "Ghi nhận mentor vắng mặt",
                         "Phiên lúc " + when + " được ghi nhận mentor vắng mặt."
                                 + (refunded(s) ? " Bạn được hoàn 100% học phí." : ""), LINK);

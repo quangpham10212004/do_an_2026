@@ -130,7 +130,7 @@ class SessionConfirmTest {
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
         assertThat(session.getRefundPercent()).isEqualTo(100);
         assertThat(session.getCancelReason()).isEqualTo("Trung lich");
-        verify(f.strikes, never()).record(any(), any(), any());
+        verify(f.strikes, never()).insert(any(), any(), any());
         verify(f.notifications).notifyUser(eq(menteeId), eq("SESSION_CANCELLED"), anyString(), contains("hoàn 100%"), anyString());
     }
 
@@ -156,7 +156,7 @@ class SessionConfirmTest {
         assertThat(session.getCancelReason()).isEqualTo("MENTOR_NO_RESPONSE");
         verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
         verify(f.notifications).notifyUser(eq(mentorId), eq("SESSION_EXPIRED"), anyString(), anyString(), anyString());
-        verify(f.strikes, never()).record(any(), any(), any());
+        verify(f.strikes, never()).insert(any(), any(), any());
     }
 
     @Test

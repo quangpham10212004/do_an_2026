@@ -77,7 +77,7 @@ class MentorSuspensionServiceTest {
         MentoringSession a = upcoming(MentoringSession.Status.CONFIRMED);
         MentoringSession b = upcoming(MentoringSession.Status.CONFIRMED);
         when(f.sessionRepo.findUpcomingHoldingByMentor(eq(mentorId), any())).thenReturn(List.of(a, b));
-        doThrow(new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "x")).when(sessions).cancelWithPolicy(eq(a), any(), any());
+        doThrow(new ApiException(HttpStatus.BAD_GATEWAY, "SESSION_CANCEL_FAILED", "x")).when(sessions).cancelWithPolicy(eq(a), any(), any());
         assertThatThrownBy(() -> service.suspend(mentorId, null, null))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("SUSPEND_INCOMPLETE");
         verify(sessions).cancelWithPolicy(eq(b), any(), any());

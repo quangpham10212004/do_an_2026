@@ -476,8 +476,8 @@ paths:
       summary: >
         US-31 (PRD-REQ-6) — mentee hoặc mentor (hoặc ADMIN) kết thúc quan hệ ACCEPTED → ENDED (endedBy, endReason, endedAt),
         giải phóng 1 slot sức chứa (active-mentee sync chỉ đếm ACCEPTED). Các phiên sắp tới PENDING/CONFIRMED của cặp bị huỷ
-        theo chính sách huỷ như thể người kết thúc huỷ (mentee < 72 giờ → hoàn 0%, ≥ 72 giờ → 100%; mentor → hoàn 100% +
-        20 điểm xin lỗi + strike; admin → SYSTEM hoàn 100%). Báo bên còn lại. Job: ACCEPTED không có phiên (đã lên lịch hoặc
+        theo chính sách huỷ như thể người kết thúc huỷ (mentee → áp bậc hoàn tiền của mentee; mentor → hoàn 100%, strike chỉ
+        cho phiên đã xác nhận bắt đầu trong vòng 24 giờ; admin → SYSTEM hoàn 100%). Báo bên còn lại. Job: ACCEPTED không có phiên (đã lên lịch hoặc
         đã diễn ra) 30 ngày → nhắc hai bên; thêm 7 ngày không có phiên mới → ENDED reason INACTIVE, endedBy SYSTEM. Chưa có
         nhắn tin nên điều kiện "không có tin nhắn" của PRD chưa áp dụng.
       parameters: [{ $ref: "#/components/parameters/Id" }]
@@ -532,7 +532,9 @@ paths:
         onLeaveUntil, bufferMinutes, minNoticeHours, exceptions — thiếu thì dùng mặc định).
         Bản chốt v2.0 §4–5: buổi thường cố định 60 phút (durationMinutes khác 60 → 400 INVALID_DURATION), giá = giá mentor đang áp dụng
         (mentor chưa có giá → 409 PRICE_NOT_SET), không còn buổi miễn phí. `kind: TRIAL` = buổi trải nghiệm 15 phút, 30.000đ cố định, không cần
-        yêu cầu mentoring được chấp nhận (409 TRIAL_NOT_ALLOWED nếu đã được nhận; TRIAL_DISABLED / TRIAL_ALREADY_USED / TRIAL_LIMIT).
+        yêu cầu mentoring được chấp nhận (409 TRIAL_NOT_ALLOWED nếu cặp đã có yêu cầu ACCEPTED hoặc ENDED; MENTOR_PAUSED nếu mentor tạm dừng
+        nhận mentee mới; TRIAL_DISABLED / TRIAL_ALREADY_USED / TRIAL_LIMIT — TRIAL_LIMIT kiểm trong transaction có khoá theo mentee).
+        Mỗi mentee tối đa app.booking.max-unpaid-per-mentee (2) phiên PENDING chưa thanh toán (409 TOO_MANY_UNPAID_SESSIONS).
         `referralCode` (chỉ buổi thường đầu tiên với mentor; không giảm giá): 400 REFERRAL_NOT_FIRST_BOOKING / REFERRAL_CODE_NOT_FOUND /
         REFERRAL_CODE_WRONG_MENTOR / SELF_REFERRAL / ALREADY_REFERRED. Sau khi tạo phiên (PENDING, giữ khung giờ),
         mentoring-service nhờ payment-service tạm giữ học phí từ ví của mentee: đủ tiền → phiên chuyển AWAITING_MENTOR (chờ mentor
@@ -567,7 +569,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
         "400": { description: NOT_ACCEPTED / TOO_SOON / TOO_FAR / INVALID_DURATION / INVALID_AGENDA / INVALID_PRE_READ_LINK / VALIDATION_ERROR }
-        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED / FREE_BOOKING_BLOCKED }
+        "409": { description: MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED / MENTOR_PAUSED (buổi thử) / PRICE_NOT_SET / TOO_MANY_UNPAID_SESSIONS / TRIAL_NOT_ALLOWED / TRIAL_DISABLED / TRIAL_ALREADY_USED / TRIAL_LIMIT }
         "403": { description: "EMAIL_NOT_VERIFIED (US-39) — mentee chưa xác thực email" }
   /api/mentoring/sessions/{id}:
     get:
@@ -645,7 +647,8 @@ paths:
       summary: >
         Bản chốt v2.0 §7 (người tham gia / admin) Xem trước kết quả nếu huỷ phiên ngay bây giờ theo chính sách:
         mentee huỷ trước khi mentor xác nhận → hoàn 100%; sau đó ≥ 24 giờ trước → 100%, từ 4 đến dưới 24 giờ → 50%, dưới 4 giờ → 0%
-        (buổi trải nghiệm: ≥ 2 giờ → 100%, muộn hơn → 0%); mentor huỷ → hoàn 100% + 1 strike; admin/hệ thống → 100%.
+        (buổi trải nghiệm: ≥ 2 giờ → 100%, muộn hơn → 0%); mentor huỷ → hoàn 100%, kèm 1 strike chỉ khi phiên đang CONFIRMED (huỷ phiên PENDING / AWAITING_MENTOR
+        không bị strike); admin/hệ thống → 100%. Buổi trải nghiệm huỷ khi chưa thanh toán (PENDING) cũng được trả lại lượt dùng thử.
         Phiên chưa tạm giữ học phí → 0đ. Ngưỡng cấu hình app.cancellation.*. rewardPoints / lateFreeCancel luôn 0 / false (giữ để tương thích).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
@@ -673,7 +676,7 @@ paths:
         → xếp lệnh hoàn tiền vào payment_outbox trong cùng transaction với việc đổi trạng thái (không còn gọi
         payment-service đồng bộ, không còn 502 REFUND_FAILED); tiền về ví sau vài giây tới một chu kỳ outbox. Quyết định
         hoàn tiền được tính lại trên dòng phiên đã khoá. Lưu cancelledBy, cancelReason, refundPercent (100 / 50 / 0).
-        Mentor huỷ → strike (không còn điểm xin lỗi).
+        Mentor huỷ phiên CONFIRMED → strike, ghi trong cùng transaction (ngưỡng PAUSED đánh giá sau commit); không còn điểm xin lỗi.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         content:

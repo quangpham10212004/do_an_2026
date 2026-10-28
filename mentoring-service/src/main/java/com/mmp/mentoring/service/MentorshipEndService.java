@@ -112,7 +112,12 @@ public class MentorshipEndService {
         String reason = actor == CancellationPolicy.Actor.SYSTEM ? "Quan hệ mentoring đã kết thúc" : "Kết thúc mentoring";
         for (MentoringSession s : sessionRepo.findUpcomingHoldingByPair(r.getMenteeId(), r.getMentorId(), OffsetDateTime.now())) {
             try {
-                sessionService.cancelWithPolicy(s, actor, reason);
+                // Mentor kết thúc quan hệ chỉ bị strike cho phiên đã xác nhận bắt đầu trong vòng 24 giờ (huỷ sát giờ thật sự)
+                if (actor == CancellationPolicy.Actor.MENTOR) {
+                    sessionService.cancelWithPolicy(s, actor, reason, SessionService.StrikeMode.WITHIN_FULL_REFUND_WINDOW);
+                } else {
+                    sessionService.cancelWithPolicy(s, actor, reason);
+                }
                 n++;
             } catch (ApiException e) {
                 if ("SESSION_NOT_CANCELLABLE".equals(e.getCode()) || "SESSION_ALREADY_STARTED".equals(e.getCode())) continue;

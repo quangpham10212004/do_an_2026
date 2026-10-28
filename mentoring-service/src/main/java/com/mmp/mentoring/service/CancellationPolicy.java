@@ -59,6 +59,15 @@ public class CancellationPolicy {
      */
     public Decision evaluate(Actor actor, BigDecimal price, boolean paid, OffsetDateTime start, OffsetDateTime now,
                              boolean trial, boolean mentorConfirmed) {
+        return evaluate(actor, price, paid, start, now, trial, mentorConfirmed, mentorConfirmed && paid);
+    }
+
+    /**
+     * @param sessionConfirmed phiên đang CONFIRMED: chỉ khi đó mentor huỷ mới bị strike (huỷ phiên chưa thanh toán hoặc còn
+     *                         chờ xác nhận không làm ai mất lịch nên không phạt)
+     */
+    public Decision evaluate(Actor actor, BigDecimal price, boolean paid, OffsetDateTime start, OffsetDateTime now,
+                             boolean trial, boolean mentorConfirmed, boolean sessionConfirmed) {
         Duration before = Duration.between(now, start);
         int percent = switch (actor) {
             case MENTOR, SYSTEM -> 100;
@@ -68,9 +77,14 @@ public class CancellationPolicy {
                     : before.compareTo(halfRefundBefore) >= 0 ? 50 : 0;
         };
         BigDecimal amount = paid ? refundAmount(price, percent) : BigDecimal.ZERO;
-        boolean strike = actor == Actor.MENTOR;
+        boolean strike = actor == Actor.MENTOR && sessionConfirmed;
         return new Decision(actor, paid ? percent : 0, amount, 0, strike, false,
-                policyText(actor, paid, trial, mentorConfirmed, percent, amount));
+                policyText(actor, paid, trial, mentorConfirmed, percent, amount, strike));
+    }
+
+    /** Phiên bắt đầu trong vòng mốc hoàn 100% (24 giờ): huỷ lúc này làm mentee mất lịch sát giờ. */
+    public boolean withinFullRefundWindow(OffsetDateTime start, OffsetDateTime now) {
+        return Duration.between(now, start).compareTo(fullRefundBefore) < 0;
     }
 
     /** Tương thích lời gọi cũ: buổi thường, mentor đã xác nhận. */
@@ -82,11 +96,12 @@ public class CancellationPolicy {
         return price.multiply(BigDecimal.valueOf(percent)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
     }
 
-    private String policyText(Actor actor, boolean paid, boolean trial, boolean mentorConfirmed, int percent, BigDecimal amount) {
+    private String policyText(Actor actor, boolean paid, boolean trial, boolean mentorConfirmed, int percent, BigDecimal amount,
+                              boolean strike) {
         String money = String.format("%,d", amount.longValue()).replace(',', '.') + "đ";
         return switch (actor) {
             case MENTOR -> (paid ? "Mentor huỷ phiên: mentee được hoàn 100% (" + money + ")" : "Mentor huỷ phiên")
-                    + ". Mentor bị ghi 1 lần vi phạm (strike).";
+                    + (strike ? ". Mentor bị ghi 1 lần vi phạm (strike)." : ".");
             case SYSTEM -> paid ? "Hệ thống huỷ phiên: hoàn 100% (" + money + ")." : "Hệ thống huỷ phiên.";
             case MENTEE -> {
                 if (!paid) yield "Phiên chưa tạm giữ học phí — huỷ không mất phí.";
