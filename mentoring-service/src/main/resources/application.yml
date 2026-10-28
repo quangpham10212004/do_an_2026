@@ -80,9 +80,7 @@ app:
     window: P30D
   reschedule:                      # US-06 — dời lịch phiên CONFIRMED
     max-per-session: 2              # tối đa 2 lần dời / phiên (409 RESCHEDULE_LIMIT)
-    min-before-start: PT2H          # đề xuất trước giờ bắt đầu ≥ 2 giờ
-    proposal-ttl: PT24H             # đề xuất hết hạn sau 24 giờ ...
-    expire-before-start: PT1H       # ... hoặc 1 giờ trước giờ bắt đầu gốc (lấy mốc sớm hơn)
+    proposal-ttl: PT24H             # đề xuất hết hạn sau 24 giờ hoặc đúng giờ bắt đầu hiện tại của phiên (lấy mốc sớm hơn); đề xuất được bất kỳ lúc nào trước giờ bắt đầu
     expire-interval: PT1M
   requests:                        # US-14 / US-15 — yêu cầu mentoring
     max-pending: 3                  # mỗi mentee tối đa 3 yêu cầu PENDING (409 TOO_MANY_PENDING_REQUESTS)

@@ -30,6 +30,7 @@ public class RoomService {
     private final SessionRepository sessionRepo;
     private final ProfileClient profileClient;
     private final TransactionTemplate tx;
+    private final com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo;
     private final AttendanceService attendance;
     private final NotificationService notifications;
     private final String domain;
@@ -42,7 +43,7 @@ public class RoomService {
     private final Duration trialGrace;
 
     public RoomService(SessionRepository sessionRepo, ProfileClient profileClient, TransactionTemplate tx,
-                       AttendanceService attendance, NotificationService notifications,
+                       com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo, AttendanceService attendance, NotificationService notifications,
                        @Value("${app.room.domain:localhost:8443}") String domain,
                        @Value("${app.room.xmpp-domain:meet.jitsi}") String xmppDomain,
                        @Value("${app.room.app-id:mentorhub}") String appId,
@@ -54,6 +55,7 @@ public class RoomService {
         this.sessionRepo = sessionRepo;
         this.profileClient = profileClient;
         this.tx = tx;
+        this.proposalRepo = proposalRepo;
         this.attendance = attendance;
         this.notifications = notifications;
         this.domain = domain;
@@ -77,6 +79,7 @@ public class RoomService {
 
     public RoomView join(AuthUser user, UUID sessionId) {
         OffsetDateTime now = OffsetDateTime.now();
+        com.mmp.mentoring.entity.RescheduleProposal[] closedProposal = {null};
         MentoringSession session = tx.execute(s -> {
             MentoringSession ss = sessionRepo.findForUpdate(sessionId)
                     .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
@@ -92,10 +95,29 @@ public class RoomService {
                 throw ApiException.conflict("ROOM_CLOSED", "Phòng học mở từ " + opensBefore.toMinutes() + " phút trước giờ bắt đầu đến "
                         + closesAfter.toMinutes() + " phút sau giờ kết thúc");
             }
-            if (mentor && ss.getMentorJoinedAt() == null) ss.setMentorJoinedAt(now);
-            if (mentee && ss.getMenteeJoinedAt() == null) ss.setMenteeJoinedAt(now);
+            boolean newlyJoined = false;
+            if (mentor && ss.getMentorJoinedAt() == null) {
+                ss.setMentorJoinedAt(now);
+                newlyJoined = true;
+            }
+            if (mentee && ss.getMenteeJoinedAt() == null) {
+                ss.setMenteeJoinedAt(now);
+                newlyJoined = true;
+            }
+            // Có người vào phòng thì không dời lịch nữa: đề xuất đang chờ bị đóng ngay, cùng transaction ghi nhật ký vào phòng
+            if (newlyJoined) {
+                proposalRepo.findFirstBySessionIdAndStatus(ss.getId(), com.mmp.mentoring.entity.RescheduleProposal.Status.PENDING)
+                        .ifPresent(p -> {
+                            p.close(com.mmp.mentoring.entity.RescheduleProposal.Status.EXPIRED);
+                            closedProposal[0] = p;
+                        });
+            }
             return ss;
         });
+        if (closedProposal[0] != null) {
+            notifications.notifyUser(closedProposal[0].getProposedBy(), "RESCHEDULE_EXPIRED", "Đề xuất dời lịch đã bị đóng",
+                    "Đề xuất dời phiên đã bị đóng vì đã có người vào phòng học; phiên giữ nguyên giờ hiện tại.", "/mentoring/sessions");
+        }
         boolean isMentor = user.userId().equals(session.getMentorId());
         String name = profileClient.displayNames(java.util.List.of(user.userId())).getOrDefault(user.userId(), isMentor ? "Mentor" : "Mentee");
         OffsetDateTime opensAt = session.getScheduledAt().minus(opensBefore);

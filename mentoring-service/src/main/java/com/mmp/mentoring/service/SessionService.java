@@ -258,13 +258,7 @@ public class SessionService {
      * lịch rảnh hằng tuần và ngoại lệ (ngày nghỉ / giờ bận). Dùng cho đặt lịch và dời lịch (US-06).
      */
     void checkSlot(ProfileClient.MentorInfo mentor, OffsetDateTime start, int duration, OffsetDateTime now) {
-        LocalDate localDate = start.atZoneSameInstant(zone).toLocalDate();
-        BookingRules.statusBlock(mentor.effectiveStatus(), mentor.onLeaveUntil(), localDate).ifPresent(code -> {
-            throw ApiException.conflict(code, "MENTOR_SUSPENDED".equals(code)
-                    ? "Mentor đang bị tạm khoá, không thể đặt lịch"
-                    : "Mentor đang nghỉ" + (mentor.onLeaveUntil() == null ? "" : " đến hết " + mentor.onLeaveUntil().format(DATE))
-                    + ", vui lòng chọn ngày khác");
-        });
+        checkMentorStatus(mentor, start);
         Duration lead = BookingRules.effectiveLeadTime(minLeadTime, mentor.effectiveMinNoticeHours());
         if (start.isBefore(now.plus(lead))) {
             throw ApiException.badRequest("TOO_SOON", "Mentor cần được đặt lịch trước ít nhất " + lead.toHours() + " giờ");
@@ -275,6 +269,17 @@ public class SessionService {
         if (BookingRules.hitsException(start, duration, mentor.exceptionsOrEmpty(), zone)) {
             throw ApiException.conflict("MENTOR_NOT_AVAILABLE", "Mentor đã báo nghỉ/bận vào thời điểm này, vui lòng chọn khung giờ khác");
         }
+    }
+
+    /** Trạng thái mentor vào ngày {@code start}: SUSPENDED → 409 MENTOR_SUSPENDED; ON_LEAVE → 409 MENTOR_ON_LEAVE. */
+    void checkMentorStatus(ProfileClient.MentorInfo mentor, OffsetDateTime start) {
+        LocalDate localDate = start.atZoneSameInstant(zone).toLocalDate();
+        BookingRules.statusBlock(mentor.effectiveStatus(), mentor.onLeaveUntil(), localDate).ifPresent(code -> {
+            throw ApiException.conflict(code, "MENTOR_SUSPENDED".equals(code)
+                    ? "Mentor đang bị tạm khoá, không thể đặt lịch"
+                    : "Mentor đang nghỉ" + (mentor.onLeaveUntil() == null ? "" : " đến hết " + mentor.onLeaveUntil().format(DATE))
+                    + ", vui lòng chọn ngày khác");
+        });
     }
 
     /**

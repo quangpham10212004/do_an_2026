@@ -690,11 +690,12 @@ paths:
   /api/mentoring/sessions/{id}/reschedule:
     post:
       summary: >
-        US-06 (MENTEE/MENTOR của phiên) Đề xuất dời phiên CONFIRMED sang giờ mới, trước giờ bắt đầu ≥ 2 giờ.
-        Tối đa 2 lần dời / phiên, 1 đề xuất mở / phiên. Giờ mới phải qua cùng kiểm tra như đặt lịch (trạng thái mentor,
+        US-06 (MENTEE/MENTOR của phiên) Đề xuất dời phiên CONFIRMED sang giờ mới, bất kỳ lúc nào TRƯỚC giờ bắt đầu hiện tại
+        (đã tới hoặc quá giờ → 409 RESCHEDULE_TOO_LATE; đã có người vào phòng → 409 SESSION_ALREADY_JOINED). Dời lịch là chính
+        sách riêng, không tiền, không strike. Tối đa 2 lần dời / phiên, 1 đề xuất mở / phiên. Giờ mới phải qua cùng kiểm tra như đặt lịch (trạng thái mentor,
         minNoticeHours, lịch rảnh, ngoại lệ, trùng lịch có buffer — bỏ qua chính phiên này). Khi PENDING, khung giờ
-        đề xuất được tính là bận (cả ở đặt lịch và available-slots). Hết hạn lúc min(tạo + 24h, giờ gốc − 1h),
-        job mỗi phút chuyển EXPIRED. Ngưỡng cấu hình app.reschedule.*.
+        đề xuất được tính là bận (cả ở đặt lịch và available-slots). Hết hạn lúc min(tạo + 24h, giờ bắt đầu hiện tại),
+        job mỗi phút chuyển EXPIRED; người đầu tiên vào phòng cũng đóng đề xuất đang chờ. Ngưỡng cấu hình app.reschedule.max-per-session / proposal-ttl.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -712,7 +713,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RescheduleProposal" }
         "400": { description: TOO_SOON / TOO_FAR / SAME_START }
-        "409": { description: SESSION_NOT_CONFIRMED / RESCHEDULE_TOO_LATE / RESCHEDULE_LIMIT / RESCHEDULE_PENDING / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED }
+        "409": { description: SESSION_NOT_CONFIRMED / RESCHEDULE_TOO_LATE / SESSION_ALREADY_JOINED / RESCHEDULE_LIMIT / RESCHEDULE_PENDING / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT / MENTOR_ON_LEAVE / MENTOR_SUSPENDED }
   /api/mentoring/reschedules/{id}/accept:
     post:
       summary: >
@@ -726,7 +727,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
         "403": { description: Người đề xuất không tự chấp nhận }
-        "409": { description: RESCHEDULE_NOT_PENDING / RESCHEDULE_EXPIRED / SESSION_NOT_CONFIRMED / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
+        "409": { description: RESCHEDULE_NOT_PENDING / RESCHEDULE_EXPIRED / SESSION_NOT_CONFIRMED / RESCHEDULE_TOO_LATE / SESSION_ALREADY_JOINED / RESCHEDULE_START_PASSED (các lỗi này đóng đề xuất thành EXPIRED) / MENTOR_SUSPENDED / MENTOR_ON_LEAVE / MENTOR_NOT_AVAILABLE / MENTEE_SCHEDULE_CONFLICT }
   /api/mentoring/reschedules/{id}/decline:
     post:
       summary: US-06 Bên còn lại từ chối, hoặc người đề xuất rút lại → DECLINED; phiên giữ giờ cũ

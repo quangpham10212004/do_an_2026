@@ -98,23 +98,51 @@ public class RescheduleService {
                 .orElseThrow(() -> ApiException.notFound("MENTOR_NOT_FOUND", "Không tìm thấy mentor"));
         int buffer = mentor.effectiveBufferMinutes();
         OffsetDateTime oldStart = session.getScheduledAt();
-        MentoringSession moved = tx.execute(s -> {
+        // Nhánh từ chối đóng đề xuất rồi báo lỗi: trả kết quả thay vì ném trong transaction, nếu không lệnh đóng bị rollback.
+        record Outcome(MentoringSession session, String code, String message) {
+        }
+        Outcome out = tx.execute(s -> {
             sessions.lockMentor(session.getMentorId());
             MentoringSession ss = sessions.loadForUpdate(p.getSessionId());   // thứ tự khoá: mentor → phiên → đề xuất
             RescheduleProposal current = find(proposalId);
-            requireOpen(current);
-            if (ss.getStatus() != MentoringSession.Status.CONFIRMED) {
-                current.close(RescheduleProposal.Status.EXPIRED);
-                throw ApiException.conflict("SESSION_NOT_CONFIRMED", "Phiên không còn ở trạng thái đã xác nhận");
+            if (current.getStatus() != RescheduleProposal.Status.PENDING) {
+                throw ApiException.conflict("RESCHEDULE_NOT_PENDING", "Đề xuất dời lịch đã được xử lý");
             }
+            OffsetDateTime now = OffsetDateTime.now();
+            String code = null;
+            String message = null;
+            if (!current.getExpiresAt().isAfter(now)) {
+                code = "RESCHEDULE_EXPIRED";
+                message = "Đề xuất dời lịch đã hết hạn";
+            } else if (ss.getStatus() != MentoringSession.Status.CONFIRMED) {
+                code = "SESSION_NOT_CONFIRMED";
+                message = "Phiên không còn ở trạng thái đã xác nhận";
+            } else if (!now.isBefore(ss.getScheduledAt())) {
+                code = "RESCHEDULE_TOO_LATE";
+                message = "Phiên đã tới hoặc quá giờ bắt đầu nên không thể dời lịch";
+            } else if (ss.getMentorJoinedAt() != null || ss.getMenteeJoinedAt() != null) {
+                code = "SESSION_ALREADY_JOINED";
+                message = "Đã có người vào phòng học nên không thể dời lịch";
+            } else if (!current.getNewStart().isAfter(now)) {
+                code = "RESCHEDULE_START_PASSED";
+                message = "Giờ đề xuất đã trôi qua";
+            }
+            if (code != null) {
+                current.close(RescheduleProposal.Status.EXPIRED);
+                return new Outcome(ss, code, message);
+            }
+            // Cả hai bên đã đồng ý giờ mới nên không kiểm lại lịch rảnh và thời gian báo trước; chỉ kiểm mentor chưa bị khoá / nghỉ vào ngày mới
+            sessions.checkMentorStatus(mentor, current.getNewStart());
             // Bỏ qua khoảng bận của chính phiên này (giờ cũ và giờ đề xuất đều mang sessionId của phiên)
             sessions.requireFree(ss.getMentorId(), ss.getMenteeId(), current.getNewStart(), ss.getDurationMinutes(), buffer, ss.getId());
             ss.setScheduledAt(current.getNewStart());
             ss.resetReminders();
             ss.setRescheduleCount(ss.getRescheduleCount() + 1);
             current.close(RescheduleProposal.Status.ACCEPTED);
-            return ss;
+            return new Outcome(ss, null, null);
         });
+        if (out.code() != null) throw ApiException.conflict(out.code(), out.message());
+        MentoringSession moved = out.session();
         notifications.notifyUser(p.getProposedBy(), "RESCHEDULE_ACCEPTED", "Đề xuất dời lịch được chấp nhận",
                 "Phiên lúc " + fmt(oldStart) + " đã được dời sang " + fmt(moved.getScheduledAt())
                         + ". Nếu đã thêm phiên vào lịch, hãy tải lại file .ics để cập nhật.", "/mentoring/sessions");
@@ -159,10 +187,12 @@ public class RescheduleService {
 
     private void checkRules(MentoringSession session, OffsetDateTime now) {
         boolean open = proposals.findFirstBySessionIdAndStatus(session.getId(), RescheduleProposal.Status.PENDING).isPresent();
-        rules.proposeBlock(session.getStatus(), session.getScheduledAt(), session.getRescheduleCount(), open, now).ifPresent(code -> {
+        boolean joined = session.getMentorJoinedAt() != null || session.getMenteeJoinedAt() != null;
+        rules.proposeBlock(session.getStatus(), session.getScheduledAt(), session.getRescheduleCount(), open, joined, now).ifPresent(code -> {
             throw ApiException.conflict(code, switch (code) {
                 case "SESSION_NOT_CONFIRMED" -> "Chỉ dời lịch được phiên đã xác nhận";
-                case "RESCHEDULE_TOO_LATE" -> "Chỉ được đề xuất dời lịch trước giờ bắt đầu ít nhất " + rules.minBeforeStart().toHours() + " giờ";
+                case "RESCHEDULE_TOO_LATE" -> "Phiên đã tới hoặc quá giờ bắt đầu nên không thể dời lịch";
+                case "SESSION_ALREADY_JOINED" -> "Đã có người vào phòng học nên không thể dời lịch";
                 case "RESCHEDULE_LIMIT" -> "Mỗi phiên chỉ được dời lịch tối đa " + rules.maxPerSession() + " lần";
                 default -> "Phiên đang có một đề xuất dời lịch chờ phản hồi";
             });

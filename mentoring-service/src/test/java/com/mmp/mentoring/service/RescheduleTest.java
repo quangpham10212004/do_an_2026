@@ -32,18 +32,26 @@ class RescheduleTest {
     @Test
     void proposeRules() {
         OffsetDateTime start = now.plusDays(2);
-        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 0, false, now)).isEmpty();
-        assertThat(rules.proposeBlock(MentoringSession.Status.PENDING, start, 0, false, now)).contains("SESSION_NOT_CONFIRMED");
-        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, now.plusMinutes(119), 0, false, now)).contains("RESCHEDULE_TOO_LATE");
-        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, now.plusHours(2), 0, false, now)).isEmpty();
-        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 2, false, now)).contains("RESCHEDULE_LIMIT");
-        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 1, true, now)).contains("RESCHEDULE_PENDING");
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 0, false, false, now)).isEmpty();
+        assertThat(rules.proposeBlock(MentoringSession.Status.PENDING, start, 0, false, false, now)).contains("SESSION_NOT_CONFIRMED");
+        assertThat(rules.proposeBlock(MentoringSession.Status.AWAITING_MENTOR, start, 0, false, false, now)).contains("SESSION_NOT_CONFIRMED");
+        // E1: bất kỳ lúc nào TRƯỚC giờ bắt đầu hiện tại, kể cả chỉ còn vài phút
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, now.plusMinutes(1), 0, false, false, now)).isEmpty();
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, now.plusMinutes(30), 0, false, false, now)).isEmpty();
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, now, 0, false, false, now)).contains("RESCHEDULE_TOO_LATE");
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, now.minusMinutes(1), 0, false, false, now)).contains("RESCHEDULE_TOO_LATE");
+        // E3: đã có người vào phòng thì không dời
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 0, false, true, now)).contains("SESSION_ALREADY_JOINED");
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 2, false, false, now)).contains("RESCHEDULE_LIMIT");
+        assertThat(rules.proposeBlock(MentoringSession.Status.CONFIRMED, start, 1, true, false, now)).contains("RESCHEDULE_PENDING");
     }
 
     @Test
-    void expiryIsEarlierOf24hOrOneHourBeforeOriginalStart() {
+    void expiryIsEarlierOf24hOrTheCurrentStart() {
+        // E2: hạn = min(tạo + 24 giờ, giờ bắt đầu hiện tại); không còn mốc "trước giờ bắt đầu 1 giờ"
         assertThat(rules.expiresAt(now, now.plusDays(3))).isEqualTo(now.plusHours(24));
-        assertThat(rules.expiresAt(now, now.plusHours(5))).isEqualTo(now.plusHours(4));
+        assertThat(rules.expiresAt(now, now.plusHours(5))).isEqualTo(now.plusHours(5));
+        assertThat(rules.expiresAt(now, now.plusMinutes(20))).isEqualTo(now.plusMinutes(20));
     }
 
     @Test
@@ -111,6 +119,30 @@ class RescheduleTest {
     }
 
     @Test
+    void proposalCanBeMadeJustBeforeStartAndExpiresExactlyAtStart() {
+        OffsetDateTime start = OffsetDateTime.now().plusMinutes(30);
+        session.setScheduledAt(start);
+        var view = service.propose(mentee, sessionId, new RescheduleInput(at(4, 14)));
+        assertThat(view.expiresAt()).isEqualTo(start);
+    }
+
+    @Test
+    void proposalFarAheadExpiresAfter24Hours() {
+        var view = service.propose(mentee, sessionId, new RescheduleInput(at(4, 14)));
+        assertThat(view.expiresAt()).isBetween(OffsetDateTime.now().plusHours(23), OffsetDateTime.now().plusHours(25));
+    }
+
+    @Test
+    void noProposalOnceTheSessionStartedOrSomeoneJoined() {
+        session.setScheduledAt(OffsetDateTime.now().minusMinutes(1));
+        assertThat(code(() -> service.propose(mentee, sessionId, new RescheduleInput(at(4, 14))))).isEqualTo("RESCHEDULE_TOO_LATE");
+        session.setScheduledAt(at(3, 10));
+        session.setMenteeJoinedAt(OffsetDateTime.now());
+        assertThat(code(() -> service.propose(mentor, sessionId, new RescheduleInput(at(4, 14))))).isEqualTo("SESSION_ALREADY_JOINED");
+        verify(f.proposalRepo, never()).saveAndFlush(any());
+    }
+
+    @Test
     void limitAndOpenProposalAreEnforced() {
         session.setRescheduleCount(2);
         assertThat(code(() -> service.propose(mentee, sessionId, new RescheduleInput(at(4, 14))))).isEqualTo("RESCHEDULE_LIMIT");
@@ -172,6 +204,97 @@ class RescheduleTest {
         assertThat(live.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
         assertThat(live.getScheduledAt()).isEqualTo(at(3, 10));
         assertThat(live.getRescheduleCount()).isZero();
+    }
+
+    private RescheduleProposal pendingProposal(OffsetDateTime newStart) {
+        RescheduleProposal p = new RescheduleProposal(sessionId, menteeId, newStart, OffsetDateTime.now().minusMinutes(5), OffsetDateTime.now().plusHours(20));
+        UUID pid = UUID.randomUUID();
+        ReflectionTestUtils.setField(p, "id", pid);
+        when(f.proposalRepo.findById(pid)).thenReturn(Optional.of(p));
+        return p;
+    }
+
+    /** Giả lập rollback: ném RuntimeException trong callback thì trạng thái đề xuất trở về như trước transaction. */
+    private void rollbackProposalOnError(RescheduleProposal p) {
+        doAnswer(inv -> {
+            var before = p.getStatus();
+            try {
+                return inv.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null);
+            } catch (RuntimeException e) {
+                ReflectionTestUtils.setField(p, "status", before);
+                throw e;
+            }
+        }).when(f.tx).execute(any());
+    }
+
+    @Test
+    void acceptIsRefusedWhenTheMentorWasSuspendedMeanwhile() {
+        RescheduleProposal p = pendingProposal(at(4, 14));
+        var allWeek = java.util.stream.IntStream.rangeClosed(1, 7)
+                .mapToObj(d -> new ProfileClient.AvailabilitySlot(UUID.randomUUID(), d, LocalTime.of(6, 0), LocalTime.of(23, 0))).toList();
+        when(f.profileClient.findMentor(mentorId)).thenReturn(Optional.of(new ProfileClient.MentorInfo(mentorId, "M", List.of(), "backend",
+                "", 5, new BigDecimal("200000"), 3, 0, true, 0, 0, "APPROVED", allWeek, "SUSPENDED", null, null, null, null, null, null)));
+
+        assertThat(code(() -> service.accept(mentor, (UUID) ReflectionTestUtils.getField(p, "id")))).isEqualTo("MENTOR_SUSPENDED");
+
+        assertThat(session.getScheduledAt()).isEqualTo(at(3, 10));
+        assertThat(p.getStatus()).isEqualTo(RescheduleProposal.Status.PENDING);   // mentor có thể được mở khoá trước hạn; không hết hạn thì job tự đóng
+    }
+
+    @Test
+    void acceptIsRefusedAndTheProposalClosedWhenTheStartPassed() {
+        RescheduleProposal p = pendingProposal(OffsetDateTime.now().minusHours(1));
+        rollbackProposalOnError(p);
+
+        assertThat(code(() -> service.accept(mentor, (UUID) ReflectionTestUtils.getField(p, "id")))).isEqualTo("RESCHEDULE_START_PASSED");
+
+        assertThat(p.getStatus()).isEqualTo(RescheduleProposal.Status.EXPIRED);   // lệnh đóng không bị rollback theo lỗi
+        assertThat(session.getScheduledAt()).isEqualTo(at(3, 10));
+    }
+
+    @Test
+    void acceptIsRefusedAndTheProposalClosedWhenSomeoneJoinedMeanwhile() {
+        RescheduleProposal p = pendingProposal(at(4, 14));
+        rollbackProposalOnError(p);
+        session.setMentorJoinedAt(OffsetDateTime.now());
+
+        assertThat(code(() -> service.accept(mentor, (UUID) ReflectionTestUtils.getField(p, "id")))).isEqualTo("SESSION_ALREADY_JOINED");
+
+        assertThat(p.getStatus()).isEqualTo(RescheduleProposal.Status.EXPIRED);
+        assertThat(session.getRescheduleCount()).isZero();
+    }
+
+    @Test
+    void acceptIsRefusedAndTheProposalClosedOnceTheCurrentStartCame() {
+        RescheduleProposal p = pendingProposal(at(4, 14));
+        rollbackProposalOnError(p);
+        session.setScheduledAt(OffsetDateTime.now().minusMinutes(1));
+
+        assertThat(code(() -> service.accept(mentor, (UUID) ReflectionTestUtils.getField(p, "id")))).isEqualTo("RESCHEDULE_TOO_LATE");
+
+        assertThat(p.getStatus()).isEqualTo(RescheduleProposal.Status.EXPIRED);
+    }
+
+    @Test
+    void closingAnUnacceptableProposalSurvivesTheErrorResponse() {
+        RescheduleProposal p = pendingProposal(at(4, 14));
+        rollbackProposalOnError(p);
+        session.setStatus(MentoringSession.Status.CANCELLED);
+
+        assertThat(code(() -> service.accept(mentor, (UUID) ReflectionTestUtils.getField(p, "id")))).isEqualTo("SESSION_NOT_CONFIRMED");
+
+        assertThat(p.getStatus()).isEqualTo(RescheduleProposal.Status.EXPIRED);
+    }
+
+    @Test
+    void acceptDoesNotRecheckTheMentorsWeeklyAvailabilityOrNotice() {
+        // Cả hai bên đã đồng ý giờ mới: giờ đề xuất ngoài lịch rảnh (23h) vẫn chấp nhận được nếu không trùng lịch và mentor không bị khoá
+        RescheduleProposal p = pendingProposal(at(4, 23).plusMinutes(30));
+
+        var view = service.accept(mentor, (UUID) ReflectionTestUtils.getField(p, "id"));
+
+        assertThat(view.scheduledAt()).isEqualTo(at(4, 23).plusMinutes(30));
+        assertThat(p.getStatus()).isEqualTo(RescheduleProposal.Status.ACCEPTED);
     }
 
     @Test

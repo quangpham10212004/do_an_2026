@@ -43,6 +43,7 @@ class RoomServiceTest {
     NotificationService notifications;
     RoomService service;
     MentoringSession session;
+    com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -54,7 +55,8 @@ class RoomServiceTest {
         when(profileClient.displayNames(any())).thenReturn(Map.of(menteeId, "Mentee A", mentorId, "Mentor B"));
         TransactionTemplate tx = mock(TransactionTemplate.class);
         when(tx.execute(any())).thenAnswer(inv -> ((TransactionCallback<Object>) inv.getArgument(0)).doInTransaction(null));
-        service = new RoomService(repo, profileClient, tx, attendance, notifications, "meet.example.com", "meet.jitsi", "mentorhub", SECRET,
+        proposalRepo = mock(com.mmp.mentoring.repository.RescheduleProposalRepository.class);
+        service = new RoomService(repo, profileClient, tx, proposalRepo, attendance, notifications, "meet.example.com", "meet.jitsi", "mentorhub", SECRET,
                 Duration.ofMinutes(10), Duration.ofMinutes(30), Duration.ofMinutes(10), Duration.ofMinutes(5));
         session = new MentoringSession();
         ReflectionTestUtils.setField(session, "id", id);
@@ -92,6 +94,28 @@ class RoomServiceTest {
         assertThat(menteeView.moderator()).isFalse();
         assertThat(session.getMentorJoinedAt()).isNotNull();
         assertThat(session.getMenteeJoinedAt()).isNotNull();
+    }
+
+    @Test
+    void theFirstJoinClosesAPendingRescheduleProposalAndTellsItsProposer() {
+        var proposal = new com.mmp.mentoring.entity.RescheduleProposal(id, menteeId, OffsetDateTime.now().plusDays(2),
+                OffsetDateTime.now().minusHours(1), OffsetDateTime.now().plusHours(5));
+        when(proposalRepo.findFirstBySessionIdAndStatus(id, com.mmp.mentoring.entity.RescheduleProposal.Status.PENDING))
+                .thenReturn(Optional.of(proposal));
+
+        service.join(mentor, id);
+
+        assertThat(proposal.getStatus()).isEqualTo(com.mmp.mentoring.entity.RescheduleProposal.Status.EXPIRED);
+        verify(notifications).notifyUser(eq(menteeId), eq("RESCHEDULE_EXPIRED"), any(), any(), any());
+    }
+
+    @Test
+    void joiningAgainWithoutANewJoinLogDoesNotTouchProposals() {
+        session.setMentorJoinedAt(OffsetDateTime.now().minusMinutes(1));
+
+        service.join(mentor, id);
+
+        verifyNoInteractions(proposalRepo);
     }
 
     @SuppressWarnings("unchecked")
