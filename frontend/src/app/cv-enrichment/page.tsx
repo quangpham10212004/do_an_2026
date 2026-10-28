@@ -81,7 +81,7 @@ function Enrichment({ user }: { user: SessionUser }) {
     }
   }
 
-  /** US-20: lưu thông tin đã duyệt rồi bắt đầu chatbot. Lỗi được CvReview hiển thị. */
+  /** US-20: lưu thông tin đã duyệt rồi bắt đầu chatbot. */
   async function confirmAndStart(cv: Cv, fields: ConfirmedCvFields) {
     setBusy(true);
     setError("");
@@ -89,6 +89,12 @@ function Enrichment({ user }: { user: SessionUser }) {
       const confirmed = await aiApi.confirmCvFields(cv.id, fields);
       setState({ cv: confirmed, conversation: null });
       setState(await aiApi.startEnrichment(cv.id));
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.code === "PROFILE_REQUIRED"
+          ? <>{errorMessage(err)} <Link href="/profile">Tạo hồ sơ</Link></>
+          : errorMessage(err)
+      );
     } finally {
       setBusy(false);
     }

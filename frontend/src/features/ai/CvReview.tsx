@@ -11,11 +11,15 @@ export function initialFields(cv: Cv): ConfirmedCvFields {
   if (cv.confirmedFields) return cv.confirmedFields;
   const p = cv.parsed;
   return {
-    role: p.currentRole,
-    skills: p.skills,
+    role: p.currentRole ? p.currentRole.slice(0, 120) : null,
+    skills: p.skills.slice(0, 30).map((s) => s.slice(0, 60)),
     yearsExperience: p.yearsExperience,
-    projects: p.projects.map((pr) => ({ name: pr.name, description: pr.description, technologies: pr.technologies ?? [] })),
-    education: p.education,
+    projects: p.projects.slice(0, 8).map((pr) => ({
+      name: pr.name.slice(0, 120),
+      description: pr.description.slice(0, 400),
+      technologies: (pr.technologies ?? []).slice(0, 15).map((t) => t.slice(0, 60)),
+    })),
+    education: p.education.slice(0, 6).map((e) => e.slice(0, 200)),
   };
 }
 

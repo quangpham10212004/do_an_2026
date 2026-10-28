@@ -10,6 +10,12 @@ class Project(CamelModel):
     description: str = ""
     technologies: list[str] = []
 
+    def model_post_init(self, __context) -> None:
+        # Đảm bảo description không vượt giới hạn của ConfirmedProject (400 ký tự)
+        # để frontend không gặp lỗi validation khi gửi lại parsed data.
+        if len(self.description) > 400:
+            object.__setattr__(self, "description", self.description[:400] + "…")
+
 
 class ParsedCv(CamelModel):
     """Dữ liệu có cấu trúc trích xuất từ CV (FR-8.2)."""
