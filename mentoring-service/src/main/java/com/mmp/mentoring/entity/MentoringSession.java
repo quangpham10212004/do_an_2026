@@ -95,6 +95,10 @@ public class MentoringSession {
     @Column(name = "mentee_joined_at")
     private OffsetDateTime menteeJoinedAt;
 
+    /** Giao dịch payment-service đã tạm giữ học phí (callback payment-succeeded); null = chưa nhận callback. */
+    @Column(name = "payment_transaction_id")
+    private UUID paymentTransactionId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "mentee_attendance")
     private Attendance menteeAttendance;
@@ -187,6 +191,8 @@ public class MentoringSession {
     public void setConfirmDeadline(OffsetDateTime confirmDeadline) { this.confirmDeadline = confirmDeadline; }
     public OffsetDateTime getMentorJoinedAt() { return mentorJoinedAt; }
     public void setMentorJoinedAt(OffsetDateTime at) { this.mentorJoinedAt = at; }
+    public UUID getPaymentTransactionId() { return paymentTransactionId; }
+    public void setPaymentTransactionId(UUID id) { this.paymentTransactionId = id; }
     public OffsetDateTime getMenteeJoinedAt() { return menteeJoinedAt; }
     public void setMenteeJoinedAt(OffsetDateTime at) { this.menteeJoinedAt = at; }
     public Status getStatus() { return status; }

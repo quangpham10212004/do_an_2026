@@ -116,7 +116,7 @@ public class MentorshipEndService {
                 n++;
             } catch (ApiException e) {
                 if ("SESSION_NOT_CANCELLABLE".equals(e.getCode()) || "SESSION_ALREADY_STARTED".equals(e.getCode())) continue;
-                throw e; // vd. 502 REFUND_FAILED — quan hệ giữ ACCEPTED, người dùng thử lại
+                throw e; // lỗi bất ngờ khi huỷ một phiên — quan hệ giữ ACCEPTED, người dùng thử lại
             }
         }
         return n;

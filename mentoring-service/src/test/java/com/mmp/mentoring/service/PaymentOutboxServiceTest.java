@@ -71,14 +71,41 @@ class PaymentOutboxServiceTest {
         outbox.enqueueRelease(sessionId);
         outbox.enqueueRefund(sessionId, 50, "DISPUTE_PARTIAL_REFUND");
         outbox.flushSession(sessionId);
-        verify(client, never()).refundRaw(any(), any(), anyInt());
+        verify(client, never()).refundRaw(any(), any(), anyInt(), any());
         assertThat(rows).allMatch(o -> o.getSentAt() == null);
 
         doReturn(true).when(client).release(sessionId);
         outbox.flushSession(sessionId);
         var order = inOrder(client);
         order.verify(client, times(2)).release(sessionId);
-        order.verify(client).refundRaw(sessionId, "DISPUTE_PARTIAL_REFUND", 50);
+        order.verify(client).refundRaw(sessionId, "DISPUTE_PARTIAL_REFUND", 50, "outbox:" + rows.get(1).getId());
+    }
+
+    @Test
+    void refundIsResentWithTheSameIdempotencyKeyAfterATransientFailure() {
+        when(client.refundRaw(any(), any(), anyInt(), any()))
+                .thenThrow(new ResourceAccessException("timeout"))
+                .thenReturn(true);
+        outbox.enqueueRefund(sessionId, 50, "SESSION_CANCELLED_BY_MENTEE");
+
+        outbox.flushSession(sessionId);
+        assertThat(rows.get(0).getSentAt()).isNull();
+        outbox.flushSession(sessionId);
+
+        assertThat(rows.get(0).getSentAt()).isNotNull();
+        var keys = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(client, times(2)).refundRaw(eq(sessionId), eq("SESSION_CANCELLED_BY_MENTEE"), eq(50), keys.capture());
+        assertThat(keys.getAllValues()).containsOnly("outbox:" + rows.get(0).getId());
+    }
+
+    @Test
+    void differentRefundsOfTheSameSessionHaveDifferentKeys() {
+        outbox.enqueueRefund(sessionId, 50, "A");
+        outbox.enqueueRefund(sessionId, 50, "B");
+        outbox.flushSession(sessionId);
+        var keys = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(client, times(2)).refundRaw(eq(sessionId), anyString(), eq(50), keys.capture());
+        assertThat(keys.getAllValues()).doesNotHaveDuplicates();
     }
 
     @Test

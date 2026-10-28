@@ -46,6 +46,8 @@ class TestFixtures {
         });
         when(trials.fee()).thenReturn(new java.math.BigDecimal("30000"));
         when(sessionRepo.findById(any())).thenAnswer(inv -> java.util.Optional.ofNullable(lastSaved));
+        // Khoá dòng (findForUpdate) trả cùng đối tượng với findById; test có thể stub riêng để mô phỏng đọc cũ
+        when(sessionRepo.findForUpdate(any())).thenAnswer(inv -> sessionRepo.findById(inv.<java.util.UUID>getArgument(0)));
         when(paymentClient.payFromWallet(any(), any()))
                 .thenReturn(new com.mmp.mentoring.client.PaymentClient.WalletPayResult(false, true, "INSUFFICIENT_FUNDS"));
         when(requestRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));

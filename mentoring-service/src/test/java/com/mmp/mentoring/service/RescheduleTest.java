@@ -152,6 +152,29 @@ class RescheduleTest {
     }
 
     @Test
+    void acceptIsRefusedWhenTheLockedSessionWasCancelledMeanwhile() {
+        // Đọc cũ thấy CONFIRMED nhưng khi khoá dòng phiên đã bị huỷ: không được "hồi sinh" phiên thành CONFIRMED giờ mới
+        RescheduleProposal p = new RescheduleProposal(sessionId, menteeId, at(4, 14), OffsetDateTime.now(), OffsetDateTime.now().plusHours(20));
+        UUID pid = UUID.randomUUID();
+        when(f.proposalRepo.findById(pid)).thenReturn(Optional.of(p));
+        MentoringSession live = new MentoringSession();
+        ReflectionTestUtils.setField(live, "id", sessionId);
+        live.setMentorId(mentorId);
+        live.setMenteeId(menteeId);
+        live.setDurationMinutes(60);
+        live.setPrice(new BigDecimal("200000"));
+        live.setScheduledAt(at(3, 10));
+        live.setStatus(MentoringSession.Status.CANCELLED);
+        when(f.sessionRepo.findForUpdate(sessionId)).thenReturn(Optional.of(live));
+
+        assertThat(code(() -> service.accept(mentor, pid))).isEqualTo("SESSION_NOT_CONFIRMED");
+
+        assertThat(live.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        assertThat(live.getScheduledAt()).isEqualTo(at(3, 10));
+        assertThat(live.getRescheduleCount()).isZero();
+    }
+
+    @Test
     void expiredProposalCannotBeAccepted() {
         RescheduleProposal p = new RescheduleProposal(sessionId, menteeId, at(4, 14), OffsetDateTime.now().minusHours(25), OffsetDateTime.now().minusMinutes(1));
         UUID pid = UUID.randomUUID();

@@ -95,7 +95,10 @@ public class SessionScheduler {
     @Scheduled(fixedDelay = 60_000, initialDelay = 40_000)
     @Transactional
     public void expireUnpaidSessions() {
-        for (MentoringSession s : sessionRepo.findExpiredPending(OffsetDateTime.now().minus(paymentHold))) {
+        for (MentoringSession candidate : sessionRepo.findExpiredPending(OffsetDateTime.now().minus(paymentHold))) {
+            // Khoá dòng rồi kiểm lại: markPaid hoặc huỷ có thể vừa chuyển phiên khỏi PENDING
+            MentoringSession s = sessionRepo.findForUpdate(candidate.getId()).orElse(null);
+            if (s == null || s.getStatus() != MentoringSession.Status.PENDING) continue;
             s.setStatus(MentoringSession.Status.EXPIRED);
             if (s.isTrial()) trials.restore(s.getId());   // chưa tạm giữ được học phí → hoàn lại lượt trải nghiệm
             s.setCancelledBy("SYSTEM");

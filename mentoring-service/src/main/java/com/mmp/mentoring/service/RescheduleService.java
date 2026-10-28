@@ -71,7 +71,7 @@ public class RescheduleService {
         try {
             saved = tx.execute(s -> {
                 sessions.lockMentor(session.getMentorId());
-                MentoringSession current = sessions.load(sessionId);
+                MentoringSession current = sessions.loadForUpdate(sessionId);
                 checkRules(current, OffsetDateTime.now());
                 sessions.requireFree(current.getMentorId(), current.getMenteeId(), newStart, current.getDurationMinutes(), buffer, current.getId());
                 return proposals.saveAndFlush(new RescheduleProposal(sessionId, user.userId(), newStart, now,
@@ -100,9 +100,9 @@ public class RescheduleService {
         OffsetDateTime oldStart = session.getScheduledAt();
         MentoringSession moved = tx.execute(s -> {
             sessions.lockMentor(session.getMentorId());
+            MentoringSession ss = sessions.loadForUpdate(p.getSessionId());   // thứ tự khoá: mentor → phiên → đề xuất
             RescheduleProposal current = find(proposalId);
             requireOpen(current);
-            MentoringSession ss = sessions.load(current.getSessionId());
             if (ss.getStatus() != MentoringSession.Status.CONFIRMED) {
                 current.close(RescheduleProposal.Status.EXPIRED);
                 throw ApiException.conflict("SESSION_NOT_CONFIRMED", "Phiên không còn ở trạng thái đã xác nhận");

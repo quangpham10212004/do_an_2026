@@ -500,7 +500,6 @@ paths:
         "400": { description: INVALID_END_REASON (INACTIVE chỉ hệ thống dùng) | VALIDATION_ERROR }
         "403": { description: Không thuộc quan hệ này }
         "409": { description: REQUEST_NOT_ACTIVE }
-        "502": { description: REFUND_FAILED khi huỷ phiên đã thanh toán — quan hệ vẫn ACCEPTED, gọi lại an toàn }
   /api/mentoring/requests/{id}/complete:
     post:
       deprecated: true
@@ -641,7 +640,6 @@ paths:
       responses:
         "200": { description: Session }
         "409": { description: NOT_AWAITING_MENTOR }
-        "502": { description: REFUND_FAILED }
   /api/mentoring/sessions/{id}/cancel-preview:
     get:
       summary: >
@@ -672,8 +670,10 @@ paths:
     post:
       summary: >
         Huỷ phiên chưa bắt đầu theo chính sách US-01 (xem cancel-preview). Phiên đã thanh toán và được hoàn > 0%
-        → gọi payment-service hoàn tiền về ví TRƯỚC (lỗi → 502 REFUND_FAILED, phiên không bị huỷ). Lưu cancelledBy,
-        cancelReason, refundPercent (100 / 50 / 0). Mentor huỷ → strike (không còn điểm xin lỗi).
+        → xếp lệnh hoàn tiền vào payment_outbox trong cùng transaction với việc đổi trạng thái (không còn gọi
+        payment-service đồng bộ, không còn 502 REFUND_FAILED); tiền về ví sau vài giây tới một chu kỳ outbox. Quyết định
+        hoàn tiền được tính lại trên dòng phiên đã khoá. Lưu cancelledBy, cancelReason, refundPercent (100 / 50 / 0).
+        Mentor huỷ → strike (không còn điểm xin lỗi).
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         content:

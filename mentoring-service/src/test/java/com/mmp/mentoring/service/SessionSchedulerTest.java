@@ -104,7 +104,9 @@ class SessionSchedulerTest {
     @Test
     void unpaidSessionsOlderThanHoldExpire() {
         MentoringSession pending = session(MentoringSession.Status.PENDING, OffsetDateTime.now().plusDays(2));
+        org.springframework.test.util.ReflectionTestUtils.setField(pending, "id", UUID.randomUUID());
         when(repo.findExpiredPending(any())).thenReturn(List.of(pending));
+        when(repo.findForUpdate(pending.getId())).thenReturn(java.util.Optional.of(pending));
 
         scheduler.expireUnpaidSessions();
 
@@ -114,6 +116,24 @@ class SessionSchedulerTest {
         assertThat(pending.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
         assertThat(pending.getCancelReason()).isEqualTo("PAYMENT_TIMEOUT");
         verify(notifications).notifyUser(eq(pending.getMenteeId()), eq("SESSION_EXPIRED"), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void sessionPaidWhileTheJobWasRunningIsNotExpired() {
+        // Danh sách quá hạn là bản đọc cũ; khi khoá dòng, markPaid đã chuyển phiên sang AWAITING_MENTOR → không được hết hạn
+        MentoringSession stale = session(MentoringSession.Status.PENDING, OffsetDateTime.now().plusDays(2));
+        MentoringSession live = session(MentoringSession.Status.AWAITING_MENTOR, stale.getScheduledAt());
+        UUID id = UUID.randomUUID();
+        org.springframework.test.util.ReflectionTestUtils.setField(stale, "id", id);
+        org.springframework.test.util.ReflectionTestUtils.setField(live, "id", id);
+        when(repo.findExpiredPending(any())).thenReturn(List.of(stale));
+        when(repo.findForUpdate(id)).thenReturn(java.util.Optional.of(live));
+
+        scheduler.expireUnpaidSessions();
+
+        assertThat(live.getStatus()).isEqualTo(MentoringSession.Status.AWAITING_MENTOR);
+        assertThat(live.getCancelReason()).isNull();
+        verifyNoInteractions(notifications);
     }
 
     @Test

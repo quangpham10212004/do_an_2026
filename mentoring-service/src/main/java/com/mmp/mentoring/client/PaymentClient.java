@@ -94,40 +94,18 @@ public class PaymentClient {
         return ids == null ? java.util.List.of() : java.util.List.of(ids);
     }
 
-    /** Hoàn tiền toàn bộ cho phiên đã thanh toán. Trả về false nếu phiên không có giao dịch thành công. */
-    public boolean refund(UUID sessionId, String reason) {
-        return refund(sessionId, reason, 100);
-    }
-
     /**
-     * US-01 — hoàn {@code percent}% giá phiên (chính sách hiện chỉ có 100% / 0%; 0% không gọi). payment-service hỗ trợ
-     * hoàn một phần từ US-13. Lỗi → 502 REFUND_FAILED (người dùng thử lại).
-     */
-    public boolean refund(UUID sessionId, String reason, int percent) {
-        try {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("sessionId", sessionId.toString());
-            body.put("reason", reason);
-            body.put("percent", percent);
-            restClient.post().uri("/internal/payments/refund").body(body).retrieve().toBodilessEntity();
-            return true;
-        } catch (HttpClientErrorException.NotFound e) {
-            return false;
-        } catch (RestClientException e) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Không thể hoàn tiền, vui lòng thử lại sau");
-        }
-    }
-
-    /**
-     * US-12 (qua outbox) — hoàn {@code percent}% không bọc lỗi: 404 (không có giao dịch đã thu tiền: phiên miễn phí /
+     * Hoàn {@code percent}% giá phiên, chỉ gọi từ outbox (mọi hoàn tiền đều đi qua outbox, không gọi đồng bộ). {@code idempotencyKey}
+     * ổn định theo bản ghi outbox nên gửi lại không hoàn thêm. Không bọc lỗi: 404 (không có giao dịch đã thu tiền: phiên miễn phí /
      * đã hoàn đủ) → false; lỗi khác ném RestClientException để outbox phân biệt 4xx (bỏ) với 5xx/mạng (gửi lại).
      */
-    public boolean refundRaw(UUID sessionId, String reason, int percent) {
+    public boolean refundRaw(UUID sessionId, String reason, int percent, String idempotencyKey) {
         try {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("sessionId", sessionId.toString());
             body.put("reason", reason);
             body.put("percent", percent);
+            body.put("idempotencyKey", idempotencyKey);
             restClient.post().uri("/internal/payments/refund").body(body).retrieve().toBodilessEntity();
             return true;
         } catch (HttpClientErrorException.NotFound e) {

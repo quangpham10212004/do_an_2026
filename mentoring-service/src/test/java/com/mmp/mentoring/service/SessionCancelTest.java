@@ -61,7 +61,8 @@ class SessionCancelTest {
         assertThat(view.status()).isEqualTo("CANCELLED");
         assertThat(view.cancelledBy()).isEqualTo("MENTEE");
         assertThat(view.refundPercent()).isZero();
-        verify(f.paymentClient, never()).refund(any(), any(), anyInt());
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
+        verifyNoInteractions(f.paymentClient);
         verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());
         // US-25 — hoàn 0% → mentor được trả: báo trạng thái cuối CANCELLED để giải phóng thu nhập sau 72 giờ
         verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
@@ -71,7 +72,8 @@ class SessionCancelTest {
     void earlyMenteeCancelRefundsFully() {
         session.setScheduledAt(OffsetDateTime.now().plusDays(4));
         f.service().cancel(mentee, id, new com.mmp.mentoring.dto.MentoringDtos.CancelSessionInput("Ban viec"));
-        verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTEE"), eq(100));
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), eq("SESSION_CANCELLED_BY_MENTEE"));
+        verify(f.outbox).flushSession(id);
         assertThat(session.getRefundPercent()).isEqualTo(100);
         verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
         assertThat(session.getCancelReason()).isEqualTo("Ban viec");
@@ -81,7 +83,7 @@ class SessionCancelTest {
     void mentorCancelRefundsFullyWithStrikeAndNoApologyPoints() {
         session.setScheduledAt(OffsetDateTime.now().plusHours(3));
         f.service().cancel(mentor, id, null);
-        verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTOR"), eq(100));
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), eq("SESSION_CANCELLED_BY_MENTOR"));
         verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());   // v2.0: bỏ điểm xin lỗi
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
         verify(f.strikes).record(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL); // US-02
@@ -95,21 +97,74 @@ class SessionCancelTest {
     }
 
     @Test
-    void refundFailureKeepsSessionActive() {
+    void cancelNeverCallsPaymentServiceAndQueuesTheRefundInsideTheTransaction() {
         session.setScheduledAt(OffsetDateTime.now().plusDays(4));
-        when(f.paymentClient.refund(any(), any(), anyInt()))
-                .thenThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "x"));
+        java.util.concurrent.atomic.AtomicBoolean inTx = new java.util.concurrent.atomic.AtomicBoolean();
+        doAnswer(inv -> {
+            inTx.set(true);
+            try {
+                return inv.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null);
+            } finally {
+                inTx.set(false);
+            }
+        }).when(f.tx).execute(any());
+        java.util.List<Boolean> queuedInsideTx = new java.util.ArrayList<>();
+        doAnswer(inv -> queuedInsideTx.add(inTx.get())).when(f.outbox).enqueueRefund(any(), anyInt(), any());
+
+        f.service().cancel(mentee, id, null);
+
+        assertThat(queuedInsideTx).containsExactly(true);
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        verifyNoInteractions(f.paymentClient);
+    }
+
+    @Test
+    void refundDecisionIsTakenOnTheLockedRowNotOnTheEarlierRead() {
+        // Đọc cũ thấy PENDING (chưa thanh toán → hoàn 0%), nhưng khi khoá dòng markPaid đã commit: AWAITING_MENTOR → phải hoàn 100%
+        session.setScheduledAt(OffsetDateTime.now().plusDays(4));
+        session.setStatus(MentoringSession.Status.AWAITING_MENTOR);
+        MentoringSession stale = new MentoringSession();
+        stale.setMentorId(mentorId);
+        stale.setMenteeId(menteeId);
+        stale.setDurationMinutes(60);
+        stale.setPrice(new BigDecimal("200000"));
+        stale.setStatus(MentoringSession.Status.PENDING);
+        stale.setScheduledAt(session.getScheduledAt());
+        org.springframework.test.util.ReflectionTestUtils.setField(stale, "id", id);
+        when(f.sessionRepo.findById(id)).thenReturn(Optional.of(stale));
+        when(f.sessionRepo.findForUpdate(id)).thenReturn(Optional.of(session));
+
+        f.service().cancel(mentee, id, null);
+
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), eq("SESSION_CANCELLED_BY_MENTEE"));
+    }
+
+    @Test
+    void cancelOfAnAlreadyCancelledSessionIsRefusedOnTheLockedRow() {
+        session.setScheduledAt(OffsetDateTime.now().plusDays(4));
+        MentoringSession live = new MentoringSession();
+        org.springframework.test.util.ReflectionTestUtils.setField(live, "id", id);
+        live.setMentorId(mentorId);
+        live.setMenteeId(menteeId);
+        live.setPrice(new BigDecimal("200000"));
+        live.setScheduledAt(session.getScheduledAt());
+        live.setStatus(MentoringSession.Status.CANCELLED);
+        when(f.sessionRepo.findForUpdate(id)).thenReturn(Optional.of(live));
+
         assertThatThrownBy(() -> f.service().cancel(mentee, id, null)).isInstanceOf(ApiException.class);
-        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CONFIRMED);
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
     }
 
     @Test
     void midWindowMenteeCancelRefundsHalfAndReportsFinalStateForTheMentorShare() {
         session.setScheduledAt(OffsetDateTime.now().plusHours(10));
         f.service().cancel(mentee, id, null);
-        verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTEE"), eq(50));
+        var order = inOrder(f.outbox);
+        order.verify(f.outbox).enqueueRefund(eq(id), eq(50), eq("SESSION_CANCELLED_BY_MENTEE"));
+        order.verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
         assertThat(session.getRefundPercent()).isEqualTo(50);
-        verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
     }
 
     @Test
@@ -117,7 +172,7 @@ class SessionCancelTest {
         session.setStatus(MentoringSession.Status.AWAITING_MENTOR);
         session.setScheduledAt(OffsetDateTime.now().plusHours(2));
         f.service().cancel(mentee, id, null);
-        verify(f.paymentClient).refund(any(), eq("SESSION_CANCELLED_BY_MENTEE"), eq(100));
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), eq("SESSION_CANCELLED_BY_MENTEE"));
         assertThat(session.getRefundPercent()).isEqualTo(100);
         verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
     }
@@ -127,9 +182,31 @@ class SessionCancelTest {
         // US-12 — phiên quá hạn thanh toán nay là EXPIRED (trước là CANCELLED) vẫn phải được hoàn khi tiền về muộn
         session.setScheduledAt(OffsetDateTime.now().plusDays(2));
         session.setStatus(MentoringSession.Status.EXPIRED);
-        f.service().markPaid(id, UUID.randomUUID());
+        UUID txn = UUID.randomUUID();
+        f.service().markPaid(id, txn);
         assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
-        verify(f.paymentClient).refund(id, "SESSION_ALREADY_CANCELLED");
+        verify(f.outbox).enqueueRefund(id, 100, "SESSION_ALREADY_CANCELLED");
+        verify(f.outbox).flushSession(id);
+        assertThat(session.getPaymentTransactionId()).isEqualTo(txn);
+        verifyNoInteractions(f.paymentClient);
+
+        // payment-service gọi lại callback tới khi đồng bộ được: không xếp thêm lần hoàn nào
+        f.service().markPaid(id, txn);
+        verify(f.outbox, times(1)).enqueueRefund(any(), anyInt(), any());
+    }
+
+    @Test
+    void paymentArrivingAfterACancelOfAPendingSessionIsRefundedOnce() {
+        // Huỷ lúc còn PENDING (chưa thấy tiền → hoàn 0%) rồi markPaid mới về: tiền phải được hoàn
+        session.setScheduledAt(OffsetDateTime.now().plusDays(2));
+        session.setStatus(MentoringSession.Status.PENDING);
+        f.service().cancel(mentee, id, null);
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
+
+        f.service().markPaid(id, UUID.randomUUID());
+
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        verify(f.outbox, times(1)).enqueueRefund(id, 100, "SESSION_ALREADY_CANCELLED");
     }
 
     @Test

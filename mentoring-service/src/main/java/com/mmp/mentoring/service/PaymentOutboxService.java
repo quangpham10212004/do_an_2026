@@ -142,7 +142,8 @@ public class PaymentOutboxService {
         switch (item.getKind()) {
             case REWARD -> paymentClient.reward(UUID.fromString((String) p.get("userId")), ((Number) p.get("points")).intValue(),
                     (String) p.get("reason"), item.getSessionId());
-            case REFUND -> paymentClient.refundRaw(item.getSessionId(), (String) p.get("reason"), ((Number) p.get("percent")).intValue());
+            case REFUND -> paymentClient.refundRaw(item.getSessionId(), (String) p.get("reason"), ((Number) p.get("percent")).intValue(),
+                    "outbox:" + item.getId());
             case HOLD -> paymentClient.hold(item.getSessionId(), (String) p.get("reason"));
             case RELEASE -> paymentClient.release(item.getSessionId());
             case FINAL_STATE -> paymentClient.finalState(item.getSessionId(), (String) p.get("state"),

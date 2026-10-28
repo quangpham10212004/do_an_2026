@@ -75,10 +75,15 @@ class SessionConfirmTest {
 
     @Test
     void markPaidIsIdempotentOnceAwaitingMentor() {
-        f.service().markPaid(id, UUID.randomUUID());
+        UUID txn = UUID.randomUUID();
+        f.service().markPaid(id, txn);
         OffsetDateTime first = session.getConfirmDeadline();
-        f.service().markPaid(id, UUID.randomUUID());
+        f.service().markPaid(id, txn);
         assertThat(session.getConfirmDeadline()).isEqualTo(first);
+        assertThat(session.getPaymentTransactionId()).isEqualTo(txn);
+        // callback gọi lại không báo mentor / mentee lần nữa và không xếp outbox
+        verify(f.notifications, times(1)).notifyUser(eq(mentorId), eq("SESSION_BOOKED"), anyString(), anyString(), anyString());
+        verifyNoInteractions(f.outbox);
     }
 
     @Test
@@ -120,7 +125,7 @@ class SessionConfirmTest {
 
         var view = f.service().decline(mentor, id, new com.mmp.mentoring.dto.MentoringDtos.DeclineSessionInput("Trung lich"));
 
-        verify(f.paymentClient).refund(eq(id), anyString(), eq(100));
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
         assertThat(view.status()).isEqualTo("CANCELLED");
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
         assertThat(session.getRefundPercent()).isEqualTo(100);
@@ -134,7 +139,7 @@ class SessionConfirmTest {
         session.setStatus(MentoringSession.Status.AWAITING_MENTOR);
         AuthUser other = new AuthUser(UUID.randomUUID(), "x@test", "MENTOR");
         assertThatThrownBy(() -> f.service().decline(other, id, null)).isInstanceOf(ApiException.class);
-        verify(f.paymentClient, never()).refund(any(), any(), anyInt());
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
     }
 
     @Test
@@ -149,22 +154,43 @@ class SessionConfirmTest {
         assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
         assertThat(session.getCancelledBy()).isEqualTo("SYSTEM");
         assertThat(session.getCancelReason()).isEqualTo("MENTOR_NO_RESPONSE");
-        verify(f.paymentClient).refund(eq(id), anyString(), eq(100));
+        verify(f.outbox).enqueueRefund(eq(id), eq(100), anyString());
         verify(f.notifications).notifyUser(eq(mentorId), eq("SESSION_EXPIRED"), anyString(), anyString(), anyString());
         verify(f.strikes, never()).record(any(), any(), any());
     }
 
     @Test
-    void refundFailureKeepsTheSessionAwaitingSoTheJobRetries() {
-        session.setStatus(MentoringSession.Status.AWAITING_MENTOR);
-        session.setConfirmDeadline(OffsetDateTime.now().minusMinutes(1));
-        when(f.sessionRepo.findUnconfirmedPastDeadline(any())).thenReturn(List.of(session));
-        when(f.paymentClient.refund(any(), any(), anyInt()))
-                .thenThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "x"));
+    void jobSkipsASessionThatTheMentorConfirmedInTheMeantime() {
+        // Job đọc danh sách quá hạn (cũ) nhưng khi khoá dòng mentor đã xác nhận: không được huỷ và không được hoàn tiền
+        MentoringSession stale = new MentoringSession();
+        ReflectionTestUtils.setField(stale, "id", id);
+        stale.setMentorId(mentorId);
+        stale.setMenteeId(menteeId);
+        stale.setPrice(new BigDecimal("200000"));
+        stale.setScheduledAt(session.getScheduledAt());
+        stale.setStatus(MentoringSession.Status.AWAITING_MENTOR);
+        stale.setConfirmDeadline(OffsetDateTime.now().minusMinutes(1));
+        session.setStatus(MentoringSession.Status.CONFIRMED);
+        when(f.sessionRepo.findUnconfirmedPastDeadline(any())).thenReturn(List.of(stale));
 
         int n = f.service().expireUnconfirmed(OffsetDateTime.now());
 
         assertThat(n).isZero();
-        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.AWAITING_MENTOR);
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CONFIRMED);
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
+        verifyNoInteractions(f.paymentClient);
     }
+
+    @Test
+    void confirmAfterTheJobExpiredTheSessionIsRefusedAndNothingMoreIsRefunded() {
+        session.setStatus(MentoringSession.Status.AWAITING_MENTOR);
+        session.setConfirmDeadline(OffsetDateTime.now().minusMinutes(1));
+        when(f.sessionRepo.findUnconfirmedPastDeadline(any())).thenReturn(List.of(session));
+        f.service().expireUnconfirmed(OffsetDateTime.now());
+
+        assertThat(code(() -> f.service().confirm(mentor, id))).isEqualTo("NOT_AWAITING_MENTOR");
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.EXPIRED);
+        verify(f.outbox, times(1)).enqueueRefund(any(), anyInt(), any());
+    }
+
 }
