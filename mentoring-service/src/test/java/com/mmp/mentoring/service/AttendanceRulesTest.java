@@ -19,6 +19,23 @@ class AttendanceRulesTest {
     }
 
     @Test
+    void aReportContradictingTheJoinLogIsDisputedInsteadOfNoShow() {
+        // mentor báo mentee vắng nhưng mentee đã vào phòng (vào sau khi bị báo) → admin quyết định
+        var r1 = AttendanceRules.resolve(null, MENTEE_NO_SHOW, true, true, false).orElseThrow();
+        assertThat(r1.outcome()).isEqualTo(Status.DISPUTED);
+        assertThat(r1.code()).isEqualTo("REPORT_CONTRADICTS_LOG");
+        var r2 = AttendanceRules.resolve(MENTOR_NO_SHOW, null, true, false, true).orElseThrow();
+        assertThat(r2.outcome()).isEqualTo(Status.DISPUTED);
+        assertThat(r2.code()).isEqualTo("REPORT_CONTRADICTS_LOG");
+        // nhật ký khớp lời báo → vẫn NO_SHOW như cũ
+        assertThat(AttendanceRules.resolve(null, MENTEE_NO_SHOW, true, false, true).orElseThrow().outcome()).isEqualTo(Status.NO_SHOW_MENTEE);
+        assertThat(AttendanceRules.resolve(MENTOR_NO_SHOW, null, true, true, false).orElseThrow().outcome()).isEqualTo(Status.NO_SHOW_MENTOR);
+        // câu trả lời HELD không bị ảnh hưởng, và chưa hết cửa sổ thì vẫn chờ
+        assertThat(AttendanceRules.resolve(HELD, null, true, true, true).orElseThrow().outcome()).isEqualTo(Status.COMPLETED);
+        assertThat(AttendanceRules.resolve(null, MENTEE_NO_SHOW, false, true, false)).isEmpty();
+    }
+
+    @Test
     void bothHeldCompletesImmediately() {
         assertThat(outcome(HELD, HELD, false)).isEqualTo(Status.COMPLETED);
         assertThat(AttendanceRules.resolve(HELD, HELD, false).orElseThrow().code()).isEqualTo("BOTH_HELD");

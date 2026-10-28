@@ -125,11 +125,81 @@ class DisputeServiceTest {
         session.setStatus(MentoringSession.Status.DISPUTED);
         session.answerAsMentee(MentoringSession.Attendance.HELD, OffsetDateTime.now());
         session.answerAsMentor(MentoringSession.Attendance.MENTEE_NO_SHOW, OffsetDateTime.now());
-        assertThat(service.openAutomatic(session)).isPresent();
-        assertThat(service.openAutomatic(session)).isEmpty();
+        assertThat(service.recordAutomatic(session)).isNotNull();
+        assertThat(service.recordAutomatic(session)).isNull();
         assertThat(disputes).hasSize(1);
         assertThat(disputes.get(0).getType()).isEqualTo(Dispute.Type.NO_SHOW);
         assertThat(disputes.get(0).getOpenedByRole()).isEqualTo(Dispute.OpenedByRole.SYSTEM);
+    }
+
+    @Test
+    void automaticDisputeExplainsAReportThatContradictsTheJoinLog() {
+        session.setStatus(MentoringSession.Status.DISPUTED);
+        session.answerAsMentor(MentoringSession.Attendance.MENTEE_NO_SHOW, OffsetDateTime.now());
+        session.resolve(MentoringSession.Status.DISPUTED, "REPORT_CONTRADICTS_LOG", OffsetDateTime.now());
+
+        Dispute d = service.recordAutomatic(session);
+
+        assertThat(d.getDescription()).contains("nhật ký").hasSizeGreaterThanOrEqualTo(20);
+        service.afterAutomatic(d, session);
+        verify(f.notifications).notifyUser(eq(menteeId), eq("DISPUTE_OPENED"), any(), any(), any());
+        verify(f.notifications).notifyRole(eq("ADMIN"), eq("SESSION_DISPUTED"), any(), any(), any());
+    }
+
+    private Dispute systemDispute() {
+        Dispute d = new Dispute(sessionId, null, Dispute.OpenedByRole.SYSTEM, Dispute.Type.NO_SHOW, "Hai ben xac nhan khac nhau.", List.of());
+        ReflectionTestUtils.setField(d, "id", UUID.randomUUID());
+        disputes.add(d);
+        return d;
+    }
+
+    @Test
+    void fullRefundOnADisputedSessionCancelsItSoItIsNotStuck() {
+        session.setStatus(MentoringSession.Status.DISPUTED);
+        Dispute d = systemDispute();
+
+        service.resolve(admin, d.getId(), new ResolveDisputeInput(Dispute.Outcome.FULL_REFUND, null, "Mentor vang mat"));
+
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+        assertThat(session.getCancelledBy()).isEqualTo("SYSTEM");
+        assertThat(session.getCancelReason()).isEqualTo("DISPUTE_RESOLVED");
+        assertThat(session.getCancelledAt()).isNotNull();
+        verify(f.outbox).enqueueRefund(sessionId, 100, "DISPUTE_FULL_REFUND");
+    }
+
+    @Test
+    void partialRefundOnAnAwaitingAttendanceSessionCompletesItWithThePercent() {
+        session.setStatus(MentoringSession.Status.AWAITING_ATTENDANCE);
+        Dispute d = systemDispute();
+
+        service.resolve(admin, d.getId(), new ResolveDisputeInput(Dispute.Outcome.PARTIAL_REFUND, 30, "Mentor vao muon"));
+
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.COMPLETED);
+        assertThat(session.getRefundPercent()).isEqualTo(30);
+        assertThat(session.getResolvedAt()).isNotNull();
+        verify(f.outbox).enqueueRefund(sessionId, 30, "DISPUTE_PARTIAL_REFUND");
+    }
+
+    @Test
+    void suspendOnADisputedSessionCancelsItAndKeepsTheRefundOf100() {
+        session.setStatus(MentoringSession.Status.DISPUTED);
+        Dispute d = systemDispute();
+
+        service.resolve(admin, d.getId(), new ResolveDisputeInput(Dispute.Outcome.SUSPEND, null, "Hanh vi khong phu hop"));
+
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.CANCELLED);
+        assertThat(session.getRefundPercent()).isEqualTo(100);
+    }
+
+    @Test
+    void aSessionAlreadyInAFinalStateKeepsItsStatusAndOnlyGetsTheRefundPercent() {
+        Dispute d = opened();   // phiên COMPLETED
+
+        service.resolve(admin, d.getId(), new ResolveDisputeInput(Dispute.Outcome.PARTIAL_REFUND, 40, "Mot phan"));
+
+        assertThat(session.getStatus()).isEqualTo(MentoringSession.Status.COMPLETED);
+        assertThat(session.getRefundPercent()).isEqualTo(40);
     }
 
     @Test

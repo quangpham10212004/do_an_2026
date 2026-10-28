@@ -103,10 +103,12 @@ components:
         attendanceResolution:
           type: string
           nullable: true
-          enum: [BOTH_HELD, HELD_ONE_SIDE, NO_ANSWER, MENTEE_NO_SHOW_REPORTED, MENTOR_NO_SHOW_REPORTED, CONFLICT, CANCELLED_ON_CALL, DISPUTE_RESOLVED]
+          enum: [BOTH_HELD, HELD_ONE_SIDE, NO_ANSWER, MENTEE_NO_SHOW_REPORTED, MENTOR_NO_SHOW_REPORTED, CONFLICT, REPORT_CONTRADICTS_LOG, CANCELLED_ON_CALL, DISPUTE_RESOLVED]
           description: >
-            US-12 — cách phiên được kết luận (null với phiên chưa kết luận hoặc hoàn thành trước US-12). DISPUTE_RESOLVED
-            (US-32) — phiên DISPUTED / AWAITING_ATTENDANCE thành COMPLETED do tranh chấp kết luận NO_REFUND / WARNING.
+            US-12 — cách phiên được kết luận (null với phiên chưa kết luận hoặc hoàn thành trước US-12). REPORT_CONTRADICTS_LOG
+            — lời báo vắng mặt một phía mâu thuẫn nhật ký vào phòng (bên bị báo đã vào phòng) nên phiên chuyển DISPUTED thay vì
+            NO_SHOW_*. DISPUTE_RESOLVED (US-32) — phiên DISPUTED / AWAITING_ATTENDANCE được tranh chấp kết luận: FULL_REFUND /
+            SUSPEND → CANCELLED, PARTIAL_REFUND / NO_REFUND / WARNING → COMPLETED.
         pendingReschedule:
           allOf: [{ $ref: "#/components/schemas/RescheduleProposal" }]
           nullable: true
@@ -130,9 +132,10 @@ components:
       description: >
         US-32 (PRD-ADM-1) — tranh chấp. Mở → giao dịch ON_HOLD (chặn giải phóng thu nhập US-25). Kết luận: FULL_REFUND
         → hoàn 100%; PARTIAL_REFUND → hoàn refundPercent% và giải phóng ngay phần thu nhập còn lại của mentor; NO_REFUND /
-        WARNING → giải phóng thu nhập (phiên DISPUTED / AWAITING_ATTENDANCE thành COMPLETED); SUSPEND → hoàn 100% + mentor
-        SUSPENDED (profile-service) + huỷ & hoàn các phiên sắp tới. Các kết luận có hoàn tiền giữ nguyên trạng thái phiên
-        (vd. DISPUTED) và ghi Session.refundPercent.
+        WARNING → giải phóng thu nhập; SUSPEND → hoàn 100% + mentor SUSPENDED (profile-service) + huỷ & hoàn các phiên sắp
+        tới. Phiên DISPUTED / AWAITING_ATTENDANCE không bị kẹt: FULL_REFUND / SUSPEND → CANCELLED (refundPercent 100,
+        cancelledBy SYSTEM), PARTIAL_REFUND / NO_REFUND / WARNING → COMPLETED; phiên đã ở trạng thái cuối giữ nguyên trạng
+        thái. Mọi kết luận có hoàn tiền ghi Session.refundPercent.
       properties:
         id: { type: string, format: uuid }
         sessionId: { type: string, format: uuid }
@@ -779,7 +782,9 @@ paths:
         (app.attendance.window). Kết luận: cả hai HELD → COMPLETED; trả lời khác nhau → DISPUTED ngay (giao dịch ON_HOLD
         qua POST /internal/payments/hold — chờ xử lý tranh chấp US-32); một bên trả lời, bên kia im lặng 48 giờ → theo
         câu đó (HELD → COMPLETED; mentor báo MENTEE_NO_SHOW → NO_SHOW_MENTEE, không hoàn; mentee báo MENTOR_NO_SHOW →
-        NO_SHOW_MENTOR, hoàn 100% + 1 strike MENTOR_NO_SHOW); không ai trả lời → COMPLETED. CANCELLED_ON_CALL (cả hai,
+        NO_SHOW_MENTOR, hoàn 100% + 1 strike MENTOR_NO_SHOW, strike ghi cùng transaction kết luận); nếu bên bị báo vắng đã
+        vào phòng (nhật ký) thì phiên chuyển DISPUTED (REPORT_CONTRADICTS_LOG), không NO_SHOW_*; không ai trả lời → COMPLETED.
+        Phiên DISPUTED luôn kèm bản ghi tranh chấp do hệ thống mở, ghi trong cùng transaction kết luận. CANCELLED_ON_CALL (cả hai,
         hoặc một bên + bên kia im lặng) → CANCELLED, cancelledBy SYSTEM, cancelReason CANCELLED_ON_CALL, hoàn 100%,
         không strike. Hoàn tiền / tạm giữ đi qua outbox (gửi ngay sau commit, job mỗi phút gửi lại).
       parameters: [{ $ref: "#/components/parameters/Id" }]
@@ -805,7 +810,7 @@ paths:
     post:
       summary: >
         (MENTEE/MENTOR của phiên) US-32 "Báo cáo sự cố" — phiên COMPLETED / NO_SHOW_MENTEE / NO_SHOW_MENTOR /
-        AWAITING_ATTENDANCE, trong 7 ngày sau giờ kết thúc (app.disputes.open-window). Phiên có phí → giao dịch ON_HOLD.
+        AWAITING_ATTENDANCE, trong 72 giờ sau giờ kết thúc (app.disputes.open-window = PT72H, bằng thời gian payment-service giữ thu nhập). Phiên có phí → giao dịch ON_HOLD.
         Báo cho hai bên và admin.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
@@ -827,7 +832,7 @@ paths:
               schema: { $ref: "#/components/schemas/Dispute" }
         "400": { description: INVALID_DESCRIPTION | TOO_MANY_EVIDENCE_LINKS | INVALID_EVIDENCE_LINK | VALIDATION_ERROR }
         "403": { description: Không phải mentee/mentor của phiên }
-        "409": { description: DISPUTE_ALREADY_OPEN (1 tranh chấp đang mở / phiên) | DISPUTE_WINDOW_CLOSED (> 7 ngày) | DISPUTE_NOT_ALLOWED (trạng thái phiên) }
+        "409": { description: DISPUTE_ALREADY_OPEN (1 tranh chấp đang mở / phiên) | DISPUTE_WINDOW_CLOSED (> 72 giờ) | DISPUTE_NOT_ALLOWED (trạng thái phiên) }
     get:
       summary: (người tham gia phiên / ADMIN) US-32 — các tranh chấp của phiên, mới nhất trước
       parameters: [{ $ref: "#/components/parameters/Id" }]
@@ -843,6 +848,8 @@ paths:
         US-41 (PRD-REV-1/2, MENTEE) — đánh giá có cấu trúc phiên COMPLETED trong 14 ngày sau khi hoàn thành (resolved_at),
         1 đánh giá / phiên. Tổng + kiến thức / truyền đạt / chuẩn bị (1–5), nhận xét bắt buộc ≥ 20 ký tự khi tổng ≤ 2,
         tối đa 5 thẻ. Điểm đồng bộ sang profile-service = trung bình Bayes (prior 3 đánh giá ở trung bình nền tảng).
+        Phiên đã hoàn 100% học phí (Session.refundPercent = 100) không đánh giá được (409 SESSION_REFUNDED). Hai yêu cầu tạo
+        đồng thời → một 201, một 409 ALREADY_REVIEWED.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -857,7 +864,7 @@ paths:
               schema: { $ref: "#/components/schemas/Review" }
         "400": { description: VALIDATION_ERROR / COMMENT_REQUIRED / INVALID_REVIEW_TAG }
         "403": { description: FORBIDDEN }
-        "409": { description: SESSION_NOT_COMPLETED / ALREADY_REVIEWED / REVIEW_WINDOW_CLOSED }
+        "409": { description: SESSION_NOT_COMPLETED / SESSION_REFUNDED / TRIAL_NOT_REVIEWABLE / ALREADY_REVIEWED / REVIEW_WINDOW_CLOSED }
     put:
       summary: US-41 — sửa đánh giá của chính mình trong 48 giờ sau khi đăng.
       parameters: [{ $ref: "#/components/parameters/Id" }]

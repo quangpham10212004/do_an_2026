@@ -95,6 +95,62 @@ class ReviewServiceTest {
     }
 
     @Test
+    void aFullyRefundedSessionCannotBeReviewedButAPartlyRefundedOneCan() {
+        session.setRefundPercent(100);
+        assertThatThrownBy(() -> service.create(mentee, sessionId, input(5, null)))
+                .hasFieldOrPropertyWithValue("status", HttpStatus.CONFLICT)
+                .hasFieldOrPropertyWithValue("code", "SESSION_REFUNDED");
+        assertThat(store).isEmpty();
+
+        session.setRefundPercent(50);
+        service.create(mentee, sessionId, input(5, null));
+        assertThat(store).hasSize(1);
+    }
+
+    @Test
+    void sessionNotCompletedIsReportedBeforeTheRefundCheck() {
+        session.setStatus(MentoringSession.Status.CANCELLED);
+        session.setRefundPercent(100);
+        assertThatThrownBy(() -> service.create(mentee, sessionId, input(5, null)))
+                .hasFieldOrPropertyWithValue("code", "SESSION_NOT_COMPLETED");
+    }
+
+    @Test
+    void aConcurrentDuplicateReviewIsAConflictNotAServerError() {
+        // Hai yêu cầu cùng qua kiểm tra existsBySessionId; ràng buộc UNIQUE(session_id) chặn bản thứ hai khi ghi
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("uq_reviews_session")).when(reviewRepo).save(any());
+        assertThatThrownBy(() -> service.create(mentee, sessionId, input(5, null)))
+                .hasFieldOrPropertyWithValue("status", HttpStatus.CONFLICT)
+                .hasFieldOrPropertyWithValue("code", "ALREADY_REVIEWED");
+        verifyNoInteractions(notifications);
+    }
+
+    @Test
+    void updateChecksExistenceThenOwnerThenWindowBeforeTheContent() {
+        StructuredReviewInput invalid = input(2, "Tệ");   // rating ≤ 2 mà bình luận ngắn → 400 nếu kiểm nội dung trước
+        assertThatThrownBy(() -> service.update(mentee, sessionId, invalid)).hasFieldOrPropertyWithValue("code", "REVIEW_NOT_FOUND");
+
+        service.create(mentee, sessionId, input(5, "Rất hữu ích"));
+        AuthUser other = new AuthUser(UUID.randomUUID(), "o@x", "MENTEE");
+        assertThatThrownBy(() -> service.update(other, sessionId, invalid)).hasFieldOrPropertyWithValue("code", "FORBIDDEN");
+
+        ReflectionTestUtils.setField(store.get(0), "createdAt", OffsetDateTime.now().minusHours(49));
+        assertThatThrownBy(() -> service.update(mentee, sessionId, invalid)).hasFieldOrPropertyWithValue("code", "REVIEW_EDIT_WINDOW_CLOSED");
+
+        ReflectionTestUtils.setField(store.get(0), "createdAt", OffsetDateTime.now().minusHours(1));
+        assertThatThrownBy(() -> service.update(mentee, sessionId, invalid)).hasFieldOrPropertyWithValue("code", "COMMENT_REQUIRED");
+    }
+
+    @Test
+    void aReplyLongerThan500CharactersIsRejected() {
+        ReviewDetail d = service.create(mentee, sessionId, input(5, "Rất hữu ích"));
+        assertThatThrownBy(() -> service.reply(mentor, d.id(), new ReplyInput("x".repeat(501))))
+                .hasFieldOrPropertyWithValue("status", HttpStatus.BAD_REQUEST)
+                .hasFieldOrPropertyWithValue("code", "INVALID_REPLY");
+        service.reply(mentor, d.id(), new ReplyInput("x".repeat(500)));
+    }
+
+    @Test
     void reviewOnDay15IsRejected() {
         ReflectionTestUtils.setField(session, "resolvedAt", OffsetDateTime.now().minusDays(15));
         assertThatThrownBy(() -> service.create(mentee, sessionId, input(5, null)))

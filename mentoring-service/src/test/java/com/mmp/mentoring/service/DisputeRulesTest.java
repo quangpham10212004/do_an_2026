@@ -88,12 +88,28 @@ class DisputeRulesTest {
 
     @Test
     void sessionStatusAfterResolution() {
-        assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.NO_REFUND, MentoringSession.Status.DISPUTED))
-                .contains(MentoringSession.Status.COMPLETED);
-        assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.WARNING, MentoringSession.Status.AWAITING_ATTENDANCE))
-                .contains(MentoringSession.Status.COMPLETED);
-        assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.NO_REFUND, MentoringSession.Status.NO_SHOW_MENTEE)).isEqualTo(Optional.empty());
-        assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.PARTIAL_REFUND, MentoringSession.Status.DISPUTED)).isEmpty();
-        assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.FULL_REFUND, MentoringSession.Status.COMPLETED)).isEmpty();
+        // phiên treo (DISPUTED / AWAITING_ATTENDANCE) luôn có đường ra
+        for (MentoringSession.Status hanging : new MentoringSession.Status[]{MentoringSession.Status.DISPUTED, MentoringSession.Status.AWAITING_ATTENDANCE}) {
+            assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.FULL_REFUND, hanging)).contains(MentoringSession.Status.CANCELLED);
+            assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.SUSPEND, hanging)).contains(MentoringSession.Status.CANCELLED);
+            assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.PARTIAL_REFUND, hanging)).contains(MentoringSession.Status.COMPLETED);
+            assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.NO_REFUND, hanging)).contains(MentoringSession.Status.COMPLETED);
+            assertThat(DisputeRules.sessionStatusAfter(Dispute.Outcome.WARNING, hanging)).contains(MentoringSession.Status.COMPLETED);
+        }
+        // phiên đã ở trạng thái cuối giữ nguyên trạng thái
+        for (Dispute.Outcome outcome : Dispute.Outcome.values()) {
+            for (MentoringSession.Status terminal : new MentoringSession.Status[]{MentoringSession.Status.COMPLETED,
+                    MentoringSession.Status.NO_SHOW_MENTEE, MentoringSession.Status.NO_SHOW_MENTOR, MentoringSession.Status.CANCELLED}) {
+                assertThat(DisputeRules.sessionStatusAfter(outcome, terminal)).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void openWindowOf72HoursMatchesTheEarningHold() {
+        Duration window = Duration.ofHours(72);
+        OffsetDateTime now = OffsetDateTime.now();
+        assertThat(DisputeRules.canOpen(session(MentoringSession.Status.COMPLETED, now.minusHours(71)), window, now)).isEmpty();
+        assertThat(DisputeRules.canOpen(session(MentoringSession.Status.COMPLETED, now.minusHours(73)), window, now)).contains("DISPUTE_WINDOW_CLOSED");
     }
 }

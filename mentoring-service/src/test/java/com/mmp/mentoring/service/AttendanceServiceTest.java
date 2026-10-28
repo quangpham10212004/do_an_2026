@@ -116,7 +116,8 @@ class AttendanceServiceTest {
         verify(f.outbox).enqueueHold(id, "SESSION_DISPUTED");
         verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
         verify(f.outbox).flushSession(id);
-        verify(disputeHook).sessionDisputed(session);
+        verify(disputeHook).record(session);
+        verify(disputeHook).afterCommit(eq(session), any());
         verifyNoInteractions(f.strikes);
     }
 
@@ -160,6 +161,58 @@ class AttendanceServiceTest {
 
         assertThat(service.resolveExpired(OffsetDateTime.now())).isZero();
         assertThat(session.getStatus()).isEqualTo(Status.AWAITING_ATTENDANCE);
+    }
+
+    @Test
+    void aNoShowReportContradictingTheJoinLogBecomesADisputeWrittenInTheSameTransaction() {
+        session.setStatus(Status.AWAITING_ATTENDANCE);
+        session.answerAsMentor(Attendance.MENTEE_NO_SHOW, OffsetDateTime.now().minusHours(47));
+        session.setMenteeJoinedAt(OffsetDateTime.now().minusHours(46));   // mentee vào phòng sau khi bị báo vắng
+        endedMinutesAgo(48 * 60 + 1);
+        when(f.sessionRepo.findIdsEndedBefore(eq("AWAITING_ATTENDANCE"), any())).thenReturn(List.of(id.toString()));
+        var created = new com.mmp.mentoring.entity.Dispute(id, null, com.mmp.mentoring.entity.Dispute.OpenedByRole.SYSTEM,
+                com.mmp.mentoring.entity.Dispute.Type.NO_SHOW, "Loi bao vang mat mau thuan voi nhat ky phong hoc.", List.of());
+        java.util.concurrent.atomic.AtomicBoolean inTx = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.List<String> trace = new java.util.ArrayList<>();
+        doAnswer(inv -> {
+            inTx.set(true);
+            try {
+                return inv.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null);
+            } finally {
+                inTx.set(false);
+            }
+        }).when(f.tx).execute(any());
+        when(disputeHook.record(session)).thenAnswer(inv -> {
+            trace.add("record:" + inTx.get());
+            return created;
+        });
+        doAnswer(inv -> trace.add("after:" + inTx.get())).when(disputeHook).afterCommit(any(), any());
+
+        service.resolveExpired(OffsetDateTime.now());
+
+        assertThat(session.getStatus()).isEqualTo(Status.DISPUTED);
+        assertThat(session.getAttendanceResolution()).isEqualTo("REPORT_CONTRADICTS_LOG");
+        assertThat(trace).containsExactly("record:true", "after:false");
+        verify(disputeHook).afterCommit(session, created);
+        verify(f.outbox).enqueueHold(id, "SESSION_DISPUTED");
+        verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
+        verify(f.outbox, never()).enqueueFinalState(any(), any(), any(), anyBoolean());
+        verifyNoInteractions(f.strikes);
+    }
+
+    @Test
+    void aMentorNoShowReportContradictingTheJoinLogGivesNoStrike() {
+        session.setStatus(Status.AWAITING_ATTENDANCE);
+        session.answerAsMentee(Attendance.MENTOR_NO_SHOW, OffsetDateTime.now().minusHours(47));
+        session.setMentorJoinedAt(OffsetDateTime.now().minusHours(46));
+        endedMinutesAgo(48 * 60 + 1);
+        when(f.sessionRepo.findIdsEndedBefore(eq("AWAITING_ATTENDANCE"), any())).thenReturn(List.of(id.toString()));
+
+        service.resolveExpired(OffsetDateTime.now());
+
+        assertThat(session.getStatus()).isEqualTo(Status.DISPUTED);
+        verify(f.strikes, never()).insert(any(), any(), any());
+        verify(f.strikes, never()).afterCommit(any(), any());
     }
 
     @Test

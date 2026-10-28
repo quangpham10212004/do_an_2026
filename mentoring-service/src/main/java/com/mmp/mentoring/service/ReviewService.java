@@ -12,6 +12,7 @@ import com.mmp.mentoring.repository.SessionRepository;
 import com.mmp.mentoring.security.AuthUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -55,13 +56,31 @@ public class ReviewService {
 
     public ReviewDetail create(AuthUser mentee, UUID sessionId, StructuredReviewInput in) {
         OffsetDateTime now = OffsetDateTime.now();
-        Review saved = tx.execute(s -> {
+        Review saved;
+        try {
+            saved = createInTransaction(mentee, sessionId, in, now);
+        } catch (DataIntegrityViolationException e) {
+            // Hai yêu cầu tạo đánh giá đồng thời: chỉ ràng buộc UNIQUE(session_id) ở DB chặn được, trả 409 thay vì 500
+            throw ApiException.conflict("ALREADY_REVIEWED", "Bạn đã đánh giá phiên này");
+        }
+        syncRating(saved.getMentorId());
+        notifications.notifyUser(saved.getMentorId(), "REVIEW_RECEIVED", "Bạn nhận được đánh giá mới",
+                "Mentee đã đánh giá " + saved.getRating() + "/5 sao. Bạn có thể phản hồi công khai một lần.",
+                "/mentors/" + saved.getMentorId() + "#reviews");
+        return detail(saved, mentee);
+    }
+
+    private Review createInTransaction(AuthUser mentee, UUID sessionId, StructuredReviewInput in, OffsetDateTime now) {
+        return tx.execute(s -> {
             MentoringSession session = findSession(sessionId);
             if (!session.getMenteeId().equals(mentee.userId())) {
                 throw ApiException.forbidden("Chỉ mentee của phiên mới được đánh giá");
             }
             if (session.getStatus() != MentoringSession.Status.COMPLETED) {
                 throw ApiException.conflict("SESSION_NOT_COMPLETED", "Chỉ đánh giá được sau khi phiên kết thúc");
+            }
+            if (session.getRefundPercent() != null && session.getRefundPercent() == 100) {
+                throw ApiException.conflict("SESSION_REFUNDED", "Phiên đã được hoàn tiền đầy đủ nên không đánh giá được");
             }
             if (session.isTrial()) {
                 throw ApiException.conflict("TRIAL_NOT_REVIEWABLE", "Buổi trải nghiệm không chấm sao — hãy đặt buổi học thường nếu bạn muốn học tiếp");
@@ -77,16 +96,9 @@ public class ReviewService {
             r.write(in.rating(), in.knowledge(), in.clarity(), in.preparation(), comment, tags, now, false);
             return reviewRepo.save(r);
         });
-        syncRating(saved.getMentorId());
-        notifications.notifyUser(saved.getMentorId(), "REVIEW_RECEIVED", "Bạn nhận được đánh giá mới",
-                "Mentee đã đánh giá " + saved.getRating() + "/5 sao. Bạn có thể phản hồi công khai một lần.",
-                "/mentors/" + saved.getMentorId() + "#reviews");
-        return detail(saved, mentee);
     }
 
     public ReviewDetail update(AuthUser mentee, UUID sessionId, StructuredReviewInput in) {
-        String comment = ReviewRules.validateComment(in.rating(), in.comment());
-        String[] tags = ReviewRules.normalizeTags(in.tags());
         OffsetDateTime now = OffsetDateTime.now();
         Review saved = tx.execute(s -> {
             Review r = reviewRepo.findBySessionId(sessionId)
@@ -95,6 +107,9 @@ public class ReviewService {
                 throw ApiException.forbidden("Chỉ người viết mới sửa được đánh giá");
             }
             ReviewRules.requireEditable(r.getCreatedAt(), now);
+            // Thứ tự kiểm: tồn tại (404) → quyền (403) → cửa sổ sửa (409) → nội dung (400)
+            String comment = ReviewRules.validateComment(in.rating(), in.comment());
+            String[] tags = ReviewRules.normalizeTags(in.tags());
             r.write(in.rating(), in.knowledge(), in.clarity(), in.preparation(), comment, tags, now, true);
             return reviewRepo.save(r);
         });

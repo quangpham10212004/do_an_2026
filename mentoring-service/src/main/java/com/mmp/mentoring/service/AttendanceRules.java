@@ -77,6 +77,22 @@ public final class AttendanceRules {
         });
     }
 
+    /**
+     * Như {@link #resolve(Attendance, Attendance, boolean)} nhưng đối chiếu nhật ký vào phòng: lời báo vắng mặt một phía mà bên bị báo
+     * đã vào phòng (vào sau khi bị báo) không được tự kết luận NO_SHOW_* → DISPUTED (REPORT_CONTRADICTS_LOG) để admin quyết định.
+     */
+    public static Optional<Resolution> resolve(Attendance mentee, Attendance mentor, boolean windowClosed,
+                                               boolean menteeJoined, boolean mentorJoined) {
+        Optional<Resolution> r = resolve(mentee, mentor, windowClosed);
+        if (r.isPresent()) {
+            Status outcome = r.get().outcome();
+            if ((outcome == Status.NO_SHOW_MENTEE && menteeJoined) || (outcome == Status.NO_SHOW_MENTOR && mentorJoined)) {
+                return Optional.of(new Resolution(Status.DISPUTED, "REPORT_CONTRADICTS_LOG"));
+            }
+        }
+        return r;
+    }
+
     /** % hoàn cho mentee theo kết luận (áp dụng khi phiên có phí đã thanh toán). */
     public static int refundPercent(Status outcome) {
         return switch (outcome) {

@@ -60,7 +60,7 @@ public class DisputeService {
     public DisputeService(DisputeRepository disputeRepo, SessionRepository sessionRepo, PaymentOutboxService outbox,
                           NotificationService notifications, ProfileClient profileClient, MentorSuspensionService suspension,
                           AuditClient audit, TransactionTemplate tx,
-                          @Value("${app.disputes.open-window:P4D}") Duration openWindow,
+                          @Value("${app.disputes.open-window:PT72H}") Duration openWindow,
                           @Value("${app.disputes.first-response-sla:PT48H}") Duration firstResponseSla,
                           @Value("${app.timezone}") String timezone) {
         this.disputeRepo = disputeRepo;
@@ -122,25 +122,29 @@ public class DisputeService {
     }
 
     /**
-     * US-12 → US-32 — phiên vừa chuyển DISPUTED (hai bên trả lời tham dự mâu thuẫn): tạo tranh chấp NO_SHOW do hệ thống mở.
-     * Giao dịch đã được xếp hàng HOLD ở AttendanceService. Bỏ qua nếu phiên đã có tranh chấp đang mở.
+     * US-12 → US-32 — phiên vừa chuyển DISPUTED (hai bên trả lời tham dự mâu thuẫn, hoặc lời báo vắng mặt mâu thuẫn nhật ký phòng):
+     * tạo tranh chấp NO_SHOW do hệ thống mở. Gọi TRONG transaction kết luận của phiên nên không thể có phiên DISPUTED mà thiếu bản ghi
+     * tranh chấp; giao dịch được xếp hàng HOLD ở AttendanceService. Bỏ qua (null) nếu phiên đã có tranh chấp đang mở.
      */
-    public Optional<Dispute> openAutomatic(MentoringSession s) {
-        String description = "Hai bên xác nhận tham dự khác nhau: mentee " + s.getMenteeAttendance() + ", mentor "
-                + s.getMentorAttendance() + ".";
-        Dispute saved;
-        try {
-            saved = tx.execute(st -> disputeRepo.existsBySessionIdAndStatusIn(s.getId(), OPEN) ? null
-                    : disputeRepo.saveAndFlush(new Dispute(s.getId(), null, Dispute.OpenedByRole.SYSTEM, Dispute.Type.NO_SHOW,
-                    description, List.of())));
-        } catch (DataIntegrityViolationException e) {
-            return Optional.empty();
-        }
-        if (saved == null) return Optional.empty();
+    public Dispute recordAutomatic(MentoringSession s) {
+        if (disputeRepo.existsBySessionIdAndStatusIn(s.getId(), OPEN)) return null;
+        return disputeRepo.saveAndFlush(new Dispute(s.getId(), null, Dispute.OpenedByRole.SYSTEM, Dispute.Type.NO_SHOW,
+                automaticDescription(s), List.of()));
+    }
+
+    /** Sau commit của {@link #recordAutomatic}: thông báo hai bên và admin, ghi audit. */
+    public void afterAutomatic(Dispute saved, MentoringSession s) {
         afterOpen(saved, s, "SYSTEM");
         audit.record(null, "SYSTEM", "DISPUTE_OPENED", "DISPUTE", saved.getId().toString(), null,
                 AuditClient.fields("sessionId", s.getId(), "type", saved.getType(), "paymentHold", paid(s)));
-        return Optional.of(saved);
+    }
+
+    private static String automaticDescription(MentoringSession s) {
+        if ("REPORT_CONTRADICTS_LOG".equals(s.getAttendanceResolution())) {
+            return "Lời báo vắng mặt (mentee " + s.getMenteeAttendance() + ", mentor " + s.getMentorAttendance()
+                    + ") mâu thuẫn với nhật ký vào phòng học: bên bị báo vắng đã vào phòng.";
+        }
+        return "Hai bên xác nhận tham dự khác nhau: mentee " + s.getMenteeAttendance() + ", mentor " + s.getMentorAttendance() + ".";
     }
 
     /**
@@ -263,8 +267,14 @@ public class DisputeService {
             before[0] = x.getStatus().name();
             before[1] = s.getStatus().name();
             x.resolve(in.outcome(), percent, note, admin.userId(), now);
-            DisputeRules.sessionStatusAfter(in.outcome(), s.getStatus())
-                    .ifPresent(status -> s.resolve(status, "DISPUTE_RESOLVED", now));
+            DisputeRules.sessionStatusAfter(in.outcome(), s.getStatus()).ifPresent(status -> {
+                s.resolve(status, "DISPUTE_RESOLVED", now);
+                if (status == MentoringSession.Status.CANCELLED) {
+                    s.setCancelledBy("SYSTEM");
+                    s.setCancelReason("DISPUTE_RESOLVED");
+                    s.setCancelledAt(now);
+                }
+            });
             if (paid(s)) {
                 if (percent > 0) s.setRefundPercent(percent);
                 outbox.enqueueRelease(s.getId());

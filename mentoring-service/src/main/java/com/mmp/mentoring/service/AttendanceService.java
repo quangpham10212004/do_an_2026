@@ -67,7 +67,9 @@ public class AttendanceService {
         return window;
     }
 
-    private record Step(MentoringSession session, Optional<AttendanceRules.Resolution> resolution) {
+    /** {@code dispute}: tranh chấp tự động vừa ghi trong transaction kết luận (phiên chuyển DISPUTED), null nếu không có. */
+    private record Step(MentoringSession session, Optional<AttendanceRules.Resolution> resolution,
+                        com.mmp.mentoring.entity.Dispute dispute) {
     }
 
     /** POST /sessions/{id}/attendance — mentee hoặc mentor của phiên trả lời (1 lần / bên) trong 48 giờ sau giờ kết thúc. */
@@ -115,10 +117,11 @@ public class AttendanceService {
             if (side == AttendanceRules.Side.MENTEE) ss.answerAsMentee(answer, now);
             else ss.answerAsMentor(answer, now);
             Optional<AttendanceRules.Resolution> r = AttendanceRules.resolve(ss.getMenteeAttendance(), ss.getMentorAttendance(), false);
-            r.ifPresent(res -> apply(ss, res, now));
-            return new Step(ss, r);
+            com.mmp.mentoring.entity.Dispute[] dispute = {null};
+            r.ifPresent(res -> dispute[0] = apply(ss, res, now));
+            return new Step(ss, r, dispute[0]);
         });
-        step.resolution().ifPresentOrElse(r -> afterResolution(step.session(), r),
+        step.resolution().ifPresentOrElse(r -> afterResolution(step.session(), r, step.dispute()),
                 () -> notifyOtherSide(step.session(), user));
         return step.session();
     }
@@ -158,13 +161,15 @@ public class AttendanceService {
             Step step = tx.execute(s -> sessionRepo.findForUpdate(UUID.fromString(id))
                     .filter(ss -> ss.getStatus() == Status.AWAITING_ATTENDANCE && !AttendanceRules.windowOpen(ss.endsAt(), window, now))
                     .map(ss -> {
-                        Optional<AttendanceRules.Resolution> r = AttendanceRules.resolve(ss.getMenteeAttendance(), ss.getMentorAttendance(), true);
-                        r.ifPresent(res -> apply(ss, res, now));
-                        return new Step(ss, r);
+                        Optional<AttendanceRules.Resolution> r = AttendanceRules.resolve(ss.getMenteeAttendance(), ss.getMentorAttendance(),
+                                true, ss.getMenteeJoinedAt() != null, ss.getMentorJoinedAt() != null);
+                        com.mmp.mentoring.entity.Dispute[] dispute = {null};
+                        r.ifPresent(res -> dispute[0] = apply(ss, res, now));
+                        return new Step(ss, r, dispute[0]);
                     }).orElse(null));
             if (step == null || step.resolution().isEmpty()) continue;
             n++;
-            afterResolution(step.session(), step.resolution().get());
+            afterResolution(step.session(), step.resolution().get(), step.dispute());
         }
         return n;
     }
@@ -182,12 +187,13 @@ public class AttendanceService {
                     .map(ss -> {
                         Optional<AttendanceRules.Resolution> r = RoomRules.byJoinLog(ss.getMenteeJoinedAt() != null,
                                 ss.getMentorJoinedAt() != null, requireJoinLog);
-                        r.ifPresent(res -> apply(ss, res, now));
-                        return new Step(ss, r);
+                        com.mmp.mentoring.entity.Dispute[] dispute = {null};
+                        r.ifPresent(res -> dispute[0] = apply(ss, res, now));
+                        return new Step(ss, r, dispute[0]);
                     }).orElse(null));
             if (step == null || step.resolution().isEmpty()) continue;
             n++;
-            afterResolution(step.session(), step.resolution().get());
+            afterResolution(step.session(), step.resolution().get(), step.dispute());
         }
         return n;
     }
@@ -201,8 +207,12 @@ public class AttendanceService {
         if (ended + resolved > 0) log.info("Attendance job: {} ended → AWAITING_ATTENDANCE, {} resolved", ended, resolved);
     }
 
-    /** Trong transaction: đổi trạng thái + xếp hàng tác động tới tiền (outbox). */
-    void apply(MentoringSession s, AttendanceRules.Resolution r, OffsetDateTime now) {
+    /**
+     * Trong transaction: đổi trạng thái + mọi tác động ghi vào DB của mentoring-service (outbox tiền, strike, tranh chấp tự động).
+     * @return tranh chấp tự động vừa ghi khi phiên chuyển DISPUTED, ngược lại null
+     */
+    com.mmp.mentoring.entity.Dispute apply(MentoringSession s, AttendanceRules.Resolution r, OffsetDateTime now) {
+        com.mmp.mentoring.entity.Dispute dispute = null;
         s.resolve(r.outcome(), r.code(), now);
         boolean paid = s.getPrice() != null && s.getPrice().signum() > 0;
         // US-32 — phiên đã có báo cáo sự cố (mở trong lúc chờ xác nhận tham dự): tiền do kết luận tranh chấp quyết định
@@ -222,6 +232,7 @@ public class AttendanceService {
             }
             case DISPUTED -> {
                 if (paid) outbox.enqueueHold(s.getId(), "SESSION_DISPUTED");
+                dispute = disputeHook.record(s);
             }
             default -> { }
         }
@@ -233,10 +244,11 @@ public class AttendanceService {
             outbox.enqueueFinalState(s.getId(), r.outcome().name(), s.endsAt(), false);
         }
         log.info("Session {} resolved {} ({}), refund {}%", s.getId(), r.outcome(), r.code(), refund);
+        return dispute;
     }
 
-    /** Sau commit: gửi outbox ngay, strike, thông báo, hook tranh chấp. */
-    void afterResolution(MentoringSession s, AttendanceRules.Resolution r) {
+    /** Sau commit: gửi outbox ngay, ngưỡng strike, thông báo, thông báo tranh chấp tự động (bản ghi đã nằm trong transaction kết luận). */
+    void afterResolution(MentoringSession s, AttendanceRules.Resolution r, com.mmp.mentoring.entity.Dispute dispute) {
         if (s.getPrice() != null && s.getPrice().signum() > 0) outbox.flushSession(s.getId());
         String when = when(s);
         switch (r.outcome()) {
@@ -263,9 +275,11 @@ public class AttendanceService {
                                 + " giờ. Mentee được hoàn tiền và bạn bị ghi 1 lần vi phạm.", LINK);
             }
             case DISPUTED -> {
-                disputeHook.sessionDisputed(s);
-                String msg = "Hai bên xác nhận khác nhau về phiên lúc " + when + ". Phiên chuyển sang tranh chấp, khoản thanh toán "
-                        + "được tạm giữ cho tới khi quản trị viên xử lý.";
+                disputeHook.afterCommit(s, dispute);
+                String msg = ("REPORT_CONTRADICTS_LOG".equals(s.getAttendanceResolution())
+                        ? "Lời báo vắng mặt của phiên lúc " + when + " mâu thuẫn với nhật ký vào phòng học."
+                        : "Hai bên xác nhận khác nhau về phiên lúc " + when + ".")
+                        + " Phiên chuyển sang tranh chấp, khoản thanh toán được tạm giữ cho tới khi quản trị viên xử lý.";
                 notifications.notifyUser(s.getMenteeId(), "SESSION_DISPUTED", "Phiên mentoring đang tranh chấp", msg, LINK);
                 notifications.notifyUser(s.getMentorId(), "SESSION_DISPUTED", "Phiên mentoring đang tranh chấp", msg, LINK);
             }

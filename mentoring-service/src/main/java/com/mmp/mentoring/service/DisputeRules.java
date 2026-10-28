@@ -14,13 +14,15 @@ import java.util.Set;
  * US-32 (PRD-ADM-1) — quy tắc tranh chấp dạng hàm thuần (thời điểm truyền vào để test tất định).
  *
  * <ul>
- *   <li>Mở được với phiên COMPLETED / NO_SHOW_MENTEE / NO_SHOW_MENTOR / AWAITING_ATTENDANCE, trong 7 ngày sau giờ kết thúc
- *       ({@code app.disputes.open-window}); mô tả 20–2000 ký tự; tối đa 5 link bằng chứng https.</li>
+ *   <li>Mở được với phiên COMPLETED / NO_SHOW_MENTEE / NO_SHOW_MENTOR / AWAITING_ATTENDANCE, trong 72 giờ sau giờ kết thúc
+ *       ({@code app.disputes.open-window}, bằng thời gian payment-service giữ thu nhập của mentor); mô tả 20–2000 ký tự; tối đa 5
+ *       link bằng chứng https.</li>
  *   <li>SLA: phản hồi đầu tiên (start-review hoặc resolve) trong 48 giờ sau khi mở ({@code app.disputes.first-response-sla}).</li>
  *   <li>Kết luận → % hoàn: FULL_REFUND / SUSPEND = 100; PARTIAL_REFUND = refundPercent (1–99, bắt buộc); NO_REFUND /
  *       WARNING = 0. Mọi kết luận trừ FULL_REFUND / SUSPEND giải phóng phần thu nhập còn lại của mentor ngay.</li>
- *   <li>Trạng thái phiên sau kết luận: NO_REFUND / WARNING → phiên DISPUTED / AWAITING_ATTENDANCE thành COMPLETED (phiên
- *       đã COMPLETED / NO_SHOW_* giữ nguyên); các kết luận có hoàn tiền giữ nguyên trạng thái phiên và ghi refund_percent.</li>
+ *   <li>Trạng thái phiên sau kết luận (phiên DISPUTED / AWAITING_ATTENDANCE không được kẹt): FULL_REFUND / SUSPEND → CANCELLED;
+ *       PARTIAL_REFUND / NO_REFUND / WARNING → COMPLETED. Phiên đã ở trạng thái cuối (COMPLETED / NO_SHOW_*) giữ nguyên trạng thái,
+ *       chỉ ghi refund_percent.</li>
  * </ul>
  */
 public final class DisputeRules {
@@ -98,10 +100,11 @@ public final class DisputeRules {
     /** Trạng thái phiên sau kết luận; empty = giữ nguyên. */
     public static Optional<MentoringSession.Status> sessionStatusAfter(Dispute.Outcome outcome, MentoringSession.Status current) {
         boolean unresolved = current == MentoringSession.Status.DISPUTED || current == MentoringSession.Status.AWAITING_ATTENDANCE;
-        if (unresolved && (outcome == Dispute.Outcome.NO_REFUND || outcome == Dispute.Outcome.WARNING)) {
-            return Optional.of(MentoringSession.Status.COMPLETED);
-        }
-        return Optional.empty();
+        if (!unresolved) return Optional.empty();
+        return Optional.of(switch (outcome) {
+            case FULL_REFUND, SUSPEND -> MentoringSession.Status.CANCELLED;
+            case PARTIAL_REFUND, NO_REFUND, WARNING -> MentoringSession.Status.COMPLETED;
+        });
     }
 
     public static String outcomeLabel(Dispute.Outcome o) {
