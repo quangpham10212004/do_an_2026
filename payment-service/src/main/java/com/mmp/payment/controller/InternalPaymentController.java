@@ -52,7 +52,7 @@ public class InternalPaymentController {
     /** Gọi bởi mentoring-service khi phiên đã thanh toán bị huỷ / mentor vắng mặt (US-13: amount hoặc percent). */
     @PostMapping("/payments/refund")
     public TransactionResponse refund(@Valid @RequestBody RefundRequest req) {
-        return paymentService.refund(req.sessionId(), req.reason(), req.percent(), req.amount(), req.actorId());
+        return paymentService.refund(req.sessionId(), req.reason(), req.percent(), req.amount(), req.actorId(), req.idempotencyKey());
     }
 
     /** US-12 — phiên tranh chấp: tạm giữ giao dịch (SUCCESS → ON_HOLD). Idempotent. */

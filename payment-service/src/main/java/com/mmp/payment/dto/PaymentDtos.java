@@ -81,7 +81,8 @@ public final class PaymentDtos {
     public record RefundRequest(@NotNull UUID sessionId, @Size(max = 300) String reason,
                                 @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) Integer percent,
                                 @jakarta.validation.constraints.Positive BigDecimal amount,
-                                UUID actorId) {
+                                UUID actorId,
+                                @Size(max = 100) String idempotencyKey) {
     }
 
     /** US-12 — tạm giữ / giải phóng giao dịch của phiên đang tranh chấp. */

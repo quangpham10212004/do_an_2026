@@ -679,6 +679,9 @@ paths:
         Nội bộ — mentoring-service yêu cầu hoàn tiền phiên (huỷ phiên đã thanh toán US-01, mentor vắng mặt US-12).
         US-13: hoàn theo amount (VND) HOẶC percent (% giá gốc; cả hai trống = 100%). Mỗi lần ghi 1 dòng refunds,
         tổng ≤ giá gốc; giao dịch → PARTIALLY_REFUNDED hoặc REFUNDED (khi đã hoàn đủ). Không ghi đè giao dịch.
+        Idempotent theo idempotencyKey: cùng (giao dịch, khoá) đã hoàn rồi thì trả lại giao dịch hiện tại (200), không
+        hoàn thêm — kể cả khi lần hoàn trước đã đưa giao dịch về REFUNDED. Khoá được kiểm trước ON_HOLD và tổng hoàn.
+        mentoring-service gửi "outbox:<id bản ghi outbox>", nên gửi lại một bản ghi không hoàn trùng.
       security: [{ internalToken: [] }]
       requestBody:
         required: true
@@ -693,15 +696,17 @@ paths:
                 percent: { type: integer, minimum: 1, maximum: 100, description: "% giá gốc của giao dịch" }
                 amount: { type: number, minimum: 1, description: "Số tiền VND (không gửi cùng percent)" }
                 actorId: { type: string, format: uuid, nullable: true, description: "Người thực hiện (admin); trống = hệ thống" }
+                idempotencyKey: { type: string, maxLength: 100, nullable: true, description: "Khoá chống hoàn trùng; duy nhất theo (giao dịch, khoá). Trống = không chống trùng" }
       responses:
         "200":
-          description: Giao dịch sau khi hoàn tiền (PARTIALLY_REFUNDED / REFUNDED, kèm refunds)
+          description: Giao dịch sau khi hoàn tiền (PARTIALLY_REFUNDED / REFUNDED, kèm refunds); hoặc giao dịch hiện tại khi idempotencyKey đã dùng
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transaction" }
         "400": { description: INVALID_REFUND_AMOUNT / VALIDATION_ERROR }
-        "404": { description: NO_SUCCESS_TRANSACTION (chưa thanh toán / đã hoàn đủ) }
+        "404": { description: NO_SUCCESS_TRANSACTION (chưa thanh toán / đã hoàn đủ và khoá chưa từng dùng) }
         "409": { description: REFUND_EXCEEDS_AMOUNT / TRANSACTION_ON_HOLD }
+        "502": { description: REFUND_FAILED (cổng thanh toán từ chối hoàn) }
   /internal/payments/hold:
     post:
       summary: >

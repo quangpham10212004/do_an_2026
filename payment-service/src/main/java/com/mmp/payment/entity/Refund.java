@@ -30,6 +30,10 @@ public class Refund {
     @Column(name = "provider_reference")
     private String providerReference;
 
+    /** Khoá chống gửi trùng do bên gọi đặt; null = không chống trùng. Duy nhất theo (giao dịch, khoá). */
+    @Column(name = "idempotency_key")
+    private String idempotencyKey;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -37,11 +41,16 @@ public class Refund {
     }
 
     public Refund(UUID transactionId, BigDecimal amount, String reason, UUID actorId, String providerReference) {
+        this(transactionId, amount, reason, actorId, providerReference, null);
+    }
+
+    public Refund(UUID transactionId, BigDecimal amount, String reason, UUID actorId, String providerReference, String idempotencyKey) {
         this.transactionId = transactionId;
         this.amount = amount;
         this.reason = reason;
         this.actorId = actorId;
         this.providerReference = providerReference;
+        this.idempotencyKey = idempotencyKey;
     }
 
     public UUID getId() { return id; }
@@ -50,5 +59,6 @@ public class Refund {
     public String getReason() { return reason; }
     public UUID getActorId() { return actorId; }
     public String getProviderReference() { return providerReference; }
+    public String getIdempotencyKey() { return idempotencyKey; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

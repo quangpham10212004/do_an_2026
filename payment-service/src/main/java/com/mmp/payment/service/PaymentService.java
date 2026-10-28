@@ -251,11 +251,36 @@ public class PaymentService {
      * Gateway sandbox chạy trong tiến trình nên được gọi trong transaction; gateway thật cần bản ghi refund PENDING.
      */
     public TransactionResponse refund(UUID sessionId, String reason, Integer percent, BigDecimal amount, UUID actorId) {
+        return refund(sessionId, reason, percent, amount, actorId, null);
+    }
+
+    /**
+     * Như trên, kèm {@code idempotencyKey} (≤ 100 ký tự): cùng (giao dịch, khoá) đã hoàn rồi thì trả lại giao dịch hiện tại,
+     * không gọi cổng thanh toán và không ghi thêm. Khoá được kiểm SAU khi đã khoá dòng giao dịch (hai lần gửi đồng thời
+     * không cùng lọt qua) và TRƯỚC kiểm ON_HOLD / tổng hoàn (lần gửi lại của một lần hoàn đã thành công không bị 409).
+     */
+    public TransactionResponse refund(UUID sessionId, String reason, Integer percent, BigDecimal amount, UUID actorId, String idempotencyKey) {
+        String key = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
         List<Object> moved = new java.util.ArrayList<>(); // [Refund, Optional<LedgerEntry>, statusBefore]
+        boolean[] replayed = {false};
         Transaction updated = tx.execute(s -> {
-            Transaction t = transactionRepository.lockBySessionIdAndStatusIn(sessionId, Transaction.PAID_STATUSES).stream()
-                    .findFirst()
-                    .orElseThrow(() -> ApiException.notFound("NO_SUCCESS_TRANSACTION", "Phiên chưa có giao dịch thành công"));
+            List<Transaction> locked = transactionRepository.lockBySessionIdAndStatusIn(sessionId, Transaction.PAID_STATUSES);
+            if (locked.isEmpty()) {
+                if (key != null && refundRepository.existsBySessionAndKey(sessionId, key)) {
+                    // lần hoàn trước đã đưa giao dịch về REFUNDED nên không còn nằm trong PAID_STATUSES
+                    Transaction done = transactionRepository.findBySessionIdOrderByCreatedAtDesc(sessionId).stream().findFirst().orElse(null);
+                    if (done != null) {
+                        replayed[0] = true;
+                        return done;
+                    }
+                }
+                throw ApiException.notFound("NO_SUCCESS_TRANSACTION", "Phiên chưa có giao dịch thành công");
+            }
+            Transaction t = locked.get(0);
+            if (key != null && refundRepository.existsByTransactionIdAndIdempotencyKey(t.getId(), key)) {
+                replayed[0] = true;
+                return t;
+            }
             if (t.getStatus() == Transaction.Status.ON_HOLD) {
                 throw ApiException.conflict("TRANSACTION_ON_HOLD", "Giao dịch đang bị tạm giữ do tranh chấp, cần giải phóng trước khi hoàn tiền");
             }
@@ -280,7 +305,7 @@ public class PaymentService {
                 throw new ApiException(HttpStatus.BAD_GATEWAY, "REFUND_FAILED", "Cổng thanh toán từ chối hoàn tiền");
             }
             Refund saved = refundRepository.save(new Refund(t.getId(), calc.amount(), reason == null ? "SESSION_CANCELLED" : reason, actorId,
-                    result.providerReference()));
+                    result.providerReference(), key));
             moved.add(saved);
             if (toWallet) walletLedger.refundSession(t, saved, refunded, OffsetDateTime.now());
             moved.add(earnings.recordReversal(t, saved, refunded)); // US-25 — REVERSAL theo tỉ lệ phần hoàn
@@ -289,6 +314,10 @@ public class PaymentService {
             log.info("Refunded {} of transaction {} (session {}) → {}", calc.amount(), t.getId(), sessionId, t.getStatus());
             return t;
         });
+        if (replayed[0]) {
+            log.info("Refund for session {} replayed (key {}), nothing changed", sessionId, key);
+            return view(updated);
+        }
         Refund r = (Refund) moved.get(0);
         audit.record(actorId, actorId == null ? "SYSTEM" : "ADMIN", "REFUND_CREATED", "TRANSACTION", updated.getId().toString(),
                 AuditClient.fields("status", moved.get(2)),

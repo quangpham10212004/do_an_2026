@@ -95,6 +95,14 @@ class PaymentServiceTest {
         when(refundRepo.findByTransactionIdInOrderByCreatedAtAsc(any())).thenAnswer(inv -> refunds.stream()
                 .filter(r -> inv.<Collection<?>>getArgument(0).contains(r.getTransactionId())).toList());
 
+        when(refundRepo.existsByTransactionIdAndIdempotencyKey(any(), any())).thenAnswer(inv -> refunds.stream()
+                .anyMatch(r -> r.getTransactionId().equals(inv.getArgument(0)) && Objects.equals(r.getIdempotencyKey(), inv.getArgument(1))));
+        when(refundRepo.existsBySessionAndKey(any(), any())).thenAnswer(inv -> refunds.stream()
+                .anyMatch(r -> Objects.equals(r.getIdempotencyKey(), inv.getArgument(1))
+                        && transactions.get(r.getTransactionId()).getSessionId().equals(inv.getArgument(0))));
+        when(txRepo.findBySessionIdOrderByCreatedAtDesc(any())).thenAnswer(inv -> transactions.values().stream()
+                .filter(t -> t.getSessionId().equals(inv.getArgument(0))).toList());
+
         when(mentoring.getSession(sessionId)).thenReturn(new MentoringClient.SessionInfo(sessionId, mentee, mentor,
                 OffsetDateTime.now().plusDays(5), 90, new BigDecimal("300000"), "PENDING"));
         when(gateway.charge(any(), any(), any(), any())).thenAnswer(inv ->
@@ -282,6 +290,57 @@ class PaymentServiceTest {
 
         assertThat(code(() -> service.refund(sessionId, "X", 100, null, null))).isEqualTo("TRANSACTION_ON_HOLD");
         verify(gateway, never()).refund(any(), any());
+    }
+
+    @Test
+    void partialRefundWithSameKeyIsAppliedOnce() {
+        paid(Transaction.Status.SUCCESS);
+
+        service.refund(sessionId, "R", 50, null, null, "outbox:1");
+        TransactionResponse again = service.refund(sessionId, "R", 50, null, null, "outbox:1");
+
+        assertThat(refunds).hasSize(1);
+        assertThat(again.refundedAmount()).isEqualByComparingTo("150000");
+        assertThat(again.status()).isEqualTo("PARTIALLY_REFUNDED");
+        verify(gateway, times(1)).refund(any(), any());
+    }
+
+    @Test
+    void fullRefundReplayWithSameKeyReturnsTransactionInsteadOfNotFound() {
+        paid(Transaction.Status.SUCCESS);
+
+        service.refund(sessionId, "R", 100, null, null, "outbox:2");
+        TransactionResponse again = service.refund(sessionId, "R", 100, null, null, "outbox:2");
+
+        assertThat(refunds).hasSize(1);
+        assertThat(again.status()).isEqualTo("REFUNDED");
+    }
+
+    @Test
+    void refundWithDifferentKeyIsAnotherRefund() {
+        paid(Transaction.Status.SUCCESS);
+
+        service.refund(sessionId, "R", 50, null, null, "outbox:3");
+        service.refund(sessionId, "R", 50, null, null, "outbox:4");
+
+        assertThat(refunds).hasSize(2);
+    }
+
+    @Test
+    void replayIsCheckedBeforeOnHoldAndExceedChecks() {
+        Transaction t = paid(Transaction.Status.SUCCESS);
+        service.refund(sessionId, "R", 50, null, null, "outbox:5");
+        t.hold("DISPUTE");
+
+        assertThat(service.refund(sessionId, "R", 50, null, null, "outbox:5").refunds()).hasSize(1);
+        assertThat(code(() -> service.refund(sessionId, "R", 50, null, null, "outbox:6"))).isEqualTo("TRANSACTION_ON_HOLD");
+    }
+
+    @Test
+    void unknownKeyOnFullyRefundedSessionStillNotFound() {
+        paid(Transaction.Status.REFUNDED);
+
+        assertThat(code(() -> service.refund(sessionId, "X", 100, null, null, "outbox:7"))).isEqualTo("NO_SUCCESS_TRANSACTION");
     }
 
     // ---------- hold / release ----------
