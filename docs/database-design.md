@@ -157,33 +157,77 @@ mục của hồ sơ đã bị xoá.
 erDiagram
     mentoring_requests ||--o{ sessions : "đặt lịch từ"
     sessions ||--o| reviews : "được đánh giá"
+    sessions ||--o{ reschedule_proposals : "đề xuất dời"
+    sessions ||--o{ disputes : "khiếu nại"
+    sessions ||--o{ mentor_strikes : "lỗi vi phạm"
+    sessions ||--o{ payment_outbox : "lệnh tiền"
+    sessions ||--o| mentee_feedback : "nhận xét mentee"
 
     mentoring_requests {
         uuid id PK
         uuid mentee_id
         uuid mentor_id
-        text message
-        text status "PENDING|ACCEPTED|REJECTED|CANCELLED|COMPLETED"
-        text response_note
+        text goal "50–1000 ký tự"
+        text status "PENDING|ACCEPTED|REJECTED|CANCELLED|EXPIRED|ENDED"
+        text reject_reason "FULL|NOT_MY_EXPERTISE|SCHEDULE|OTHER"
+        text ended_by "MENTEE|MENTOR|ADMIN|SYSTEM"
+        text end_reason "GOAL_REACHED|NO_LONGER_NEEDED|NOT_A_FIT|OTHER|INACTIVE"
+        timestamptz inactivity_warned_at
         timestamptz created_at
         timestamptz responded_at
     }
     sessions {
         uuid id PK
-        uuid request_id FK
+        uuid request_id FK "null với buổi thử"
         uuid mentee_id
         uuid mentor_id
         timestamptz scheduled_at
-        int duration_minutes "v2.0: 60 (thường) hoặc 15 (trải nghiệm)"
-        numeric price "v2.0: chốt lúc gửi yêu cầu đặt"
-        text kind "v2.0 REGULAR|TRIAL"
-        timestamptz confirm_deadline "v2.0 hạn mentor xác nhận (24h, muộn nhất 1h trước giờ học)"
-        timestamptz mentor_joined_at "v2.0 nhật ký vào phòng"
-        timestamptz mentee_joined_at "v2.0"
-        text topic
-        text session_type "… MOCK_INTERVIEW (US-58)"
-        text status "PENDING|AWAITING_MENTOR|CONFIRMED|AWAITING_ATTENDANCE|COMPLETED|CANCELLED|EXPIRED|NO_SHOW_*|DISPUTED"
-        boolean reminder_sent
+        int duration_minutes "60 (thường) hoặc 15 (trải nghiệm)"
+        numeric price "chốt lúc đặt"
+        text kind "REGULAR|TRIAL"
+        text status "PENDING|AWAITING_MENTOR|CONFIRMED|AWAITING_ATTENDANCE|COMPLETED|CANCELLED|EXPIRED|NO_SHOW_MENTEE|NO_SHOW_MENTOR|DISPUTED"
+        timestamptz confirm_deadline "hạn mentor xác nhận"
+        uuid payment_transaction_id "V21: giao dịch đã tạm giữ học phí"
+        timestamptz mentor_joined_at "nhật ký vào phòng"
+        timestamptz mentee_joined_at
+        text mentee_attendance "HELD|MENTOR_NO_SHOW|MENTEE_NO_SHOW|CANCELLED_ON_CALL"
+        text mentor_attendance
+        text attendance_resolution "BOTH_HELD|CONFLICT|REPORT_CONTRADICTS_LOG|..."
+        text cancelled_by "MENTEE|MENTOR|SYSTEM"
+        int refund_percent "0..100"
+        int reschedule_count
+        text session_type "… MOCK_INTERVIEW"
+    }
+    reschedule_proposals {
+        uuid id PK
+        uuid session_id FK
+        uuid proposed_by
+        timestamptz new_start
+        timestamptz expires_at
+        text status "PENDING|ACCEPTED|DECLINED|EXPIRED"
+    }
+    mentor_strikes {
+        uuid id PK
+        uuid mentor_id
+        uuid session_id FK
+        text reason "MENTOR_CANCEL|MENTOR_NO_SHOW"
+    }
+    disputes {
+        uuid id PK
+        uuid session_id FK
+        text opened_by_role "MENTEE|MENTOR|SYSTEM"
+        text type "NO_SHOW|QUALITY|BEHAVIOR|PAYMENT|OTHER"
+        text status "OPEN|IN_REVIEW|RESOLVED"
+        text outcome "FULL_REFUND|PARTIAL_REFUND|NO_REFUND|WARNING|SUSPEND"
+        int refund_percent
+    }
+    payment_outbox {
+        uuid id PK
+        uuid session_id
+        text kind "REFUND|HOLD|RELEASE|FINAL_STATE|REWARD"
+        text payload
+        int attempts
+        timestamptz sent_at "NULL = chưa gửi"
     }
     reviews {
         uuid id PK
@@ -191,7 +235,15 @@ erDiagram
         uuid mentee_id
         uuid mentor_id
         int rating "1..5"
-        text comment
+        int knowledge
+        int clarity
+        int preparation
+        text mentor_reply "≤ 500 ký tự"
+    }
+    mentee_feedback {
+        uuid session_id PK
+        int preparation
+        int engagement
     }
     notifications {
         uuid id PK
@@ -207,15 +259,23 @@ erDiagram
 
 | Bảng | Mô tả |
 |---|---|
-| `mentoring_requests` | Yêu cầu mentoring; số yêu cầu `ACCEPTED` phân biệt theo mentee = số mentee đang được hướng dẫn (so với `capacity`) |
-| `sessions` | Phiên mentoring. `PENDING` = chờ tạm giữ học phí từ ví (giữ chỗ 15 phút); `AWAITING_MENTOR` = đã tạm giữ, chờ mentor xác nhận trước `confirm_deadline` (quá hạn → `EXPIRED`, hoàn 100%). Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch. Cột v2.0 thêm ở V20 |
-| `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE); v2.0: không có đánh giá cho `kind = TRIAL` |
-| `sessions.kind`, `*_joined_at` *(v2.0)* | Loại buổi và nhật ký vào phòng (ghi lần đầu mỗi bên lấy JWT phòng) — căn cứ duy nhất xác định vắng mặt: chỉ một bên vào → bên kia vắng; không ai vào → `CANCELLED` (`BOTH_ABSENT`, hoàn 100%, không strike) |
-| `trial_uses` *(v2.0)* | Khoá chính `(mentee_id, mentor_id)` — mỗi cặp một buổi trải nghiệm; xoá dòng để hoàn lại lượt khi mentee không mất tiền |
+| `mentoring_requests` | Yêu cầu mentoring; số yêu cầu `ACCEPTED` phân biệt theo mentee = số mentee đang được hướng dẫn (so với `capacity`). Trạng thái `COMPLETED` cũ đã gỡ (V12 đổi sang `ENDED`, V23 thu hẹp CHECK) |
+| `sessions` | Phiên mentoring. `PENDING` = chờ tạm giữ học phí từ ví (giữ chỗ 15 phút); `AWAITING_MENTOR` = đã tạm giữ, chờ mentor xác nhận trước `confirm_deadline` (quá hạn → `EXPIRED`, hoàn 100%). Chỉ mục `(mentor_id, scheduled_at)` phục vụ kiểm tra trùng lịch; `idx_sessions_mentee_pending` (V22) phục vụ trần phiên chưa thanh toán. `payment_transaction_id` (V21) làm callback `payment-succeeded` idempotent. Mọi thay đổi trạng thái đọc dòng bằng `SELECT … FOR UPDATE` |
+| `reschedule_proposals` | Đề xuất dời lịch; unique một đề xuất `PENDING` mỗi phiên (`uq_reschedule_open_per_session`); hết hạn lúc sớm hơn của (tạo + 24 giờ) và giờ bắt đầu hiện tại |
+| `mentor_strikes` | Lỗi vi phạm của mentor; `UNIQUE (session_id, reason)`; ghi trong cùng transaction với việc đổi trạng thái phiên |
+| `disputes` | Khiếu nại / tranh chấp; unique một tranh chấp chưa `RESOLVED` mỗi phiên; phiên `DISPUTED` luôn có bản ghi do hệ thống mở, ghi trong cùng transaction kết luận |
+| `payment_outbox` | Hàng đợi lệnh gửi payment-service (transactional outbox): ghi cùng transaction với đổi trạng thái phiên, gửi ngay sau commit và job gửi lại mỗi phút; `REFUND` gửi kèm khoá `outbox:<id>`. Giữ `REWARD` vì có thể còn dòng cũ |
+| `reviews` | Đánh giá 1–1 với phiên (`session_id` UNIQUE) gồm 3 điểm thành phần, thẻ, phản hồi của mentor; không có đánh giá cho `kind = TRIAL` hay phiên đã hoàn 100% |
+| `mentee_feedback` | Nhận xét riêng của mentor về mentee (chuẩn bị, tham gia); dùng cho huy hiệu `RELIABLE` |
+| `sessions.kind`, `*_joined_at` | Loại buổi và nhật ký vào phòng (ghi lần đầu mỗi bên lấy JWT phòng) — căn cứ xác định vắng mặt: chỉ một bên vào → bên kia vắng; không ai vào → `CANCELLED` (`BOTH_ABSENT`, hoàn 100%, không strike); lời báo vắng mâu thuẫn nhật ký → `DISPUTED` |
+| `trial_uses` | Khoá chính `(mentee_id, mentor_id)` — mỗi cặp một buổi trải nghiệm; xoá dòng để hoàn lại lượt khi mentee không mất tiền (hoàn 100%, hoặc huỷ khi còn `PENDING`) |
+| `late_cancellations` | **Đã xoá (V23)** — thuộc cơ chế huỷ muộn phiên miễn phí đã bỏ từ v2.0 |
 | `contact_violations` *(v2.0)* | Mỗi tin nhắn bị che thông tin liên hệ: `user_id`, `request_id`, `kinds` (PHONE/EMAIL/LINK/SOCIAL); `flagged_at` khi đạt 3 lần/30 ngày và đã báo admin |
 | `mock_intakes` *(US-58)* | Thông tin mentee điền khi đặt phỏng vấn thử (`session_id` PK): dạng phỏng vấn, cấp độ, vị trí, công ty, ngày phỏng vấn, link JD |
 | `mock_scorecards` *(US-58)* | Phiếu đánh giá mentor (`session_id` PK): 4 tiêu chí 0–10 + live coding, `overall` theo trọng số, `verdict`, đúng 3 `fixes` (thành việc cần làm của mentee), lời nhắn riêng. Cột `scorecard_reminder_12h_at/36h_at` trên `sessions` cho job nhắc |
 | `notifications` | Thông báo trong ứng dụng, gửi cho 1 người hoặc cho cả role ADMIN; ai-service tạo thông báo qua `POST /internal/notifications` |
+
+Ngoài ra mentoring_db còn các bảng của nhắn tin, mục tiêu và ghi chú phiên (V13–V15, V17) nằm ngoài phạm vi 8 luồng của [spec-mentoring-service.md](spec-mentoring-service.md).
 
 ---
 

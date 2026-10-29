@@ -21,6 +21,7 @@
 | **1.3** | 06/10/2026 | `R-1`: chuyển quyền sở hữu chỉ mục embedding từ profile-service sang matching-service, CSDL riêng `matching_db` (cổng 5439), đồng bộ best-effort + `IndexSyncJob`; tiêu chí DoD 2 chuyển sang nhất quán cuối cùng (quyết định D8 *quyền sở hữu embedding*; chi tiết [adr.md](adr.md)) |
 | **2.0** | 21/10/2026 | Chốt lại phạm vi và thông số vận hành theo bản chốt của nhóm: thanh toán **qua ví VND** (nạp bằng cổng thử nghiệm, tạm giữ khi đặt lịch, hoàn tiền theo nguồn, hạn dùng số dư), **cấp độ mentor Junior/Senior/Expert + khung giá**, **buổi trải nghiệm 15 phút có phí**, **phòng học video trong hệ thống** (xác định vắng mặt bằng nhật ký vào phòng), chính sách huỷ 3 bậc, giới thiệu theo cặp mentor và thưởng bằng tiền khuyến mãi. Mục mới ghi trạng thái **⚒ kế hoạch** đến khi hiện thực xong (D13–D20, FR-5.8+, FR-6.7+, mục 3.9) |
 | **2.1** | 23/10/2026 | **Phỏng vấn bằng giọng nói** (OpenAI Realtime qua WebRTC, chấm bằng engine hiện có): mentor chọn chat hoặc giọng nói cho phỏng vấn xác thực (FR-7.7); module mới **Luyện phỏng vấn với AI** cho mentee — 1 lượt miễn phí trọn đời, kết quả + báo cáo nói hiển thị ngay (mục 3.10, FR-10.1–10.7); quyết định D21 (speech-to-speech thay vì STT→LLM→TTS); bảng `practice_interviews`, cột `interviews.mode` (migration ai `010_voice_interviews.sql`). Trạng thái **⚒** đến khi hiện thực và kiểm thử xong |
+| **2.2** | 29/10/2026 | Đồng bộ phần mentoring-service với code sau đợt chốt 8 luồng ([spec-mentoring-service.md](spec-mentoring-service.md)): hoàn tiền qua outbox + khoá chống trùng, khoá dòng phiên, strike hẹp lại, buổi thử chặt hơn, trần phiên chưa thanh toán, đổi lịch tách khỏi huỷ, khiếu nại 72 giờ và phiên tranh chấp không còn kẹt; thêm FR-5.13–5.17 |
 
 > Tài liệu liên quan: [Kiến trúc](architecture.md) · [Thiết kế CSDL](database-design.md) ·
 > [Đặc tả API](api-reference.md) · [Tính năng AI](ai-features.md) ·
@@ -211,15 +212,20 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 | FR-5.1 | Xem danh sách mentor đề xuất | Kèm điểm phù hợp và lý do | ✅ |
 | FR-5.2 | Gửi yêu cầu mentoring | Tới mentor đã được xác thực, không trùng yêu cầu đang hoạt động | ✅ |
 | FR-5.3 | Mentor phản hồi yêu cầu | Chấp nhận (khi còn sức chứa) / từ chối kèm lời nhắn | ✅ |
-| FR-5.4 | Đặt lịch phiên mentoring | Trong lịch rảnh của mentor, không trùng lịch, đặt trước ≥ 3 giờ, giá lấy theo giá mentor đang đặt (buổi 60 phút); học phí **tạm giữ từ ví** (D9, D13); giao diện chỉ cho chọn khung giờ còn trống | ✅ |
+| FR-5.4 | Đặt lịch phiên mentoring | Trong lịch rảnh của mentor, không trùng lịch, đặt trước ≥ 3 giờ, giá lấy theo giá mentor đang đặt (buổi 60 phút); phiên tạo ở `PENDING` (giữ chỗ 15 phút) rồi học phí được **tạm giữ từ ví** (D9, D13) → `AWAITING_MENTOR`; mỗi mentee tối đa 2 phiên `PENDING`; giao diện chỉ cho chọn khung giờ còn trống | ✅ |
 | FR-5.5 | Nhắc lịch/thông báo | Thông báo trong ứng dụng + email; nhắc lịch trước **24 giờ và 15 phút**, nhắc lại khi dời/huỷ lịch | ✅ |
-| FR-5.6 | Đánh giá sau phiên | Rating 1–5 + nhận xét, 1 lần/phiên, cập nhật rating mentor | ✅ |
+| FR-5.6 | Đánh giá sau phiên | 4 điểm 1–5 (tổng, kiến thức, truyền đạt, chuẩn bị) + thẻ + nhận xét (bắt buộc ≥ 20 ký tự khi ≤ 2 sao); 1 lần/phiên, trong 14 ngày, sửa trong 48 giờ, mentor phản hồi 1 lần; không áp dụng cho buổi trải nghiệm và phiên đã hoàn 100%; rating mentor tính theo trung bình Bayes | ✅ |
 | FR-5.7 | Lịch sử mentoring | Danh sách phiên theo trạng thái | ✅ |
 | FR-5.8 | Buổi trải nghiệm | 15 phút, phí cố định 30.000đ, mỗi cặp 1 lần, trả từ ví, hoa hồng như buổi thường, không chấm sao (D20) | ✅ |
 | FR-5.9 | Phòng học trực tuyến | Phòng video + chat trong hệ thống (Jitsi, JWT); chỉ người tham gia hợp lệ vào được, rớt mạng vào lại được | ✅ (hai bên vào cùng phòng đã kiểm trên trình duyệt 22/10) |
-| FR-5.10 | Tham dự & vắng mặt | Nhật ký vào phòng; chờ 10 phút (trải nghiệm 5 phút) rồi báo vắng; tự hoàn thành sau 24 giờ; hai bên báo ngược nhau → tranh chấp (D18) | ✅ |
-| FR-5.11 | Chính sách huỷ | Ba bậc theo thời điểm (D19); mentor huỷ/vắng hoàn 100% + lỗi vi phạm, 3 lỗi/30 ngày → PAUSED; mentee huỷ trước khi mentor xác nhận → 100% | ✅ |
+| FR-5.10 | Tham dự & vắng mặt | Nhật ký vào phòng; chờ 10 phút (trải nghiệm 5 phút) rồi báo vắng; tự hoàn thành sau 24 giờ; hai bên báo ngược nhau, hoặc lời báo vắng mâu thuẫn nhật ký phòng → tranh chấp (D18) | ✅ |
+| FR-5.11 | Chính sách huỷ | Ba bậc theo thời điểm (D19); mentor huỷ buổi đã xác nhận / vắng hoàn 100% + lỗi vi phạm, 3 lỗi/30 ngày → PAUSED; mentor từ chối hoặc huỷ buổi chưa xác nhận không bị lỗi; mentee huỷ trước khi mentor xác nhận → 100%; huỷ khi còn `PENDING` không mất gì. Hoàn tiền ghi cùng giao dịch với việc huỷ (outbox, khoá chống hoàn trùng) | ✅ |
 | FR-5.12 | Chặn liên hệ ngoài nền tảng | Tin nhắn luôn che số điện thoại, email, mạng xã hội, đường dẫn ngoài; 3 vi phạm/30 ngày báo admin | ✅ |
+| FR-5.13 | Mentor xác nhận / từ chối buổi | Phiên đã tạm giữ học phí ở `AWAITING_MENTOR`; mentor xác nhận trong 24 giờ (hoặc 1 giờ trước giờ học nếu sớm hơn); từ chối hoặc quá hạn → huỷ, hoàn 100%, gợi ý 3 mentor tương tự, không lỗi vi phạm | ✅ |
+| FR-5.14 | Đổi lịch | Phiên `CONFIRMED`; một bên đề xuất giờ mới, bên kia chấp nhận / từ chối; bất kỳ lúc nào trước giờ học và chưa ai vào phòng; tối đa 2 lần/phiên, 1 đề xuất mở, hết hạn sau 24 giờ hoặc đúng giờ học; không tiền, không lỗi vi phạm; chính sách huỷ luôn theo giờ học hiện tại | ✅ |
+| FR-5.15 | Kết thúc quan hệ mentoring | Mentee / mentor / admin kết thúc kèm lý do; phiên sắp tới bị huỷ theo chính sách huỷ của người kết thúc (mentor chỉ bị lỗi vi phạm với phiên đã xác nhận bắt đầu trong 24 giờ); không hoạt động 30 ngày nhắc, thêm 7 ngày tự kết thúc | ✅ |
+| FR-5.16 | Huỷ hàng loạt | Khoá tài khoản, đình chỉ mentor, kết thúc quan hệ đều đi qua cùng chính sách huỷ; hoàn tiền không còn làm kẹt thao tác | ✅ |
+| FR-5.17 | Khiếu nại (tranh chấp) | Mentee / mentor báo sự cố trong 72 giờ sau giờ kết thúc; phiên `DISPUTED` luôn có bản ghi khiếu nại; admin kết luận hoàn đủ, hoàn một phần, không hoàn, cảnh cáo hoặc đình chỉ mentor; phiên không bị kẹt (hoàn đủ / đình chỉ → `CANCELLED`, còn lại → `COMPLETED`) | ✅ |
 
 ### 3.6 Module: Ví, thanh toán & Referral (payment-service)
 
@@ -227,7 +233,7 @@ Cột **Trạng thái**: ✅ đã hiện thực và được kiểm thử (xem [
 |---|---|---|---|
 | FR-6.1 | Nạp ví | Qua cổng sandbox/MoMo test/VNPay sandbox; 50.000đ–5.000.000đ/lần, trần tiền nạp khả dụng 20.000.000đ; giao dịch lỗi/trùng IPN không đổi số dư (D13) | ✅ |
 | FR-6.2 | Tạm giữ & xác nhận | Đặt lịch tạm giữ học phí từ ví (khuyến mãi trước, D14); phiên CONFIRMED khi mentor xác nhận; có job đối soát | ✅ |
-| FR-6.3 | Trạng thái & hoàn tiền buổi học | Hoàn theo chính sách huỷ (D19) về đúng nguồn đã trừ; mỗi lần hoàn là một dòng, tổng ≤ số đã trả | ✅ |
+| FR-6.3 | Trạng thái & hoàn tiền buổi học | Hoàn theo chính sách huỷ (D19) về đúng nguồn đã trừ; mỗi lần hoàn là một dòng, tổng ≤ số đã trả; mỗi lệnh hoàn có khoá chống trùng nên gửi lại không hoàn thêm | ✅ |
 | FR-6.4 | Mã giới thiệu | Mã riêng cho từng cặp (người giới thiệu, mentor) — chỉ cấp khi đã hoàn thành ≥ 1 buổi thường đã trả tiền với mentor đó | ✅ |
 | FR-6.5 | Ghi nhận referral | Người mới dùng mã ở yêu cầu đặt buổi thường đầu tiên với mentor đó; không áp dụng cho tự giới thiệu, người đã học với mentor, mã sai | ✅ |
 | FR-6.6 | Thưởng referral | 30.000đ **tiền khuyến mãi**, sau 7 ngày kể từ khi buổi hoàn thành mà không bị hoàn tiền; tối đa 5 lượt/tháng; bất thường chuyển admin (D10) | ✅ |

@@ -71,7 +71,7 @@ flowchart LR
 | **auth-service** | Spring Boot | Đăng ký, đăng nhập, JWT, refresh token, xác thực email, quản lý tài khoản, admin khoá tài khoản, chống brute-force | `users`, `refresh_tokens`; bộ đếm đăng nhập sai (Redis) |
 | **profile-service** | Spring Boot | Hồ sơ mentor/mentee, lịch rảnh, trạng thái xác thực mentor. Không giữ dữ liệu embedding — chỉ báo matching-service khi hồ sơ đổi | `mentor_profiles`, `mentee_profiles`, `mentor_availability` |
 | **matching-service** | FastAPI | Sở hữu trọn chỉ mục embedding (chuẩn hoá text, chạy model sentence-transformers, lưu vector, job đồng bộ); pipeline top-K → hard filter → re-rank → explain | `mentor_embeddings`, `mentee_embeddings` (matching_db); đọc read-only DB của profile-service |
-| **mentoring-service** | Spring Boot | Yêu cầu mentoring, đặt lịch, đánh giá, thông báo, nhắc lịch | `mentoring_requests`, `sessions`, `reviews`, `notifications` |
+| **mentoring-service** | Spring Boot | Yêu cầu mentoring, đặt lịch, xác nhận của mentor, buổi thử, phòng học Jitsi (JWT, nhật ký vào phòng), huỷ, đổi lịch, tham dự, tranh chấp, đánh giá, thông báo, nhắc lịch; hàng đợi lệnh tiền (outbox). Chi tiết luồng: [spec-mentoring-service.md](spec-mentoring-service.md) | `mentoring_requests`, `sessions`, `reschedule_proposals`, `trial_uses`, `mentor_strikes`, `disputes`, `payment_outbox`, `reviews`, `mentee_feedback`, `notifications` |
 | **ai-service** | FastAPI | **Toàn bộ 3 tính năng AI hội thoại/văn bản** — luồng nghiệp vụ lẫn dữ liệu: AI Interview (sinh/chấm câu hỏi, tổng hợp đánh giá, admin duyệt), CV Parsing (pypdf), chatbot enrichment; engine DeepSeek + rule-based fallback | `interviews`, `interview_turns`, `cv_documents`, `enrichment_conversations`, `enrichment_messages`; file CV |
 | **payment-service** | Spring Boot | Thanh toán qua cổng sandbox, hoàn tiền, đối soát; referral & điểm thưởng | `transactions`, `referral_codes`, `referrals`, `reward_ledger` |
 | **learning-service** | Spring Boot | Khoá học, tài liệu, roadmap, tiến độ, quản trị nội dung | `courses`, `course_materials`, `course_enrollments`, `material_completions`, `course_progress`, `roadmaps`, `roadmap_items`, `roadmap_item_progress` |
@@ -88,13 +88,15 @@ flowchart LR
 Đánh đổi đã chấp nhận: phức tạp hơn khi triển khai và gỡ lỗi; nhất quán dữ liệu giữa service là
 *eventual consistency* (xử lý bằng retry/đối soát — mục 4).
 
-### 1.x Thay đổi kiến trúc theo bản chốt v2.0 (⚒ chưa hiện thực)
+### 1.x Thay đổi kiến trúc theo bản chốt v2.0
+
+> Đã hiện thực (29/10/2026): ví và tạm giữ học phí (`POST /internal/wallet/pay`), hoàn / tạm giữ / giải phóng qua outbox của mentoring-service, phòng học Jitsi và nhật ký vào phòng.
 
 - **payment-service** trở thành chủ sở hữu **ví**: `wallets`, `wallet_entries` (sổ cái append-only, số dư = tổng bút toán, khoá idempotency), hoàn tiền nạp, job hết hạn
-  số dư/ví ngủ, job giải phóng thu nhập 72 giờ. Cổng sandbox/MoMo/VNPay chỉ còn dùng cho **nạp ví**. mentoring-service gọi `POST /internal/wallet/hold|release|settle`
-  thay cho lời gọi thanh toán từng phiên.
+  số dư/ví ngủ, job giải phóng thu nhập 72 giờ. Cổng sandbox/MoMo/VNPay chỉ còn dùng cho **nạp ví**. mentoring-service gọi `POST /internal/wallet/pay` để tạm giữ học phí lúc đặt lịch;
+  hoàn tiền, tạm giữ khi tranh chấp, giải phóng và trạng thái cuối đi qua outbox tới `/internal/payments/refund|hold|release|sessions/{id}/final-state`.
 - **Phòng học** *(mới)*: thêm container **Jitsi Meet** tự host (web + prosody + jicofo + jvb) vào `docker-compose.yml`; mentoring-service ký JWT Jitsi cho đúng hai người tham gia
-  (`GET /api/mentoring/sessions/{id}/room`), ghi nhật ký vào phòng (webhook/endpoint `room/joined`). Frontend nhúng iframe/External API; vẫn đi qua proxy `/api/<service>/**`.
+  (`GET /api/mentoring/sessions/{id}/room`), ghi nhật ký vào phòng ngay khi cấp token (`sessions.mentor_joined_at` / `mentee_joined_at`; chưa có webhook Jitsi). Frontend nhúng iframe/External API; vẫn đi qua proxy `/api/<service>/**`.
 - ~~**profile-service** thêm `tier`, khung giá cấu hình; **ai-service** trả `suggestedTier` và gọi `POST /internal/mentor/{id}/tier` khi admin duyệt.~~
   Đã gỡ (D6, [design-mentor-verification.md](design-mentor-verification.md)): không còn cấp độ, mentor đặt giá tự do.
 - **Phỏng vấn xác thực mentor vòng 2** *(PR 4, ADR-07/08)*: dùng lại hạ tầng Jitsi này. ai-service giữ lịch (`verification_slots`, `verification_interviews`), kiểm quyền và khung giờ rồi xin JWT qua
@@ -257,12 +259,14 @@ Mỗi service có CSDL riêng nên không dùng transaction phân tán. Hệ th�
 | Mentee tìm mentor trước khi chỉ mục kịp cập nhật | Lập chỉ mục ngay trong request | `/api/matching/mentors` thấy hồ sơ **mentee** chưa có vector thì embed tại chỗ thay vì trả 404 (mentor mới vẫn chờ thông báo hoặc `IndexSyncJob`) |
 | Hồ sơ bị xoá nhưng vector còn trong chỉ mục | Dọn rác định kỳ | `IndexSyncJob` xoá dòng chỉ mục không còn hồ sơ tương ứng (2 DB nên không có FK) |
 | Thanh toán thành công nhưng báo xác nhận phiên thất bại | Cờ đồng bộ + job đối soát | `transactions.session_synced`; `PaymentReconciliationJob` mỗi phút |
-| Tiền về sau khi phiên đã tự huỷ | Bù trừ (compensation) | `SessionService.markPaid` gọi hoàn tiền ngay |
+| Tiền về sau khi phiên đã huỷ / hết hạn | Bù trừ (compensation) qua outbox | `SessionService.markPaid` xếp `REFUND(100)` một lần (theo `sessions.payment_transaction_id`), callback gọi lại không hoàn thêm |
 | DeepSeek lỗi giữa buổi phỏng vấn hoặc hội thoại | Fallback + gọi engine trước khi ghi | DeepSeek lỗi → dùng rule-based cho lượt đó; engine không sinh được câu hỏi → 502 `AI_ENGINE_UNAVAILABLE`, transaction rollback nên người dùng gửi lại được |
 | profile-service lỗi khi đồng bộ goal sau enrichment | Job thử lại trong ai-service | Hội thoại vẫn COMPLETED với `profileSynced = false`; job nền định kỳ gọi lại `/api/profile/mentee/{id}/enrichment-chat` |
 | Chatbot hoàn tất nhưng cập nhật hồ sơ lỗi | Cờ đồng bộ + job | `enrichment_conversations.profile_synced`; `retryProfileSync` mỗi 2 phút |
-| Huỷ phiên đã thanh toán | Hoàn tiền trước, huỷ sau | Nếu hoàn tiền lỗi → trả 502, phiên không bị huỷ |
-| Hai mentee đặt cùng khung giờ | Khoá tư vấn (advisory lock) theo mentor | `pg_advisory_xact_lock(hashtext(mentorId))` trong transaction tạo phiên |
+| Huỷ / từ chối / hết hạn phiên đã thanh toán | Transactional outbox | Cùng một transaction: đổi trạng thái phiên và ghi lệnh `REFUND` vào `payment_outbox`; sau commit gửi ngay, job mỗi phút gửi lại. Không còn gọi payment-service đồng bộ nên không còn "đã hoàn tiền mà phiên chưa đổi" |
+| Lệnh tiền bị gửi lặp (job và gửi ngay cùng xử lý, hoặc gửi lại sau lỗi mạng) | Khoá chống trùng | Outbox gửi `idempotencyKey = outbox:<id>`; payment-service lưu `refunds.idempotency_key`, unique `(transaction_id, idempotency_key)` |
+| Hai thao tác đồng thời trên cùng một phiên (huỷ, `markPaid`, xác nhận, hết hạn, đổi lịch) | Khoá dòng + tính quyết định trên dòng đã khoá | `SELECT … FOR UPDATE` (`SessionRepository.findForUpdate`); thứ tự khoá cố định: mentor → mentee → phiên → đề xuất / tranh chấp |
+| Hai mentee đặt cùng khung giờ; một mentee đặt song song nhiều phiên / buổi thử | Khoá tư vấn (advisory lock) theo mentor rồi theo mentee | `pg_advisory_xact_lock(hashtext(mentorId))` và `hashtext('mentee:'+menteeId)` trong transaction tạo phiên; trần phiên `PENDING` và trần buổi thử kiểm dưới khoá |
 | Thanh toán trùng đồng thời | Ràng buộc CSDL | Unique partial index `(session_id) WHERE status='SUCCESS'` |
 | Sức chứa & rating dùng cho matching | Đồng bộ chủ động | mentoring-service gọi `/internal/mentor/{id}/active-mentees`, `/rating` sau mỗi thay đổi |
 
@@ -271,11 +275,18 @@ Mỗi service có CSDL riêng nên không dùng transaction phân tán. Hệ th�
 | Service | Job | Chu kỳ | Mục đích |
 |---|---|---|---|
 | matching-service | `IndexSyncJob` (`jobs/index_sync.py`) | 60 giây (`INDEX_SYNC_INTERVAL`) | Embed lại hồ sơ có text lệch hash, dọn chỉ mục mồ côi |
-| mentoring-service | `SessionScheduler.sendReminders` | 1 phút | FR-5.5 nhắc lịch phiên CONFIRMED trong 24 giờ tới |
-| mentoring-service | `SessionScheduler.expireUnpaidSessions` | 1 phút | Huỷ phiên PENDING quá 30 phút |
-| mentoring-service | `SessionScheduler.autoCompleteFinishedSessions` | 5 phút | Hoàn thành phiên đã kết thúc > 2 giờ |
+| mentoring-service | `SessionScheduler.sendReminders` | 1 phút | Nhắc 24 giờ và 15 phút trước giờ học cho phiên `CONFIRMED` |
+| mentoring-service | `SessionScheduler.expireUnpaidSessions` | 1 phút | Phiên `PENDING` quá 15 phút (`booking.payment-hold`) → `EXPIRED`, trả lượt buổi thử |
+| mentoring-service | `SessionScheduler.expireUnconfirmedSessions` | 1 phút | Phiên `AWAITING_MENTOR` quá hạn xác nhận → `EXPIRED`, xếp hoàn 100% vào outbox |
+| mentoring-service | `SessionScheduler.attendanceJob` | 1 phút | `CONFIRMED` hết giờ → `AWAITING_ATTENDANCE`; kết luận theo nhật ký phòng và theo cửa sổ 24 giờ |
+| mentoring-service | `RescheduleService.expireProposals` | 1 phút | Đóng đề xuất đổi lịch quá hạn |
+| mentoring-service | `PaymentOutboxService.flush` | 1 phút | Gửi lại các lệnh `REFUND` / `HOLD` / `RELEASE` / `FINAL_STATE` chưa thành công tới payment-service |
+| mentoring-service | `RequestExpiryService` | 5 phút | Yêu cầu `PENDING` quá 24 giờ → `EXPIRED` |
+| mentoring-service | `MentorshipEndService` | 1 giờ | Nhắc và kết thúc quan hệ không hoạt động (30 ngày + 7 ngày) |
+| mentoring-service | `ReviewService` đồng bộ điểm (cron 04:15) | hằng đêm | Gửi lại điểm đánh giá (Bayes) sang profile-service |
 | ai-service | `enrichment.service.retry_profile_sync_forever` | 2 phút | Đồng bộ goal chưa gửi được sang profile-service |
-| payment-service | `PaymentReconciliationJob` | 1 phút | Gửi lại xác nhận phiên sau thanh toán |
+| payment-service | `PaymentReconciliationJob` | 1 phút | Gửi lại xác nhận phiên (`payment-succeeded`) sau thanh toán |
+| payment-service | `EarningService` giải phóng thu nhập | 5 phút | Thu nhập mentor `EARNING_PENDING → EARNING_AVAILABLE` sau 72 giờ (bỏ qua giao dịch `ON_HOLD`) |
 
 ## 6. Triển khai
 

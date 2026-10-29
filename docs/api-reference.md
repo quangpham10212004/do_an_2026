@@ -131,41 +131,82 @@ Ví dụ response:
 
 ## 5. mentoring-service (8083) — Thắng
 
-### 5.1 Yêu cầu mentoring & phiên
+### 5.1 Yêu cầu mentoring, phiên, tranh chấp, đánh giá
+
+> Đồng bộ với code ngày 29/10/2026. Hành vi từng luồng, thứ tự kiểm tra và ngưỡng: [spec-mentoring-service.md](spec-mentoring-service.md); hợp đồng chi tiết: `contracts/mentoring-service.yaml`.
+> Tiền tố `/api/mentoring`. "Người tham gia" = mentee hoặc mentor của phiên (admin được phép ở các endpoint ghi chú "+ Admin").
+
+**Yêu cầu mentoring (F1)**
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
 | GET | `/health` | Public | Health check | — |
-| GET | `/api/mentoring/requests` | Auth | Yêu cầu của tôi (mentee đã gửi / mentor đã nhận) | 5.2 |
-| POST | `/api/mentoring/requests` | Mentee | `{mentorId, message?}`; 400 mentor chưa xác thực, 409 trùng yêu cầu | 5.2 |
-| POST | `/api/mentoring/requests/{id}/respond` | Mentor | `{decision: ACCEPT\|REJECT, note?}`; 409 `CAPACITY_FULL` | 5.3 |
-| POST | `/api/mentoring/requests/{id}/cancel` | Mentee | Huỷ yêu cầu đang chờ | 5.2 |
-| POST | `/api/mentoring/requests/{id}/complete` | Người tham gia | Kết thúc quan hệ mentoring | 5.3 |
-| GET | `/api/mentoring/sessions?status=` | Auth | Lịch sử phiên | 5.7 |
-| POST | `/api/mentoring/sessions` | Mentee | `{menteeId, mentorId, scheduledAt, durationMinutes?, topic?}`; 409 `MENTOR_NOT_AVAILABLE` | 5.4 |
-| GET | `/api/mentoring/sessions/{id}` | Người tham gia | Chi tiết phiên | 5.7 |
-| POST | `/api/mentoring/sessions/{id}/cancel` | Người tham gia | `{reason?}` — hoàn tiền nếu đã thanh toán | 6.3 |
-| POST | `/api/mentoring/sessions/{id}/complete` | Mentor | Đánh dấu hoàn thành | 5.6 |
-| POST | `/api/mentoring/sessions/{id}/review` | Mentee | `{rating 1..5, comment?}` (201) | 5.6 |
-| GET | `/api/mentoring/mentors/{id}/reviews` | Auth | Đánh giá của mentor | 5.6 |
-| GET | `/api/mentoring/mentors/{id}/available-slots?durationMinutes=&days=` | Auth | Khung giờ còn đặt được (bước 30 phút, 1–28 ngày tới): trong lịch rảnh, trừ phiên PENDING/CONFIRMED của mentor và của người gọi → `{timezone, durationMinutes, price, slots:[{startAt, endAt}]}`; chỉ trả thời điểm, không lộ phiên người khác | 5.4 |
-| GET | `/api/mentoring/notifications?limit=` | Auth | `{unreadCount, items}` | 5.5 |
-| POST | `/api/mentoring/notifications/{id}/read` | Auth | Đánh dấu đã đọc | 5.5 |
-| POST | `/api/mentoring/notifications/read-all` | Auth | Đánh dấu tất cả đã đọc | 5.5 |
-| GET | `/api/mentoring/admin/stats` | Admin | `{pendingSessions, confirmedSessions, completedSessions, cancelledSessions}` | — |
+| GET | `/requests` | Auth | Yêu cầu của tôi (mentor: gửi tới; mentee: đã gửi; admin: tất cả) | 5.2 |
+| POST | `/requests` | Mentee | Gửi yêu cầu: `{mentorId, goal 50–1000 ký tự, sessionType, frequency, expectedDurationMonths 1\|3\|6, message?}` (201); 403 `EMAIL_NOT_VERIFIED`; 400 `INVALID_GOAL` / `MENTOR_NOT_VERIFIED` / `MENTOR_UNAVAILABLE`; 409 `REQUEST_ALREADY_EXISTS` / `TOO_MANY_PENDING_REQUESTS` | 5.2 |
+| POST | `/requests/{id}/respond` | Mentor + Admin | `{decision: ACCEPT\|REJECT, rejectReason? (bắt buộc khi REJECT), note?}`; 409 `CAPACITY_FULL` / `REQUEST_NOT_PENDING` | 5.3 |
+| POST | `/requests/{id}/cancel` | Mentee + Admin | Huỷ yêu cầu `PENDING` (409 `REQUEST_NOT_PENDING`) | 5.2 |
+| POST | `/requests/{id}/end` | Người tham gia + Admin | Kết thúc quan hệ `ACCEPTED → ENDED`: `{reason: GOAL_REACHED\|NO_LONGER_NEEDED\|NOT_A_FIT\|OTHER, note?}`; huỷ các phiên sắp tới theo chính sách huỷ của người kết thúc. Endpoint cũ `/requests/{id}/complete` đã gỡ | 5.3 |
 
-### 5.1.1 Bổ sung v2.0
+**Đặt lịch, xác nhận, buổi thử (F2–F4)**
 
 | Method | Endpoint | Quyền | Mô tả | FR |
 |---|---|---|---|---|
-| POST | `/api/mentoring/sessions` | Mentee | v2.0: thời lượng cố định 60 phút (`INVALID_DURATION`), mentor chưa có giá → 409 `PRICE_NOT_SET`; tạo phiên PENDING rồi tạm giữ học phí từ ví → `AWAITING_MENTOR` (ví thiếu → giữ PENDING 15 phút). `kind: TRIAL` (15 phút, 30.000đ, không cần quan hệ mentoring; 409 `TRIAL_ALREADY_USED` / `TRIAL_LIMIT` / `TRIAL_DISABLED`); `referralCode` chỉ ở buổi thường đầu tiên với mentor (400 `REFERRAL_NOT_FIRST_BOOKING`, `REFERRAL_CODE_NOT_FOUND`, `REFERRAL_CODE_WRONG_MENTOR`); `mockIntake` bắt buộc khi `sessionType = MOCK_INTERVIEW` (US-58) | 5.4, 5.8, 6.5 |
-| POST | `/api/mentoring/sessions/{id}/confirm` | Mentor | AWAITING_MENTOR → CONFIRMED; 409 `NOT_AWAITING_MENTOR` / `CONFIRM_WINDOW_CLOSED` | 5.4 |
-| POST | `/api/mentoring/sessions/{id}/decline` | Mentor | `{reason?}` — từ chối buổi chờ xác nhận: hoàn 100%, không tính lỗi vi phạm | 5.4 |
-| GET | `/api/mentoring/sessions/{id}/room` | Người tham gia | `{provider:"jitsi", roomName, domain, jwt, opensAt, closesAt}` (JWT HS256, chỉ buổi CONFIRMED, từ 10 phút trước giờ bắt đầu tới 30 phút sau giờ kết thúc). Lần gọi đầu của mỗi bên **ghi nhật ký vào phòng** | 5.9, 5.10 |
-| POST | `/api/mentoring/sessions/{id}/report-absent` | Người tham gia | Báo bên kia vắng mặt: chỉ khi mình đã vào phòng, bên kia chưa vào và đã hết thời gian chờ (10 phút; trải nghiệm 5 phút) — 409 `GRACE_NOT_ELAPSED` / `YOU_NOT_JOINED` / `OTHER_SIDE_JOINED` | 5.10 |
-| POST | `/api/mentoring/sessions/{id}/attendance` | Người tham gia | v2.0: báo vắng người đã có trong nhật ký phòng → 409 `ABSENCE_CONTRADICTS_LOG` | 5.10 |
-| POST | `/api/mentoring/sessions/{id}/cancel` | Người tham gia | v2.0: trả `refundPercent` theo 3 bậc (24h/4h) | 5.11 |
-| GET | `/api/mentoring/sessions/{id}/mock` · PUT `/sessions/{id}/scorecard` · GET `/mock-interviews/history` | Người tham gia | Phỏng vấn thử với mentor (US-58): intake, phiếu đánh giá, lịch sử | — |
+| GET | `/mentors/{id}/available-slots?durationMinutes=&days=&excludeSessionId=` | Auth | Khung giờ còn đặt được (bước 30 phút; `durationMinutes` 60 hoặc 15; `days` 1–28): trong lịch rảnh, trừ phiên đang giữ chỗ (`PENDING` / `AWAITING_MENTOR` / `CONFIRMED`, có đệm) và đề xuất đổi lịch đang chờ của mentor và của người gọi → `{timezone, durationMinutes, price, slots:[{startAt, endAt}]}`. `excludeSessionId` chỉ có hiệu lực với participant của phiên đó (dùng khi đổi lịch) | 5.4 |
+| POST | `/sessions` | Mentee + Admin | Đặt lịch (201): `{menteeId, mentorId, scheduledAt, sessionType, agenda 20–500, durationMinutes?, preReadLink?, topic?, referralCode?, kind?, mockIntake?}`. Buổi thường 60 phút cần yêu cầu `ACCEPTED` (400 `NOT_ACCEPTED`); giá = giá mentor, chốt lúc đặt (409 `PRICE_NOT_SET`). Tạo `PENDING` rồi tạm giữ học phí từ ví → `AWAITING_MENTOR` (ví thiếu: giữ `PENDING` 15 phút). Lỗi khác: 400 `INVALID_DURATION` / `INVALID_AGENDA` / `TOO_SOON` / `TOO_FAR`; 409 `MENTOR_NOT_AVAILABLE` / `MENTEE_SCHEDULE_CONFLICT` / `MENTOR_ON_LEAVE` / `MENTOR_SUSPENDED` / `TOO_MANY_UNPAID_SESSIONS` (tối đa 2 phiên `PENDING` mỗi mentee). `kind: TRIAL` = buổi thử 15 phút, 30.000đ, không cần quan hệ: 409 `TRIAL_NOT_ALLOWED` (cặp đã có yêu cầu `ACCEPTED` / `ENDED`) / `TRIAL_DISABLED` / `MENTOR_PAUSED` / `TRIAL_ALREADY_USED` / `TRIAL_LIMIT`. `referralCode` chỉ ở buổi thường đầu tiên (400 `REFERRAL_NOT_FIRST_BOOKING` …). `mockIntake` bắt buộc khi `sessionType = MOCK_INTERVIEW` | 5.4, 5.8, 6.5 |
+| GET | `/sessions?status=` | Auth | Lịch sử phiên | 5.7 |
+| GET | `/sessions/{id}` | Người tham gia + Admin | Chi tiết phiên | 5.7 |
+| POST | `/sessions/{id}/confirm` | Mentor + Admin | `AWAITING_MENTOR → CONFIRMED`; 409 `NOT_AWAITING_MENTOR` / `CONFIRM_WINDOW_CLOSED` | 5.4 |
+| POST | `/sessions/{id}/decline` | Mentor + Admin | `{reason?}` — từ chối buổi chờ xác nhận: hoàn 100% (qua outbox), không lỗi vi phạm, trả lượt buổi thử | 5.4 |
+| PUT | `/sessions/{id}/meeting-link` | Mentor + Admin | Đặt link họp ngoài (`https` Meet / Zoom / Teams): 400 `INVALID_MEETING_LINK`; 409 `SESSION_NOT_EDITABLE` | — |
+| GET | `/sessions/{id}/calendar.ics` | Người tham gia | Xuất lịch (`SEQUENCE` tăng sau mỗi lần dời) | — |
+
+**Phòng học và tham dự (F5–F6)**
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| GET | `/sessions/{id}/room` | Mentee, Mentor (không Admin) | `{provider:"jitsi", roomName, domain, jwt, opensAt, closesAt, graceMinutes, moderator}`; chỉ `CONFIRMED` / `AWAITING_ATTENDANCE`, từ 10 phút trước giờ bắt đầu tới 30 phút sau giờ kết thúc (409 `ROOM_NOT_AVAILABLE` / `ROOM_CLOSED`). Lần đầu mỗi bên **ghi nhật ký vào phòng** và đóng đề xuất đổi lịch đang chờ | 5.9, 5.10 |
+| POST | `/sessions/{id}/report-absent` | Người tham gia | Báo bên kia vắng: sau thời gian chờ (10 phút; buổi thử 5 phút), mình đã vào phòng, bên kia chưa — 409 `GRACE_NOT_ELAPSED` / `YOU_NOT_JOINED` / `OTHER_SIDE_JOINED`. Không đổi trạng thái phiên | 5.10 |
+| POST | `/sessions/{id}/attendance` | Người tham gia | `{answer: HELD\|MENTOR_NO_SHOW\|MENTEE_NO_SHOW\|CANCELLED_ON_CALL}` trong 24 giờ sau giờ kết thúc; 409 `ABSENCE_CONTRADICTS_LOG` / `ATTENDANCE_NOT_OPEN` / `ATTENDANCE_CLOSED` / `ATTENDANCE_WINDOW_CLOSED` / `ATTENDANCE_ALREADY_ANSWERED`. Hai bên khác nhau → `DISPUTED` | 5.10 |
+| POST | `/sessions/{id}/complete` | Mentor + Admin | Tương đương mentor trả lời `HELD` | 5.6 |
+
+**Huỷ và đổi lịch (F7–F8)**
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| GET | `/sessions/{id}/cancel-preview` | Người tham gia + Admin | Xem trước `refundPercent`, `refundAmount`, văn bản chính sách | 5.11 |
+| POST | `/sessions/{id}/cancel` | Người tham gia + Admin | `{reason?}` — huỷ `PENDING` / `AWAITING_MENTOR` / `CONFIRMED` chưa bắt đầu (409 `SESSION_NOT_CANCELLABLE` / `SESSION_ALREADY_STARTED`). Hoàn tiền theo bậc 24h / 4h (buổi thử 2h) qua outbox, không còn lỗi `REFUND_FAILED`. Mentor huỷ buổi `CONFIRMED` → 1 lỗi vi phạm | 5.11 |
+| POST | `/sessions/{id}/reschedule` | Mentee, Mentor | `{newStart}` (201): chỉ `CONFIRMED`, bất kỳ lúc nào trước giờ bắt đầu hiện tại; 409 `SESSION_NOT_CONFIRMED` / `RESCHEDULE_TOO_LATE` / `SESSION_ALREADY_JOINED` / `RESCHEDULE_LIMIT` (2 lần) / `RESCHEDULE_PENDING` / `MENTOR_NOT_AVAILABLE` / `MENTEE_SCHEDULE_CONFLICT`; 400 `SAME_START` / `TOO_SOON` / `TOO_FAR` | — |
+| POST | `/reschedules/{id}/accept` | Mentee, Mentor (bên không đề xuất) | Chấp nhận, trả phiên đã cập nhật; 409 `RESCHEDULE_NOT_PENDING` / `RESCHEDULE_EXPIRED` / `SESSION_NOT_CONFIRMED` / `RESCHEDULE_TOO_LATE` / `SESSION_ALREADY_JOINED` / `RESCHEDULE_START_PASSED` (các lỗi này đóng đề xuất) / `MENTOR_SUSPENDED` / `MENTOR_ON_LEAVE` | — |
+| POST | `/reschedules/{id}/decline` | Mentee, Mentor | Bên nhận từ chối hoặc người đề xuất rút lại | — |
+
+**Tranh chấp (F6)**
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| POST | `/sessions/{id}/disputes` | Mentee, Mentor | `{type, description 20–2000, evidenceLinks ≤ 5}` (201), trong 72 giờ sau giờ kết thúc; 409 `DISPUTE_ALREADY_OPEN` / `DISPUTE_NOT_ALLOWED` / `DISPUTE_WINDOW_CLOSED`. Phiên có phí → giao dịch `ON_HOLD` | — |
+| GET | `/sessions/{id}/disputes` | Người tham gia + Admin | Tranh chấp của phiên | — |
+| GET | `/admin/disputes?status=` · `/admin/disputes/{id}` | Admin | Danh sách (`ACTIVE` = `OPEN` + `IN_REVIEW`) và chi tiết | — |
+| POST | `/admin/disputes/{id}/start-review` | Admin | `OPEN → IN_REVIEW` | — |
+| POST | `/admin/disputes/{id}/resolve` | Admin | `{outcome: FULL_REFUND\|PARTIAL_REFUND\|NO_REFUND\|WARNING\|SUSPEND, refundPercent? (1–99, chỉ PARTIAL_REFUND), note}`; phiên treo → `CANCELLED` (hoàn đủ / đình chỉ) hoặc `COMPLETED` | — |
+
+**Đánh giá (F6)**
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| POST | `/sessions/{id}/review` | Mentee | Đánh giá có cấu trúc (201): `{rating, knowledge, clarity, preparation (1–5), comment?, tags?}`; chỉ phiên `COMPLETED` trong 14 ngày; 409 `SESSION_NOT_COMPLETED` / `SESSION_REFUNDED` (đã hoàn 100%) / `TRIAL_NOT_REVIEWABLE` / `REVIEW_WINDOW_CLOSED` / `ALREADY_REVIEWED`; 400 `COMMENT_REQUIRED` (rating ≤ 2 cần bình luận ≥ 20 ký tự) | 5.6 |
+| PUT | `/sessions/{id}/review` | Mentee | Sửa trong 48 giờ sau khi đăng (409 `REVIEW_EDIT_WINDOW_CLOSED`) | 5.6 |
+| POST | `/reviews/{reviewId}/reply` | Mentor | Phản hồi một lần, ≤ 500 ký tự (409 `ALREADY_REPLIED`) | 5.6 |
+| POST | `/sessions/{id}/mentee-feedback` | Mentor | Nhận xét riêng về mentee (chuẩn bị, tham gia 1–5) | — |
+| GET | `/mentors/{id}/reviews` · `/mentors/{id}/review-summary` · `/mentees/{id}/reliability` | Auth | Đánh giá công khai, tổng hợp, huy hiệu tin cậy của mentee | 5.6 |
+
+**Khác**
+
+| Method | Endpoint | Quyền | Mô tả | FR |
+|---|---|---|---|---|
+| GET | `/notifications?limit=` | Auth | `{unreadCount, items}` | 5.5 |
+| POST | `/notifications/{id}/read` · `/notifications/read-all` | Auth | Đánh dấu đã đọc | 5.5 |
+| GET | `/admin/stats` | Admin | `{pendingSessions, confirmedSessions, completedSessions, cancelledSessions}` | — |
+| GET | `/sessions/{id}/mock` · PUT `/sessions/{id}/scorecard` · GET `/mock-interviews/history` | Người tham gia | Phỏng vấn thử với mentor (US-58): intake, phiếu đánh giá, lịch sử | — |
 
 Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tài khoản mạng xã hội (`contactsMasked = true`); mỗi lần che ghi vào `contact_violations`, ≥ 3 lần / 30 ngày → thông báo admin (FR-5.12). Admin xem gộp theo người gửi: `GET /api/mentoring/admin/contact-violations?days=30` → `[{userId, userName, count, kinds, lastAt, flagged}]` (trang `/admin/contact-violations`).
 
@@ -174,7 +215,9 @@ Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và tà
 | Method | Endpoint | Quyền | Mô tả |
 |---|---|---|---|
 | GET | `/internal/sessions/{id}` | Internal | `{id, menteeId, mentorId, scheduledAt, durationMinutes, price, status}` |
-| POST | `/internal/sessions/{id}/payment-succeeded` | Internal | `{transactionId}` → xác nhận phiên (FR-6.2) |
+| POST | `/internal/sessions/{id}/payment-succeeded` | Internal | `{transactionId}` → `PENDING → AWAITING_MENTOR` (FR-6.2). Idempotent theo `transactionId` (lưu ở `sessions.payment_transaction_id`); tiền về sau khi phiên đã huỷ / hết hạn → xếp hoàn 100% vào outbox một lần. payment-service gọi lại mỗi phút tới khi thành công |
+| POST | `/internal/mentors/{mentorId}/suspend` | Internal | Đình chỉ mentor: huỷ mọi phiên sắp tới `PENDING` / `AWAITING_MENTOR` / `CONFIRMED` (hoàn 100%, không lỗi vi phạm); 502 `SUSPEND_INCOMPLETE` nếu còn phiên lỗi |
+| POST | `/internal/rooms/token` | Internal (ai-service) | Ký JWT Jitsi cho phòng phỏng vấn xác thực mentor |
 | POST | `/internal/notifications` | Internal | `{recipientId? , recipientRole?, type, title, message, link?}` → tạo thông báo (ai-service gọi) |
 | POST | `/internal/accounts/{userId}/lock` | Internal (auth-service) | `{locked, actorId?, reason?}` — khoá: huỷ buổi chưa diễn ra (hoàn 100%) + đóng băng ví; khoá mentor: mở tranh chấp hệ thống giữ thu nhập đang chờ của buổi đã học; báo người bị khoá (`ACCOUNT_LOCKED` / `ACCOUNT_UNLOCKED`). Trả `{cancelledSessions, heldEarnings, failed}`. Idempotent (FR-6.10) |
 | GET | `/internal/relationships?mentorId=&menteeId=` | Internal | `{mentorId, menteeId, related}` — `related = true` khi có yêu cầu mentoring của mentee gửi mentor ở trạng thái `PENDING` hoặc `ACCEPTED` (ai-service dùng để quyết định mentor có được tải CV) |

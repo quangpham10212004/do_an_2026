@@ -37,23 +37,25 @@ thông báo chưa đọc; bấm tên người dùng để vào trang *Tài kho�
    từ khoá, có phân trang.
 4. **Gửi yêu cầu mentoring**: từ thẻ mentor hoặc trang hồ sơ mentor, kèm lời nhắn. Theo dõi tại
    *Yêu cầu* (`/mentoring/requests`); có thể huỷ khi đang chờ.
-5. **Nạp ví** (⚒ `/wallet`): chọn số tiền (50.000đ–5.000.000đ) và kênh (sandbox / MoMo test / VNPay sandbox). Ví có **tiền nạp** và **tiền khuyến mãi**
+5. **Nạp ví** (`/wallet`): chọn số tiền (50.000đ–5.000.000đ) và kênh (sandbox / MoMo test / VNPay sandbox). Ví có **tiền nạp** và **tiền khuyến mãi**
    (từ giới thiệu hoặc admin); học phí trừ khuyến mãi trước. Khuyến mãi hết hạn sau 12 tháng; ví không dùng 12 tháng sẽ *ngủ* — bấm *Kích hoạt lại*.
    Trong 7 ngày kể từ lần nạp gần nhất bạn có thể *Yêu cầu hoàn tiền nạp* (tối đa bằng số nhỏ hơn giữa tiền nạp còn lại và tiền đã nạp 7 ngày; không gồm tiền đang
    tạm giữ hay khuyến mãi; tối đa 2 lần/tháng).
-6. **Đặt lịch** (sau khi được chấp nhận): trang hồ sơ mentor → xem giá (theo cấp Junior/Senior/Expert) → chọn ngày, giờ (đặt trước ≥ 3 giờ; buổi học 60 phút)
-   → chủ đề → *Xác nhận*. Học phí được **tạm giữ từ ví**; ví thiếu tiền thì khung giờ được giữ 15 phút để bạn nạp thêm. Mentor xác nhận trong 24 giờ, quá hạn
-   hoặc bị từ chối thì bạn được hoàn 100%.
-   - **Buổi trải nghiệm 15 phút (30.000đ)**: để làm quen trước khi học, mỗi mentor một lần, không chấm sao.
-   - **Huỷ**: ≥ 24 giờ trước giờ học hoàn 100%; 4–24 giờ hoàn 50%; dưới 4 giờ hoặc vắng mặt không hoàn. Mentor huỷ hoặc vắng bạn được hoàn 100%.
+6. **Đặt lịch** (sau khi được chấp nhận): trang hồ sơ mentor → xem giá mentor đặt → chọn ngày, giờ (đặt trước ≥ 3 giờ; buổi học 60 phút)
+   → chủ đề → *Xác nhận*. Học phí được **tạm giữ từ ví**; ví thiếu tiền thì khung giờ được giữ 15 phút để bạn nạp thêm (bạn chỉ có tối đa 2 phiên chưa thanh toán cùng lúc).
+   Mentor xác nhận trong 24 giờ, quá hạn hoặc bị từ chối thì bạn được hoàn 100% (tiền về ví sau vài giây).
+   - **Buổi trải nghiệm 15 phút (30.000đ)**: để làm quen trước khi học, mỗi mentor một lần, không chấm sao. Chỉ đặt được với mentor bạn chưa từng được nhận hướng dẫn; mentor đang tạm dừng nhận mentee thì không nhận buổi này. Huỷ khi chưa mất tiền thì lượt được trả lại.
+   - **Huỷ**: ≥ 24 giờ trước giờ học hoàn 100%; 4–24 giờ hoàn 50%; dưới 4 giờ hoặc vắng mặt không hoàn. Huỷ trước khi mentor xác nhận luôn hoàn 100%; huỷ khi phiên còn chờ thanh toán thì bạn không mất gì. Mentor huỷ hoặc vắng bạn được hoàn 100%.
+   - **Đổi lịch**: ở phiên đã xác nhận bấm *Dời lịch* → chọn giờ mới → *Gửi đề xuất dời lịch* → mentor chấp nhận hoặc từ chối. Làm được bất kỳ lúc nào trước giờ học, miễn chưa ai vào phòng; tối đa 2 lần mỗi phiên; đề xuất hết hạn sau 24 giờ hoặc đúng giờ học. Đổi lịch không mất phí.
    - **Mã giới thiệu**: sau khi học xong một buổi với mentor, bạn nhận mã riêng cho mentor đó; bạn bè dùng mã ở lần đặt buổi đầu với mentor ấy, bạn nhận 30.000đ khuyến mãi sau 7 ngày nếu buổi không bị hoàn tiền.
-7. **Phiên học** (`/mentoring/sessions`; ⚒ có nút *Vào phòng học* trước giờ học 10 phút — video và chat ngay trong hệ thống): lọc theo trạng thái; *Huỷ* phiên chưa bắt đầu (phiên đã thanh
-   toán được hoàn tiền); sau khi phiên *Hoàn thành* bấm *Đánh giá* (1–5 sao + nhận xét).
+7. **Phiên học** (`/mentoring/sessions`; nút *Vào phòng học* xuất hiện 10 phút trước giờ học — video và chat ngay trong hệ thống): lọc theo trạng thái; *Huỷ* phiên chưa bắt đầu (phiên đã thanh
+   toán được hoàn tiền); sau giờ học xác nhận *Phiên đã diễn ra* hoặc báo vắng mặt trong 24 giờ (không ai báo gì thì phiên tự hoàn thành); sau khi phiên *Hoàn thành* bấm *Đánh giá* (1–5 sao + nhận xét,
+   không áp dụng cho buổi trải nghiệm và phiên đã hoàn 100%). Có sự cố thì bấm *Báo cáo sự cố* trong 72 giờ sau giờ kết thúc — tiền được tạm giữ cho tới khi quản trị viên kết luận.
 
 ## 3. Dành cho Mentor
 
 1. **Tạo hồ sơ mentor** (`/profile`): có thể *Điền nhanh từ CV* (tải PDF để tự điền kỹ năng, số năm kinh
-   nghiệm) → kiểm tra lại tên hiển thị, lĩnh vực, kỹ năng, giới thiệu, mức phí (⚒ chọn trong khung theo cấp độ do admin duyệt: Junior 100–200k, Senior 200–400k, Expert 400–700k, bước 10.000đ), sức
+   nghiệm) → kiểm tra lại tên hiển thị, lĩnh vực, kỹ năng, giới thiệu, mức phí (tự đặt, 0 – 100.000.000đ; đổi giá chỉ áp dụng cho yêu cầu đặt mới), sức
    chứa (số mentee tối đa), portfolio, trạng thái nhận mentee → *Lưu hồ sơ*. CV dùng để điền nhanh cũng
    được lưu và hiện trong mục **CV của tôi** cùng trang — xoá được bất cứ lúc nào. Khi xét yêu cầu
    mentoring, mentor mở được CV của mentee đang gửi yêu cầu hoặc đang được mình hướng dẫn.
@@ -65,8 +67,11 @@ thông báo chưa đọc; bấm tên người dùng để vào trang *Tài kho�
    nhật hồ sơ và bấm *Phỏng vấn lại*.
 4. **Xử lý yêu cầu** (`/mentoring/requests`): *Chấp nhận* (khi còn chỗ) hoặc *Từ chối* kèm lý do;
    *Kết thúc* quan hệ mentoring khi đã hoàn tất để giải phóng chỗ.
-5. **Phiên học** (`/mentoring/sessions`): xem lịch; *Đánh dấu hoàn thành* sau buổi học; *Huỷ* phiên chưa
-   bắt đầu.
+5. **Phiên học** (`/mentoring/sessions`): xem lịch; phiên mới đặt có trạng thái *Chờ mentor xác nhận* — bấm *Xác nhận* hoặc *Từ chối* trong 24 giờ
+   (hoặc trước giờ học 1 giờ nếu sớm hơn), quá hạn phiên tự huỷ và mentee được hoàn tiền; *Dời lịch* khi phiên đã xác nhận (bên kia cần đồng ý);
+   *Vào phòng học* từ 10 phút trước giờ học; *Đánh dấu hoàn thành* sau buổi học; *Huỷ* phiên chưa bắt đầu.
+   **Lưu ý lỗi vi phạm**: huỷ hoặc vắng mặt ở phiên *đã xác nhận* bị ghi 1 lỗi; đủ 3 lỗi trong 30 ngày hồ sơ chuyển sang tạm dừng nhận mentee.
+   Từ chối hoặc huỷ phiên chưa xác nhận không bị ghi lỗi. Kết thúc quan hệ mentoring chỉ bị ghi lỗi cho phiên đã xác nhận bắt đầu trong vòng 24 giờ.
 
 Mentor chỉ xuất hiện trong kết quả gợi ý khi: đã được admin duyệt, đang nhận mentee, có lịch rảnh và còn chỗ.
 
@@ -80,5 +85,6 @@ Mentor chỉ xuất hiện trong kết quả gợi ý khi: đã được admin d
 | Duyệt mentor | `/admin/verification` | Tab theo trạng thái đợt → *Xem* → đọc bản chép lời, điểm AI từng câu, đánh giá tổng hợp → nhập nhận xét → *Cho qua vòng 1*, *Yêu cầu làm lại* (không tính vào số lần, tối đa 2) hoặc *Từ chối* (mentor chờ 15 ngày) |
 | Nội dung | `/admin/learning` | Tạo/xoá khoá học; chọn *Tài liệu* để thêm/xoá tài liệu; tạo/xoá roadmap; chọn *Các bước* để thêm/xoá bước (có thể liên kết khoá học) |
 | Giao dịch | `/admin/transactions` | Lọc giao dịch theo trạng thái; tab *Referral* xem trạng thái và lý do từ chối |
+| Khiếu nại | `/admin/disputes` | Xem hàng đợi (quá 48 giờ chưa phản hồi được đánh cờ) → *Bắt đầu xem xét* → kết luận: hoàn đủ, hoàn một phần (1–99%), không hoàn, cảnh cáo hoặc đình chỉ mentor, kèm ghi chú bắt buộc. Phiên tranh chấp tự động (hai bên khai khác nhau, hoặc lời báo vắng mâu thuẫn nhật ký phòng) cũng vào đây |
 
 > Kết quả AI Interview chỉ mang tính hỗ trợ. Admin nên đọc kỹ các câu trả lời trước khi quyết định.

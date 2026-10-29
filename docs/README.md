@@ -15,6 +15,7 @@ Lớp E22CNPM03 — GVHD: Đào Ngọc Phong.
 | [scope-core.md](scope-core.md) | **Phạm vi tập trung**: 5 chức năng lõi, phần tạm gác, phụ thuộc khi muốn gỡ, gợi ý demo | Ch.1 Phạm vi · Chuẩn bị bảo vệ |
 | [ban-chot-nghiep-vu.md](ban-chot-nghiep-vu.md) | **Bản chốt nghiệp vụ và thông số v2.0**: mọi quy tắc, ngưỡng, mốc thời gian; bảng thông số cấu hình; tác động lên code | Ch.2 Phân tích yêu cầu · nguồn chuẩn khi các tài liệu khác mâu thuẫn |
 | [SRD-Mentor-Mentee-Platform.md](SRD-Mentor-Mentee-Platform.md) | Đặc tả yêu cầu v2.0: phạm vi, yêu cầu chức năng/phi chức năng, quyết định thiết kế, tiêu chí nghiệm thu | Ch.1 Giới thiệu · Ch.2 Phân tích yêu cầu |
+| [spec-mentoring-service.md](spec-mentoring-service.md) | **Đặc tả 8 luồng của mentoring-service** (gửi yêu cầu, đặt lịch, xác nhận, buổi thử, thực hiện, hoàn thành và đánh giá, huỷ, đổi lịch): hành vi theo code, mã lỗi, ngưỡng; Phần II: bất biến hệ thống, quyết định thiết kế, gói hiện thực, test nghiệm thu. Khi khác tài liệu khác về mentoring thì **spec thắng** | Ch.2 Phân tích yêu cầu · Ch.3 Thiết kế · nguồn chuẩn cho huỷ, đổi lịch, tranh chấp |
 | [business-domain-mentor-mentee.md](business-domain-mentor-mentee.md) | Use case, luồng nghiệp vụ chi tiết, sơ đồ tuần tự, sơ đồ trạng thái | Ch.2 Phân tích yêu cầu · Ch.3 Thiết kế |
 | [architecture.md](architecture.md) | Kiến trúc microservices, cấu trúc mã nguồn, bảo mật, nhất quán dữ liệu, tác vụ nền, triển khai, CI/CD, hạn chế đã biết | Ch.3 Thiết kế hệ thống |
 | [adr.md](adr.md) | **Sổ quyết định kiến trúc (ADR)**: đọc `profile_db` read-only, best-effort + đối soát, `R-1` chuyển chỉ mục embedding sang matching-service, schema không migration, proxy thay API Gateway | Ch.3 Thiết kế hệ thống · Chuẩn bị bảo vệ |
@@ -42,6 +43,7 @@ Tài liệu kỹ thuật khác trong repo: `CONVENTIONS.md` (quy ước nhóm), 
 
 > Số liệu chưa được kiểm chứng lại sau các thay đổi gần đây — chạy lại các lệnh đếm trước
 > khi trích dẫn. Unit test, e2e và benchmark chạy lại ngày 06/10/2026 sau `R-1`.
+> Riêng mentoring-service và payment-service được chạy lại 29/10/2026: **339** và **111** unit test pass ([testing-report.md](testing-report.md)); số endpoint, số test tổng và e2e bên dưới chưa cộng lại sau đợt đó (mentoring-service gỡ `POST /requests/{id}/complete`, thêm các endpoint đổi lịch, tranh chấp, `cancel-preview`...).
 
 | Hạng mục | Giá trị |
 |---|---|
@@ -62,7 +64,7 @@ Chi tiết và lý do: [architecture.md](architecture.md) §8, [adr.md](adr.md).
 - **Bí mật mặc định cho dev** (`JWT_SECRET`, `INTERNAL_API_KEY`, mật khẩu CSDL, `matching_reader`; 7 service log
   WARN lúc khởi động khi `JWT_SECRET`/`INTERNAL_API_KEY` còn giá trị dev) — bắt
   buộc thay khi triển khai thật.
-- **Không có công cụ migration**: đổi schema phải `docker compose down -v` ([deployment-guide.md](deployment-guide.md) §8).
+- **Migration bằng Flyway** ở các service Java (mentoring-service V1–V23, payment-service V1–V9): không sửa file migration đã chạy (đổi checksum), thêm file mới; xem [deployment-guide.md](deployment-guide.md) §8 cho các service còn lại và cách nâng cấp.
 - CV: đã có xem/xoá CV và giới hạn mentor theo quan hệ mentoring; còn thiếu thời hạn lưu tự động và mã
   hoá khi lưu ([cv-data-policy.md](cv-data-policy.md)).
 

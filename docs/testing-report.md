@@ -4,6 +4,12 @@
 > (Java qua `maven:3.9-eclipse-temurin-21`; matching-service và ai-service trên Postgres/pgvector thật,
 > không test nào bị skip). Số đo khác (lỗi phát hiện) ghi rõ thời điểm tại chỗ.
 
+> **Cập nhật 29/10/2026 (mentoring-service, payment-service).** Sau đợt chốt 8 luồng của mentoring-service
+> ([spec-mentoring-service.md](spec-mentoring-service.md)): mentoring-service **339 test** (38 file), payment-service **111 test** (14 file), chạy bằng `mvn test`, không test nào bị skip.
+> Số liệu các service khác trong tài liệu vẫn là của các lần chạy cũ. Giới hạn: bộ test dùng mock repository (không Testcontainers) nên các test "đồng thời"
+> kiểm **bất biến** (quyết định tính trên dòng đã khoá, enqueue nằm trong transaction, thứ tự khoá) chứ chưa chạy hai luồng thật trên PostgreSQL; chưa có e2e cho các luồng
+> mới (đổi lịch, tranh chấp tự động, hoàn tiền qua outbox — e2e cũ "huỷ phiên đã thanh toán → REFUNDED" nay phải chờ outbox gửi, tối đa một chu kỳ 1 phút).
+
 Tài liệu dùng cho chương **Kiểm thử & đánh giá** của báo cáo. Số liệu gốc trong tài liệu là kết quả chạy
 thực tế ngày 17/09/2026 (sau khi tách ai-service và chuyển sang DeepSeek) trên máy phát triển (macOS, Docker Desktop, JDK 21, Python 3.12, Node 26).
 
@@ -46,11 +52,11 @@ hàm thuần (`BookingRules`, `ReferralService.onSuccessfulTransaction`, `hard_f
 | auth-service | `AuthServiceTest` | 9 | ✅ 9/9 pass |
 | profile-service | `ProfileLogicTest` (logic embedding đã chuyển sang matching-service), `ProfileCvFileTest` (xoá tham chiếu CV đúng URL) | 5 | ✅ 5/5 pass |
 | learning-service | `LearningServiceTest` | 2 | ✅ 2/2 pass |
-| payment-service | `ReferralServiceTest`, `SandboxPaymentGatewayTest` | 13 | ✅ 13/13 pass |
-| mentoring-service | `BookingRulesTest`, `SessionSchedulerTest`, `MentoringRequestServiceTest` (`/internal/relationships`) (`AiClientTest` đã xoá cùng `AiClient` ở SRD v1.2) | 12 | ✅ 12/12 pass |
+| payment-service | 14 file, gồm `PaymentServiceTest` (hoàn tiền một phần, tổng hoàn ≤ giá gốc, `ON_HOLD`, **hoàn idempotent theo `idempotencyKey`**: gửi lại cùng khoá không hoàn thêm, kể cả sau khi đã hoàn đủ), `ReferralServiceTest`, `EarningServiceTest`, `WalletRulesTest`… | 111 | ✅ 111/111 pass (29/10/2026) |
+| mentoring-service | 38 file (xem mục 2.2) | 339 | ✅ 339/339 pass (29/10/2026) |
 | matching-service | `test_pipeline.py`, `test_api.py`, `test_index_service.py` (DB giả), `test_index_db.py` (Postgres thật — cần `MATCHING_DB_URL`, `PROFILE_DB_URL`, `PROFILE_DB_ADMIN_URL`; thiếu biến thì skip ở máy dev, FAIL trên CI) | 41 | ✅ 41/41 pass |
 | ai-service | `test_interview_rule_based.py`, `test_cv.py`, `test_enrichment_rule_based.py`, `test_deepseek.py`, `test_api.py`, `test_interview_flow.py`, `test_cv_enrichment_flow.py` (2 file cuối chạy trên Postgres thật; gồm quyền tải CV của mentor fail-closed, `GET /cv/mine`, `DELETE /cv/{id}`) | 74 | ✅ 74/74 pass |
-| **Tổng** | | **156** | **✅ 156/156 pass, 0 skip** |
+| **Tổng** | | — | Chưa cộng lại: chỉ payment-service và mentoring-service được chạy lại ngày 29/10/2026; các dòng còn lại là số liệu của lần chạy 06/10/2026 |
 
 > Ghi số **passed / skipped / total** đúng như `mvn test` và `pytest -q` in ra; nếu có test bị skip vì
 > thiếu Postgres thì ghi rõ, không cộng vào số pass.
@@ -141,8 +147,17 @@ có tài liệu → 0; hoàn thành nhiều hơn tổng do tài liệu bị xoá
 
 | Nhóm | Test case chính |
 |---|---|
-| Đặt lịch — `BookingRulesTest` (8) | Phiên nằm trong khung rảnh; tràn khung/bắt đầu sớm/sai ngày bị từ chối; tính theo múi giờ Việt Nam (12:00 UTC = 19:00 GMT+7); phát hiện chồng lấn (nối tiếp không tính chồng); phiên đã huỷ không chặn lịch; công thức giá và làm tròn 1.000đ; liệt kê khung giờ trống theo bước 30 phút vừa khít thời lượng, bỏ giờ trước mốc sớm nhất và giờ chồng lấn phiên đang giữ chỗ (phiên đã huỷ không chặn) |
-| Job nền — `SessionSchedulerTest` (3) | Nhắc lịch truy vấn đúng cửa sổ 24 giờ, gửi cho cả mentor và mentee, hiển thị giờ Việt Nam, đánh dấu đã nhắc; huỷ phiên chưa thanh toán quá 30 phút; chỉ tự hoàn thành phiên CONFIRMED đã kết thúc quá 2 giờ |
+| Đặt lịch — `BookingRulesTest` | Phiên nằm trong khung rảnh; tràn khung / bắt đầu sớm / sai ngày bị từ chối; tính theo múi giờ Việt Nam (12:00 UTC = 19:00 GMT+7); phát hiện chồng lấn (nối tiếp không tính chồng); phiên đã huỷ không chặn lịch; công thức giá và làm tròn 1.000đ; liệt kê khung giờ trống theo bước 30 phút, bỏ giờ chồng lấn phiên đang giữ chỗ |
+| Job nền — `SessionSchedulerTest` | Nhắc lịch 24 giờ và 15 phút trước giờ học, gửi cho cả mentor và mentee, giờ Việt Nam, đánh dấu đã nhắc; phiên `PENDING` quá 15 phút → `EXPIRED` (kèm trả lượt buổi thử), và phiên vừa được `markPaid` trong lúc job chạy **không** bị hết hạn (kiểm lại sau khi khoá dòng); job tham dự giao cho `AttendanceService` |
+| Huỷ và hoàn tiền — `SessionCancelTest` | Hoàn qua outbox đúng loại và %, `REFUND` trước `FINAL_STATE`, enqueue nằm **trong** transaction và không gọi payment-service đồng bộ; quyết định hoàn tiền tính trên dòng đã khoá (đọc cũ thấy `PENDING`, dòng khoá là `AWAITING_MENTOR` → hoàn 100%); tiền về sau khi phiên đã huỷ / hết hạn → một `REFUND(100)`, callback gọi lại không thêm; mentor huỷ phiên `CONFIRMED` bị strike, huỷ `PENDING` / `AWAITING_MENTOR` không; strike ghi trong transaction, ngưỡng sau commit |
+| Xác nhận — `SessionConfirmTest` | `markPaid` idempotent theo `transactionId` (không báo trùng, không outbox); xác nhận / từ chối / hết hạn; job bỏ qua phiên mentor vừa xác nhận; xác nhận sau khi job đã hết hạn bị từ chối, không hoàn thêm |
+| Outbox — `PaymentOutboxServiceTest` | Gửi theo thứ tự, lỗi tạm thời chặn bản ghi sau của cùng phiên, gửi lại với **cùng** khoá `outbox:<id>`, hai bản ghi khác nhau có khoá khác nhau, 404 của `FINAL_STATE` thử tối đa 10 lần, 4xx khác bị bỏ |
+| Chính sách huỷ và strike — `CancellationPolicyTest`, `StrikeServiceTest` | Ba bậc 24h / 4h, buổi thử 2h, strike chỉ khi `CONFIRMED`, `withinFullRefundWindow`; `insert` (trong transaction) tách khỏi `afterCommit` (ngưỡng PAUSED) |
+| Buổi thử và đặt lịch — `SessionTrialTest`, `SessionBookingTest` | Mentor `PAUSED` / cặp đã `ENDED` bị chặn, trần 3 buổi kiểm trong khoá theo mentee, huỷ khi `PENDING` trả lượt; tối đa 2 phiên `PENDING` mỗi mentee, thứ tự khoá mentor → mentee |
+| Đổi lịch — `RescheduleTest`, `RoomServiceTest` | Đề xuất sát giờ, hạn = min(24 giờ, giờ học), chặn khi đã có người vào phòng, vào phòng đóng đề xuất; chấp nhận kiểm lại trạng thái mentor, giờ mới, nhật ký phòng; lệnh đóng đề xuất sống sót sau lỗi (mô phỏng rollback); chấp nhận gặp phiên đã huỷ → `SESSION_NOT_CONFIRMED` |
+| Tham dự — `AttendanceRulesTest`, `AttendanceServiceTest` | Bảng kết luận, lời báo vắng mâu thuẫn nhật ký → `DISPUTED` (`REPORT_CONTRADICTS_LOG`) với tranh chấp tự động và `HOLD` ghi trong transaction, không strike cho mentor bị báo sai; strike `NO_SHOW_MENTOR` ghi trong transaction kết luận |
+| Tranh chấp — `DisputeServiceTest`, `DisputeRulesTest` | Cửa sổ 72 giờ; `FULL_REFUND` / `SUSPEND` đưa phiên treo sang `CANCELLED`, các kết luận khác sang `COMPLETED`, ghi `refundPercent`; phiên đã ở trạng thái cuối giữ nguyên trạng thái |
+| Đánh giá — `ReviewServiceTest` | `SESSION_REFUNDED` cho phiên hoàn 100% (phiên hoàn một phần vẫn đánh giá được), tạo trùng đồng thời → 409, `update` kiểm 404 → 403 → cửa sổ → nội dung, phản hồi ≤ 500 ký tự |
 
 **ai-service**
 

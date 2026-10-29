@@ -1,0 +1,1130 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bản đồ AI Matching</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef0f4;
+    --ink: #151a23;
+    --muted: #556075;
+    --line: #cbd2dd;
+    --accent: #2457d6;
+    --edge: #5b667a;
+    --alt: #b45309;
+    --k1: #0f766e;
+    --k2: #2457d6;
+    --k3: #15803d;
+    --k4: #b45309;
+    --k5: #6b7280;
+    --warn-bg: #fff4e0;
+    --warn-ink: #8a4300;
+    --chot-bg: #e6efff;
+    --chot-ink: #1b3f9e;
+    --note-bg: #fff6bf; --note-ink: #5a4700; --note-line: #e2c94f;
+    --shadow: 0 1px 2px rgba(20, 26, 35, .08), 0 4px 14px rgba(20, 26, 35, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1218;
+      --surface: #171c26;
+      --surface-2: #1f2531;
+      --ink: #e8ecf3;
+      --muted: #9ba6b9;
+      --line: #313a4a;
+      --accent: #7aa2ff;
+      --edge: #8c98ac;
+      --alt: #f0a85a;
+      --k1: #3fc4b6;
+      --k2: #7aa2ff;
+      --k3: #5fd38a;
+      --k4: #f0a85a;
+      --k5: #9ba6b9;
+      --warn-bg: #3a2a12;
+      --warn-ink: #f6c98b;
+      --chot-bg: #1b2a4d;
+      --chot-ink: #b4c8ff; --note-bg: #3a3212; --note-ink: #f6e9a6; --note-line: #7a6a24;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1218; --surface: #171c26; --surface-2: #1f2531; --ink: #e8ecf3; --muted: #9ba6b9; --line: #313a4a;
+    --accent: #7aa2ff; --edge: #8c98ac; --alt: #f0a85a; --k1: #3fc4b6; --k2: #7aa2ff; --k3: #5fd38a; --k4: #f0a85a; --k5: #9ba6b9;
+    --warn-bg: #3a2a12; --warn-ink: #f6c98b; --chot-bg: #1b2a4d; --chot-ink: #b4c8ff; --note-bg: #3a3212; --note-ink: #f6e9a6; --note-line: #7a6a24;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  code {
+    font: .88em/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    word-break: break-word;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .wrap { max-width: none; margin: 0; padding: 0 clamp(12px, 2vw, 40px); }
+
+  header.top { padding: 28px 0 14px; }
+  h1 { font-size: clamp(1.45rem, 2.6vw, 2rem); line-height: 1.2; margin: 0 0 6px; }
+  .sub { margin: 0; color: var(--muted); max-width: 72ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 16px 0 0; padding: 0; list-style: none; font-size: .9rem; color: var(--muted); }
+  .legend li { display: flex; align-items: center; gap: 8px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .ln { width: 30px; height: 0; border-top: 2px solid var(--edge); flex: none; }
+  .ln.dash { border-top: 2px dashed var(--alt); }
+
+  .k1 { --kc: var(--k1); } .k2 { --kc: var(--k2); } .k3 { --kc: var(--k3); } .k4 { --kc: var(--k4); } .k5 { --kc: var(--k5); }
+
+  /* ---------- bản đồ ---------- */
+  .map-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 22px 18px 26px;
+    position: relative;
+  }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 16px; }
+  .toolbar .nstat { margin-right: auto; color: var(--muted); font-size: .88rem; }
+  .btn { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; font-size: .88rem; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .note-sw { background: var(--note-bg); border: 1px solid var(--note-line); }
+  .map { position: relative; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: contents; }
+  svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; display: none; }
+  .edge { fill: none; stroke: var(--edge); stroke-width: 2; transition: opacity .2s; }
+  .edge.alt { stroke: var(--alt); stroke-dasharray: 7 5; }
+  .edge.dim, .elabel.dim { opacity: .16; }
+  .elabel rect { fill: var(--surface); stroke: var(--line); stroke-width: 1; rx: 5; }
+  .elabel text { fill: var(--muted); font-size: 12.5px; font-family: inherit; }
+  .elabel.alt text { fill: var(--alt); }
+  marker path { fill: var(--edge); }
+  marker.alt path { fill: var(--alt); }
+  .fan { fill: none; stroke: var(--kc, var(--accent)); stroke-width: 2; opacity: .75; }
+  .fan.k1 { stroke: var(--k1); } .fan.k2 { stroke: var(--k2); } .fan.k3 { stroke: var(--k3); } .fan.k4 { stroke: var(--k4); } .fan.k5 { stroke: var(--k5); }
+
+  .nw { position: relative; display: flex; }
+  .nw .node { flex: 1; min-width: 0; }
+  .node {
+    position: relative; z-index: 2;
+    text-align: left;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 132px;
+    padding: 12px 14px 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 6px solid var(--kc, var(--k5));
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+    overflow-wrap: anywhere;
+  }
+  .node:hover { transform: translateY(-2px); border-color: var(--kc); }
+  .node[aria-expanded="true"] {
+    border-color: var(--kc);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--kc) 30%, transparent), var(--shadow);
+    background: color-mix(in srgb, var(--kc) 8%, var(--surface));
+  }
+  .node .cap { font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--kc); }
+  .node .ttl { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 1.05rem; line-height: 1.25; }
+  .node .code { font-size: .8rem; font-weight: 700; background: var(--kc); color: var(--bg); border-radius: 5px; padding: 1px 7px; flex: none; }
+  .node .desc { font-size: .9rem; color: var(--muted); }
+  .node .state { margin-top: auto; font: .78rem/1.3 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); opacity: .85; word-break: break-word; }
+  .node .plus {
+    position: absolute; top: 8px; right: 10px;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--surface-2); border: 1px solid var(--line);
+    font-weight: 700; line-height: 1; color: var(--kc);
+  }
+  .node .plus::before { content: "+"; }
+  .node[aria-expanded="true"] .plus::before { content: "\2212"; }
+  .nnote { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; padding: 3px 7px; background: var(--note-bg); color: var(--note-ink); border: 1px solid var(--note-line); border-radius: 6px; font-size: .82rem; line-height: 1.35; white-space: pre-wrap; }
+  .nnote[hidden] { display: none; }
+  .node .links { display: block; font-size: .8rem; color: var(--muted); }
+  .node.infra { border-style: dashed; border-left-style: solid; }
+
+  /* ---------- nhánh con tỏa ra từ node ---------- */
+  .band { position: relative; z-index: 1; margin: 8px 0 4px 12px; padding-left: 12px; border-left: 3px solid var(--kc); animation: rise .2s ease-out; }
+  @keyframes rise { from { opacity: 0; } to { opacity: 1; } }
+  .gcol { display: block; margin-top: 10px; }
+  .gwrap { position: relative; }
+  .tgl { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: .85rem; color: var(--muted); }
+  .tgl:hover { border-color: var(--kc); color: var(--ink); }
+  .gbtn {
+    position: relative;
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--kc);
+    border-radius: 9px; padding: 8px 10px; text-align: left; font-weight: 600; font-size: .95rem; line-height: 1.3;
+    box-shadow: var(--shadow); overflow-wrap: anywhere;
+  }
+  .gbtn:hover { border-color: var(--kc); }
+  .gbtn .count { margin-left: auto; margin-right: 30px; flex: none; font-weight: 600; font-size: .75rem; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 0 8px; }
+  .gbtn .car { flex: none; width: 0; height: 0; border-left: 6px solid var(--muted); border-top: 5px solid transparent; border-bottom: 5px solid transparent; transition: transform .15s; }
+  .gbtn[aria-expanded="true"] { background: color-mix(in srgb, var(--kc) 8%, var(--surface)); border-color: var(--kc); }
+  .gbtn[aria-expanded="true"] .car { transform: rotate(90deg); }
+  ul.leaves { position: relative; list-style: none; margin: 0 0 4px 14px; padding: 12px 0 2px 16px; border-left: 2px dashed var(--line); display: grid; gap: 8px; animation: rise .18s ease-out; }
+  ul.leaves[hidden] { display: none; }
+  .leaf { position: relative; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 40px 8px 11px; overflow-wrap: anywhere; }
+  .leafnote { margin-top: 6px; padding: 6px 9px; background: var(--note-bg); color: var(--note-ink); border: 1px solid var(--note-line); border-radius: 6px; font-size: .88rem; white-space: pre-wrap; }
+  .leafnote::before { content: "Ghi chú: "; font-weight: 700; }
+  .leafnote[hidden] { display: none; }
+  .notebtn { position: absolute; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+  .notebtn:hover { border-color: var(--note-line); background: var(--note-bg); color: var(--note-ink); }
+  .notebtn.has { background: var(--note-bg); color: var(--note-ink); border-color: var(--note-line); }
+  .notebtn.has::after { content: ""; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--alt); border: 1px solid var(--surface); }
+  .nbtn-node { top: 8px; right: 42px; }
+  .nbtn-group { right: 8px; top: 50%; transform: translateY(-50%); }
+  .nbtn-leaf { top: 6px; right: 6px; }
+  .notepop { position: absolute; z-index: 20; width: min(360px, calc(100% - 16px)); background: var(--surface); border: 1px solid var(--note-line); border-top: 5px solid var(--alt); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); padding: 12px; }
+  .notepop[hidden] { display: none; }
+  .np-label { font-size: .8rem; font-weight: 700; color: var(--muted); margin-bottom: 6px; overflow-wrap: anywhere; }
+  .notepop textarea { display: block; width: 100%; min-height: 110px; resize: vertical; font: inherit; font-size: .95rem; color: var(--ink); background: var(--note-bg); border: 1px solid var(--note-line); border-radius: 8px; padding: 8px 10px; }
+  .np-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .np-count { margin-right: auto; color: var(--muted); font-size: .8rem; }
+  .leaf::before { content: ""; position: absolute; left: -18px; top: 18px; width: 16px; border-top: 2px dashed var(--line); }
+  .leaf .t { font-weight: 600; font-size: .93rem; }
+  .leaf .d { color: var(--muted); font-size: .88rem; margin-top: 2px; }
+  .jump { background: none; border: 0; padding: 0; text-align: left; font-weight: 700; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .tag { display: inline-block; margin-left: 8px; font-size: .72rem; font-weight: 700; letter-spacing: .02em; border-radius: 999px; padding: 1px 9px; vertical-align: 1px; }
+  .tag.chot { background: var(--chot-bg); color: var(--chot-ink); }
+  .tag.loi { background: var(--warn-bg); color: var(--warn-ink); }
+
+  .hint { margin: 16px 2px 0; font-size: .9rem; color: var(--muted); }
+
+  /* ---------- bố cục máy tính ---------- */
+  @media (min-width: 1180px) {
+    .map { display: block; }
+    .row { display: grid; grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); column-gap: clamp(64px, 5.5vw, 110px); align-items: stretch; }
+    .row + .row { margin-top: 74px; }
+    svg.edges { display: block; }
+    .node .links { display: none; }
+    .nw { grid-column: var(--c); grid-row: 1; }
+    .band { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); column-gap: 30px; row-gap: 10px; align-items: start; margin: 46px 0 6px; padding-left: 30px; border-left: 0; }
+    .band::before { content: ""; position: absolute; left: 10px; top: 0; height: var(--trunk, 40px); border-left: 2px solid var(--kc); opacity: .8; }
+    .gcol { display: contents; }
+    .tgl { grid-column: 1; grid-row: 1; justify-self: start; }
+    .gwrap { grid-column: 1; }
+    .gbtn::before { content: ""; position: absolute; left: -25px; top: 50%; width: 20px; border-top: 2px solid var(--kc); opacity: .8; }
+    ul.leaves { grid-column: 2; margin: 0; padding: 0; border-left: 0; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+    ul.leaves::before { content: ""; position: absolute; left: -30px; top: 20px; width: 30px; border-top: 2px dashed var(--line); }
+    .leaf::before { display: none; }
+  }
+
+  footer { padding: 18px 0 40px; color: var(--muted); font-size: .88rem; }
+  footer p { margin: 4px 0; max-width: 90ch; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Bản đồ AI Matching</h1>
+    <p class="sub">Chức năng gợi ý mentor cho mentee (matching-service): từ lập chỉ mục hồ sơ, lọc cứng, truy hồi bằng vector, xếp hạng lại tới phản hồi và đánh giá chất lượng. Bấm vào một node để các nhánh con tỏa ra ngay tại node đó, rồi bấm tiếp vào từng nhánh để xem chi tiết. Có thể mở nhiều node cùng lúc để so sánh.</p>
+    <ul class="legend" aria-label="Chú giải">
+      <li><span class="sw" style="background:var(--k1)"></span>Chuẩn bị dữ liệu</li>
+      <li><span class="sw" style="background:var(--k2)"></span>Tìm mentor</li>
+      <li><span class="sw" style="background:var(--k3)"></span>Xếp hạng &amp; kết quả</li>
+      <li><span class="sw" style="background:var(--k4)"></span>Phản hồi &amp; đánh giá</li>
+      <li><span class="sw" style="background:var(--k5)"></span>Nền tảng</li>
+      <li><span class="sw note-sw"></span>Ghi chú của bạn</li>
+      <li><span class="ln"></span>Luồng chính</li>
+      <li><span class="ln dash"></span>Rẽ nhánh / ngoại lệ</li>
+    </ul>
+  </header>
+
+  <section class="map-card" aria-label="Sơ đồ">
+    <div class="toolbar">
+      <span class="nstat" id="nstat" role="status"></span>
+      <button type="button" class="btn" id="exp-json">Xuất ghi chú (.json)</button>
+      <button type="button" class="btn" id="exp-md">Xuất Markdown (.md)</button>
+      <button type="button" class="btn" id="imp">Nhập ghi chú</button>
+      <button type="button" class="btn" id="clr">Xoá tất cả ghi chú</button>
+      <input type="file" id="impfile" accept=".json,application/json" hidden>
+    </div>
+    <div class="map" id="map"></div>
+    <p class="hint" id="hint"></p>
+    <div class="notepop" id="notepop" role="dialog" aria-label="Ghi chú" hidden>
+      <div class="np-label" id="np-label"></div>
+      <textarea id="np-text" rows="5" maxlength="2000" placeholder="Viết ghi chú cho node này…"></textarea>
+      <div class="np-actions">
+        <span class="np-count" id="np-count"></span>
+        <button type="button" class="btn" id="np-clear">Xoá ghi chú</button>
+        <button type="button" class="btn primary" id="np-done">Xong</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Nguồn: <code>matching-service/</code> (FastAPI) và <code>docs/design-ai-matching-spec.md</code>, code tại commit <code>5e40e2e</code>. Mô tả hành vi <strong>hiện tại</strong> của code.</p>
+    <p>Nhãn <span class="tag loi">Vấn đề đã biết</span> đánh dấu chỗ còn thiếu, số đo mới ở mức sơ bộ hoặc nhãn còn nháp, ghi trong tài liệu thiết kế của chức năng.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* Dữ liệu: mỗi item là [tiêu đề, chi tiết, nhãn]. Ký tự `x` được hiển thị như mã. */
+const DIAGRAM = { cols: 5, noteStore: "matching-flows-notes-v1", noteFile: "matching-flows-notes", mdTitle: "Ghi chú sơ đồ AI Matching" };
+
+const FLOWS = {
+  IDX: {
+    code: "IDX", row: 1, col: 3, kind: "k1", cap: "Chuẩn bị dữ liệu", title: "Lập chỉ mục hồ sơ",
+    desc: "Biến hồ sơ mentor và mentee thành vector để so khớp ngữ nghĩa.",
+    state: "text → SHA-256 → vector(384)",
+    goal: "matching-service sở hữu toàn bộ vòng đời embedding: đọc hồ sơ từ `profile_db` (chỉ đọc), chuẩn hoá thành text, băm, embed rồi lưu vector vào `matching_db`. profile-service chỉ báo \"hồ sơ này vừa đổi\" và không chờ kết quả.",
+    groups: [
+      ["Nguồn và chuẩn hoá text", [
+        ["Đọc hồ sơ chỉ-đọc", "`profile_db` qua role `matching_reader` (chỉ SELECT). Mentor: domain, skills, years_experience, bio. Mentee: domain, skills, current_level, goal"],
+        ["Cùng một cấu trúc text", "Domain → Skills → Experience hoặc Level → About hoặc Goal, để vector mentor và mentee nằm chung không gian ngữ nghĩa (`profile_text.py`)"],
+        ["Băm nội dung", "SHA-256 của text chuẩn hoá là `text_hash`. Trùng hash và cùng model thì bỏ qua, không chạy lại model (NFR-7)"],
+        ["Đổi format text = embed lại tất cả", "Mọi hash lệch nên IndexSyncJob tự embed lại, hoặc admin gọi rebuild với `force=true`"]
+      ]],
+      ["Embedding model", [
+        ["Model", "`paraphrase-multilingual-MiniLM-L12-v2`, 384 chiều, hiểu tiếng Việt, tiếng Anh và hồ sơ trộn cả hai (G10/D13)"],
+        ["Vector đã chuẩn hoá", "`normalize_embeddings=True` nên cosine similarity bằng tích vô hướng"],
+        ["Tải một lần", "Load model lúc khởi động (`PRELOAD_MODEL`), không tải lại mỗi request; chạy trong threadpool để không chặn event loop"],
+        ["Theo dõi model của từng vector", "Cột `model`: đổi model thì vector cũ bị coi là cũ và được embed lại, vì vector của hai model không so sánh được dù cùng 384 chiều"]
+      ]],
+      ["Ba cách kích hoạt", [
+        ["profile-service báo", "`POST /internal/embeddings/reindex` (best-effort, không chờ, không retry; cần `X-Internal-Token`)"],
+        ["Lập chỉ mục ngay khi tìm", "Mentee chưa có vector lúc gọi tìm mentor thì reindex ngay thay vì chờ vòng quét"],
+        ["Admin rebuild", "`POST /api/matching/admin/embeddings/rebuild?force=` sinh phần còn thiếu hoặc sinh lại toàn bộ (khi đổi model hoặc format)"],
+        ["Xem trạng thái", "`GET /api/matching/index-status?userId=`: UPDATED hoặc PENDING (chính chủ, admin hoặc nội bộ)"]
+      ]],
+      ["IndexSyncJob (lưới an toàn)", [
+        ["Chu kỳ", "Mỗi `INDEX_SYNC_INTERVAL` = 60 giây (vòng đầu hoãn tối đa 30 giây); tối đa `INDEX_SYNC_BATCH` = 200 hồ sơ mỗi vai trò mỗi vòng"],
+        ["So hash và model", "Hồ sơ nào lệch (`text_hash`, `model`) với chỉ mục thì embed lại, kể cả hồ sơ chưa từng được báo"],
+        ["Dọn chỉ mục mồ côi", "Hồ sơ đã xoá ở `profile_db` thì xoá vector (không có khoá ngoại giữa hai database)"],
+        ["Vì sao cần", "Thông báo của profile-service có thể mất (service khởi động lại, mạng lỗi, sửa trực tiếp trong DB lúc seed)"]
+      ]],
+      ["Khi embed lỗi", [
+        ["Giữ vector cũ", "Matching vẫn chạy được; đặt `text_hash = NULL`, tăng `attempts`, ghi `last_error`"],
+        ["Thử lại", "Vòng quét sau embed lại"],
+        ["Kết quả trả về", "UPDATED, UNCHANGED, PENDING, NOT_FOUND (404 `PROFILE_NOT_FOUND`)"]
+      ]]
+    ]
+  },
+
+  REQ: {
+    code: "REQ", row: 2, col: 1, kind: "k2", cap: "Tìm mentor", title: "Nhận yêu cầu",
+    desc: "Kiểm tra quyền, tần suất và bộ lọc trước khi chạy pipeline.",
+    state: "GET /api/matching/mentors",
+    goal: "Mentee xin danh sách mentor phù hợp. Endpoint xác thực, giới hạn tần suất, đọc bộ lọc rồi gọi pipeline và ghi nhật ký hiển thị.",
+    groups: [
+      ["Ai gọi, quyền gì", [
+        ["Endpoint", "`GET /api/matching/mentors?menteeId=&limit=` (limit 1–50, mặc định 10)"],
+        ["Xác thực", "JWT HS256 do auth-service cấp (kiểu `access`), hoặc header nội bộ `X-Internal-Token`"],
+        ["Chỉ xem của mình", "Mentee chỉ xem gợi ý cho chính mình; ADMIN và nội bộ xem được của người khác (403 `FORBIDDEN`)"]
+      ]],
+      ["Giới hạn và lỗi", [
+        ["Tần suất", "20 lượt/phút/người dùng (`MATCHING_RATE_LIMIT_PER_MINUTE`) → 429 `RATE_LIMITED` kèm `Retry-After` (NFR-10)"],
+        ["Hồ sơ chưa đủ", "404 `MENTEE_PROFILE_INCOMPLETE` khi mentee chưa có hồ sơ hoặc chưa lập được chỉ mục"],
+        ["Tham số sai", "400 `BAD_REQUEST` hoặc `VALIDATION_ERROR` (UUID sai, days ngoài 1–7, language khác vi/en)"],
+        ["Định dạng lỗi", "`{ error: { code, message } }` thống nhất toàn hệ thống"]
+      ]],
+      ["Sáu bộ lọc từ query", [
+        ["maxRate", "Giá tối đa mỗi giờ; mặc định lấy từ ngân sách trong hồ sơ mentee"],
+        ["days", "Ngày học 1 (Thứ Hai) đến 7 (Chủ Nhật); nhận dạng lặp `?days=1&days=3` hoặc phân tách bằng dấu phẩy"],
+        ["timeOfDay", "`MORNING` 06–12, `AFTERNOON` 12–18, `EVENING` 18–23, theo giờ địa phương của mentor"],
+        ["language", "`vi` hoặc `en`"],
+        ["sessionType", "`CAREER_ADVICE`, `CODE_REVIEW`, `MOCK_INTERVIEW`, `PROJECT_GUIDANCE`"],
+        ["minRating", "Từ 0 đến 5, so với rating hiệu lực (xem nhóm Mentor mới ở bước Xếp hạng lại)"]
+      ]],
+      ["Hai cờ điều khiển", [
+        ["useProfileDefaults (mặc định true)", "Request luôn thắng hồ sơ; hồ sơ chỉ lấp chỗ trống và không bị ghi đè"],
+        ["includeOverBudget (mặc định true)", "Mentor vượt ngân sách không bị loại mà xếp cuối danh sách (xem bước Lọc cứng)"]
+      ]]
+    ]
+  },
+
+  FLT: {
+    code: "FLT", row: 2, col: 2, kind: "k2", cap: "Tìm mentor", title: "Lọc cứng",
+    desc: "Chỉ giữ mentor thoả mọi ràng buộc, lọc TRƯỚC khi xếp hạng bằng vector.",
+    state: "5 ràng buộc + 6 bộ lọc",
+    goal: "Lọc trước rồi mới xếp hạng (US-17): trước đây lấy top-K theo vector rồi mới lọc nên khi bộ lọc chặt, mentor hợp lệ nằm ngoài top-K bị bỏ sót. Giờ có từ `limit` mentor hợp lệ (đã lập chỉ mục) trở lên thì luôn trả đủ `limit` kết quả.",
+    groups: [
+      ["Năm ràng buộc hệ thống", [
+        ["1. Đã xác thực", "`verification_status = APPROVED`; trượt thì lý do `notVerified`"],
+        ["2. Đang nhận mentee", "`status = ACCEPTING` (ON_LEAVE đã qua `on_leave_until` tính là ACCEPTING); trượt thì `unavailable`"],
+        ["3. Có lịch rảnh", "Có ít nhất một khung trong `mentor_availability`; trượt thì `noSchedule`"],
+        ["4. Còn chỗ", "`active_mentee_count < capacity`; trượt thì `fullCapacity`"],
+        ["5. Cùng lĩnh vực", "Domain của mentor bằng domain của mentee (không phân biệt hoa thường); trượt thì `domainMismatch`"],
+        ["Thứ tự kiểm tra", "Đúng thứ tự 1 → 5: một mentor chỉ bị tính vào lý do loại đầu tiên"]
+      ]],
+      ["Sáu bộ lọc người dùng", [
+        ["Cách tính", "SQL trả cho mỗi mentor một cờ đúng/sai cho từng bộ lọc; mã Python quyết định giữ hay loại (`match_filters.py`)"],
+        ["Ngày và buổi đi cùng nhau", "Cả hai bật thì cần MỘT khung rảnh vừa đúng ngày vừa giao với cửa sổ giờ; chỉ bật buổi thì xét mọi ngày; chỉ bật ngày thì cần có khung trong ngày đó"],
+        ["minRating dùng rating hiệu lực", "Mentor dưới 3 đánh giá được so bằng trung vị nền tảng, không phải rating thô thường bằng 0 (G1/D9)"],
+        ["Giờ so theo giờ mentor", "Lịch rảnh và cửa sổ giờ so theo múi giờ của mentor"]
+      ]],
+      ["Mặc định từ hồ sơ mentee (US-16)", [
+        ["maxRate", "← `budget_max_per_hour`"],
+        ["days", "← `preferred_days`"],
+        ["timeOfDay", "← `preferred_time_of_day`"],
+        ["language", "← `languages`"],
+        ["Khi nào áp dụng", "Chỉ khi request không truyền bộ lọc đó và `useProfileDefaults = true`; phản hồi cho biết bộ lọc nào đến từ hồ sơ (`fromProfileDefaults`)"]
+      ]],
+      ["Ẩn theo phản hồi (C10)", [
+        ["Mentor đã bị bấm \"Không phù hợp\"", "Bị ẩn 30 ngày với đúng mentee đó, loại TRƯỚC khi xếp hạng nên danh sách vẫn đủ `limit`"],
+        ["Số bị ẩn", "Hiện trong thống kê `pipeline.hidden`"]
+      ]],
+      ["Ngân sách mềm (C11)", [
+        ["maxRate không loại ai", "Mentor vượt ngân sách vẫn ở lại, được xếp riêng SAU mọi mentor trong ngân sách, kèm `overBudget` và `overBudgetBy`"],
+        ["Số hiển thị", "Tối thiểu `MATCH_OVER_BUDGET_SHOWN` = 3, và bù cho đủ `limit` khi mentor trong ngân sách ít"],
+        ["Hai nhóm lấy top-K riêng", "Để mentor vượt ngân sách không chiếm chỗ của mentor trong ngân sách"],
+        ["Tắt", "`includeOverBudget=false` thì lọc cứng như trước; gợi ý thay thế cho mentoring-service luôn lọc cứng"]
+      ]],
+      ["Nới điều kiện (US-18)", [
+        ["excludedBy", "Với mỗi bộ lọc đang bật: số mentor chỉ trượt riêng bộ lọc đó, tức sẽ xuất hiện thêm nếu bỏ nó"],
+        ["Trượt từ 2 bộ lọc trở lên", "Không được tính cho bộ lọc nào"],
+        ["Giao diện", "Gợi ý bỏ bộ lọc loại nhiều mentor nhất (`biggest_blocker`)"],
+        ["Thống kê pipeline", "`considered`, `excluded` theo lý do, `hidden`, `eligible`, `overBudget`"]
+      ]]
+    ]
+  },
+
+  VEC: {
+    code: "VEC", row: 2, col: 3, kind: "k2", cap: "Tìm mentor", title: "Truy hồi top-K",
+    desc: "Lấy K mentor có vector gần mentee nhất, chỉ trong nhóm đã hợp lệ.",
+    state: "pgvector cosine <=>",
+    goal: "Chỉ xếp hạng bằng vector trong số mentor đã qua bộ lọc. Giữa hai database chỉ truyền danh sách ID, không vector nào đi qua mạng.",
+    groups: [
+      ["Phép tìm", [
+        ["Toán tử", "Cosine distance `<=>` của pgvector trong `matching_db`, sắp tăng dần"],
+        ["Phạm vi", "Chỉ `mentor_embeddings` có `user_id` thuộc danh sách hợp lệ và `embedding` không NULL"],
+        ["Vector của mentee", "Lấy bằng subquery ngay trong database từ `mentee_embeddings`"],
+        ["Chỉ mục", "HNSW `vector_cosine_ops` trên `mentor_embeddings`; mentee chỉ tra theo khoá chính nên không cần HNSW"]
+      ]],
+      ["Chọn K", [
+        ["Giá trị K", "`max(50, limit × 5)` (K mặc định 50): lấy dư vì bước sau còn cộng rating, kinh nghiệm, lịch..."],
+        ["Hai nhóm", "Nhóm trong ngân sách và nhóm vượt ngân sách lấy top-K riêng"]
+      ]],
+      ["Hai database", [
+        ["profile_db (đọc)", "Dữ kiện hồ sơ, lịch rảnh và ngoại lệ, rating, thời gian phản hồi"],
+        ["matching_db (ghi)", "Vector, `match_feedback`, `match_impressions`; matching-service là service duy nhất ghi vào đây"],
+        ["Không có khoá ngoại giữa hai DB", "IndexSyncJob dọn chỉ mục mồ côi"]
+      ]],
+      ["Giới hạn", [
+        ["Mentor hợp lệ nhưng chưa có vector", "Chưa xếp hạng được, chờ IndexSyncJob (vd. hồ sơ vừa tạo)"],
+        ["Mentee chưa có vector", "Reindex ngay; vẫn PENDING thì trả 404 `MENTEE_PROFILE_INCOMPLETE`"],
+        ["Giá trị tương đồng", "Cosine distance trong [0, 2] nên `similarityScore` = 1 − distance, kẹp về [0, 1]"]
+      ]]
+    ]
+  },
+
+  RNK: {
+    code: "RNK", row: 2, col: 4, kind: "k3", cap: "Xếp hạng & kết quả", title: "Xếp hạng lại",
+    desc: "Điểm cuối là tổng có trọng số của 5 tín hiệu.",
+    state: "finalScore ∈ [0, 1]",
+    goal: "Độ tương đồng nội dung vẫn là tín hiệu chính; rating, kinh nghiệm, độ khớp lịch và tốc độ phản hồi phân định các mentor tương đồng gần nhau. Trọng số cấu hình bằng biến môi trường.",
+    groups: [
+      ["Công thức năm tín hiệu", [
+        ["Similarity 0,60", "Độ tương đồng nội dung (1 − cosine distance)"],
+        ["Rating 0,15", "Rating hiệu lực chia 5"],
+        ["Kinh nghiệm 0,10", "Số năm kinh nghiệm chia 10, tối đa 1"],
+        ["Độ khớp lịch 0,10", "Xem nhóm Schedule fit"],
+        ["Tốc độ phản hồi 0,05", "Trung vị phản hồi ≤ 24 giờ cho 1; ≤ 72 giờ cho 0,5; lâu hơn cho 0; chưa có dữ liệu cho 0,5 (không phạt mentor mới)"],
+        ["scoreParts", "Phần đóng góp của từng tín hiệu; cộng lại bằng `finalScore` để giao diện giải thích điểm"]
+      ]],
+      ["Schedule fit (US-35)", [
+        ["Định nghĩa", "Tỉ lệ khung giờ mong muốn của mentee trong 14 ngày tới có ít nhất 60 phút trùng lịch rảnh của mentor"],
+        ["Khung mong muốn", "Mỗi ngày thuộc `preferred_days` (rỗng = mọi ngày) × cửa sổ `timeOfDay` (không có = 06:00–23:00), theo múi giờ của mentee"],
+        ["Lịch rảnh của mentor", "Khung hằng tuần trừ ngoại lệ (nghỉ cả ngày hoặc một khoảng), theo múi giờ của mentor; mọi khoảng đổi sang UTC trước khi so"],
+        ["Bỏ khung đã bắt đầu", "Chỉ tính khung chưa bắt đầu, để điểm không phụ thuộc giờ gọi API"],
+        ["Xấp xỉ", "Phiên đã đặt nằm ở mentoring-service (DB khác) nên không bị trừ; đây là \"lịch rảnh khai báo\""]
+      ]],
+      ["Mentor mới (cold-start, PRD-MATCH-4)", [
+        ["Dưới 3 đánh giá", "Dùng trung vị rating của mentor APPROVED có từ 3 đánh giá trở lên; chưa có ai đủ điều kiện thì dùng 3,5"],
+        ["Nhãn và lý do", "Gắn `newMentor` và lý do \"Mentor mới — chưa đủ 3 đánh giá\"; rating thực dùng nằm ở `ratingUsed`"],
+        ["Vì sao", "Không dùng 0, cũng không dùng rating của 1–2 lượt đầu vốn rất nhiễu"]
+      ]],
+      ["Trọng số cấu hình", [
+        ["Biến môi trường", "`MATCH_WEIGHT_SIMILARITY` / `RATING` / `EXPERIENCE` / `SCHEDULE` / `RESPONSIVENESS` = 0,6 / 0,15 / 0,1 / 0,1 / 0,05"],
+        ["Tổng phải bằng 1,00", "Sai thì service từ chối khởi động (G2), không tự chuẩn hoá để người đặt biến biết ngay"],
+        ["Hàm thuần", "`re_rank`, `explain`, `match_filters.*`, `ranking_signals.*` không truy cập DB nên test độc lập"]
+      ]]
+    ]
+  },
+
+  RES: {
+    code: "RES", row: 2, col: 5, kind: "k3", cap: "Xếp hạng & kết quả", title: "Giải thích & trả kết quả",
+    desc: "Sinh lý do đề xuất, ghi nhật ký hiển thị rồi trả danh sách.",
+    state: "MatchingResponse",
+    goal: "Kết quả không phải \"hộp đen\" (NFR-6): mỗi mentor đi kèm lý do bằng lời, phần đóng góp của từng tín hiệu và thống kê pipeline.",
+    groups: [
+      ["Lý do đề xuất (explain)", [
+        ["Trùng kỹ năng", "Kỹ năng của mentor trùng kỹ năng mentee (tối đa 5)"],
+        ["Hợp mục tiêu", "Kỹ năng của mentor xuất hiện trong mục tiêu (`goal`) của mentee"],
+        ["Cùng lĩnh vực", "Cùng domain"],
+        ["Tương đồng nội dung", "Từ 60% là \"rất tương đồng\", từ 40% là \"tương đồng khá\""],
+        ["Được đánh giá cao", "Rating từ 4,0 và có đánh giá"],
+        ["Kinh nghiệm", "Từ 5 năm"],
+        ["Lịch khớp", "Độ khớp lịch từ 50%"],
+        ["Phản hồi nhanh", "Thường phản hồi trong 24 giờ"],
+        ["Mentor mới", "Nêu rõ xếp hạng theo mức đánh giá chung của nền tảng"]
+      ]],
+      ["Nội dung phản hồi", [
+        ["mentors[]", "Mentor, `similarityScore`, `finalScore`, rating và `ratingUsed`, kinh nghiệm, giá, `matchedSkills`, `reasons`, `scoreParts`, `scheduleFit`, `responsiveness`, `newMentor`, `overBudget`"],
+        ["pipeline", "`considered`, `excluded`, `hidden`, `eligible`, `overBudget`, `k`, `retrieved`, `returned`, `weights`, `tookMs`"],
+        ["filters", "Bộ lọc hiệu lực và bộ lọc nào đến từ hồ sơ"],
+        ["excludedBy", "Số mentor sẽ xuất hiện thêm nếu bỏ từng bộ lọc"],
+        ["impressionId", "Mã lượt hiển thị; frontend gửi lại khi mentee bấm \"Không phù hợp\""]
+      ]],
+      ["Thứ tự danh sách", [
+        ["Trong ngân sách trước", "Sắp theo `finalScore` giảm dần"],
+        ["Vượt ngân sách sau", "Nhóm vượt ngân sách luôn đứng cuối, kèm `overBudgetBy`"]
+      ]],
+      ["Nhật ký hiển thị", [
+        ["match_impressions", "Mỗi mentor một dòng cùng `impression_id`: hạng, điểm, `score_parts`, bộ lọc, trọng số, model, `over_budget`"],
+        ["Best-effort", "Ghi lỗi chỉ log, không làm hỏng lượt tìm"],
+        ["Mục đích", "Tính Precision@K và tỉ lệ \"Không phù hợp\" theo hạng"]
+      ]],
+      ["Hiệu năng (M4)", [
+        ["Ngưỡng", "p95 dưới 2.000 ms (NFR-1); chỉ đo phần pipeline, không tính xác thực và rate-limit"],
+        ["Số đo 24/10/2026", "Trung bình 255,5 ms, p95 377,3 ms, khoảng 5.007 mentor, 15 mẫu, máy không rảnh nên chỉ là số sơ bộ", "loi"]
+      ]]
+    ]
+  },
+
+  NOT: {
+    code: "NOT", row: 3, col: 4, kind: "k4", cap: "Phản hồi & đánh giá", title: "Không phù hợp",
+    desc: "Mentee ẩn một mentor khỏi gợi ý của mình trong 30 ngày.",
+    state: "match_feedback · 30 ngày",
+    goal: "US-36 (PRD-MATCH-6): mentee bấm \"Không phù hợp\" để ẩn mentor khỏi gợi ý, kèm lý do. Lý do và hạng lúc bấm được giữ lại để đánh giá offline.",
+    groups: [
+      ["Endpoint", [
+        ["Ẩn mentor", "`POST /api/matching/feedback` (201): menteeId, mentorId, reason, note tối đa 300 ký tự, impressionId"],
+        ["Xem danh sách đang ẩn", "`GET /api/matching/feedback?menteeId=`"],
+        ["Bỏ ẩn sớm", "`DELETE /api/matching/feedback/{mentorId}?menteeId=` (404 `FEEDBACK_NOT_FOUND`)"],
+        ["Quyền", "Chính mentee hoặc nội bộ được ẩn và bỏ ẩn; xem danh sách thì admin cũng được"]
+      ]],
+      ["Quy tắc ẩn", [
+        ["Bốn lý do", "`WRONG_DOMAIN`, `TOO_EXPENSIVE`, `SCHEDULE`, `OTHER`"],
+        ["30 ngày", "Hằng số `HIDE_DAYS`; ẩn lại khi đang ẩn thì cập nhật lý do và gia hạn 30 ngày kể từ lúc bấm"],
+        ["Mỗi cặp một dòng hiệu lực", "Lượt ẩn đang hiệu lực được đóng bằng `revoked_at` rồi tạo dòng mới"],
+        ["Hạng lúc bấm", "Lấy từ impression; impression không thuộc mentee và mentor này thì bỏ qua, không tin dữ liệu từ client"]
+      ]],
+      ["Tác động lên gợi ý", [
+        ["Loại trước khi xếp hạng", "Mentor đang ẩn bị loại ở bước Lọc cứng nên danh sách vẫn đủ `limit`"],
+        ["Chỉ của mentee đó", "Không ảnh hưởng gợi ý của mentee khác và không đổi rating của mentor"]
+      ]]
+    ]
+  },
+
+  SIM: {
+    code: "SIM", row: 3, col: 2, kind: "k4", cap: "Phản hồi & đánh giá", title: "Gợi ý mentor thay thế",
+    desc: "Endpoint nội bộ cho mentoring-service khi cần đề xuất mentor khác.",
+    state: "/internal/matching/similar-mentors",
+    goal: "US-15: khi yêu cầu mentoring hoặc phiên bị từ chối hay hết hạn, mentoring-service xin tối đa vài mentor phù hợp nhất khác để gợi ý cho mentee.",
+    groups: [
+      ["Endpoint", [
+        ["Gọi", "`GET /internal/matching/similar-mentors?menteeId=&excludeMentorId=&limit=` (limit 1–10, mặc định 3), cần `X-Internal-Token`"],
+        ["Trả về", "`{ mentors: [{ mentorId, fullName, score }] }`"],
+        ["Mentee chưa có hồ sơ hoặc chỉ mục", "Danh sách rỗng"]
+      ]],
+      ["Cách chọn mentor", [
+        ["Vòng 1", "Áp sở thích hồ sơ làm bộ lọc, loại mentor vừa bị từ chối, lọc cứng ngân sách (không đề xuất mentor mentee không trả nổi)"],
+        ["Vòng 2 nếu chưa đủ", "Nới hết bộ lọc người dùng nhưng vẫn giữ 5 ràng buộc hệ thống; loại mentor đã lấy và mentor đang ẩn; kết quả vòng 1 đứng trước"]
+      ]],
+      ["Ai gọi", [
+        ["Yêu cầu hết hạn", "RequestExpiryService gọi khi yêu cầu `PENDING` quá 24 giờ"],
+        ["Phiên bị từ chối hoặc hết hạn xác nhận", "SessionService gọi khi mentor từ chối hoặc không xác nhận kịp"],
+        ["Best-effort", "Timeout 3 giây phía mentoring-service; lỗi thì thông báo vẫn gửi, chỉ thiếu danh sách gợi ý"]
+      ]]
+    ]
+  },
+
+  EVA: {
+    code: "EVA", row: 3, col: 5, kind: "k4", cap: "Phản hồi & đánh giá", title: "Đánh giá chất lượng",
+    desc: "Bốn chỉ số M1–M4, đo offline và online.",
+    state: "M1 · M2 · M3 · M4",
+    goal: "Chất lượng pipeline được đo bằng chỉ số offline (nhãn thủ công) và online (hành vi người dùng). Chi tiết ở docs/design-ai-matching-spec.md mục 8.",
+    groups: [
+      ["Bốn chỉ số", [
+        ["M1 Precision@5", "Tỉ lệ mentor liên quan (nhãn ≥ 1,5 trên thang 0–2) trong 5 hạng đầu; ngưỡng ≥ 80% trần của bộ dữ liệu (khoảng 0,20)", "loi"],
+        ["M2 NDCG@10", "gain = 2^nhãn − 1, chiết khấu `log2(hạng + 1)`; ngưỡng ≥ 0,90 và không thoái lui", "loi"],
+        ["M3 Tỉ lệ \"Không phù hợp\" theo hạng", "Từ 10% trở xuống ở hạng 1–3, từ 15% trở xuống ở hạng 4–5, chỉ xét hạng có từ 100 lượt hiển thị (D11)"],
+        ["M4 Độ trễ", "p95 dưới 2.000 ms (NFR-1): đạt ở số đo sơ bộ"]
+      ]],
+      ["Đánh giá online", [
+        ["Endpoint", "`GET /api/matching/admin/evaluation?days=` (ADMIN; 1–365 ngày)"],
+        ["Nội dung", "`byRank` (hạng 1–10: lượt hiển thị, lượt không phù hợp, tỉ lệ), `reasons`, `resultLists`"],
+        ["Tách nhóm ngân sách (G6)", "`byRankInBudget` và `byRankOverBudget`, vì hạng của nhóm vượt ngân sách là hạng trong danh sách đã nối"],
+        ["Cờ enoughData", "Đúng khi hạng có từ 100 lượt hiển thị (hằng số `ENOUGH_DATA_THRESHOLD`)"]
+      ]],
+      ["Công cụ offline", [
+        ["Eval", "`scripts/eval/matching/` (metrics, capture, báo cáo)"],
+        ["Benchmark", "`scripts/benchmark_matching.py --mentors 5000 --requests 15`"],
+        ["Test", "Test đơn vị và test với DB cho pipeline, bộ lọc, tín hiệu xếp hạng, migration, chỉ mục, API"]
+      ]],
+      ["Việc còn lại", [
+        ["Nhãn còn nháp", "Chưa có hai người chấm độc lập nên M1, M2 chưa đáng tin (T9, T10)", "loi"],
+        ["Báo cáo eval cũ lỗi thời", "Chưa phản ánh tín hiệu phản hồi và khớp lịch như code hiện tại (G4)", "loi"],
+        ["Benchmark 50 mẫu", "Va giới hạn 20 lượt/phút/người dùng nên mới chạy được 15 mẫu (G11)", "loi"],
+        ["M3 chưa có dữ liệu thật", "Endpoint có sẵn, cần người dùng thật", "loi"]
+      ]]
+    ]
+  },
+
+  SYS: {
+    code: "SYS", row: 1, col: 1, kind: "k5", infra: true, cap: "Nền tảng", title: "Dữ liệu, bảo mật & vận hành",
+    desc: "Những thứ nằm dưới mọi bước của pipeline.",
+    state: "FastAPI · 2 database",
+    goal: "matching-service là service Python (FastAPI) sở hữu chỉ mục embedding. Nó đọc hồ sơ từ profile-service qua một ngoại lệ đã được duyệt: truy cập chỉ-đọc vào `profile_db`.",
+    groups: [
+      ["Hai database", [
+        ["profile_db (chỉ đọc)", "Role `matching_reader` chỉ có quyền SELECT; nguồn sự thật của hồ sơ, lịch rảnh, rating"],
+        ["matching_db", "`mentor_embeddings`, `mentee_embeddings`, `match_feedback`, `match_impressions`; có extension `vector`"]
+      ]],
+      ["Bảo mật", [
+        ["JWT", "HS256, secret dùng chung với auth-service; chỉ nhận token loại `access`"],
+        ["Khoá nội bộ", "So sánh hằng thời gian (`hmac.compare_digest`) cho `X-Internal-Token`"],
+        ["Khoá dev", "APP_ENV=prod mà còn dùng khoá dev mặc định thì từ chối khởi động (NFR-9); dev chỉ cảnh báo trong log"],
+        ["Phân quyền", "`require_user`, `require_admin` (ADMIN hoặc nội bộ), `require_internal`"]
+      ]],
+      ["Khởi động", [
+        ["Kiểm tra trọng số", "Tổng 5 trọng số khác 1,00 thì dừng (G2)"],
+        ["Migration", "Áp `matching-service/migrations/*.sql` khi `MIGRATE_ON_STARTUP`, lưu checksum trong `schema_migrations`"],
+        ["Tải model", "Load embedding model một lần nếu `PRELOAD_MODEL`"],
+        ["IndexSyncJob", "Chạy nền nếu `INDEX_SYNC_ENABLED`; `GET /health` báo `modelLoaded`"]
+      ]],
+      ["Migrations", [
+        ["001", "Baseline: bảng embedding, chỉ mục HNSW"],
+        ["002", "`match_feedback` và `match_impressions` (US-36)"],
+        ["003", "Cột `model` cho từng vector (G10/D13)"],
+        ["004", "Cột `over_budget` trong `match_impressions` (G6)"]
+      ]],
+      ["Quan sát", [
+        ["Log và request id", "Log JSON có `requestId`, header `X-Request-Id`, access log (US-46)"],
+        ["Số liệu", "`GET /metrics`"]
+      ]]
+    ]
+  }
+};
+
+const ORDER = ["REQ", "IDX", "FLT", "VEC", "RNK", "RES", "NOT", "SIM", "EVA", "SYS"];
+
+const EDGES = [
+  { id: "c1", from: "REQ", to: "FLT", short: "bộ lọc", long: "Yêu cầu hợp lệ mang theo 6 bộ lọc người dùng (và mặc định từ hồ sơ) sang bước lọc cứng." },
+  { id: "c2", from: "FLT", to: "VEC", short: "mentor hợp lệ", long: "Chỉ danh sách ID mentor đã qua lọc được đưa sang bước truy hồi bằng vector." },
+  { id: "c3", from: "VEC", to: "RNK", short: "top-K", long: "K mentor gần mentee nhất theo cosine được chấm lại bằng 5 tín hiệu." },
+  { id: "c4", from: "RNK", to: "RES", short: "đã chấm", long: "Danh sách đã sắp xếp được sinh lý do, ghi nhật ký hiển thị và trả về." },
+  { id: "c5", from: "IDX", to: "VEC", short: "vector sẵn sàng", fx: .5, tx: .5, long: "Truy hồi chỉ dùng được khi cả mentor và mentee đã có vector khớp với hồ sơ hiện tại." },
+  { id: "c6", from: "RES", to: "NOT", short: "bấm không phù hợp", alt: true, fx: .3, tx: .7, long: "Mentee thấy một mentor không hợp thì bấm \"Không phù hợp\"; `impressionId` cho biết hạng lúc bấm." },
+  { id: "c7", from: "NOT", to: "FLT", short: "ẩn 30 ngày", alt: true, fx: .3, tx: .72, long: "Mentor đang bị ẩn bị loại ở bước lọc cứng, trước khi xếp hạng." },
+  { id: "c8", from: "SIM", to: "FLT", short: "dùng lại pipeline", alt: true, fx: .5, tx: .28, long: "Gợi ý thay thế chạy cùng pipeline, loại mentor bị từ chối và nới bộ lọc nếu chưa đủ." },
+  { id: "c9", from: "RES", to: "EVA", short: "nhật ký hiển thị", alt: true, long: "`match_impressions` là đầu vào của các chỉ số M1–M3." }
+];
+
+/* ---------- tiện ích ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const TAGS = { chot: "Đã chốt · chưa hiện thực", loi: "Vấn đề đã biết" };
+const NS = "http://www.w3.org/2000/svg";
+const ROWS = (() => {
+  const by = {};
+  Object.keys(FLOWS).forEach((id) => { (by[FLOWS[id].row] = by[FLOWS[id].row] || []).push(id); });
+  return Object.keys(by).map(Number).sort((x, y) => x - y).map((r) => by[r].sort((x, y) => FLOWS[x].col - FLOWS[y].col));
+})();
+const HINT = "Bấm vào một node để các nhánh con tỏa ra tại chỗ. Bấm lại node để thu gọn; phím Esc thu gọn tất cả. Biểu tượng ghi chú ở mỗi node, nhóm và mục cho phép bạn viết ghi chú riêng.";
+
+const map = $("#map");
+const hint = $("#hint");
+const wide = matchMedia("(min-width: 1180px)");
+const open = new Set();
+const bands = {};
+let svg = null;
+
+/* ---------- dựng bản đồ ---------- */
+function linksLine(id) {
+  const to = EDGES.filter((e) => e.from === id).map((e) => "→ " + e.to);
+  const from = EDGES.filter((e) => e.to === id).map((e) => "← " + e.from);
+  return from.concat(to).join(" · ");
+}
+
+function buildMap() {
+  map.style.setProperty("--cols", String(DIAGRAM.cols));
+  svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "edges");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML =
+    '<defs>' +
+    '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>' +
+    '<marker id="ah-alt" class="alt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>' +
+    '</defs><g id="edge-layer"></g><g id="fan-layer"></g>';
+  map.appendChild(svg);
+
+  ROWS.forEach((ids) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    ids.forEach((id) => {
+      const f = FLOWS[id];
+      const w = document.createElement("div");
+      w.className = "nw";
+      w.style.setProperty("--c", String(FLOWS[id].col));
+      w.style.order = String(ORDER.indexOf(id) * 10);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "node " + f.kind + (f.infra ? " infra" : "");
+      b.dataset.id = id;
+      b.setAttribute("aria-expanded", "false");
+      b.innerHTML =
+        '<span class="plus" aria-hidden="true"></span>' +
+        '<span class="cap">' + esc(f.cap) + '</span>' +
+        '<span class="ttl"><span class="code">' + esc(f.code) + '</span><span>' + esc(f.title) + '</span></span>' +
+        '<span class="desc">' + esc(f.desc) + '</span>' +
+        '<span class="nnote" data-note-for="' + esc(id) + '" hidden></span>' +
+        '<span class="state">' + esc(f.state) + '</span>' +
+        '<span class="links">' + esc(linksLine(id)) + '</span>';
+      w.appendChild(b);
+      w.insertAdjacentHTML("beforeend", noteBtn(id, f.code + " · " + f.title, "nbtn-node"));
+      row.appendChild(w);
+    });
+    map.appendChild(row);
+  });
+}
+
+/* ---------- nhánh con ---------- */
+function groupsOf(id) {
+  const f = FLOWS[id];
+  const conn = [["Mục tiêu", f.goal]];
+  EDGES.filter((e) => e.to === id).forEach((e) => conn.push(["← Đến từ " + e.from + " · " + FLOWS[e.from].title, e.long, "", e.from]));
+  EDGES.filter((e) => e.from === id).forEach((e) => conn.push(["→ Đi tới " + e.to + " · " + FLOWS[e.to].title, e.long, "", e.to]));
+  return [["Mục tiêu & kết nối", conn]].concat(f.groups);
+}
+
+function leafHtml(it, gkey, glabel) {
+  const key = gkey + SEP + it[0];
+  const tag = it[2] ? '<span class="tag ' + it[2] + '">' + TAGS[it[2]] + "</span>" : "";
+  const title = it[3]
+    ? '<button type="button" class="jump" data-go="' + it[3] + '">' + esc(it[0]) + "</button>"
+    : fmt(it[0]);
+  return '<li class="leaf">' + noteBtn(key, glabel + SEP + it[0], "nbtn-leaf") +
+    '<div class="t">' + title + tag + "</div>" + (it[1] ? '<div class="d">' + fmt(it[1]) + "</div>" : "") +
+    '<div class="leafnote" data-note-for="' + esc(key) + '" hidden></div></li>';
+}
+
+function buildBand(id) {
+  const f = FLOWS[id];
+  const el = document.createElement("div");
+  el.className = "band " + f.kind;
+  el.dataset.for = id;
+  el.style.order = String(ORDER.indexOf(id) * 10 + 1);
+  el.setAttribute("role", "group");
+  el.setAttribute("aria-label", "Nhánh con của " + f.title);
+  el.innerHTML =
+    '<button type="button" class="tgl" data-act="toggle">Mở hết nhánh</button>' +
+    groupsOf(id).map((g, i) =>
+      '<div class="gcol"><div class="gwrap" style="grid-row:' + (i + 2) + '"><button type="button" class="gbtn" aria-expanded="false" aria-controls="g-' + id + "-" + i + '">' +
+      '<span class="car" aria-hidden="true"></span><span>' + esc(g[0]) + '</span><span class="count">' + g[1].length + "</span></button>" +
+      noteBtn(id + SEP + g[0], f.code + SEP + g[0], "nbtn-group") + "</div>" +
+      '<ul class="leaves" style="grid-row:' + (i + 2) + '" id="g-' + id + "-" + i + '" hidden>' +
+      g[1].map((it) => leafHtml(it, id + SEP + g[0], f.code + SEP + g[0])).join("") + "</ul></div>").join("");
+  return el;
+}
+
+function layoutBands(row) {
+  [...row.querySelectorAll(":scope > .band")].forEach((b, i) => { b.style.gridRow = String(i + 2); });
+}
+
+function openNode(id) {
+  if (open.has(id)) return;
+  open.add(id);
+  const node = $('.node[data-id="' + id + '"]', map);
+  const band = buildBand(id);
+  bands[id] = band;
+  node.setAttribute("aria-expanded", "true");
+  const row = node.closest(".row");
+  row.appendChild(band);
+  layoutBands(row);
+}
+
+function closeNode(id) {
+  if (!open.has(id)) return;
+  open.delete(id);
+  const node = $('.node[data-id="' + id + '"]', map);
+  node.setAttribute("aria-expanded", "false");
+  const row = node.closest(".row");
+  bands[id].remove();
+  delete bands[id];
+  layoutBands(row);
+}
+
+function toggleNode(id) {
+  if (open.has(id)) closeNode(id); else openNode(id);
+  afterChange(id);
+}
+
+function setGroup(btn, on) {
+  btn.setAttribute("aria-expanded", String(on));
+  btn.closest(".gcol").classList.toggle("open", on);
+  document.getElementById(btn.getAttribute("aria-controls")).hidden = !on;
+}
+
+function syncToggle(band) {
+  const all = [...band.querySelectorAll(".gbtn")];
+  const allOpen = all.every((b) => b.getAttribute("aria-expanded") === "true");
+  band.querySelector(".tgl").textContent = allOpen ? "Thu gọn nhánh" : "Mở hết nhánh";
+}
+
+function afterChange(focusId) {
+  hint.textContent = open.size
+    ? "Đang mở: " + [...open].map((i) => FLOWS[i].code).join(", ") + ". " + HINT
+    : HINT;
+  try {
+    history.replaceState(null, "", open.size ? "#" + [...open].join(",") : location.pathname + location.search);
+  } catch (e) { /* bỏ qua */ }
+  refreshNotes();
+  redraw();
+  if (focusId && bands[focusId]) {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() => {
+      const b = bands[focusId]; // có thể đã bị thu gọn trước khi khung hình tiếp theo chạy
+      if (b) b.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
+    });
+  }
+}
+
+map.addEventListener("click", (ev) => {
+  const t = ev.target.closest("button");
+  if (!t || !map.contains(t)) return;
+  if (t.classList.contains("notebtn")) {
+    openNote(t);
+  } else if (t.classList.contains("node")) {
+    toggleNode(t.dataset.id);
+  } else if (t.classList.contains("gbtn")) {
+    setGroup(t, t.getAttribute("aria-expanded") !== "true");
+    syncToggle(t.closest(".band"));
+    redraw();
+  } else if (t.dataset.act === "toggle") {
+    const band = t.closest(".band");
+    const all = [...band.querySelectorAll(".gbtn")];
+    const target = !all.every((b) => b.getAttribute("aria-expanded") === "true");
+    all.forEach((b) => setGroup(b, target));
+    syncToggle(band);
+    redraw();
+  } else if (t.dataset.go) {
+    openNode(t.dataset.go);
+    afterChange(t.dataset.go);
+  }
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  if (noteTrigger) { closeNote(); return; }
+  if (open.size) {
+    [...open].forEach(closeNode);
+    afterChange(null);
+  }
+});
+
+/* ---------- đường nối ---------- */
+function anchor(r, side, frac, base) {
+  const x = r.left - base.left + r.width * frac;
+  if (side === "b") return [x, r.bottom - base.top];
+  if (side === "t") return [x, r.top - base.top];
+  const y = r.top - base.top + r.height / 2;
+  return side === "r" ? [r.right - base.left, y] : [r.left - base.left, y];
+}
+
+function drawEdges() {
+  if (!svg || !wide.matches) return;
+  const layer = $("#edge-layer", svg);
+  const fanLayer = $("#fan-layer", svg);
+  layer.innerHTML = "";
+  fanLayer.innerHTML = "";
+  const base = map.getBoundingClientRect();
+  const bandTops = [...open].map((id) => bands[id].getBoundingClientRect().top - base.top);
+
+  EDGES.forEach((e) => {
+    const a = $('.node[data-id="' + e.from + '"]', map).getBoundingClientRect();
+    const b = $('.node[data-id="' + e.to + '"]', map).getBoundingClientRect();
+    const ay = a.top - base.top + a.height / 2;
+    const by = b.top - base.top + b.height / 2;
+    // đường nối xuyên qua một nhánh đang mở thì ẩn đi (thông tin vẫn có ở nhóm "Mục tiêu & kết nối")
+    if (bandTops.some((t) => Math.min(ay, by) < t && Math.max(ay, by) > t)) return;
+
+    const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+    const dy = by - ay;
+    let p1, p2, d, horiz = false;
+    if (Math.abs(dy) > 60) { // khác hàng thì nối dọc, cùng hàng thì nối ngang, không phụ thuộc độ rộng màn hình
+      const down = dy > 0;
+      p1 = anchor(a, down ? "b" : "t", e.fx ?? .5, base);
+      p2 = anchor(b, down ? "t" : "b", e.tx ?? .5, base);
+      const k = Math.abs(p2[1] - p1[1]) * 0.5;
+      d = "M" + p1[0] + " " + p1[1] + " C" + p1[0] + " " + (p1[1] + (down ? k : -k)) + " " + p2[0] + " " + (p2[1] + (down ? -k : k)) + " " + p2[0] + " " + p2[1];
+    } else {
+      const right = dx > 0;
+      horiz = true;
+      p1 = anchor(a, right ? "r" : "l", .5, base);
+      p2 = anchor(b, right ? "l" : "r", .5, base);
+      const k = Math.abs(p2[0] - p1[0]) * 0.5;
+      d = "M" + p1[0] + " " + p1[1] + " C" + (p1[0] + (right ? k : -k)) + " " + p1[1] + " " + (p2[0] + (right ? -k : k)) + " " + p2[1] + " " + p2[0] + " " + p2[1];
+    }
+    const focus = !open.size || open.has(e.from) || open.has(e.to);
+    const g = document.createElementNS(NS, "g");
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", "edge" + (e.alt ? " alt" : "") + (focus ? "" : " dim"));
+    path.setAttribute("marker-end", "url(#" + (e.alt ? "ah-alt" : "ah") + ")");
+    g.appendChild(path);
+
+    const lab = document.createElementNS(NS, "g");
+    lab.setAttribute("class", "elabel" + (e.alt ? " alt" : "") + (focus ? "" : " dim"));
+    const rect = document.createElementNS(NS, "rect");
+    const text = document.createElementNS(NS, "text");
+    text.textContent = e.short;
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("dominant-baseline", "central");
+    lab.appendChild(rect);
+    lab.appendChild(text);
+    g.appendChild(lab);
+    layer.appendChild(g);
+
+    text.setAttribute("x", (p1[0] + p2[0]) / 2);
+    text.setAttribute("y", (p1[1] + p2[1]) / 2 + (horiz ? -17 : 0)); // nhãn đường ngang nằm phía trên để không che mũi tên
+    const bb = text.getBBox();
+    rect.setAttribute("x", bb.x - 6);
+    rect.setAttribute("y", bb.y - 3);
+    rect.setAttribute("width", bb.width + 12);
+    rect.setAttribute("height", bb.height + 6);
+  });
+
+  // một đường cong từ node tới thân cây của các nhánh con
+  open.forEach((id) => {
+    const band = bands[id];
+    const br = band.getBoundingClientRect();
+    const chips = band.querySelectorAll(".gbtn");
+    const last = chips[chips.length - 1].getBoundingClientRect();
+    band.style.setProperty("--trunk", (last.top + last.height / 2 - br.top) + "px");
+    const [x1, y1] = anchor($('.node[data-id="' + id + '"]', map).getBoundingClientRect(), "b", .5, base);
+    const x2 = br.left - base.left + 10;
+    const y2 = br.top - base.top;
+    const k = Math.max(18, (y2 - y1) * 0.55);
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("class", "fan " + FLOWS[id].kind);
+    path.setAttribute("d", "M" + x1 + " " + y1 + " C" + x1 + " " + (y1 + k) + " " + x2 + " " + (y2 - k) + " " + x2 + " " + y2);
+    fanLayer.appendChild(path);
+  });
+}
+
+let raf = 0;
+function redraw() {
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => { drawEdges(); placePop(); });
+}
+
+/* ---------- ghi chú ---------- */
+const NOTE_STORE = DIAGRAM.noteStore;
+const NOTE_MAX = 2000;
+const SEP = " › ";
+const NOTE_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M2.5 2.5h11v7l-4 4h-7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 13.5v-4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const mapCard = $(".map-card");
+const nstat = $("#nstat");
+const pop = $("#notepop");
+const pLabel = $("#np-label");
+const pText = $("#np-text");
+const pCount = $("#np-count");
+let notes = {};
+let storageOk = true;
+let saveTimer = 0;
+let noteTrigger = null;
+let msgTimer = 0;
+
+function noteBtn(key, label, cls) {
+  return '<button type="button" class="notebtn ' + cls + '" data-note-key="' + esc(key) + '" data-note-label="' + esc(label) +
+    '" aria-label="Ghi chú: ' + esc(label) + '">' + NOTE_ICON + "</button>";
+}
+
+function loadNotes() {
+  try {
+    const raw = localStorage.getItem(NOTE_STORE);
+    if (!raw) return;
+    Object.entries(JSON.parse(raw) || {}).forEach(([k, v]) => {
+      if (typeof v === "string" && v.trim()) notes[k] = v.slice(0, NOTE_MAX);
+    });
+  } catch (e) { storageOk = false; }
+}
+
+function persist() {
+  try { localStorage.setItem(NOTE_STORE, JSON.stringify(notes)); storageOk = true; } catch (e) { storageOk = false; }
+}
+
+function setNote(key, text) {
+  const t = text.slice(0, NOTE_MAX);
+  if (t.trim()) notes[key] = t; else delete notes[key];
+  persist();
+  refreshNotes();
+}
+
+function refreshStatus(msg) {
+  const n = Object.keys(notes).length;
+  nstat.textContent = msg || ((n ? n + " ghi chú" : "Chưa có ghi chú") +
+    (storageOk ? " · lưu trong trình duyệt này" : " · trình duyệt không cho lưu, hãy xuất ghi chú để giữ lại"));
+}
+
+function say(msg) {
+  refreshStatus(msg);
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => refreshStatus(), 3500);
+}
+
+function refreshNotes() {
+  document.querySelectorAll(".notebtn").forEach((b) => {
+    const v = notes[b.dataset.noteKey];
+    b.classList.toggle("has", !!v);
+    b.title = v ? "Ghi chú: " + v : "Thêm ghi chú";
+  });
+  document.querySelectorAll("[data-note-for]").forEach((el) => {
+    const v = notes[el.dataset.noteFor];
+    el.hidden = !v;
+    el.textContent = v || "";
+  });
+  refreshStatus();
+}
+
+function commit() {
+  if (noteTrigger) setNote(noteTrigger.dataset.noteKey, pText.value);
+}
+
+function placePop() {
+  if (!noteTrigger) return;
+  if (!noteTrigger.isConnected) { closeNote(true); return; }
+  const c = mapCard.getBoundingClientRect();
+  const r = noteTrigger.getBoundingClientRect();
+  const w = pop.offsetWidth;
+  const left = Math.min(Math.max(r.right - c.left - mapCard.clientLeft - w, 8), Math.max(8, c.width - w - 8));
+  pop.style.left = left + "px";
+  pop.style.top = (r.bottom - c.top - mapCard.clientTop + 6) + "px";
+}
+
+function openNote(btn) {
+  const same = noteTrigger === btn;
+  closeNote(true);
+  if (same) return;
+  noteTrigger = btn;
+  pLabel.textContent = btn.dataset.noteLabel;
+  pText.value = notes[btn.dataset.noteKey] || "";
+  pCount.textContent = pText.value.length + "/" + NOTE_MAX;
+  pop.hidden = false;
+  placePop();
+  pText.focus({ preventScroll: true });
+}
+
+function closeNote(keepFocus) {
+  if (!noteTrigger) return;
+  clearTimeout(saveTimer);
+  commit();
+  const t = noteTrigger;
+  noteTrigger = null;
+  pop.hidden = true;
+  if (!keepFocus && t.isConnected) t.focus({ preventScroll: true });
+}
+
+pText.addEventListener("input", () => {
+  pCount.textContent = pText.value.length + "/" + NOTE_MAX;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(commit, 300);
+});
+$("#np-done").addEventListener("click", () => closeNote());
+$("#np-clear").addEventListener("click", () => { pText.value = ""; closeNote(); });
+document.addEventListener("click", (ev) => {
+  if (!noteTrigger || pop.contains(ev.target) || ev.target.closest(".notebtn")) return;
+  closeNote(true);
+});
+
+function download(name, mime, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function toMarkdown() {
+  const keys = Object.keys(notes);
+  if (!keys.length) return "# " + DIAGRAM.mdTitle + "\n\n(Chưa có ghi chú.)\n";
+  const rank = (k) => { const i = ORDER.indexOf(k.split(SEP)[0]); return i < 0 ? 99 : i; };
+  keys.sort((a, b) => rank(a) - rank(b));
+  let out = "# " + DIAGRAM.mdTitle + "\n";
+  let last = null;
+  keys.forEach((k) => {
+    const parts = k.split(SEP);
+    if (parts[0] !== last) {
+      out += "\n## " + (FLOWS[parts[0]] ? FLOWS[parts[0]].code + " · " + FLOWS[parts[0]].title : parts[0]) + "\n\n";
+      last = parts[0];
+    }
+    out += "- **" + (parts.slice(1).join(SEP) || "(node chính)") + "**: " + notes[k].trim().replace(/\n/g, "\n  ") + "\n";
+  });
+  return out;
+}
+
+$("#exp-json").addEventListener("click", () => download(DIAGRAM.noteFile + ".json", "application/json", JSON.stringify({ version: 1, notes }, null, 2)));
+$("#exp-md").addEventListener("click", () => download(DIAGRAM.noteFile + ".md", "text/markdown", toMarkdown()));
+$("#imp").addEventListener("click", () => $("#impfile").click());
+$("#impfile").addEventListener("change", (ev) => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const o = JSON.parse(rd.result);
+      const src = o && typeof o.notes === "object" ? o.notes : o;
+      let n = 0;
+      Object.entries(src || {}).forEach(([k, v]) => {
+        if (typeof v === "string" && v.trim()) { notes[k] = v.slice(0, NOTE_MAX); n++; }
+      });
+      persist();
+      refreshNotes();
+      say("Đã nhập " + n + " ghi chú.");
+    } catch (e) { say("Không đọc được tệp ghi chú."); }
+  };
+  rd.readAsText(f);
+  ev.target.value = "";
+});
+$("#clr").addEventListener("click", () => {
+  if (!Object.keys(notes).length) { say("Chưa có ghi chú nào để xoá."); return; }
+  if (!confirm("Xoá tất cả ghi chú đã lưu trong trình duyệt này? Hãy xuất ghi chú trước nếu muốn giữ lại.")) return;
+  closeNote(true);
+  notes = {};
+  persist();
+  refreshNotes();
+  say("Đã xoá tất cả ghi chú.");
+});
+
+/* ---------- khởi tạo ---------- */
+loadNotes();
+const initial = decodeURIComponent(location.hash.replace("#", "")).split(",").filter((id) => FLOWS[id]);
+buildMap();
+initial.forEach(openNode);
+afterChange(null);
+drawEdges();
+if ("ResizeObserver" in window) new ResizeObserver(redraw).observe(map);
+window.addEventListener("resize", redraw);
+wide.addEventListener("change", redraw);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
+</script>
+</body>
+</html>

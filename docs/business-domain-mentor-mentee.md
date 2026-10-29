@@ -153,41 +153,54 @@ báo mentor → Mentor mở *Yêu cầu* (kèm tóm tắt hồ sơ mentee) → B
 sức chứa**: báo lỗi "đã nhận đủ số mentee tối đa" → **Chấp nhận hợp lệ**: cập nhật số mentee đang hướng
 dẫn sang profile-service → Mentee nhận thông báo; nếu được chấp nhận, nút *Đặt lịch* xuất hiện.
 
-**Đặt lịch phiên mentoring** (FR-5.4) — ⚒ v2.0: trả bằng ví
+**Đặt lịch phiên mentoring** (FR-5.4) — trả bằng ví
 
 Mentee đã được chấp nhận mở hồ sơ mentor → Giao diện hiển thị lịch rảnh và form đặt lịch (chủ đề, giá của mentor
 đang áp dụng, số dư ví) kèm **bộ chọn khung giờ**: các giờ bắt đầu còn đặt được trong 14 ngày tới (bước 30 phút,
 nằm trọn trong lịch rảnh, đã trừ phiên đang giữ chỗ của mentor và của mentee). Buổi thường cố định **60 phút** →
 Mentee chọn ngày, giờ rồi bấm *Xác nhận* → Hệ thống kiểm tra: đặt trước **≥ 3 giờ** và trong vòng 60 ngày; phiên
-nằm trọn trong một khung rảnh (giờ Việt Nam); không trùng phiên của mentor hoặc của mentee → **Nếu vi phạm**: báo
+nằm trọn trong một khung rảnh (giờ Việt Nam); không trùng phiên của mentor hoặc của mentee; mentee có ít hơn **2 phiên chưa thanh toán** (`PENDING`) → **Nếu vi phạm**: báo
 lỗi, giữ nguyên form và tải lại giờ trống → **Nếu hợp lệ**: chốt giá = giá mentor đang đặt → **Ví đủ tiền**: tạm
 giữ học phí (tiền khuyến mãi trước, thiếu thì trừ tiền nạp) và gửi yêu cầu tới mentor → **Ví thiếu tiền**: giữ khung
 giờ **15 phút**, chuyển mentee sang *Nạp ví*; nạp xong quay lại xác nhận, quá 15 phút thì nhả khung giờ → Mentor xác nhận
 trong **24 giờ** (hoặc trước giờ bắt đầu 1 giờ, lấy mốc sớm hơn); quá hạn hoặc bị từ chối thì huỷ, hoàn 100% khoản tạm giữ
-và gợi ý 3 mentor tương tự → Mentor xác nhận: phiên *CONFIRMED*.
+và gợi ý 3 mentor tương tự (hoàn tiền đi qua hàng đợi, về ví sau vài giây) → Mentor xác nhận: phiên *CONFIRMED*.
 
-**Buổi trải nghiệm 15 phút** (FR-5.8, ⚒)
+**Buổi trải nghiệm 15 phút** (FR-5.8)
 
 Mentee mở hồ sơ mentor (đã bật nhận buổi trải nghiệm) → chọn *Đặt buổi trải nghiệm* → chọn khung giờ 15 phút → tạm giữ
 **30.000đ** từ ví → mentor xác nhận → hai bên vào phòng học (chờ vắng mặt 5 phút) → sau buổi, mentee chỉ được hỏi
 *Bạn có muốn học tiếp với mentor này?* (không chấm sao, không tính vào uy tín) và có nút *Đặt buổi học*. Mỗi cặp mentee–mentor
-một lần; mỗi mentee tối đa 3 buổi trải nghiệm chưa diễn ra; huỷ ≥ 2 giờ trước giờ bắt đầu thì hoàn 100%, muộn hơn không hoàn.
+một lần (cặp đã có quan hệ `ACCEPTED` hoặc `ENDED` thì đặt buổi thường); mentor đang `PAUSED` không nhận; mỗi mentee tối đa 3 buổi trải nghiệm chưa diễn ra;
+huỷ ≥ 2 giờ trước giờ bắt đầu thì hoàn 100%, muộn hơn không hoàn. Mentee không mất tiền (hoàn 100%, hoặc huỷ khi buổi còn chờ thanh toán) thì được trả lại lượt.
+
+**Đổi lịch**
+
+Mentee hoặc mentor mở phiên đã xác nhận → bấm *Đổi lịch* → chọn giờ mới trong lịch rảnh của mentor (giờ cũ vẫn giữ
+cho đến khi bên kia đồng ý; giờ mới được giữ như giờ bận trong lúc chờ) → bên kia nhận thông báo, bấm *Chấp nhận* hoặc *Từ chối* (người đề xuất có thể rút lại) →
+chấp nhận: phiên chuyển sang giờ mới, nhắc lịch và tệp lịch (.ics) cập nhật theo, giá và thanh toán không đổi. Đề xuất được bất kỳ lúc nào trước giờ
+bắt đầu hiện tại nếu chưa ai vào phòng; tối đa 2 lần mỗi phiên, 1 đề xuất mở; đề xuất hết hạn sau 24 giờ hoặc đúng giờ bắt đầu hiện tại (lấy mốc sớm hơn)
+và bị đóng khi có người vào phòng hay phiên bị huỷ. Đổi lịch không tiền, không lỗi vi phạm; chính sách huỷ luôn tính theo giờ bắt đầu hiện tại.
 
 **Nhắc lịch** (FR-5.5)
 
 Hệ thống tìm các phiên đã xác nhận sắp bắt đầu → gửi thông báo trong hệ thống (và email, nếu email lỗi vẫn còn thông báo trong hệ thống) cho mentor
-và mentee tại mốc **24 giờ** và (⚒) **15 phút** trước giờ bắt đầu → nếu lịch bị dời hoặc huỷ thì nhắc lại theo lịch mới.
+và mentee tại mốc **24 giờ** và **15 phút** trước giờ bắt đầu → nếu lịch bị dời hoặc huỷ thì nhắc lại theo lịch mới.
 
 **Phòng học, tham dự, hoàn thành & đánh giá** (FR-5.6, FR-5.7, FR-5.9, FR-5.10)
 
-Phòng học (⚒) mở 10 phút trước giờ bắt đầu và đóng 30 phút sau giờ kết thúc; mentoring-service cấp token ngắn hạn cho đúng hai người
+Phòng học mở 10 phút trước giờ bắt đầu và đóng 30 phút sau giờ kết thúc; mentoring-service cấp token ngắn hạn cho đúng hai người
 tham gia, mất kết nối thì vào lại bằng token đó; hệ thống ghi thời điểm từng bên vào phòng. Sau **10 phút** kể từ giờ bắt đầu
 (buổi trải nghiệm: 5 phút) mà bên kia chưa vào, bên có mặt bấm *Bên kia vắng mặt*; hệ thống đối chiếu nhật ký vào phòng. Quy tắc:
 hai bên có mặt → hoàn thành; **mentor vắng** → mentee hoàn 100% + mentor nhận 1 lỗi vi phạm; **mentee vắng** → không hoàn, mentor nhận học phí
-trừ hoa hồng; cả hai vắng → hoàn 100%, không lỗi; hai bên báo ngược nhau → *DISPUTED*, tiền tạm giữ chờ admin.
-Không ai báo gì: sau **24 giờ** kể từ giờ kết thúc phiên tự *COMPLETED*. Phiên hoàn thành → mentee nhận mời đánh giá (buổi thường; 14 ngày; sửa trong 48 giờ)
+trừ hoa hồng; cả hai vắng → hoàn 100%, không lỗi; hai bên báo ngược nhau, hoặc một bên báo vắng nhưng nhật ký cho thấy bên kia đã vào phòng → *DISPUTED*, tiền tạm giữ chờ admin
+(hệ thống tự mở một khiếu nại). Không ai báo gì: sau **24 giờ** kể từ giờ kết thúc phiên tự *COMPLETED*. Phiên hoàn thành → mentee nhận mời đánh giá (buổi thường; 14 ngày; sửa trong 48 giờ)
 → lưu đánh giá, tính lại điểm trung bình, đồng bộ sang profile-service → mentor nhận thông báo. Học phí tất toán: **hoa hồng 15%** cho nền tảng, phần còn lại vào
-sổ thu nhập mentor và **khả dụng sau 72 giờ** nếu không có khiếu nại.
+sổ thu nhập mentor và **khả dụng sau 72 giờ** nếu không có khiếu nại. Phiên đã hoàn 100% không đánh giá được.
+
+**Khiếu nại** (US-32): người tham gia báo sự cố trong **72 giờ** sau giờ kết thúc (bằng thời gian giữ thu nhập) → giao dịch bị tạm giữ → admin xem xét và kết luận:
+hoàn đủ hoặc đình chỉ mentor (phiên *CANCELLED*, hoàn 100%), hoàn một phần (phiên *COMPLETED*, hoàn p%, phần còn lại cho mentor), không hoàn hoặc cảnh cáo
+(phiên *COMPLETED*, mentor nhận tiền). Phiên *DISPUTED* luôn có đường ra.
 
 **Huỷ phiên** (FR-5.11)
 
@@ -195,14 +208,17 @@ Người tham gia bấm *Huỷ* với phiên chưa bắt đầu → hệ thống
 
 | Ai huỷ / thời điểm | Mentee được hoàn | Ghi chú |
 |---|---|---|
+| Mentee, buổi còn chờ thanh toán (`PENDING`) | không mất gì | chưa tạm giữ nên không có tiền để hoàn |
 | Mentee, trước khi mentor xác nhận | 100% | |
 | Mentee, ≥ 24 giờ trước giờ bắt đầu | 100% | |
 | Mentee, từ 4 đến dưới 24 giờ | 50% | mentor nhận 50% còn lại trừ hoa hồng |
 | Mentee, < 4 giờ hoặc vắng mặt | 0% | mentor nhận học phí trừ hoa hồng |
-| Mentor, bất kỳ lúc nào (hoặc vắng) | 100% | mentor nhận 1 lỗi vi phạm; 3 lỗi trong 30 ngày → hồ sơ PAUSED và báo admin |
+| Mentor, buổi đã xác nhận, bất kỳ lúc nào (hoặc vắng) | 100% | mentor nhận 1 lỗi vi phạm; 3 lỗi trong 30 ngày → hồ sơ PAUSED và báo admin |
+| Mentor, từ chối hoặc huỷ buổi chưa xác nhận | 100% nếu đã tạm giữ | không lỗi vi phạm |
 | Hệ thống / admin (khoá tài khoản…) | 100% | |
 
-Hoàn tiền về **đúng nguồn** đã trừ (khuyến mãi / tiền nạp). Hoàn tiền lỗi thì báo lỗi và không huỷ → chuyển phiên *CANCELLED* → thông báo bên còn lại.
+Hoàn tiền về **đúng nguồn** đã trừ (khuyến mãi / tiền nạp). Việc huỷ và lệnh hoàn tiền được ghi cùng lúc, hoàn tiền gửi sang payment-service qua hàng đợi (có khoá chống hoàn trùng) → chuyển phiên *CANCELLED* → thông báo bên còn lại.
+Mentor kết thúc quan hệ chỉ bị lỗi vi phạm cho buổi đã xác nhận bắt đầu trong vòng 24 giờ.
 Buổi trải nghiệm: huỷ ≥ 2 giờ hoàn 100%, muộn hơn 0%. Không còn điểm xin lỗi khi mentor huỷ và không còn cơ chế chặn huỷ muộn buổi miễn phí.
 
 ---
@@ -297,46 +313,48 @@ thu nhập đang chờ bị đóng băng đến khi admin kết luận.
 
 ## 3. Sơ đồ tuần tự các luồng liên service
 
-### 3.1 Đặt lịch → thanh toán → xác nhận
+### 3.1 Đặt lịch → tạm giữ học phí → xác nhận
 
-> Sơ đồ dưới là luồng **v1.x** (trả thẳng bằng thẻ sandbox). Luồng v2.0 ⚒: bước `POST /api/payment/charge` được thay bằng `POST /internal/wallet/hold` (mentoring → payment) trừ từ ví; thẻ chỉ còn ở bước nạp ví.
+> Luồng hiện tại (v2.0): học phí được **tạm giữ từ ví**; thẻ / cổng chỉ dùng để nạp ví. Tiền gửi sang payment-service qua hàng đợi (`payment_outbox`) khi huỷ, từ chối, hết hạn.
+> Chi tiết điều kiện và mã lỗi: [spec-mentoring-service.md](spec-mentoring-service.md) (F2, F3, F7).
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Me as Mentee
+    actor Mt as Mentor
     participant FE as frontend
     participant MS as mentoring-service
     participant PS as profile-service
     participant PAY as payment-service
-    participant GW as SandboxGateway
 
-    Me->>FE: Chọn giờ, thời lượng → Xác nhận
+    Me->>FE: Chọn giờ → Xác nhận
     FE->>MS: POST /api/mentoring/sessions
-    MS->>MS: kiểm tra lead time, yêu cầu ACCEPTED
-    MS->>PS: GET /internal/mentor/{id} (lịch rảnh, mức phí)
-    MS->>MS: BookingRules.fitsAvailability
-    MS->>MS: BEGIN; pg_advisory_xact_lock(mentor);<br/>kiểm tra trùng lịch; INSERT session PENDING; COMMIT
-    MS-->>FE: 201 Session(PENDING, price)
-    FE->>Me: Trang thanh toán
-    Me->>FE: Nhập thẻ → Thanh toán
-    FE->>PAY: POST /api/payment/charge
-    PAY->>MS: GET /internal/sessions/{id}
-    MS-->>PAY: menteeId, mentorId, price, status
-    PAY->>PAY: INSERT transaction PENDING
-    PAY->>GW: charge(card, amount)
-    alt Thẻ hợp lệ
-        GW-->>PAY: success, providerReference
-        PAY->>PAY: UPDATE SUCCESS; xử lý referral (cùng transaction)
-        PAY->>MS: POST /internal/sessions/{id}/payment-succeeded
-        MS->>MS: session → CONFIRMED; thông báo 2 bên
-        PAY-->>FE: Transaction SUCCESS
-    else Bị từ chối
-        GW-->>PAY: failure CARD_DECLINED
-        PAY->>PAY: UPDATE FAILED
-        PAY-->>FE: Transaction FAILED (phiên vẫn PENDING)
+    MS->>MS: kiểm tra email, thời lượng, báo trước, yêu cầu ACCEPTED (hoặc buổi thử)
+    MS->>PS: GET /internal/mentor/{id} (lịch rảnh, giá, trạng thái)
+    MS->>MS: BEGIN; khoá mentor rồi mentee; trần phiên PENDING;<br/>kiểm tra trùng lịch; INSERT session PENDING; COMMIT
+    MS->>PAY: POST /internal/wallet/pay {userId, sessionId}
+    PAY->>MS: GET /internal/sessions/{id} (giá, trạng thái PENDING)
+    alt Ví đủ tiền
+        PAY->>PAY: tạm giữ học phí (khuyến mãi trước, thiếu thì tiền nạp)
+        PAY->>MS: POST /internal/sessions/{id}/payment-succeeded {transactionId}
+        MS->>MS: BEGIN; khoá dòng phiên; PENDING → AWAITING_MENTOR;<br/>lưu payment_transaction_id; COMMIT
+        MS->>Mt: thông báo SESSION_BOOKED (hạn xác nhận)
+        MS-->>FE: 201 Session(AWAITING_MENTOR)
+    else Ví thiếu tiền
+        PAY-->>MS: 402 INSUFFICIENT_FUNDS
+        MS-->>FE: 201 Session(PENDING), giữ khung giờ 15 phút
+        Me->>FE: Nạp ví rồi thanh toán lại (POST /api/payment/wallet/pay)
     end
-    Note over PAY,MS: Nếu bước báo xác nhận lỗi: session_synced=false,<br/>PaymentReconciliationJob gửi lại mỗi phút
+    alt Mentor xác nhận trong hạn
+        Mt->>MS: POST /api/mentoring/sessions/{id}/confirm
+        MS->>MS: AWAITING_MENTOR → CONFIRMED; thông báo 2 bên
+    else Mentor từ chối hoặc quá hạn
+        MS->>MS: BEGIN; AWAITING_MENTOR → CANCELLED / EXPIRED;<br/>INSERT payment_outbox REFUND(100); COMMIT
+        MS->>PAY: POST /internal/payments/refund {percent: 100, idempotencyKey: outbox:id}
+        PAY->>PAY: hoàn về đúng nguồn đã trừ
+    end
+    Note over PAY,MS: payment-succeeded lỗi: session_synced=false, PaymentReconciliationJob gửi lại mỗi phút.<br/>Outbox lỗi mạng: job gửi lại mỗi phút với cùng khoá nên không hoàn trùng.
 ```
 
 ### 3.2 AI Interview → admin duyệt → xuất hiện trong matching
@@ -406,31 +424,35 @@ stateDiagram-v2
     PENDING --> ACCEPTED: mentor chấp nhận (còn sức chứa)
     PENDING --> REJECTED: mentor từ chối
     PENDING --> CANCELLED: mentee huỷ
-    PENDING --> EXPIRED: mentor không phản hồi sau 72 giờ (US-15)
-    ACCEPTED --> COMPLETED: mentor/mentee kết thúc quan hệ
+    PENDING --> EXPIRED: mentor không phản hồi sau 24 giờ (US-15)
+    ACCEPTED --> ENDED: mentee / mentor / admin kết thúc quan hệ, hoặc không hoạt động 37 ngày (US-31)
     REJECTED --> [*]
     CANCELLED --> [*]
     EXPIRED --> [*]
-    COMPLETED --> [*]
+    ENDED --> [*]
 ```
 
 ### 4.2 Phiên mentoring
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING: đặt lịch phiên có phí
-    [*] --> CONFIRMED: đặt lịch phiên miễn phí
-    PENDING --> CONFIRMED: thanh toán thành công
-    PENDING --> CANCELLED: huỷ
-    PENDING --> EXPIRED: ví thiếu tiền, quá 15 phút chưa nạp đủ (v2.0 ⚒)
+    [*] --> PENDING: đặt lịch, giữ khung giờ
+    PENDING --> AWAITING_MENTOR: payment-service báo đã tạm giữ học phí
+    PENDING --> EXPIRED: quá 15 phút chưa tạm giữ được
+    PENDING --> CANCELLED: huỷ khi chưa thanh toán (không mất gì)
+    AWAITING_MENTOR --> CONFIRMED: mentor xác nhận
+    AWAITING_MENTOR --> CANCELLED: mentor từ chối hoặc mentee huỷ (hoàn 100%)
+    AWAITING_MENTOR --> EXPIRED: quá hạn xác nhận (hoàn 100%)
     CONFIRMED --> CANCELLED: huỷ trước giờ bắt đầu (hoàn 100% / 50% / 0% theo mốc 24h và 4h)
     CONFIRMED --> AWAITING_ATTENDANCE: tới giờ kết thúc (US-12)
-    AWAITING_ATTENDANCE --> COMPLETED: cả hai HELD / một bên HELD + bên kia im lặng 48h / không ai trả lời 48h
-    AWAITING_ATTENDANCE --> NO_SHOW_MENTEE: mentor báo mentee vắng, mentee im lặng 48h (không hoàn)
-    AWAITING_ATTENDANCE --> NO_SHOW_MENTOR: mentee báo mentor vắng, mentor im lặng 48h (hoàn 100% + strike)
-    AWAITING_ATTENDANCE --> DISPUTED: hai bên trả lời khác nhau (giao dịch ON_HOLD, chờ US-32)
-    AWAITING_ATTENDANCE --> CANCELLED: huỷ trong buổi gọi (hoàn 100%, không strike)
-    COMPLETED --> [*]: mentee đánh giá (tuỳ chọn, chỉ COMPLETED)
+    AWAITING_ATTENDANCE --> COMPLETED: cả hai HELD / một bên HELD + bên kia im lặng 24h / không ai trả lời 24h
+    AWAITING_ATTENDANCE --> NO_SHOW_MENTEE: nhật ký phòng, hoặc mentor báo mentee vắng và mentee im lặng 24h (không hoàn)
+    AWAITING_ATTENDANCE --> NO_SHOW_MENTOR: nhật ký phòng, hoặc mentee báo mentor vắng và mentor im lặng 24h (hoàn 100% + strike)
+    AWAITING_ATTENDANCE --> DISPUTED: hai bên trả lời khác nhau, hoặc lời báo vắng mâu thuẫn nhật ký phòng
+    AWAITING_ATTENDANCE --> CANCELLED: cả hai vắng, hoặc huỷ trong buổi gọi (hoàn 100%, không strike)
+    DISPUTED --> COMPLETED: admin kết luận không hoàn / cảnh cáo / hoàn một phần
+    DISPUTED --> CANCELLED: admin kết luận hoàn đủ / đình chỉ mentor
+    COMPLETED --> [*]: mentee đánh giá (tuỳ chọn, chỉ buổi thường chưa hoàn 100%)
     CANCELLED --> [*]
     EXPIRED --> [*]
 ```

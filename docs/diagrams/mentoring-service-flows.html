@@ -1,0 +1,1832 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bản đồ luồng mentoring-service</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef0f4;
+    --ink: #151a23;
+    --muted: #556075;
+    --line: #cbd2dd;
+    --accent: #2457d6;
+    --edge: #5b667a;
+    --alt: #b45309;
+    --k1: #0f766e;
+    --k2: #2457d6;
+    --k3: #15803d;
+    --k4: #b45309;
+    --k5: #6b7280;
+    --warn-bg: #fff4e0;
+    --warn-ink: #8a4300;
+    --chot-bg: #e6efff;
+    --chot-ink: #1b3f9e;
+    --note-bg: #fff6bf; --note-ink: #5a4700; --note-line: #e2c94f;
+    --shadow: 0 1px 2px rgba(20, 26, 35, .08), 0 4px 14px rgba(20, 26, 35, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1218;
+      --surface: #171c26;
+      --surface-2: #1f2531;
+      --ink: #e8ecf3;
+      --muted: #9ba6b9;
+      --line: #313a4a;
+      --accent: #7aa2ff;
+      --edge: #8c98ac;
+      --alt: #f0a85a;
+      --k1: #3fc4b6;
+      --k2: #7aa2ff;
+      --k3: #5fd38a;
+      --k4: #f0a85a;
+      --k5: #9ba6b9;
+      --warn-bg: #3a2a12;
+      --warn-ink: #f6c98b;
+      --chot-bg: #1b2a4d;
+      --chot-ink: #b4c8ff; --note-bg: #3a3212; --note-ink: #f6e9a6; --note-line: #7a6a24;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1218; --surface: #171c26; --surface-2: #1f2531; --ink: #e8ecf3; --muted: #9ba6b9; --line: #313a4a;
+    --accent: #7aa2ff; --edge: #8c98ac; --alt: #f0a85a; --k1: #3fc4b6; --k2: #7aa2ff; --k3: #5fd38a; --k4: #f0a85a; --k5: #9ba6b9;
+    --warn-bg: #3a2a12; --warn-ink: #f6c98b; --chot-bg: #1b2a4d; --chot-ink: #b4c8ff; --note-bg: #3a3212; --note-ink: #f6e9a6; --note-line: #7a6a24;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  code {
+    font: .88em/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    word-break: break-word;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .wrap { max-width: none; margin: 0; padding: 0 clamp(12px, 2vw, 40px); }
+
+  header.top { padding: 28px 0 14px; }
+  h1 { font-size: clamp(1.45rem, 2.6vw, 2rem); line-height: 1.2; margin: 0 0 6px; }
+  .sub { margin: 0; color: var(--muted); max-width: 72ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 16px 0 0; padding: 0; list-style: none; font-size: .9rem; color: var(--muted); }
+  .legend li { display: flex; align-items: center; gap: 8px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .ln { width: 30px; height: 0; border-top: 2px solid var(--edge); flex: none; }
+  .ln.dash { border-top: 2px dashed var(--alt); }
+
+  .k1 { --kc: var(--k1); } .k2 { --kc: var(--k2); } .k3 { --kc: var(--k3); } .k4 { --kc: var(--k4); } .k5 { --kc: var(--k5); }
+
+  /* ---------- bản đồ ---------- */
+  .map-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 22px 18px 26px;
+    position: relative;
+  }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 16px; }
+  .toolbar .nstat { margin-right: auto; color: var(--muted); font-size: .88rem; }
+  .btn { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; font-size: .88rem; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .note-sw { background: var(--note-bg); border: 1px solid var(--note-line); }
+  .map { position: relative; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: contents; }
+  svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; display: none; }
+  .edge { fill: none; stroke: var(--edge); stroke-width: 2; transition: opacity .2s; }
+  .edge.alt { stroke: var(--alt); stroke-dasharray: 7 5; }
+  .edge.dim, .elabel.dim { opacity: .16; }
+  .elabel rect { fill: var(--surface); stroke: var(--line); stroke-width: 1; rx: 5; }
+  .elabel text { fill: var(--muted); font-size: 12.5px; font-family: inherit; }
+  .elabel.alt text { fill: var(--alt); }
+  marker path { fill: var(--edge); }
+  marker.alt path { fill: var(--alt); }
+  .fan { fill: none; stroke: var(--kc, var(--accent)); stroke-width: 2; opacity: .75; }
+  .fan.k1 { stroke: var(--k1); } .fan.k2 { stroke: var(--k2); } .fan.k3 { stroke: var(--k3); } .fan.k4 { stroke: var(--k4); } .fan.k5 { stroke: var(--k5); }
+
+  .nw { position: relative; display: flex; }
+  .nw .node { flex: 1; min-width: 0; }
+  .node {
+    position: relative; z-index: 2;
+    text-align: left;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 132px;
+    padding: 12px 14px 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 6px solid var(--kc, var(--k5));
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+    overflow-wrap: anywhere;
+  }
+  .node:hover { transform: translateY(-2px); border-color: var(--kc); }
+  .node[aria-expanded="true"] {
+    border-color: var(--kc);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--kc) 30%, transparent), var(--shadow);
+    background: color-mix(in srgb, var(--kc) 8%, var(--surface));
+  }
+  .node .cap { font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--kc); }
+  .node .ttl { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 1.05rem; line-height: 1.25; }
+  .node .code { font-size: .8rem; font-weight: 700; background: var(--kc); color: var(--bg); border-radius: 5px; padding: 1px 7px; flex: none; }
+  .node .desc { font-size: .9rem; color: var(--muted); }
+  .node .state { margin-top: auto; font: .78rem/1.3 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); opacity: .85; word-break: break-word; }
+  .node .plus {
+    position: absolute; top: 8px; right: 10px;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--surface-2); border: 1px solid var(--line);
+    font-weight: 700; line-height: 1; color: var(--kc);
+  }
+  .node .plus::before { content: "+"; }
+  .node[aria-expanded="true"] .plus::before { content: "\2212"; }
+  .nnote { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; padding: 3px 7px; background: var(--note-bg); color: var(--note-ink); border: 1px solid var(--note-line); border-radius: 6px; font-size: .82rem; line-height: 1.35; white-space: pre-wrap; }
+  .nnote[hidden] { display: none; }
+  .node .links { display: block; font-size: .8rem; color: var(--muted); }
+  .node.infra { border-style: dashed; border-left-style: solid; }
+
+  /* ---------- nhánh con tỏa ra từ node ---------- */
+  .band { position: relative; z-index: 1; margin: 8px 0 4px 12px; padding-left: 12px; border-left: 3px solid var(--kc); animation: rise .2s ease-out; }
+  @keyframes rise { from { opacity: 0; } to { opacity: 1; } }
+  .gcol { display: block; margin-top: 10px; }
+  .gwrap { position: relative; }
+  .tgl { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: .85rem; color: var(--muted); }
+  .tgl:hover { border-color: var(--kc); color: var(--ink); }
+  .gbtn {
+    position: relative;
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--kc);
+    border-radius: 9px; padding: 8px 10px; text-align: left; font-weight: 600; font-size: .95rem; line-height: 1.3;
+    box-shadow: var(--shadow); overflow-wrap: anywhere;
+  }
+  .gbtn:hover { border-color: var(--kc); }
+  .gbtn .count { margin-left: auto; margin-right: 30px; flex: none; font-weight: 600; font-size: .75rem; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 0 8px; }
+  .gbtn .car { flex: none; width: 0; height: 0; border-left: 6px solid var(--muted); border-top: 5px solid transparent; border-bottom: 5px solid transparent; transition: transform .15s; }
+  .gbtn[aria-expanded="true"] { background: color-mix(in srgb, var(--kc) 8%, var(--surface)); border-color: var(--kc); }
+  .gbtn[aria-expanded="true"] .car { transform: rotate(90deg); }
+  ul.leaves { position: relative; list-style: none; margin: 0 0 4px 14px; padding: 12px 0 2px 16px; border-left: 2px dashed var(--line); display: grid; gap: 8px; animation: rise .18s ease-out; }
+  ul.leaves[hidden] { display: none; }
+  .leaf { position: relative; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 40px 8px 11px; overflow-wrap: anywhere; }
+  .leafnote { margin-top: 6px; padding: 6px 9px; background: var(--note-bg); color: var(--note-ink); border: 1px solid var(--note-line); border-radius: 6px; font-size: .88rem; white-space: pre-wrap; }
+  .leafnote::before { content: "Ghi chú: "; font-weight: 700; }
+  .leafnote[hidden] { display: none; }
+  .notebtn { position: absolute; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+  .notebtn:hover { border-color: var(--note-line); background: var(--note-bg); color: var(--note-ink); }
+  .notebtn.has { background: var(--note-bg); color: var(--note-ink); border-color: var(--note-line); }
+  .notebtn.has::after { content: ""; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--alt); border: 1px solid var(--surface); }
+  .nbtn-node { top: 8px; right: 42px; }
+  .nbtn-group { right: 8px; top: 50%; transform: translateY(-50%); }
+  .nbtn-leaf { top: 6px; right: 6px; }
+  .notepop { position: absolute; z-index: 20; width: min(360px, calc(100% - 16px)); background: var(--surface); border: 1px solid var(--note-line); border-top: 5px solid var(--alt); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); padding: 12px; }
+  .notepop[hidden] { display: none; }
+  .np-label { font-size: .8rem; font-weight: 700; color: var(--muted); margin-bottom: 6px; overflow-wrap: anywhere; }
+  .notepop textarea { display: block; width: 100%; min-height: 110px; resize: vertical; font: inherit; font-size: .95rem; color: var(--ink); background: var(--note-bg); border: 1px solid var(--note-line); border-radius: 8px; padding: 8px 10px; }
+  .np-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .np-count { margin-right: auto; color: var(--muted); font-size: .8rem; }
+  .leaf::before { content: ""; position: absolute; left: -18px; top: 18px; width: 16px; border-top: 2px dashed var(--line); }
+  .leaf .t { font-weight: 600; font-size: .93rem; }
+  .leaf .d { color: var(--muted); font-size: .88rem; margin-top: 2px; }
+  .jump { background: none; border: 0; padding: 0; text-align: left; font-weight: 700; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .tag { display: inline-block; margin-left: 8px; font-size: .72rem; font-weight: 700; letter-spacing: .02em; border-radius: 999px; padding: 1px 9px; vertical-align: 1px; }
+  .tag.chot { background: var(--chot-bg); color: var(--chot-ink); }
+  .tag.loi { background: var(--warn-bg); color: var(--warn-ink); }
+
+  .hint { margin: 16px 2px 0; font-size: .9rem; color: var(--muted); }
+
+  /* ---------- bố cục máy tính ---------- */
+  @media (min-width: 1180px) {
+    .map { display: block; }
+    .row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); column-gap: clamp(64px, 5.5vw, 110px); align-items: stretch; }
+    .row + .row { margin-top: 74px; }
+    svg.edges { display: block; }
+    .node .links { display: none; }
+    .n-F4 { grid-column: 2; grid-row: 1; }
+    .n-F1 { grid-column: 1; grid-row: 1; }
+    .n-F2 { grid-column: 2; grid-row: 1; }
+    .n-F3 { grid-column: 3; grid-row: 1; }
+    .n-F5 { grid-column: 4; grid-row: 1; }
+    .n-F6 { grid-column: 5; grid-row: 1; }
+    .n-F7 { grid-column: 2; grid-row: 1; }
+    .n-F8 { grid-column: 4; grid-row: 1; }
+    .n-N  { grid-column: 5; grid-row: 1; }
+    .band { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); column-gap: 30px; row-gap: 10px; align-items: start; margin: 46px 0 6px; padding-left: 30px; border-left: 0; }
+    .band::before { content: ""; position: absolute; left: 10px; top: 0; height: var(--trunk, 40px); border-left: 2px solid var(--kc); opacity: .8; }
+    .gcol { display: contents; }
+    .tgl { grid-column: 1; grid-row: 1; justify-self: start; }
+    .gwrap { grid-column: 1; }
+    .gbtn::before { content: ""; position: absolute; left: -25px; top: 50%; width: 20px; border-top: 2px solid var(--kc); opacity: .8; }
+    ul.leaves { grid-column: 2; margin: 0; padding: 0; border-left: 0; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+    ul.leaves::before { content: ""; position: absolute; left: -30px; top: 20px; width: 30px; border-top: 2px dashed var(--line); }
+    .leaf::before { display: none; }
+  }
+
+  /* ---------- tab chuyển trang ---------- */
+  .pages { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 18px; }
+  .pages button[role="tab"] {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 16px; font-weight: 600; font-size: .95rem;
+  }
+  .pages button[role="tab"]:hover { border-color: var(--accent); }
+  .pages button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  [hidden] { display: none !important; }
+
+  /* ---------- trang 2: bảng vấn đề ---------- */
+  .gleg { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 16px 0 0; padding: 0; list-style: none; font-size: .9rem; color: var(--muted); }
+  .gleg li { display: flex; align-items: center; gap: 8px; }
+  .gchip { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: .75rem; font-weight: 700; border: 1px solid; white-space: nowrap; }
+  .gchip.now { color: var(--k3); border-color: var(--k3); background: color-mix(in srgb, var(--k3) 14%, var(--surface)); }
+  .gchip.test { color: var(--k2); border-color: var(--k2); background: color-mix(in srgb, var(--k2) 14%, var(--surface)); }
+  .gchip.talk { color: var(--k4); border-color: var(--k4); background: color-mix(in srgb, var(--k4) 14%, var(--surface)); }
+  table.issues { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; margin-top: 18px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .issues th { text-align: left; padding: 11px 14px; background: var(--surface-2); color: var(--muted); font-size: .78rem;
+    text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--line); }
+  .issues th:first-child { border-top-left-radius: 11px; width: 56px; }
+  .issues th:last-child { border-top-right-radius: 11px; }
+  .issues th:nth-child(2), .issues th:nth-child(3) { width: 34%; }
+  .issues td { vertical-align: top; padding: 16px 14px; border-bottom: 1px solid var(--line); font-size: .92rem; overflow-wrap: anywhere; }
+  .issues tr:last-child td { border-bottom: 0; }
+  .issues td.num { text-align: center; font-weight: 800; font-size: 1.25rem; color: var(--muted); padding-left: 8px; padding-right: 8px; }
+  .issues tr.g-now td.num { box-shadow: inset 5px 0 0 var(--k3); }
+  .issues tr.g-test td.num { box-shadow: inset 5px 0 0 var(--k2); }
+  .issues tr.g-talk td.num { box-shadow: inset 5px 0 0 var(--k4); }
+  .issues h3 { margin: 0 0 8px; font-size: 1.02rem; line-height: 1.3; }
+  .issues .nn { display: none; color: var(--muted); }
+  .issues .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+  .issues .risk { font-size: .8rem; color: var(--muted); }
+  .issues .links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .flowlink { background: var(--surface-2); border: 1px solid var(--line); border-left: 4px solid var(--kc); border-radius: 8px; padding: 2px 10px; font-size: .8rem; font-weight: 600; }
+  .flowlink:hover { border-color: var(--kc); }
+  .issues td p { margin: 0 0 .65em; }
+  .issues td ul { margin: 0 0 .65em; padding-left: 1.2em; }
+  .issues td li { margin-bottom: .3em; }
+  .issues .lname { font-weight: 700; margin-bottom: 8px; color: var(--accent); }
+  .glossary { margin: 20px 0 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  .glossary summary { cursor: pointer; font-weight: 600; }
+  .glossary dl { display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: 8px 18px; margin: 14px 0 4px; }
+  .glossary dt { font-weight: 700; }
+  .glossary dd { margin: 0; color: var(--muted); }
+  @media (max-width: 1099px) {
+    table.issues, .issues tbody, .issues tr, .issues td { display: block; }
+    .issues thead { display: none; }
+    table.issues { background: transparent; border: 0; box-shadow: none; }
+    .issues tr { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin: 0 0 16px; box-shadow: var(--shadow); overflow: hidden; }
+    .issues tr.g-now { border-left: 6px solid var(--k3); }
+    .issues tr.g-test { border-left: 6px solid var(--k2); }
+    .issues tr.g-talk { border-left: 6px solid var(--k4); }
+    .issues td { border-bottom: 1px dashed var(--line); padding: 14px; }
+    .issues td:last-child { border-bottom: 0; }
+    .issues td.num { display: none; }
+    .issues .nn { display: inline; }
+    .issues td::before { content: attr(data-label); display: block; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+    .glossary dl { grid-template-columns: 1fr; gap: 2px; }
+    .glossary dd { margin-bottom: 10px; }
+  }
+
+  /* ---------- nhãn đề xuất, khối chốt, trang 3 ---------- */
+  .tag.de { background: color-mix(in srgb, var(--k3) 16%, var(--surface)); color: var(--k3); border: 1px solid color-mix(in srgb, var(--k3) 55%, transparent); }
+  .gchip.dc { color: var(--chot-ink); border-color: var(--chot-ink); background: var(--chot-bg); }
+  .gchip.dx { color: var(--warn-ink); border-color: var(--warn-ink); background: var(--warn-bg); }
+  .gchip.dh { color: var(--k3); border-color: var(--k3); background: color-mix(in srgb, var(--k3) 14%, var(--surface)); }
+  .gchip.dg { color: var(--muted); border-color: var(--line); background: var(--surface-2); }
+  .planbox { margin-top: 14px; padding: 10px 12px; border-left: 4px solid var(--k3); background: var(--surface-2); border-radius: 0 8px 8px 0; }
+  .planbox p { margin: 0; }
+  .plan-sec { margin-top: 30px; }
+  .plan-sec h2 { margin: 0 0 6px; font-size: 1.15rem; }
+  .plan-intro { margin: 0 0 4px; color: var(--muted); max-width: 90ch; }
+  table.ptable { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; margin-top: 12px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .ptable th { text-align: left; padding: 10px 14px; background: var(--surface-2); color: var(--muted); font-size: .78rem;
+    text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--line); }
+  .ptable th:first-child { border-top-left-radius: 11px; }
+  .ptable th:last-child { border-top-right-radius: 11px; }
+  .ptable td { vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: .92rem; overflow-wrap: anywhere; }
+  .ptable tr:last-child td { border-bottom: 0; }
+  .ptable td.code { font-weight: 800; color: var(--muted); }
+  .to-review { margin: 12px 0 0; padding-left: 1.3em; max-width: 90ch; }
+  .to-review li { margin-bottom: .6em; }
+  @media (max-width: 1099px) {
+    table.ptable, .ptable tbody, .ptable tr, .ptable td { display: block; }
+    .ptable thead, .ptable colgroup { display: none; }
+    table.ptable { background: transparent; border: 0; box-shadow: none; }
+    .ptable tr { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin: 0 0 12px; box-shadow: var(--shadow); overflow: hidden; }
+    .ptable td { border-bottom: 1px dashed var(--line); padding: 12px 14px; }
+    .ptable td:last-child { border-bottom: 0; }
+    .ptable td::before { content: attr(data-label); display: block; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  }
+
+  footer { padding: 18px 0 40px; color: var(--muted); font-size: .88rem; }
+  footer p { margin: 4px 0; max-width: 90ch; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="pages" role="tablist" aria-label="Các trang">
+    <button type="button" role="tab" id="tab-map" aria-selected="true" aria-controls="page-map">Trang 1 · Sơ đồ luồng</button>
+    <button type="button" role="tab" id="tab-issues" aria-selected="false" aria-controls="page-issues" tabindex="-1">Trang 2 · Vấn đề đã biết và cách sửa</button>
+    <button type="button" role="tab" id="tab-plan" aria-selected="false" aria-controls="page-plan" tabindex="-1">Trang 3 · Quyết định và kế hoạch hiện thực</button>
+  </nav>
+  <div id="page-map" role="tabpanel" aria-labelledby="tab-map">
+  <header class="top">
+    <h1>Bản đồ luồng mentoring-service</h1>
+    <p class="sub">Bức tranh tổng quan 8 luồng và cách chúng nối với nhau. Bấm vào một node để các nhánh con tỏa ra ngay tại node đó, rồi bấm tiếp vào từng nhánh để xem chi tiết. Có thể mở nhiều node cùng lúc để so sánh.</p>
+    <ul class="legend" aria-label="Chú giải">
+      <li><span class="sw" style="background:var(--k1)"></span>Quan hệ mentor–mentee</li>
+      <li><span class="sw" style="background:var(--k2)"></span>Đặt chỗ</li>
+      <li><span class="sw" style="background:var(--k3)"></span>Buổi học diễn ra</li>
+      <li><span class="sw" style="background:var(--k4)"></span>Rẽ nhánh</li>
+      <li><span class="sw note-sw"></span>Ghi chú của bạn</li>
+      <li><span class="ln"></span>Luồng chính</li>
+      <li><span class="ln dash"></span>Rẽ nhánh / ngoại lệ</li>
+    </ul>
+  </header>
+
+  <section class="map-card" aria-label="Sơ đồ các luồng">
+    <div class="toolbar">
+      <span class="nstat" id="nstat" role="status"></span>
+      <button type="button" class="btn" id="exp-json">Xuất ghi chú (.json)</button>
+      <button type="button" class="btn" id="exp-md">Xuất Markdown (.md)</button>
+      <button type="button" class="btn" id="imp">Nhập ghi chú</button>
+      <button type="button" class="btn" id="clr">Xoá tất cả ghi chú</button>
+      <input type="file" id="impfile" accept=".json,application/json" hidden>
+    </div>
+    <div class="map" id="map"></div>
+    <p class="hint" id="hint"></p>
+    <div class="notepop" id="notepop" role="dialog" aria-label="Ghi chú" hidden>
+      <div class="np-label" id="np-label"></div>
+      <textarea id="np-text" rows="5" maxlength="2000" placeholder="Viết ghi chú cho node này…"></textarea>
+      <div class="np-actions">
+        <span class="np-count" id="np-count"></span>
+        <button type="button" class="btn" id="np-clear">Xoá ghi chú</button>
+        <button type="button" class="btn primary" id="np-done">Xong</button>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <section id="page-issues" role="tabpanel" aria-labelledby="tab-issues" hidden>
+    <header class="top">
+      <h1>Vấn đề đã biết và cách sửa</h1>
+      <p class="sub">Giải thích 11 mục ở Phụ lục A của <code>docs/spec-mentoring-service.md</code>: chuyện gì xảy ra, cách sửa gợi ý, và bài học System Design rút ra từ mỗi mục. Đây là mô tả hành vi <strong>hiện tại</strong> của code, chưa sửa gì. Mức rủi ro là đánh giá sơ bộ của mình khi đọc code, chưa tái hiện bằng test. Mỗi dòng có khối <strong>Chốt</strong> trỏ tới quyết định tương ứng ở Trang 3. Bấm tên luồng trong từng dòng để quay lại sơ đồ.</p>
+      <ul class="gleg" aria-label="Chú giải nhóm">
+        <li><span class="gchip now">Làm ngay</span>sửa nhỏ, ý nghĩa rõ ràng</li>
+        <li><span class="gchip test">Kèm test</span>sửa vừa, cần viết test kèm</li>
+        <li><span class="gchip talk">Bàn trước</span>cần quyết định nghiệp vụ hoặc kiến trúc</li>
+      </ul>
+    </header>
+    <table class="issues">
+      <thead><tr><th scope="col">#</th><th scope="col">Vấn đề và giải thích</th><th scope="col">Cách sửa và giải thích</th><th scope="col">Bài học System Design</th></tr></thead>
+      <tbody id="issues-body"></tbody>
+    </table>
+    <details class="glossary">
+      <summary>Thuật ngữ dùng ở trang này</summary>
+      <dl id="glossary-list"></dl>
+    </details>
+  </section>
+
+  <section id="page-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+    <header class="top">
+      <h1>Quyết định và kế hoạch hiện thực</h1>
+      <p class="sub">Phần II của <code>docs/spec-mentoring-service.md</code>: hành vi đích, bất biến hệ thống, quyết định thiết kế, thứ tự các gói code và test nghiệm thu. Các gói <strong>G1–G5 đã hiện thực và commit</strong>, G6 (đồng bộ tài liệu) xong ngày 29/10/2026; Trang 1 và Trang 2 đã phản ánh hành vi sau các gói này. Khi có chỗ khác, <strong>spec thắng</strong>.</p>
+      <ul class="gleg" aria-label="Chú giải trạng thái">
+        <li><span class="gchip dc">Đã chốt</span>đã thống nhất với chủ sở hữu</li>
+        <li><span class="gchip dh">Đã hiện thực</span>có trong code và test, đã commit</li>
+        <li><span class="gchip dg">Giữ nguyên</span>quyết định không làm thêm trong đợt này</li>
+      </ul>
+    </header>
+    <div id="plan-root"></div>
+  </section>
+
+  <footer>
+    <p>Nguồn: <code>docs/spec-mentoring-service.md</code> (code tại commit <code>5e40e2e</code>). Trang 1 và 2 mô tả hành vi <strong>hiện tại</strong> của code, trừ các nhóm <em>Hành vi đích</em>; Trang 3 là Phần II của spec.</p>
+    <p>Nhãn <span class="tag chot">Đã chốt · chưa hiện thực</span> là thay đổi đã thống nhất nhưng chưa có trong code; <span class="tag de">Đã hiện thực (G1–G5)</span> là hành vi đích đã có trong code; <span class="tag loi">Vấn đề đã biết</span> là điểm chưa hợp lý ghi ở phụ lục A của spec.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* Dữ liệu: mỗi item là [tiêu đề, chi tiết, nhãn]. Ký tự `x` được hiển thị như mã. */
+const FLOWS = {
+  F1: {
+    code: "F1", kind: "k1", cap: "Quan hệ", title: "Gửi yêu cầu",
+    desc: "Mentee xin một mentor hướng dẫn dài hạn.",
+    state: "PENDING → ACCEPTED",
+    goal: "Mentee xin một mentor cụ thể hướng dẫn dài hạn. Khi mentor chấp nhận (`ACCEPTED`), hai bên có quan hệ và mentee đặt được phiên thường (F2).",
+    groups: [
+      ["Ai làm gì", [
+        ["Mentee gửi yêu cầu", "`POST /requests`, chỉ role MENTEE"],
+        ["Mentor / admin trả lời", "`POST /requests/{id}/respond`: `ACCEPT` hoặc `REJECT`"],
+        ["Mentee / admin huỷ", "`POST /requests/{id}/cancel`, chỉ khi `PENDING`"],
+        ["Mentee, mentor hoặc admin kết thúc", "`POST /requests/{id}/end` (`/complete` là endpoint cũ, đã `@Deprecated`)"]
+      ]],
+      ["Điều kiện khi gửi", [
+        ["Email đã xác minh", "`EMAIL_NOT_VERIFIED` (403)"],
+        ["Nội dung hợp lệ", "Mục tiêu 50–1000 ký tự; thời gian dự kiến 1, 3 hoặc 6 tháng"],
+        ["Mentor nhận được mentee mới", "Phải `APPROVED` và `ACCEPTING`; `PAUSED`/`ON_LEAVE`/`SUSPENDED` → `MENTOR_UNAVAILABLE`"],
+        ["Mỗi cặp một yêu cầu mở", "Đã có `PENDING` hoặc `ACCEPTED` → `REQUEST_ALREADY_EXISTS`"],
+        ["Tối đa 3 yêu cầu chờ", "Mỗi mentee chỉ có 3 yêu cầu `PENDING` → `TOO_MANY_PENDING_REQUESTS`"]
+      ]],
+      ["Mentor trả lời", [
+        ["Chấp nhận", "Kiểm sức chứa `capacity` (`CAPACITY_FULL`), rồi đồng bộ số mentee sang profile-service"],
+        ["Từ chối", "Bắt buộc chọn lý do: `FULL`, `NOT_MY_EXPERTISE`, `SCHEDULE`, `OTHER`"],
+        ["Thông báo cho mentee", "`REQUEST_ACCEPTED` hoặc `REQUEST_REJECTED` kèm lý do và lời nhắn"]
+      ]],
+      ["Trạng thái", [
+        ["PENDING → ACCEPTED / REJECTED / CANCELLED / EXPIRED", "Mentor trả lời, mentee huỷ, hoặc hết hạn"],
+        ["ACCEPTED → ENDED", "Kết thúc thủ công hoặc do không hoạt động"],
+        ["COMPLETED", "Trạng thái di sản, không còn dùng cho dữ liệu mới", "loi"]
+      ]],
+      ["Hết hạn & không hoạt động", [
+        ["Hết hạn sau 24 giờ", "Job 5 phút: `PENDING` quá `app.requests.expire-after` → `EXPIRED`, gợi ý tối đa 3 mentor tương tự"],
+        ["Kết thúc quan hệ", "Lý do `GOAL_REACHED`/`NO_LONGER_NEEDED`/`NOT_A_FIT`/`OTHER`; huỷ phiên sắp tới theo chính sách huỷ của người kết thúc"],
+        ["Hoàn tiền lỗi khi kết thúc", "Quan hệ vẫn `ACCEPTED`, gọi lại an toàn"],
+        ["Không hoạt động", "Nhắc sau 30 ngày; thêm 7 ngày vẫn không có phiên → `ENDED` (`INACTIVE`). Tin nhắn không được tính là hoạt động"]
+      ]]
+    ]
+  },
+
+  F2: {
+    code: "F2", kind: "k2", cap: "Đặt chỗ", title: "Đặt lịch",
+    desc: "Chọn khung giờ trống, giữ chỗ, tạm giữ học phí từ ví.",
+    state: "PENDING",
+    goal: "Mentee đã được mentor nhận chọn một khung giờ trống. Hệ thống giữ khung giờ, tạm giữ học phí từ ví, rồi chuyển sang chờ mentor xác nhận (F3).",
+    groups: [
+      ["Ai làm gì", [
+        ["Xem khung giờ trống", "`GET /mentors/{id}/available-slots`: 60 hoặc 15 phút, 1–28 ngày, bước 30 phút"],
+        ["Mentee / admin đặt lịch", "`POST /sessions` (201)"],
+        ["payment-service báo đã giữ tiền", "`POST /internal/sessions/{id}/payment-succeeded` (`markPaid`)"]
+      ]],
+      ["Điều kiện (theo thứ tự kiểm tra)", [
+        ["Email, đặt cho chính mình", "`EMAIL_NOT_VERIFIED`; không phải admin thì `menteeId` phải là mình"],
+        ["Thời lượng đúng 60 phút", "`INVALID_DURATION`"],
+        ["Agenda 20–500 ký tự", "`INVALID_AGENDA`; link đọc trước phải là URL http(s)"],
+        ["Đủ báo trước, không quá xa", "≥ 3 giờ (`TOO_SOON`), ≤ 60 ngày (`TOO_FAR`)"],
+        ["Phải có yêu cầu ACCEPTED", "`NOT_ACCEPTED` (F1)"],
+        ["Khung giờ hợp lệ với mentor", "Trạng thái mentor, báo trước = max(3 giờ, `minNoticeHours` mặc định 12 giờ), nằm trong ca rảnh, không trùng ngày nghỉ"],
+        ["Có giá", "Giá bằng 0 → `PRICE_NOT_SET`"],
+        ["Không trùng lịch", "`MENTOR_NOT_AVAILABLE` (có đệm 15 phút), `MENTEE_SCHEDULE_CONFLICT`"]
+      ]],
+      ["Các bước", [
+        ["1. Tạo phiên PENDING", "Giá chốt tại lúc đặt; mentor đổi giá sau không ảnh hưởng"],
+        ["2. Gọi ví tạm giữ học phí", "`payFromWallet` không bao giờ ném lỗi, chỉ ghi log khi thất bại"],
+        ["3a. Đủ tiền", "payment-service gọi ngược `payment-succeeded` → `AWAITING_MENTOR` (F3)"],
+        ["3b. Thiếu tiền", "Phiên vẫn `PENDING`, giữ khung giờ tối đa 15 phút để nạp thêm"],
+        ["Mã giới thiệu", "Chỉ dùng ở phiên thường đầu tiên với mentor đó"]
+      ]],
+      ["Trạng thái", [
+        ["PENDING → AWAITING_MENTOR", "payment-service báo đã tạm giữ"],
+        ["PENDING → EXPIRED", "Quá 15 phút chưa giữ được tiền; `PAYMENT_TIMEOUT`, hoàn 0đ"],
+        ["PENDING → CANCELLED", "Huỷ khi chưa thanh toán (F7)"]
+      ]],
+      ["Job nền", [
+        ["expireUnpaidSessions", "Mỗi 60 giây: `PENDING` tạo quá 15 phút → `EXPIRED`, báo mentee `SESSION_EXPIRED`, trả lại lượt nếu là buổi thử"]
+      ]]
+    ]
+  },
+
+  F3: {
+    code: "F3", kind: "k2", cap: "Đặt chỗ", title: "Xác nhận",
+    desc: "Mentor nhận hay từ chối; quá hạn thì tự huỷ và hoàn tiền.",
+    state: "AWAITING_MENTOR → CONFIRMED",
+    goal: "Mentor quyết định nhận hay từ chối phiên đã được tạm giữ học phí. Quá hạn thì hệ thống huỷ và hoàn 100%.",
+    groups: [
+      ["Khi tiền đã được giữ (markPaid)", [
+        ["PENDING → AWAITING_MENTOR", "Đặt hạn xác nhận = nhỏ hơn của (+24 giờ) và (giờ bắt đầu − 1 giờ)"],
+        ["Thông báo", "Mentor `SESSION_BOOKED` (kèm hạn); mentee `SESSION_AWAITING_MENTOR`"],
+        ["Idempotent", "Gọi lại không đổi trạng thái hay hạn"],
+        ["Tiền về khi phiên đã huỷ/hết hạn", "Hoàn 100% với lý do `SESSION_ALREADY_CANCELLED`"]
+      ]],
+      ["Mentor xác nhận", [
+        ["`POST /sessions/{id}/confirm`", "MENTOR/ADMIN; không phải admin thì phải là mentor của phiên"],
+        ["Điều kiện", "`NOT_AWAITING_MENTOR`; `CONFIRM_WINDOW_CLOSED` nếu quá hạn hoặc quá giờ bắt đầu"],
+        ["Kết quả", "`CONFIRMED`; học phí vẫn được giữ, không chuyển tiền; báo cả hai `SESSION_CONFIRMED`"]
+      ]],
+      ["Mentor từ chối", [
+        ["`POST /sessions/{id}/decline`", "Lý do tối đa 300 ký tự, tuỳ chọn"],
+        ["Hậu quả", "Hoàn 100%, không ghi strike, trả lại lượt buổi thử"],
+        ["Thông báo mentee", "`SESSION_CANCELLED` kèm tên tối đa 3 mentor tương tự (matching-service)"]
+      ]],
+      ["Quá hạn xác nhận", [
+        ["Job mỗi 60 giây", "`confirmDeadline` đã qua → `EXPIRED` (`MENTOR_NO_RESPONSE`), hoàn 100%"],
+        ["Thông báo", "Mentee `SESSION_CANCELLED`; mentor `SESSION_EXPIRED`"]
+      ]],
+      ["Hoàn tiền (cancelUnconfirmed)", [
+        ["Hoàn trước, đổi trạng thái sau", "Hoàn 100% đồng bộ rồi mới đổi trạng thái"],
+        ["Hoàn thất bại", "502 `REFUND_FAILED`, phiên giữ `AWAITING_MENTOR`, job thử lại ở phút sau"],
+        ["Chạy đua", "Hoàn tiền xong nhưng phiên không đổi (vd. mentor xác nhận cùng lúc) là khả năng đã biết", "loi"]
+      ]]
+    ]
+  },
+
+  F4: {
+    code: "F4", kind: "k2", cap: "Đặt chỗ", title: "Buổi thử đầu tiên",
+    desc: "15 phút, 30.000đ, chưa cần quan hệ với mentor.",
+    state: "kind = TRIAL",
+    goal: "Mentee thử một buổi 15 phút có phí cố định với mentor chưa nhận mình, trước khi gửi yêu cầu dài hạn. Không có endpoint riêng: dùng chung đặt lịch (F2) rồi đi tiếp F3, F5, F6.",
+    groups: [
+      ["Cách đặt", [
+        ["Cùng endpoint đặt lịch", "`POST /sessions` với `kind = TRIAL`"],
+        ["Sau khi đặt", "Giống phiên thường: xác nhận (F3), phòng học (F5), hoàn thành (F6), huỷ (F7)"]
+      ]],
+      ["Khác phiên thường", [
+        ["Thời lượng 15 phút", "Khác 15 → `INVALID_DURATION`"],
+        ["Phí cố định 30.000đ", "`app.trial.fee`, không phụ thuộc giá mentor (không có `PRICE_NOT_SET`)"],
+        ["Không được có yêu cầu ACCEPTED", "Đã có → `TRIAL_NOT_ALLOWED` (hãy đặt buổi thường)"],
+        ["Mentor phải duyệt và bật nhận buổi thử", "`MENTOR_NOT_AVAILABLE`, `TRIAL_DISABLED` (mặc định bật)"],
+        ["Không dùng mã giới thiệu", "Luôn bị `REFERRAL_NOT_FIRST_BOOKING`"],
+        ["Không chấm sao", "`TRIAL_NOT_REVIEWABLE`"]
+      ]],
+      ["Giới hạn", [
+        ["Mỗi cặp mentee–mentor một lần", "Bảng `trial_uses`; vi phạm → `TRIAL_ALREADY_USED`"],
+        ["Tối đa 3 buổi chưa diễn ra", "`TRIAL_LIMIT`, mỗi mentee"]
+      ]],
+      ["Huỷ & phòng học", [
+        ["Mentee huỷ sau khi mentor xác nhận", "Còn ≥ 2 giờ hoàn 100%, muộn hơn 0%"],
+        ["Thời gian chờ bên vắng", "5 phút thay vì 10 phút"]
+      ]],
+      ["Lượt dùng thử", [
+        ["Được trả lại khi", "Hết hạn thanh toán; mentor từ chối hoặc không xác nhận; mọi lần huỷ hoàn 100%"],
+        ["Không trả lại khi", "Mentee huỷ muộn (hoàn 0%) hoặc buổi đã diễn ra"],
+        ["Huỷ buổi thử còn PENDING", "Không được trả lượt vì hoàn 0%, trong khi hết hạn thanh toán thì có trả", "loi"],
+        ["Mentor PAUSED vẫn nhận buổi thử", "Kiểm tra trạng thái mentor cho PAUSED đi qua", "loi"]
+      ]]
+    ]
+  },
+
+  F5: {
+    code: "F5", kind: "k3", cap: "Buổi học", title: "Thực hiện",
+    desc: "Vào phòng Jitsi, hệ thống ghi nhật ký có mặt.",
+    state: "CONFIRMED",
+    goal: "Hai bên gặp nhau trong phòng học Jitsi của hệ thống. Việc ai đã vào phòng được ghi lại làm căn cứ xác định vắng mặt (F6).",
+    groups: [
+      ["Phòng học", [
+        ["`GET /sessions/{id}/room`", "Chỉ MENTOR và MENTEE (admin không vào được)"],
+        ["Trạng thái cho phép", "`CONFIRMED` hoặc `AWAITING_ATTENDANCE` (`ROOM_NOT_AVAILABLE`)"],
+        ["Khung giờ", "Mở 10 phút trước giờ bắt đầu, đóng 30 phút sau giờ kết thúc (`ROOM_CLOSED`)"],
+        ["Token vào phòng", "JWT Jitsi theo từng người; mentor là moderator; hết hạn khi phòng đóng"]
+      ]],
+      ["Nhật ký có mặt", [
+        ["Ghi lần đầu mỗi bên", "`mentor_joined_at` / `mentee_joined_at` khi lấy token lần đầu"],
+        ["Có mặt = đã nhận token", "Không đo thời gian thực sự ở trong phòng", "loi"]
+      ]],
+      ["Báo vắng mặt", [
+        ["`POST /sessions/{id}/report-absent`", "Chỉ sau thời gian chờ 10 phút (buổi thử 5 phút) từ giờ bắt đầu"],
+        ["Điều kiện", "`GRACE_NOT_ELAPSED`, `YOU_NOT_JOINED`, `OTHER_SIDE_JOINED`"],
+        ["Hiệu lực", "Ghi câu trả lời tham dự và báo bên bị tố; không đổi trạng thái phiên"]
+      ]],
+      ["Link họp ngoài & nhắc lịch", [
+        ["Link Meet / Zoom / Teams", "Mentor sửa được khi phiên còn giữ chỗ và chưa kết thúc"],
+        ["Nhắc lịch", "`SESSION_REMINDER_24H` và `SESSION_REMINDER_15M`, mỗi mốc gửi đúng một lần"],
+        ["Xuất lịch", "`GET /sessions/{id}/calendar.ics`"]
+      ]]
+    ]
+  },
+
+  F6: {
+    code: "F6", kind: "k3", cap: "Buổi học", title: "Hoàn thành & đánh giá",
+    desc: "Kết luận phiên, xử lý tiền, khiếu nại, đánh giá.",
+    state: "AWAITING_ATTENDANCE → COMPLETED",
+    goal: "Sau giờ học, xác định phiên đã diễn ra hay chưa, xử lý tiền, mở khiếu nại nếu hai bên bất đồng, rồi cho phép đánh giá.",
+    groups: [
+      ["Dòng thời gian (E = giờ kết thúc)", [
+        ["E", "Job 1 phút: `CONFIRMED` → `AWAITING_ATTENDANCE`, báo cả hai `ATTENDANCE_REQUIRED`"],
+        ["E + 30 phút", "Phòng đóng"],
+        ["E đến E + 24 giờ", "Hai bên trả lời tham dự (`app.attendance.window`)"],
+        ["E + 24 giờ", "Hết cửa sổ: phiên tự kết luận (thường `COMPLETED`)"],
+        ["E + 72 giờ", "payment-service giải phóng thu nhập cho mentor"],
+        ["E + 96 giờ", "Hết cửa sổ khiếu nại (`P4D`)"],
+        ["Hoàn thành + 14 ngày", "Hết cửa sổ đánh giá"]
+      ]],
+      ["Xác nhận tham dự", [
+        ["`POST /sessions/{id}/attendance`", "Câu trả lời: `HELD`, `MENTOR_NO_SHOW`, `MENTEE_NO_SHOW`, `CANCELLED_ON_CALL`"],
+        ["Hai bên giống nhau", "Kết luận ngay: `COMPLETED` hoặc `CANCELLED`"],
+        ["Hai bên khác nhau", "`DISPUTED`"],
+        ["Nhật ký phòng quyết định vắng mặt", "Chỉ mentor vào → `NO_SHOW_MENTEE`; chỉ mentee vào → `NO_SHOW_MENTOR`; không ai vào → `CANCELLED` (`BOTH_ABSENT`)"],
+        ["Không được tố trái nhật ký", "`ABSENCE_CONTRADICTS_LOG`"]
+      ]],
+      ["Kết quả & tiền", [
+        ["COMPLETED", "Mentor nhận (giải phóng sau 72 giờ); hoa hồng nền tảng 15%"],
+        ["NO_SHOW_MENTEE", "Không hoàn; mentor vẫn nhận"],
+        ["NO_SHOW_MENTOR", "Hoàn 100% cho mentee; mentor bị 1 strike"],
+        ["CANCELLED (cả hai vắng / báo huỷ giữa chừng)", "Hoàn 100%, không strike"],
+        ["DISPUTED", "Tạm giữ tiền (`HOLD`), tự tạo tranh chấp chờ admin"],
+        ["Outbox tới payment-service", "`FINAL_STATE`, `REFUND`, `HOLD`, `RELEASE`; thử lại theo thứ tự trong phiên"]
+      ]],
+      ["Tranh chấp", [
+        ["Mở khiếu nại", "`POST /sessions/{id}/disputes` trong 4 ngày sau E; mô tả 20–2000 ký tự, tối đa 5 link bằng chứng"],
+        ["Trạng thái", "`OPEN` → `IN_REVIEW` → `RESOLVED` (admin)"],
+        ["Kết quả admin quyết", "`FULL_REFUND`, `PARTIAL_REFUND`, `NO_REFUND`, `WARNING`, `SUSPEND`"],
+        ["Cửa sổ khiếu nại dài hơn thời điểm giải phóng thu nhập", "Khiếu nại đến E+96 giờ, thu nhập đã giải phóng ở E+72 giờ", "loi"],
+        ["Trạng thái phiên không đổi sau hoàn tiền toàn phần", "Phiên `DISPUTED` có thể không có đường ra", "loi"]
+      ]],
+      ["Đánh giá", [
+        ["Mentee đánh giá mentor", "Chỉ phiên `COMPLETED`, trong 14 ngày, 4 điểm 1–5 và tag"],
+        ["Quy tắc", "Từ 2 sao trở xuống cần bình luận ≥ 20 ký tự; sửa trong 48 giờ; mentor trả lời một lần"],
+        ["Buổi thử", "Không chấm sao"],
+        ["Điểm công khai", "Chỉ hiện khi mentor có ≥ 3 đánh giá; điểm Bayes gửi sang profile-service"],
+        ["Mentor nhận xét mentee", "Riêng tư; chỉ dùng cho huy hiệu `RELIABLE`"]
+      ]],
+      ["Strike", [
+        ["Ghi strike", "Một lần cho mỗi (phiên, lý do); báo mentor `MENTOR_STRIKE`"],
+        ["Đủ 3 lần trong 30 ngày", "Mentor chuyển `PAUSED`, báo admin"]
+      ]]
+    ]
+  },
+
+  F7: {
+    code: "F7", kind: "k4", cap: "Rẽ nhánh", title: "Huỷ",
+    desc: "Chính sách huỷ riêng: hoàn tiền theo mốc và strike.",
+    state: "→ CANCELLED",
+    goal: "Cho phép mentee, mentor hoặc hệ thống huỷ phiên chưa bắt đầu, hoàn tiền theo chính sách và xử lý hệ quả với mentor.",
+    groups: [
+      ["Ai huỷ, bằng cách nào", [
+        ["Xem trước hậu quả", "`GET /sessions/{id}/cancel-preview`"],
+        ["Huỷ", "`POST /sessions/{id}/cancel` (mentee, mentor hoặc admin)"],
+        ["Mentor từ chối phiên chờ", "`POST /sessions/{id}/decline` (F3)"],
+        ["Huỷ hàng loạt", "Khoá tài khoản, đình chỉ mentor, kết thúc quan hệ (F1) cùng đi qua `cancelWithPolicy`"]
+      ]],
+      ["Mentee huỷ: hoàn bao nhiêu", [
+        ["PENDING (chưa tạm giữ tiền)", "0đ, không gọi hoàn tiền"],
+        ["AWAITING_MENTOR", "100% ở mọi thời điểm"],
+        ["CONFIRMED, còn ≥ 24 giờ", "Hoàn 100%"],
+        ["CONFIRMED, còn 4–24 giờ", "Hoàn 50%; mentor nhận phần còn lại trừ hoa hồng"],
+        ["CONFIRMED, còn dưới 4 giờ", "Hoàn 0%; mentor nhận toàn bộ giá trừ hoa hồng"],
+        ["Buổi thử (đã xác nhận)", "Còn ≥ 2 giờ hoàn 100%, muộn hơn 0%"]
+      ]],
+      ["Mentor / hệ thống huỷ", [
+        ["Mentor huỷ qua /cancel", "Hoàn 100% nếu đã thanh toán; ghi 1 strike (`MENTOR_CANCEL`)"],
+        ["Mentor từ chối (decline)", "Hoàn 100%, không strike"],
+        ["Hệ thống / admin", "Hoàn 100% nếu đã thanh toán, không strike"]
+      ]],
+      ["Điều kiện & lỗi", [
+        ["Chỉ huỷ khi", "`PENDING`, `AWAITING_MENTOR` hoặc `CONFIRMED`; sai → `SESSION_NOT_CANCELLABLE`"],
+        ["Chưa tới giờ bắt đầu", "`SESSION_ALREADY_STARTED`"],
+        ["Hoàn tiền thất bại", "502 `REFUND_FAILED`, phiên giữ nguyên"]
+      ]],
+      ["Thứ tự thực hiện", [
+        ["1. Hoàn tiền đồng bộ", "Gọi payment-service trước, ngoài transaction"],
+        ["2. Đổi trạng thái", "`CANCELLED`, ghi người huỷ, lý do, % hoàn; đóng đề xuất đổi lịch đang chờ"],
+        ["3. Huỷ muộn đã thanh toán", "Xếp `FINAL_STATE` để mentor nhận phần còn lại"],
+        ["4. Sau commit", "Gửi outbox, trả lượt buổi thử, ghi strike, thông báo"]
+      ]],
+      ["Strike", [
+        ["Đủ 3 lần trong 30 ngày", "Mentor `PAUSED` và báo admin"],
+        ["Strike quá rộng", "Mentor huỷ phiên chưa thanh toán, hoặc kết thúc quan hệ, vẫn bị strike", "loi"]
+      ]],
+      ["Tách khỏi đổi lịch", [
+        ["Chính sách huỷ luôn tính theo giờ bắt đầu hiện tại", "Không lưu giờ gốc; không có bậc hoàn tiền nào áp cho việc dời", "chot"]
+      ]]
+    ]
+  },
+
+  F8: {
+    code: "F8", kind: "k4", cap: "Rẽ nhánh", title: "Đổi lịch",
+    desc: "Hai bên thống nhất dời giờ, không động tới tiền.",
+    state: "CONFIRMED → giờ mới",
+    goal: "Hai bên thống nhất dời một phiên đã xác nhận sang giờ khác mà không phải huỷ. Giá, thanh toán, link họp và thời lượng không đổi.",
+    groups: [
+      ["Đề xuất", [
+        ["Ai và ở đâu", "`POST /sessions/{id}/reschedule`, mentee hoặc mentor (admin bị chặn)"],
+        ["Chỉ phiên CONFIRMED", "`AWAITING_MENTOR` không đổi lịch được (`SESSION_NOT_CONFIRMED`)"],
+        ["Giới hạn", "Tối đa 2 lần mỗi phiên (`RESCHEDULE_LIMIT`); 1 đề xuất đang chờ (`RESCHEDULE_PENDING`)"],
+        ["Giờ mới", "Phải qua kiểm tra như đặt lịch: ca rảnh, báo trước, không trùng lịch"],
+        ["Mốc 2 giờ trước giờ bắt đầu", "Hiện tại: đề xuất sát giờ bị `RESCHEDULE_TOO_LATE`"]
+      ]],
+      ["Phản hồi", [
+        ["Chấp nhận", "Chỉ bên không phải người đề xuất; kiểm lại trùng lịch"],
+        ["Từ chối hoặc rút lại", "Bên nhận từ chối, hoặc người đề xuất rút"],
+        ["Hết hạn", "Job 1 phút; hạn = nhỏ hơn của (tạo + 24 giờ) và (giờ gốc − 1 giờ)"],
+        ["Chấp nhận không kiểm lại đủ điều kiện", "Không kiểm lại lịch rảnh, báo trước, trạng thái mentor", "loi"]
+      ]],
+      ["Khi chấp nhận", [
+        ["Đổi giờ", "Cập nhật `scheduledAt`, tăng `rescheduleCount`"],
+        ["Nhắc lịch", "Đặt lại cờ nhắc, tính theo giờ mới"],
+        ["Tệp .ics", "`SEQUENCE` tăng nên tải lại sẽ cập nhật sự kiện cũ"],
+        ["Giữ nguyên", "Giá, thanh toán, link họp, thời lượng"]
+      ]],
+      ["Giữ chỗ", [
+        ["Giờ cũ", "Giữ cho tới khi chấp nhận"],
+        ["Giờ mới", "Trong lúc chờ, tính là khoảng bận của cả mentor và mentee"],
+        ["Huỷ phiên", "Đề xuất đang chờ bị đóng `EXPIRED`"]
+      ]],
+      ["Đã chốt, chưa hiện thực", [
+        ["Đề xuất bất kỳ lúc nào trước giờ bắt đầu", "Bỏ mốc 2 giờ", "chot"],
+        ["Hạn đề xuất", "Nhỏ hơn của (tạo + 24 giờ) và giờ bắt đầu gốc; bỏ mốc 1 giờ", "chot"],
+        ["Chặn khi đã có người vào phòng", "`mentor_joined_at` hoặc `mentee_joined_at` đã ghi thì không đề xuất dời", "chot"],
+        ["Không phạt, không strike", "Giữ 2 lần/phiên, 1 đề xuất chờ, cần bên kia đồng ý", "chot"],
+        ["Tách khỏi chính sách huỷ", "Huỷ luôn tính theo giờ hiện tại", "chot"]
+      ]]
+    ]
+  },
+
+  N: {
+    code: "N", kind: "k5", cap: "Xuyên suốt", title: "Job nền & dịch vụ ngoài",
+    desc: "Những thứ chạy ngầm nối các luồng với nhau.",
+    state: "scheduler · outbox",
+    infra: true,
+    goal: "Các tác vụ nền và dịch vụ bên ngoài mà nhiều luồng cùng dựa vào.",
+    groups: [
+      ["Job nền của mentoring-service", [
+        ["sendReminders · 60 giây", "Nhắc 24 giờ và 15 phút trước giờ học (F5)"],
+        ["expireUnpaidSessions · 60 giây", "`PENDING` quá 15 phút → `EXPIRED` (F2)"],
+        ["expireUnconfirmedSessions · 60 giây", "`AWAITING_MENTOR` quá hạn → `EXPIRED`, hoàn 100% (F3)"],
+        ["attendanceJob · 1 phút", "Hết giờ → `AWAITING_ATTENDANCE`, kết luận theo nhật ký phòng và cửa sổ 24 giờ (F6)"],
+        ["expireProposals · 1 phút", "Đóng đề xuất đổi lịch quá hạn (F8)"],
+        ["PaymentOutboxService.flush · 1 phút", "Gửi lại lời gọi payment-service chưa thành công (F6, F7)"],
+        ["RequestExpiryService · 5 phút", "Yêu cầu `PENDING` quá 24 giờ → `EXPIRED` (F1)"],
+        ["MentorshipEndService · 1 giờ", "Nhắc và kết thúc quan hệ không hoạt động (F1)"],
+        ["Đồng bộ điểm đánh giá · 04:15 hằng đêm", "Gửi lại điểm sang profile-service (F6)"]
+      ]],
+      ["Dịch vụ ngoài", [
+        ["payment-service", "Ví, tạm giữ, hoàn tiền, giải phóng thu nhập (sau 72 giờ), hoa hồng 15%, mã giới thiệu"],
+        ["profile-service", "Hồ sơ mentor, lịch rảnh, đặt `PAUSED` khi đủ strike, nhận điểm đánh giá, số mentee"],
+        ["matching-service", "Gợi ý tối đa 3 mentor tương tự khi yêu cầu hoặc phiên bị huỷ/hết hạn"],
+        ["auth-service", "Nhật ký kiểm toán, gửi email thông báo; khoá tài khoản gọi vào mentoring-service"],
+        ["Jitsi", "Phòng học; mentoring-service ký JWT vào phòng"]
+      ]],
+      ["Outbox thanh toán", [
+        ["Loại bản ghi", "`REFUND`, `HOLD`, `RELEASE`, `FINAL_STATE` (và `REWARD` không còn dùng trong luồng huỷ)"],
+        ["Thứ tự và thử lại", "Gửi theo thứ tự trong cùng phiên; lỗi mạng/5xx giữ lại và chặn các bản ghi sau của phiên đó"],
+        ["Lỗi 4xx", "Bị bỏ; riêng `FINAL_STATE` gặp 404 thử tối đa 10 lần"]
+      ]]
+    ]
+  }
+};
+
+const ORDER = ["F1", "F4", "F2", "F3", "F5", "F6", "F7", "F8", "N"];
+
+/* Kết nối: fx/tx là vị trí ngang (0–1) trên cạnh trên/dưới để các đường không chồng lên nhau */
+const EDGES = [
+  { id: "c1", from: "F1", to: "F2", short: "ACCEPTED", long: "Mentor chấp nhận yêu cầu (`ACCEPTED`) nên mentee đặt được phiên thường." },
+  { id: "c2", from: "F4", to: "F2", short: "không cần ACCEPTED", long: "Buổi thử đặt qua cùng `POST /sessions` với `kind = TRIAL`, không cần yêu cầu `ACCEPTED`." },
+  { id: "c3", from: "F2", to: "F3", short: "đã giữ tiền", long: "payment-service tạm giữ học phí rồi gọi `payment-succeeded`: phiên từ `PENDING` sang `AWAITING_MENTOR`, chờ mentor." },
+  { id: "c4", from: "F3", to: "F5", short: "xác nhận", long: "Mentor xác nhận nên phiên thành `CONFIRMED`; phòng học mở 10 phút trước giờ bắt đầu." },
+  { id: "c5", from: "F5", to: "F6", short: "hết giờ", long: "Hết giờ kết thúc, phiên sang `AWAITING_ATTENDANCE`; job kết luận theo nhật ký phòng và câu trả lời hai bên." },
+  { id: "c6", from: "F3", to: "F8", short: "CONFIRMED", alt: true, fx: .72, tx: .3, long: "Chỉ phiên `CONFIRMED` mới đổi lịch được." },
+  { id: "c7", from: "F8", to: "F5", short: "giờ mới", alt: true, fx: .72, tx: .72, long: "Sau khi chấp nhận, `scheduledAt` đổi; phòng học và nhắc lịch theo giờ mới." },
+  { id: "c8", from: "F2", to: "F7", short: "chưa trả tiền", alt: true, long: "Huỷ phiên `PENDING` khi chưa tạm giữ tiền: 0đ." },
+  { id: "c9", from: "F3", to: "F7", short: "trước giờ học", alt: true, fx: .28, tx: .78, long: "Huỷ khi `AWAITING_MENTOR` hoặc `CONFIRMED`, trước giờ bắt đầu." },
+  { id: "c10", from: "F1", to: "F7", short: "kết thúc quan hệ", alt: true, tx: .22, long: "Kết thúc quan hệ (`/end`) huỷ các phiên sắp tới theo chính sách huỷ của người kết thúc." }
+];
+
+/* ---------- tiện ích ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const TAGS = { chot: "Đã chốt · chưa hiện thực", loi: "Vấn đề đã biết", de: "Đã hiện thực (G1–G5)" };
+
+/* ---------- hành vi đích (Phần II của spec): nhóm thêm vào từng luồng ---------- */
+const TARGET = {
+  F1: [
+    ["Gỡ endpoint cũ", "Bỏ `POST /requests/{id}/complete` và trạng thái `COMPLETED`; frontend chuyển sang `/end` (D15)", "de"]
+  ],
+  F2: [
+    ["Trần phiên chưa thanh toán", "Mỗi mentee tối đa 2 phiên `PENDING`, kiểm trong transaction có khoá theo mentee → 409 `TOO_MANY_UNPAID_SESSIONS` (D13)", "de"],
+    ["markPaid khoá dòng và ghi mã giao dịch", "Lưu `paymentTransactionId`; gọi lại cùng mã thì không đổi gì (D14, D3)", "de"],
+    ["Tiền về sau khi phiên đã huỷ / hết hạn", "Xếp `REFUND(100)` vào outbox trong cùng transaction thay vì gọi hoàn tiền đồng bộ (D1)", "de"]
+  ],
+  F3: [
+    ["Từ chối và hết hạn xác nhận qua outbox", "Một transaction: khoá dòng, đổi trạng thái, xếp `REFUND(100)`. Hết lỗi 502 `REFUND_FAILED` (D1, I2)", "de"],
+    ["confirm khoá dòng", "`findForUpdate` để xác nhận không đè lên job hết hạn chạy cùng lúc (D3, I1)", "de"]
+  ],
+  F4: [
+    ["Giới hạn 3 buổi kiểm trong transaction", "Khoá theo mentee, hết TOCTOU giữa các mentor khác nhau (D5a)", "de"],
+    ["Mentor PAUSED không nhận buổi thử", "409 `MENTOR_PAUSED` (D5b)", "de"],
+    ["Cặp từng có yêu cầu ENDED cũng không thử được", "409 `TRIAL_NOT_ALLOWED` với `ACCEPTED` hoặc `ENDED` (D5c)", "de"],
+    ["Trả lượt khi mentee không mất tiền", "Hoàn 100%, hoặc huỷ khi còn `PENDING`; trả lượt ngay trong transaction huỷ (D6, I5)", "de"]
+  ],
+  F5: [
+    ["Có người vào phòng thì đóng đề xuất đổi lịch", "Ghi `*_joined_at` và đóng đề xuất `PENDING` thành `EXPIRED` trong cùng transaction (D8)", "de"],
+    ["Giữ nghĩa 'đã vào phòng'", "Vẫn là 'đã nhận token'; chưa làm webhook Jitsi (D16)", "de"]
+  ],
+  F6: [
+    ["Lời tố vắng mặt mâu thuẫn nhật ký phòng", "Hết cửa sổ → `DISPUTED` (`REPORT_CONTRADICTS_LOG`) kèm `HOLD` và tranh chấp tự động, không còn tự kết luận `NO_SHOW_*` (D10)", "de"],
+    ["Hậu xử lý ghi DB vào cùng transaction", "Strike `MENTOR_NO_SHOW` và bản ghi tranh chấp tự động nằm trong transaction kết luận; chỉ thông báo và đặt `PAUSED` chạy sau commit (I5)", "de"],
+    ["Cửa sổ khiếu nại 72 giờ", "`app.disputes.open-window`: `P4D` → `PT72H`, khớp thời điểm giải phóng thu nhập (D9, I6)", "de"],
+    ["Phiên không còn kẹt sau tranh chấp", "`FULL_REFUND`/`SUSPEND` → `CANCELLED`; `PARTIAL_REFUND` → `COMPLETED`; ghi `refundPercent` (D11)", "de"],
+    ["Đánh giá chặt hơn", "Phiên hoàn 100% → 409 `SESSION_REFUNDED`; tạo trùng → 409 `ALREADY_REVIEWED`; `update` kiểm 404 → 403 → cửa sổ → nội dung (D12)", "de"],
+    ["Giới hạn DTO khớp luật", "Trả lời đánh giá 500; mô tả tranh chấp 2000; tối đa 5 link, mỗi link 500 ký tự", "de"]
+  ],
+  F7: [
+    ["Viết lại cancelWithPolicy", "Khoá dòng → tính quyết định trên dòng đã khoá → đổi `CANCELLED`, xếp `REFUND` rồi `FINAL_STATE`, ghi strike, trả lượt thử: tất cả cùng một transaction (I1, I2, I4, I5)", "de"],
+    ["Hết lỗi 502 khi huỷ", "Hoàn tiền thất bại không còn chặn việc huỷ; tiền về ví qua outbox, thường sau vài giây (D1)", "de"],
+    ["Strike hẹp lại", "Mentor huỷ chỉ bị strike khi phiên đang `CONFIRMED`. Kết thúc quan hệ: chỉ strike phiên bắt đầu trong vòng 24 giờ (D4)", "de"]
+  ],
+  F8: [
+    ["Chấp nhận kiểm lại", "Phiên `CONFIRMED`, chưa tới giờ, chưa ai vào phòng, giờ mới còn ở tương lai, mentor không `SUSPENDED`/`ON_LEAVE`, không trùng lịch. Không kiểm lại lịch rảnh và báo trước (D7)", "de"],
+    ["Mã lỗi mới", "`SESSION_ALREADY_JOINED` (chặn cả đề xuất lẫn chấp nhận), `RESCHEDULE_START_PASSED` (D8, D7)", "de"],
+    ["Khoá dòng khi chấp nhận", "Khoá mentor → phiên → đề xuất, để chấp nhận và huỷ không ghi đè nhau (D3, I1)", "de"]
+  ],
+  N: [
+    ["Outbox gửi kèm khoá chống trùng", "`idempotencyKey = outbox:<id bản ghi>`; payment-service thêm cột và unique index cho refund (D2, I3)", "de"],
+    ["Hoàn tiền chuyển hết sang outbox", "Không còn `paymentClient.refund(` đồng bộ trong `SessionService` (kiểm bằng Grep)", "de"],
+    ["Giám sát bản ghi bị bỏ", "Số liệu `mentoring_outbox_abandoned_total{kind}` và log mức ERROR; làm sau, không chặn các gói khác", "de"]
+  ]
+};
+for (const id in TARGET) FLOWS[id].groups.push(["Thay đổi đã hiện thực (G1–G5, Phần II của spec)", TARGET[id]]);
+
+/* ---------- trang 2: khối 'Chốt' gắn vào cột cách sửa của từng mục ---------- */
+const PLAN_BY_ISSUE = {
+  1: "**Đã hiện thực (D6).** Trả lượt khi mentee không mất tiền: hoàn 100%, hoặc huỷ lúc còn `PENDING`. Gói G2 · test T7.",
+  2: "**Đã hiện thực (D1, D3, I1, I4).** Chọn bản đầy đủ: khoá dòng, tính quyết định hoàn tiền trên dòng đã khoá, đổi trạng thái và xếp `REFUND` vào outbox trong cùng transaction. Gói G1 · test T1.",
+  3: "**Đã hiện thực (D4).** Mentor chỉ bị strike khi huỷ phiên `CONFIRMED`. Kết thúc quan hệ: chỉ strike phiên bắt đầu trong vòng 24 giờ. Gói G2 · test T5, T6.",
+  4: "**Đã hiện thực (D1, D2, D3).** Phát hiện mới: payment-service hoàn tiền **không** chống gửi trùng (gửi lại lệnh hoàn 50% sẽ hoàn thêm 50%), và outbox có thể gửi trùng một bản ghi. Giải pháp: hoàn qua outbox, thêm `idempotencyKey` cho refund, khoá dòng khi đổi trạng thái; không dùng `@Version`. Gói G1 · test T2, T3, T4.",
+  5: "**Đã hiện thực (D7).** Chấp nhận kiểm lại: phiên `CONFIRMED`, chưa tới giờ, chưa ai vào phòng, giờ mới còn ở tương lai, mentor không `SUSPENDED`/`ON_LEAVE`, không trùng lịch. Không kiểm lại lịch rảnh và báo trước vì hai bên đã đồng ý. Gói G3 · test T16.",
+  6: "**Đã hiện thực (D5).** Kiểm giới hạn 3 buổi trong transaction; mentor `PAUSED` không nhận buổi thử (`MENTOR_PAUSED`); cặp từng có yêu cầu `ENDED` không được thử. Gói G2 · test T8, T9.",
+  7: "**Đã hiện thực (D10, D11, D16, I5).** Lời tố mâu thuẫn nhật ký → `DISPUTED` (`REPORT_CONTRADICTS_LOG`); hậu xử lý ghi DB (strike, tranh chấp tự động) vào cùng transaction; tranh chấp hoàn 100% → `CANCELLED`, hoàn một phần → `COMPLETED`; 'đã vào phòng' vẫn là đã nhận token. Gói G4 (strike ở G2) · test T18, T19, T20.",
+  8: "**Đã hiện thực (D9, I6).** Cửa sổ khiếu nại `P4D` → `PT72H`, khớp thời điểm giải phóng thu nhập. Phương án khác: tăng giữ thu nhập lên 96 giờ. Gói G4 · test T21.",
+  9: "**Đã hiện thực (D12, D17).** Phiên hoàn 100% không đánh giá được (`SESSION_REFUNDED`); tạo trùng → 409 `ALREADY_REVIEWED`; `update` kiểm 404 → 403 → cửa sổ → nội dung. Giữ gửi điểm Bayes kèm `ratingCount` (D17 chưa kiểm phía hiển thị). Gói G4 · test T22.",
+  10: "**Đã hiện thực (D13, D14).** Tối đa 2 phiên `PENDING` mỗi mentee; `markPaid` lưu `paymentTransactionId` và idempotent, không kiểm số tiền vì payment-service đã kiểm (`AMOUNT_MISMATCH`); giới hạn DTO khớp luật. Gói G1, G2, G4 · test T10, T11, T12, T23.",
+  11: "**Đã hiện thực (D15).** Gỡ `/requests/{id}/complete`, trạng thái `COMPLETED`, bảng `late_cancellations` và `enqueueReward`; frontend chuyển sang `/end`. Gói G5 · test T24."
+};
+
+function planBlock(n) {
+  const s = PLAN_BY_ISSUE[n];
+  return s ? '<div class="planbox"><p>' + rich(s) + "</p></div>" : "";
+}
+
+/* ---------- trang 3: quyết định và kế hoạch hiện thực ---------- */
+const FINDINGS = [
+  ["P1", "`POST /internal/payments/refund` không chống gửi trùng: chỉ khoá dòng giao dịch và chặn khi tổng hoàn vượt giá gốc.", "payment-service `PaymentService.refund`, `PaymentRules.refundAmount`", "Gửi lại lệnh hoàn 100% thì lần sau gặp 404, vô hại. Gửi lại lệnh hoàn 50% thì lần sau vẫn thành công: mentee nhận 100%."],
+  ["P2", "Outbox có thể gửi trùng một bản ghi: job `flush` và `flushSession` cùng xử lý, chỉ chặn ở bước ghi kết quả.", "`PaymentOutboxService.process`", "Cùng hậu quả với P1 cho `REFUND` một phần."],
+  ["P3", "`MentoringSession` không có `@Version`; `confirm`, `markPaid`, `cancelWithPolicy`, `cancelUnconfirmed`, `RescheduleService.accept` đọc dòng không khoá.", "`SessionService.java:373,406,460,520`, `RescheduleService.java:105`", "Mất cập nhật: chấp nhận đổi lịch chạy cùng huỷ có thể ghi đè `CANCELLED` thành `CONFIRMED` giờ mới; hoặc hoàn 100% xong mới thấy mentor vừa xác nhận."]
+];
+
+const INVARIANTS = [
+  ["I1", "Mọi transaction đổi `status`, `scheduledAt` hoặc trường tiền của phiên phải đọc phiên bằng `findForUpdate`. Thứ tự khoá cố định: khoá tư vấn theo mentor (nếu cần) → dòng phiên → dòng đề xuất / tranh chấp.", "Chặn mất cập nhật (P3); thứ tự cố định để không deadlock."],
+  ["I2", "Trong luồng đổi trạng thái phiên không gọi payment-service đồng bộ. Ý định chuyển tiền (`REFUND`, `HOLD`, `RELEASE`, `FINAL_STATE`) ghi vào `payment_outbox` trong cùng transaction rồi `flushSession` sau commit. Ngoại lệ: `payFromWallet` lúc đặt lịch và `validateReferral`.", "Trạng thái và tiền không thể lệch nhau (mục 2, 4 của Phụ lục A)."],
+  ["I3", "Mỗi lời gọi tiền từ outbox gửi kèm `idempotencyKey = outbox:<id>`; payment-service bảo đảm cùng khoá thì chỉ thực hiện một lần.", "P1, P2."],
+  ["I4", "Chính sách huỷ (`Decision`: % hoàn, strike) được tính lại trên dòng đã khoá, trong transaction. Bản tính ngoài transaction chỉ dùng cho `cancel-preview`.", "Mục 2 của Phụ lục A."],
+  ["I5", "Hiệu ứng nằm trong DB của mentoring-service (strike, tranh chấp, trả lượt thử, đóng đề xuất đổi lịch, xếp outbox) chạy cùng transaction với đổi trạng thái. Hiệu ứng ra ngoài (thông báo, đặt `PAUSED`, gợi ý matching) chạy sau commit, best-effort.", "Mục 7 của Phụ lục A: tiến trình chết giữa chừng không làm mất hậu xử lý."],
+  ["I6", "Thời điểm giải phóng thu nhập không sớm hơn lúc hết cửa sổ khiếu nại; cả hai tính từ cùng mốc E (giờ kết thúc dự kiến).", "Mục 8 của Phụ lục A."],
+  ["I7", "Mỗi trạng thái chưa kết thúc của phiên có ít nhất một đường ra tự động hoặc do admin.", "Mục 7 của Phụ lục A (phiên `DISPUTED` kẹt)."]
+];
+
+/* [mã, quyết định, trạng thái (dc = đã chốt, dx = đề xuất), phương án thay thế] */
+const DECISIONS = [
+  ["E1", "Cho đề xuất dời bất kỳ lúc nào trước giờ bắt đầu hiện tại; bỏ `min-before-start`. `RESCHEDULE_TOO_LATE` chỉ còn nghĩa 'đã tới hoặc quá giờ bắt đầu'.", "dc", "—"],
+  ["E2", "Hạn đề xuất = nhỏ hơn của (tạo + 24 giờ) và giờ bắt đầu hiện tại; bỏ `expire-before-start`.", "dc", "—"],
+  ["E3", "Chặn đề xuất dời khi `mentor_joined_at` hoặc `mentee_joined_at` đã ghi.", "dc", "—"],
+  ["D1", "Hoàn tiền khi huỷ, từ chối, hết hạn xác nhận và tiền về trễ đều chuyển sang outbox. API không còn trả 502 `REFUND_FAILED`; tiền về ví sau vài giây đến tối đa một chu kỳ outbox (1 phút), lâu hơn nếu payment-service đang lỗi.", "dh", "Giữ gọi đồng bộ nhưng khoá dòng và gửi khoá idempotency. Đơn giản hơn nhưng còn trạng thái 'đã hoàn mà phiên chưa đổi' khi tiến trình chết giữa hai bước."],
+  ["D2", "payment-service thêm `idempotencyKey` (tuỳ chọn, ≤ 100 ký tự) cho `refund`. Cùng (giao dịch, khoá) thì trả kết quả cũ, không tạo khoản hoàn mới. Kiểm khoá trước khi kiểm `ON_HOLD` và tổng hoàn.", "dh", "Khoá theo (phiên, lý do): hỏng khi tranh chấp cần hoàn nhiều lần cùng lý do."],
+  ["D3", "Khoá bi quan (`findForUpdate`) cho mọi transaction đổi trạng thái phiên. Không thêm `@Version`.", "dh", "`@Version`: phải bắt `OptimisticLockException` và thử lại ở nhiều nơi, trong khi `AttendanceService`, `DisputeService`, `RoomService` đã dùng `findForUpdate`."],
+  ["D4", "Strike khi mentor huỷ: chỉ khi phiên đang `CONFIRMED`. Mentor kết thúc quan hệ: không strike, trừ phiên `CONFIRMED` bắt đầu trong vòng 24 giờ.", "dh", "Không strike khi kết thúc quan hệ (dễ lợi dụng để né strike); hoặc giữ strike cho mọi phiên (mentor bị `PAUSED` chỉ vì kết thúc quan hệ có 3 phiên đặt trước)."],
+  ["D5", "Buổi thử: (a) kiểm giới hạn 3 buổi trong transaction, khoá theo mentee; (b) mentor `PAUSED` không nhận (409 `MENTOR_PAUSED`); (c) cặp có yêu cầu `ACCEPTED` hoặc `ENDED` không được thử.", "dh", "(b) cho phép như hiện tại: `PAUSED` nghĩa là 'không nhận mentee mới', mà buổi thử chính là để tìm mentee mới. (c) chỉ chặn `ACCEPTED`."],
+  ["D6", "Trả lượt buổi thử khi mentee không mất tiền: hoàn 100%, hoặc phiên bị huỷ khi còn `PENDING`.", "dh", "—"],
+  ["D7", "Chấp nhận đổi lịch kiểm lại: phiên `CONFIRMED`; chưa tới giờ hiện tại; chưa ai vào phòng; giờ mới còn ở tương lai; mentor không `SUSPENDED`/`ON_LEAVE` vào ngày mới; không trùng lịch. Không kiểm lại lịch rảnh và báo trước.", "dh", "Chạy lại toàn bộ `checkSlot`: an toàn hơn nhưng làm hỏng đề xuất hợp lệ chỉ vì thời gian trôi qua."],
+  ["D8", "Mã lỗi `SESSION_ALREADY_JOINED` (409), chặn cả đề xuất lẫn chấp nhận. Bên đầu tiên vào phòng thì đề xuất đang chờ bị đóng `EXPIRED` ngay trong transaction ghi `*_joined_at`.", "dh", "Chỉ chặn đề xuất, để mở phần chấp nhận."],
+  ["D9", "`app.disputes.open-window` đổi `P4D` → `PT72H`, tính từ E, bằng thời gian giữ thu nhập.", "dh", "Tăng `earnings.release-delay` lên `PT96H`: mentee có thêm 1 ngày khiếu nại nhưng mentor nhận tiền chậm hơn 1 ngày."],
+  ["D10", "Lời tố vắng mặt một phía mâu thuẫn với nhật ký phòng khi hết cửa sổ → `DISPUTED` (`REPORT_CONTRADICTS_LOG`), không tự kết luận `NO_SHOW_*`.", "dh", "Bỏ qua lời tố và kết luận `COMPLETED`."],
+  ["D11", "Kết quả tranh chấp đưa phiên ra khỏi trạng thái treo: `FULL_REFUND`/`SUSPEND` → `CANCELLED` (hoàn 100%); `PARTIAL_REFUND` → `COMPLETED` (hoàn p%); `NO_REFUND`/`WARNING` → `COMPLETED`. Phiên đã ở trạng thái cuối thì giữ trạng thái, chỉ ghi `refundPercent`.", "dh", "Thêm trạng thái mới `REFUNDED`: rõ nghĩa hơn nhưng phải sửa CHECK constraint, frontend và mọi bộ lọc."],
+  ["D12", "Không cho đánh giá phiên có `refundPercent = 100` (409 `SESSION_REFUNDED`).", "dh", "—"],
+  ["D13", "Mỗi mentee tối đa `app.booking.max-unpaid-per-mentee` = 2 phiên `PENDING` (409 `TOO_MANY_UNPAID_SESSIONS`), kiểm trong transaction có khoá theo mentee.", "dh", "Không giới hạn (hiện tại)."],
+  ["D14", "`markPaid` lưu `paymentTransactionId`; gọi lại cùng mã thì idempotent. Không kiểm số tiền ở mentoring-service vì payment-service đã kiểm và giá phiên không đổi sau khi đặt.", "dh", "Thêm `amount` vào callback và so lại: thêm hợp đồng mà không tăng an toàn thực tế."],
+  ["D15", "Gỡ `POST /requests/{id}/complete`, `MentoringRequest.Status.COMPLETED`, bảng `late_cancellations`, `MENTOR_CANCEL_APOLOGY`, `enqueueReward`. Frontend `completeRequest` chuyển sang `/end`. Giữ `REWARD` trong CHECK của `payment_outbox` vì còn dòng cũ.", "dh", "Giữ endpoint `@Deprecated` thêm một bản phát hành."],
+  ["D16", "'Đã vào phòng' vẫn là 'đã nhận token'. Không làm webhook Jitsi trong đợt này.", "dg", "Webhook presence của Jitsi: cần cấu hình server Jitsi, ngoài phạm vi."],
+  ["D17", "Đánh giá: giữ gửi điểm Bayes sang profile-service kể cả khi dưới 3 đánh giá, vì đã gửi kèm `ratingCount`. Việc ẩn sao thuộc về bên hiển thị. Chưa kiểm chứng profile-service và frontend đã ẩn.", "dg", "Không gửi khi dưới 3 đánh giá."]
+];
+
+/* [gói, nội dung, quyết định, test, rủi ro] */
+const PACKAGES = [
+  ["G1", "**Nền tiền và khoá.** payment-service: `idempotencyKey` cho `refund` (V9). mentoring-service: outbox gửi `idempotencyKey`; `findForUpdate` cho `markPaid`, `confirm`, `cancelWithPolicy`, `cancelUnconfirmed`, `RescheduleService.accept`, `updateMeetingLink`, `expireUnpaidSessions`; chuyển hoàn tiền sang outbox; lưu `paymentTransactionId` (V21).", "D1, D2, D3, D14, I1–I4", "T1–T4, T11, T12, T17", "Cao nhất: đổi hành vi API huỷ (không còn 502). Phải deploy payment-service trước mentoring-service."],
+  ["G2", "**Chính sách.** Strike (D4), buổi thử (D5, D6), trần phiên chưa thanh toán (D13), strike trong transaction (I5).", "D4, D5, D6, D13", "T5–T10, T19", "Trung bình"],
+  ["G3", "**Đổi lịch.** E1, E2, E3, D7, D8; bỏ hai khoá cấu hình `min-before-start`, `expire-before-start`.", "E1–E3, D7, D8", "T13–T17", "Thấp"],
+  ["G4", "**Tham dự, tranh chấp, đánh giá.** Cửa sổ khiếu nại 72 giờ, tố mâu thuẫn nhật ký, trạng thái sau tranh chấp, không đánh giá phiên hoàn 100%, đánh giá trùng, giới hạn DTO.", "D9–D12", "T18, T20–T23", "Trung bình: D9 rút ngắn cửa sổ khiếu nại với phiên đang chờ"],
+  ["G5", "**Dọn di sản.** D15; sửa comment/javadoc ở Phụ lục B; frontend `completeRequest` → `/end`.", "D15", "T24", "Thấp"],
+  ["G6", "**Đồng bộ tài liệu.** Theo bảng Deliverable 2 trong kế hoạch; cập nhật Phần I của spec cho khớp code mới.", "—", "Grep chuỗi lỗi thời", "Thấp"]
+];
+
+/* [mã, tình huống → kết quả, lớp test] */
+const TESTS = [
+  ["T1", "Phiên `PENDING`, huỷ và `markPaid` xen kẽ → phiên `CANCELLED` và đúng một `REFUND(100)`; không có `refundPercent = 0` mà tiền vẫn bị giữ.", "SessionCancelTest"],
+  ["T2", "`AWAITING_MENTOR`, `confirm` và job hết hạn chạy song song → hoặc `CONFIRMED` không có `REFUND`, hoặc `EXPIRED` có đúng một `REFUND(100)`.", "SessionConfirmTest"],
+  ["T3", "Huỷ khi payment-service lỗi 5xx → API trả 200, phiên `CANCELLED`, outbox còn bản ghi chưa gửi; lần `flush` sau thành công.", "SessionCancelTest"],
+  ["T4", "Bản ghi `REFUND(50)` gửi hai lần cùng `idempotencyKey` → chỉ một khoản hoàn.", "payment-service PaymentService test"],
+  ["T5", "Mentor huỷ `PENDING` / `AWAITING_MENTOR` → không strike; huỷ `CONFIRMED` → 1 strike.", "CancellationPolicyTest, StrikeServiceTest"],
+  ["T6", "Mentor kết thúc quan hệ có phiên `CONFIRMED` sau 3 ngày và một phiên sau 10 giờ → chỉ phiên sau 10 giờ bị strike; cả hai hoàn 100%.", "MentorshipEndServiceTest"],
+  ["T7", "Huỷ buổi thử ở `PENDING` → trả lượt; huỷ muộn hoàn 0% → không trả.", "SessionTrialTest"],
+  ["T8", "Mentor `PAUSED` → 409 `MENTOR_PAUSED`; cặp có yêu cầu `ENDED` → 409 `TRIAL_NOT_ALLOWED`.", "SessionTrialTest"],
+  ["T9", "Hai lần đặt buổi thử đồng thời với hai mentor khi mentee đã có 2 buổi mở → đúng một lần thành công.", "SessionTrialTest"],
+  ["T10", "Mentee đã có 2 phiên `PENDING` → đặt phiên thứ 3: 409 `TOO_MANY_UNPAID_SESSIONS`.", "SessionBookingTest"],
+  ["T11", "`markPaid` gọi hai lần cùng `transactionId` → một lần chuyển trạng thái, không thêm outbox.", "SessionConfirmTest"],
+  ["T12", "Tiền về sau khi phiên `EXPIRED` → một `REFUND(100)`; gọi lại → không thêm.", "SessionConfirmTest"],
+  ["T13", "Đề xuất dời khi còn 30 phút → được (E1); khi đã quá giờ → 409 `RESCHEDULE_TOO_LATE`.", "RescheduleTest"],
+  ["T14", "Đề xuất tạo lúc còn 5 giờ → `expiresAt` = giờ bắt đầu; lúc còn 3 ngày → tạo + 24 giờ (E2).", "RescheduleTest"],
+  ["T15", "Đã có `mentee_joined_at` → đề xuất 409 `SESSION_ALREADY_JOINED`; vào phòng khi đang có đề xuất → đề xuất `EXPIRED`.", "RescheduleTest, RoomServiceTest"],
+  ["T16", "Chấp nhận khi mentor `SUSPENDED` → 409 `MENTOR_SUSPENDED`; khi giờ mới đã trôi qua → 409 `RESCHEDULE_START_PASSED` và đề xuất `EXPIRED`.", "RescheduleTest"],
+  ["T17", "Chấp nhận đổi lịch và huỷ song song → không bao giờ `CONFIRMED` sau khi đã `CANCELLED`.", "RescheduleTest"],
+  ["T18", "Mentor tố mentee vắng; mentee vào phòng sau đó và im lặng 24 giờ → `DISPUTED` (`REPORT_CONTRADICTS_LOG`), có bản ghi tranh chấp.", "AttendanceServiceTest"],
+  ["T19", "Kết luận `NO_SHOW_MENTOR` → bản ghi strike tồn tại ngay sau commit.", "AttendanceServiceTest"],
+  ["T20", "Từ `DISPUTED`, `FULL_REFUND` → `CANCELLED` (100%); `PARTIAL_REFUND(30)` → `COMPLETED` (30%).", "DisputeServiceTest, DisputeRulesTest"],
+  ["T21", "Mở tranh chấp lúc E + 73 giờ → 409 `DISPUTE_WINDOW_CLOSED`.", "DisputeRulesTest"],
+  ["T22", "Đánh giá phiên hoàn 100% → 409 `SESSION_REFUNDED`; hai yêu cầu tạo đồng thời → một 201, một 409 `ALREADY_REVIEWED`.", "ReviewServiceTest"],
+  ["T23", "Trả lời đánh giá 501 ký tự, mô tả tranh chấp 2001 ký tự, 6 link bằng chứng → đều 400.", "ReviewServiceTest, DisputeServiceTest"],
+  ["T24", "`POST /requests/{id}/complete` → 404 (đã gỡ).", "MentoringRequestServiceTest hoặc test controller"]
+];
+
+const PKG_STATUS = {
+  G1: '<span class="gchip dh">Đã hiện thực</span> <code>355e1c0</code> (payment), <code>3478668</code> (mentoring)',
+  G2: '<span class="gchip dh">Đã hiện thực</span> <code>4cbbaed</code>',
+  G3: '<span class="gchip dh">Đã hiện thực</span> <code>89ad5ab</code>',
+  G4: '<span class="gchip dh">Đã hiện thực</span> <code>1315544</code>',
+  G5: '<span class="gchip dh">Đã hiện thực</span> <code>39e3e4f</code>',
+  G6: '<span class="gchip dh">Xong 29/10/2026</span> đồng bộ spec, 9 tài liệu, hợp đồng; chưa commit'
+};
+
+const TO_REVIEW = [
+  "**Testcontainers**: bộ test hiện tại không có DB thật, nên các test đồng thời (T1, T2, T9, T17) chỉ kiểm bất biến (quyết định tính trên dòng đã khoá, enqueue nằm trong transaction, thứ tự khoá), chưa chạy hai luồng thật. Nên thêm cho G1; đổi lại là test chạy lâu hơn và CI cần Docker.",
+  "**Thứ tự deploy**: payment-service (V9, `idempotencyKey`) phải lên trước mentoring-service (V21–V23); nếu ngược lại, payment-service cũ bỏ qua khoá và outbox có thể hoàn trùng.",
+  "**D17**: chưa kiểm profile-service và frontend đã ẩn sao khi `ratingCount < 3` chưa.",
+  "**DTO giữ nguyên có chủ đích**: `ReplyInput` 2000, mô tả tranh chấp 4000 và 20 link vẫn rộng hơn luật để mã lỗi cụ thể (`INVALID_REPLY`, `INVALID_DESCRIPTION`…) còn tới được người dùng; luật chặn đúng 501 ký tự, 2001 ký tự, 6 link.",
+  "**Chưa chạy**: typecheck frontend sau khi xoá `completeRequest`; e2e cho luồng đổi lịch, tranh chấp tự động, hoàn tiền qua outbox (e2e cũ 'huỷ → REFUNDED' nay phải chờ tối đa một chu kỳ outbox 1 phút).",
+  "**Comment trong migration cũ** (`V4`, `V7`, `V11`) còn nhắc số liệu cũ: không sửa vì Flyway kiểm checksum."
+];
+
+function ptable(cols, widths, rows) {
+  const head = "<tr>" + cols.map((c) => '<th scope="col">' + esc(c) + "</th>").join("") + "</tr>";
+  const colg = "<colgroup>" + widths.map((w) => '<col style="width:' + w + '">').join("") + "</colgroup>";
+  const body = rows.map((r) => "<tr>" + r.map((cell, i) =>
+    '<td data-label="' + esc(cols[i]) + '"' + (i === 0 ? ' class="code"' : "") + ">" + cell + "</td>").join("") + "</tr>").join("");
+  return '<table class="ptable">' + colg + "<thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
+}
+
+function psec(title, intro, html) {
+  return '<section class="plan-sec"><h2>' + esc(title) + "</h2>" + (intro ? '<p class="plan-intro">' + rich(intro) + "</p>" : "") + html + "</section>";
+}
+
+function renderPlan() {
+  const p = (s) => rich(s);
+  const status = (s) => '<span class="gchip ' + s + '">' + ({ dc: "Đã chốt", dh: "Đã hiện thực", dg: "Giữ nguyên" }[s] || "Đề xuất") + "</span>";
+  const html = [
+    psec("Ba phát hiện khi rà để hiện thực", "Ba lỗi này làm đổi cách sửa mục 2 và 4 của Phụ lục A, nên được ghi trước.",
+      ptable(["Mã", "Phát hiện", "Bằng chứng", "Hệ quả"], ["56px", "34%", "24%", "auto"],
+        FINDINGS.map((r) => [esc(r[0]), p(r[1]), p(r[2]), p(r[3])]))),
+    psec("Bất biến hệ thống", "Áp dụng cho mọi thay đổi trong các gói bên dưới.",
+      ptable(["Mã", "Bất biến", "Lý do"], ["56px", "62%", "auto"], INVARIANTS.map((r) => [esc(r[0]), p(r[1]), p(r[2])]))),
+    psec("Quyết định thiết kế", "E1–E3 đã chốt với chủ sở hữu. D1–D15 đã hiện thực; D16 và D17 giữ nguyên có chủ đích. Mỗi mục có phương án thay thế đã cân nhắc.",
+      ptable(["Mã", "Quyết định", "Trạng thái", "Phương án thay thế"], ["56px", "46%", "104px", "auto"],
+        DECISIONS.map((r) => [esc(r[0]), p(r[1]), status(r[2]), p(r[3])]))),
+    psec("Gói hiện thực", "Mỗi gói là một PR; gói sau dựa trên gói trước. Xong một gói khi test của gói đó qua, test cũ vẫn qua, hợp đồng trong `contracts/` được cập nhật, và (từ G1) không còn lời gọi `paymentClient.refund(` đồng bộ trong `SessionService`.",
+      ptable(["Gói", "Nội dung", "Quyết định", "Test", "Rủi ro", "Trạng thái"], ["56px", "38%", "11%", "11%", "17%", "auto"],
+        PACKAGES.map((r) => [esc(r[0]), p(r[1]), p(r[2]), p(r[3]), p(r[4]), (PKG_STATUS[r[0]] || "")]))),
+    psec("Test nghiệm thu", "24 test bắt buộc. Cột cuối là file test nơi thêm test; file đã có thì thêm vào đó.",
+      ptable(["Mã", "Tình huống → kết quả", "File test"], ["56px", "68%", "auto"], TESTS.map((r) => [esc(r[0]), p(r[1]), p(r[2])]))),
+    psec("Còn lại sau G1–G5", "Việc chưa làm hoặc chưa kiểm chứng.", "<ol class=\"to-review\">" + TO_REVIEW.map((s) => "<li>" + p(s) + "</li>").join("") + "</ol>")
+  ].join("");
+  $("#plan-root").innerHTML = html;
+}
+
+const NS = "http://www.w3.org/2000/svg";
+const ROWS = [["F4"], ["F1", "F2", "F3", "F5", "F6"], ["F7", "F8", "N"]];
+const HINT = "Bấm vào một node để các nhánh con tỏa ra tại chỗ. Bấm lại node để thu gọn; phím Esc thu gọn tất cả. Biểu tượng ghi chú ở mỗi node, nhóm và mục cho phép bạn viết ghi chú riêng.";
+
+const map = $("#map");
+const hint = $("#hint");
+const wide = matchMedia("(min-width: 1180px)");
+const open = new Set();
+const bands = {};
+let svg = null;
+
+/* ---------- dựng bản đồ ---------- */
+function linksLine(id) {
+  const to = EDGES.filter((e) => e.from === id).map((e) => "→ " + e.to);
+  const from = EDGES.filter((e) => e.to === id).map((e) => "← " + e.from);
+  return from.concat(to).join(" · ");
+}
+
+function buildMap() {
+  svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "edges");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML =
+    '<defs>' +
+    '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>' +
+    '<marker id="ah-alt" class="alt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>' +
+    '</defs><g id="edge-layer"></g><g id="fan-layer"></g>';
+  map.appendChild(svg);
+
+  ROWS.forEach((ids) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    ids.forEach((id) => {
+      const f = FLOWS[id];
+      const w = document.createElement("div");
+      w.className = "nw n-" + id;
+      w.style.order = String(ORDER.indexOf(id) * 10);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "node " + f.kind + (f.infra ? " infra" : "");
+      b.dataset.id = id;
+      b.setAttribute("aria-expanded", "false");
+      b.innerHTML =
+        '<span class="plus" aria-hidden="true"></span>' +
+        '<span class="cap">' + esc(f.cap) + '</span>' +
+        '<span class="ttl"><span class="code">' + esc(f.code) + '</span><span>' + esc(f.title) + '</span></span>' +
+        '<span class="desc">' + esc(f.desc) + '</span>' +
+        '<span class="nnote" data-note-for="' + esc(id) + '" hidden></span>' +
+        '<span class="state">' + esc(f.state) + '</span>' +
+        '<span class="links">' + esc(linksLine(id)) + '</span>';
+      w.appendChild(b);
+      w.insertAdjacentHTML("beforeend", noteBtn(id, f.code + " · " + f.title, "nbtn-node"));
+      row.appendChild(w);
+    });
+    map.appendChild(row);
+  });
+}
+
+/* ---------- nhánh con ---------- */
+function groupsOf(id) {
+  const f = FLOWS[id];
+  const conn = [["Mục tiêu", f.goal]];
+  EDGES.filter((e) => e.to === id).forEach((e) => conn.push(["← Đến từ " + e.from + " · " + FLOWS[e.from].title, e.long, "", e.from]));
+  EDGES.filter((e) => e.from === id).forEach((e) => conn.push(["→ Đi tới " + e.to + " · " + FLOWS[e.to].title, e.long, "", e.to]));
+  return [["Mục tiêu & kết nối", conn]].concat(f.groups);
+}
+
+function leafHtml(it, gkey, glabel) {
+  const key = gkey + SEP + it[0];
+  const tag = it[2] ? '<span class="tag ' + it[2] + '">' + TAGS[it[2]] + "</span>" : "";
+  const title = it[3]
+    ? '<button type="button" class="jump" data-go="' + it[3] + '">' + esc(it[0]) + "</button>"
+    : fmt(it[0]);
+  return '<li class="leaf">' + noteBtn(key, glabel + SEP + it[0], "nbtn-leaf") +
+    '<div class="t">' + title + tag + "</div>" + (it[1] ? '<div class="d">' + fmt(it[1]) + "</div>" : "") +
+    '<div class="leafnote" data-note-for="' + esc(key) + '" hidden></div></li>';
+}
+
+function buildBand(id) {
+  const f = FLOWS[id];
+  const el = document.createElement("div");
+  el.className = "band " + f.kind;
+  el.dataset.for = id;
+  el.style.order = String(ORDER.indexOf(id) * 10 + 1);
+  el.setAttribute("role", "group");
+  el.setAttribute("aria-label", "Nhánh con của " + f.title);
+  el.innerHTML =
+    '<button type="button" class="tgl" data-act="toggle">Mở hết nhánh</button>' +
+    groupsOf(id).map((g, i) =>
+      '<div class="gcol"><div class="gwrap" style="grid-row:' + (i + 2) + '"><button type="button" class="gbtn" aria-expanded="false" aria-controls="g-' + id + "-" + i + '">' +
+      '<span class="car" aria-hidden="true"></span><span>' + esc(g[0]) + '</span><span class="count">' + g[1].length + "</span></button>" +
+      noteBtn(id + SEP + g[0], f.code + SEP + g[0], "nbtn-group") + "</div>" +
+      '<ul class="leaves" style="grid-row:' + (i + 2) + '" id="g-' + id + "-" + i + '" hidden>' +
+      g[1].map((it) => leafHtml(it, id + SEP + g[0], f.code + SEP + g[0])).join("") + "</ul></div>").join("");
+  return el;
+}
+
+function layoutBands(row) {
+  [...row.querySelectorAll(":scope > .band")].forEach((b, i) => { b.style.gridRow = String(i + 2); });
+}
+
+function openNode(id) {
+  if (open.has(id)) return;
+  open.add(id);
+  const node = $('.node[data-id="' + id + '"]', map);
+  const band = buildBand(id);
+  bands[id] = band;
+  node.setAttribute("aria-expanded", "true");
+  const row = node.closest(".row");
+  row.appendChild(band);
+  layoutBands(row);
+}
+
+function closeNode(id) {
+  if (!open.has(id)) return;
+  open.delete(id);
+  const node = $('.node[data-id="' + id + '"]', map);
+  node.setAttribute("aria-expanded", "false");
+  const row = node.closest(".row");
+  bands[id].remove();
+  delete bands[id];
+  layoutBands(row);
+}
+
+function toggleNode(id) {
+  if (open.has(id)) closeNode(id); else openNode(id);
+  afterChange(id);
+}
+
+function setGroup(btn, on) {
+  btn.setAttribute("aria-expanded", String(on));
+  btn.closest(".gcol").classList.toggle("open", on);
+  document.getElementById(btn.getAttribute("aria-controls")).hidden = !on;
+}
+
+function syncToggle(band) {
+  const all = [...band.querySelectorAll(".gbtn")];
+  const allOpen = all.every((b) => b.getAttribute("aria-expanded") === "true");
+  band.querySelector(".tgl").textContent = allOpen ? "Thu gọn nhánh" : "Mở hết nhánh";
+}
+
+function afterChange(focusId) {
+  hint.textContent = open.size
+    ? "Đang mở: " + [...open].map((i) => FLOWS[i].code).join(", ") + ". " + HINT
+    : HINT;
+  try {
+    history.replaceState(null, "", open.size ? "#" + [...open].join(",") : location.pathname + location.search);
+  } catch (e) { /* bỏ qua */ }
+  refreshNotes();
+  redraw();
+  if (focusId && bands[focusId]) {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() => {
+      const b = bands[focusId]; // có thể đã bị thu gọn trước khi khung hình tiếp theo chạy
+      if (b) b.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
+    });
+  }
+}
+
+map.addEventListener("click", (ev) => {
+  const t = ev.target.closest("button");
+  if (!t || !map.contains(t)) return;
+  if (t.classList.contains("notebtn")) {
+    openNote(t);
+  } else if (t.classList.contains("node")) {
+    toggleNode(t.dataset.id);
+  } else if (t.classList.contains("gbtn")) {
+    setGroup(t, t.getAttribute("aria-expanded") !== "true");
+    syncToggle(t.closest(".band"));
+    redraw();
+  } else if (t.dataset.act === "toggle") {
+    const band = t.closest(".band");
+    const all = [...band.querySelectorAll(".gbtn")];
+    const target = !all.every((b) => b.getAttribute("aria-expanded") === "true");
+    all.forEach((b) => setGroup(b, target));
+    syncToggle(band);
+    redraw();
+  } else if (t.dataset.go) {
+    openNode(t.dataset.go);
+    afterChange(t.dataset.go);
+  }
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  if (noteTrigger) { closeNote(); return; }
+  if (open.size) {
+    [...open].forEach(closeNode);
+    afterChange(null);
+  }
+});
+
+/* ---------- đường nối ---------- */
+function anchor(r, side, frac, base) {
+  const x = r.left - base.left + r.width * frac;
+  if (side === "b") return [x, r.bottom - base.top];
+  if (side === "t") return [x, r.top - base.top];
+  const y = r.top - base.top + r.height / 2;
+  return side === "r" ? [r.right - base.left, y] : [r.left - base.left, y];
+}
+
+function drawEdges() {
+  if (!svg || !wide.matches || pageMap.hidden) return;
+  const layer = $("#edge-layer", svg);
+  const fanLayer = $("#fan-layer", svg);
+  layer.innerHTML = "";
+  fanLayer.innerHTML = "";
+  const base = map.getBoundingClientRect();
+  const bandTops = [...open].map((id) => bands[id].getBoundingClientRect().top - base.top);
+
+  EDGES.forEach((e) => {
+    const a = $('.node[data-id="' + e.from + '"]', map).getBoundingClientRect();
+    const b = $('.node[data-id="' + e.to + '"]', map).getBoundingClientRect();
+    const ay = a.top - base.top + a.height / 2;
+    const by = b.top - base.top + b.height / 2;
+    // đường nối xuyên qua một nhánh đang mở thì ẩn đi (thông tin vẫn có ở nhóm "Mục tiêu & kết nối")
+    if (bandTops.some((t) => Math.min(ay, by) < t && Math.max(ay, by) > t)) return;
+
+    const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+    const dy = by - ay;
+    let p1, p2, d, horiz = false;
+    if (Math.abs(dy) > 60) { // khác hàng thì nối dọc, cùng hàng thì nối ngang, không phụ thuộc độ rộng màn hình
+      const down = dy > 0;
+      p1 = anchor(a, down ? "b" : "t", e.fx ?? .5, base);
+      p2 = anchor(b, down ? "t" : "b", e.tx ?? .5, base);
+      const k = Math.abs(p2[1] - p1[1]) * 0.5;
+      d = "M" + p1[0] + " " + p1[1] + " C" + p1[0] + " " + (p1[1] + (down ? k : -k)) + " " + p2[0] + " " + (p2[1] + (down ? -k : k)) + " " + p2[0] + " " + p2[1];
+    } else {
+      const right = dx > 0;
+      horiz = true;
+      p1 = anchor(a, right ? "r" : "l", .5, base);
+      p2 = anchor(b, right ? "l" : "r", .5, base);
+      const k = Math.abs(p2[0] - p1[0]) * 0.5;
+      d = "M" + p1[0] + " " + p1[1] + " C" + (p1[0] + (right ? k : -k)) + " " + p1[1] + " " + (p2[0] + (right ? -k : k)) + " " + p2[1] + " " + p2[0] + " " + p2[1];
+    }
+    const focus = !open.size || open.has(e.from) || open.has(e.to);
+    const g = document.createElementNS(NS, "g");
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", "edge" + (e.alt ? " alt" : "") + (focus ? "" : " dim"));
+    path.setAttribute("marker-end", "url(#" + (e.alt ? "ah-alt" : "ah") + ")");
+    g.appendChild(path);
+
+    const lab = document.createElementNS(NS, "g");
+    lab.setAttribute("class", "elabel" + (e.alt ? " alt" : "") + (focus ? "" : " dim"));
+    const rect = document.createElementNS(NS, "rect");
+    const text = document.createElementNS(NS, "text");
+    text.textContent = e.short;
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("dominant-baseline", "central");
+    lab.appendChild(rect);
+    lab.appendChild(text);
+    g.appendChild(lab);
+    layer.appendChild(g);
+
+    text.setAttribute("x", (p1[0] + p2[0]) / 2);
+    text.setAttribute("y", (p1[1] + p2[1]) / 2 + (horiz ? -17 : 0)); // nhãn đường ngang nằm phía trên để không che mũi tên
+    const bb = text.getBBox();
+    rect.setAttribute("x", bb.x - 6);
+    rect.setAttribute("y", bb.y - 3);
+    rect.setAttribute("width", bb.width + 12);
+    rect.setAttribute("height", bb.height + 6);
+  });
+
+  // một đường cong từ node tới thân cây của các nhánh con
+  open.forEach((id) => {
+    const band = bands[id];
+    const br = band.getBoundingClientRect();
+    const chips = band.querySelectorAll(".gbtn");
+    const last = chips[chips.length - 1].getBoundingClientRect();
+    band.style.setProperty("--trunk", (last.top + last.height / 2 - br.top) + "px");
+    const [x1, y1] = anchor($('.node[data-id="' + id + '"]', map).getBoundingClientRect(), "b", .5, base);
+    const x2 = br.left - base.left + 10;
+    const y2 = br.top - base.top;
+    const k = Math.max(18, (y2 - y1) * 0.55);
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("class", "fan " + FLOWS[id].kind);
+    path.setAttribute("d", "M" + x1 + " " + y1 + " C" + x1 + " " + (y1 + k) + " " + x2 + " " + (y2 - k) + " " + x2 + " " + y2);
+    fanLayer.appendChild(path);
+  });
+}
+
+let raf = 0;
+function redraw() {
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => { drawEdges(); placePop(); });
+}
+
+/* ---------- ghi chú ---------- */
+const NOTE_STORE = "mentoring-flows-notes-v1";
+const NOTE_MAX = 2000;
+const SEP = " › ";
+const NOTE_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M2.5 2.5h11v7l-4 4h-7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 13.5v-4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const mapCard = $(".map-card");
+const nstat = $("#nstat");
+const pop = $("#notepop");
+const pLabel = $("#np-label");
+const pText = $("#np-text");
+const pCount = $("#np-count");
+let notes = {};
+let storageOk = true;
+let saveTimer = 0;
+let noteTrigger = null;
+let msgTimer = 0;
+
+function noteBtn(key, label, cls) {
+  return '<button type="button" class="notebtn ' + cls + '" data-note-key="' + esc(key) + '" data-note-label="' + esc(label) +
+    '" aria-label="Ghi chú: ' + esc(label) + '">' + NOTE_ICON + "</button>";
+}
+
+function loadNotes() {
+  try {
+    const raw = localStorage.getItem(NOTE_STORE);
+    if (!raw) return;
+    Object.entries(JSON.parse(raw) || {}).forEach(([k, v]) => {
+      if (typeof v === "string" && v.trim()) notes[k] = v.slice(0, NOTE_MAX);
+    });
+  } catch (e) { storageOk = false; }
+}
+
+function persist() {
+  try { localStorage.setItem(NOTE_STORE, JSON.stringify(notes)); storageOk = true; } catch (e) { storageOk = false; }
+}
+
+function setNote(key, text) {
+  const t = text.slice(0, NOTE_MAX);
+  if (t.trim()) notes[key] = t; else delete notes[key];
+  persist();
+  refreshNotes();
+}
+
+function refreshStatus(msg) {
+  const n = Object.keys(notes).length;
+  nstat.textContent = msg || ((n ? n + " ghi chú" : "Chưa có ghi chú") +
+    (storageOk ? " · lưu trong trình duyệt này" : " · trình duyệt không cho lưu, hãy xuất ghi chú để giữ lại"));
+}
+
+function say(msg) {
+  refreshStatus(msg);
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => refreshStatus(), 3500);
+}
+
+function refreshNotes() {
+  document.querySelectorAll(".notebtn").forEach((b) => {
+    const v = notes[b.dataset.noteKey];
+    b.classList.toggle("has", !!v);
+    b.title = v ? "Ghi chú: " + v : "Thêm ghi chú";
+  });
+  document.querySelectorAll("[data-note-for]").forEach((el) => {
+    const v = notes[el.dataset.noteFor];
+    el.hidden = !v;
+    el.textContent = v || "";
+  });
+  refreshStatus();
+}
+
+function commit() {
+  if (noteTrigger) setNote(noteTrigger.dataset.noteKey, pText.value);
+}
+
+function placePop() {
+  if (!noteTrigger) return;
+  if (!noteTrigger.isConnected) { closeNote(true); return; }
+  const c = mapCard.getBoundingClientRect();
+  const r = noteTrigger.getBoundingClientRect();
+  const w = pop.offsetWidth;
+  const left = Math.min(Math.max(r.right - c.left - mapCard.clientLeft - w, 8), Math.max(8, c.width - w - 8));
+  pop.style.left = left + "px";
+  pop.style.top = (r.bottom - c.top - mapCard.clientTop + 6) + "px";
+}
+
+function openNote(btn) {
+  const same = noteTrigger === btn;
+  closeNote(true);
+  if (same) return;
+  noteTrigger = btn;
+  pLabel.textContent = btn.dataset.noteLabel;
+  pText.value = notes[btn.dataset.noteKey] || "";
+  pCount.textContent = pText.value.length + "/" + NOTE_MAX;
+  pop.hidden = false;
+  placePop();
+  pText.focus({ preventScroll: true });
+}
+
+function closeNote(keepFocus) {
+  if (!noteTrigger) return;
+  clearTimeout(saveTimer);
+  commit();
+  const t = noteTrigger;
+  noteTrigger = null;
+  pop.hidden = true;
+  if (!keepFocus && t.isConnected) t.focus({ preventScroll: true });
+}
+
+pText.addEventListener("input", () => {
+  pCount.textContent = pText.value.length + "/" + NOTE_MAX;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(commit, 300);
+});
+$("#np-done").addEventListener("click", () => closeNote());
+$("#np-clear").addEventListener("click", () => { pText.value = ""; closeNote(); });
+document.addEventListener("click", (ev) => {
+  if (!noteTrigger || pop.contains(ev.target) || ev.target.closest(".notebtn")) return;
+  closeNote(true);
+});
+
+function download(name, mime, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function toMarkdown() {
+  const keys = Object.keys(notes);
+  if (!keys.length) return "# Ghi chú sơ đồ mentoring-service\n\n(Chưa có ghi chú.)\n";
+  const rank = (k) => { const i = ORDER.indexOf(k.split(SEP)[0]); return i < 0 ? 99 : i; };
+  keys.sort((a, b) => rank(a) - rank(b));
+  let out = "# Ghi chú sơ đồ mentoring-service\n";
+  let last = null;
+  keys.forEach((k) => {
+    const parts = k.split(SEP);
+    if (parts[0] !== last) {
+      out += "\n## " + (FLOWS[parts[0]] ? FLOWS[parts[0]].code + " · " + FLOWS[parts[0]].title : parts[0]) + "\n\n";
+      last = parts[0];
+    }
+    out += "- **" + (parts.slice(1).join(SEP) || "(node chính)") + "**: " + notes[k].trim().replace(/\n/g, "\n  ") + "\n";
+  });
+  return out;
+}
+
+$("#exp-json").addEventListener("click", () => download("mentoring-flows-notes.json", "application/json", JSON.stringify({ version: 1, notes }, null, 2)));
+$("#exp-md").addEventListener("click", () => download("mentoring-flows-notes.md", "text/markdown", toMarkdown()));
+$("#imp").addEventListener("click", () => $("#impfile").click());
+$("#impfile").addEventListener("change", (ev) => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const o = JSON.parse(rd.result);
+      const src = o && typeof o.notes === "object" ? o.notes : o;
+      let n = 0;
+      Object.entries(src || {}).forEach(([k, v]) => {
+        if (typeof v === "string" && v.trim()) { notes[k] = v.slice(0, NOTE_MAX); n++; }
+      });
+      persist();
+      refreshNotes();
+      say("Đã nhập " + n + " ghi chú.");
+    } catch (e) { say("Không đọc được tệp ghi chú."); }
+  };
+  rd.readAsText(f);
+  ev.target.value = "";
+});
+$("#clr").addEventListener("click", () => {
+  if (!Object.keys(notes).length) { say("Chưa có ghi chú nào để xoá."); return; }
+  if (!confirm("Xoá tất cả ghi chú đã lưu trong trình duyệt này? Hãy xuất ghi chú trước nếu muốn giữ lại.")) return;
+  closeNote(true);
+  notes = {};
+  persist();
+  refreshNotes();
+  say("Đã xoá tất cả ghi chú.");
+});
+
+/* ---------- trang 2: vấn đề đã biết (phụ lục A) và cách sửa ---------- */
+const GROUP_LABEL = { now: "Làm ngay", test: "Kèm test", talk: "Bàn trước" };
+
+/* explain / fix / lesson.body: chuỗi = một đoạn, mảng = danh sách gạch đầu dòng. Hỗ trợ `mã` và **đậm**. */
+const ISSUES = [
+  {
+    n: 1, groups: ["now"], flows: ["F4", "F7"],
+    title: "Huỷ buổi thử khi còn PENDING làm mất lượt dùng thử",
+    risk: "Xác suất vừa · hậu quả nhỏ (mất lượt thử với mentor đó)",
+    explain: [
+      "**Bối cảnh.** Mỗi cặp mentee–mentor chỉ được 1 buổi thử. Lượt được giữ ngay lúc đặt (ghi vào bảng `trial_uses`) và phải được trả lại nếu buổi không diễn ra mà mentee không mất tiền.",
+      "**Chuyện gì xảy ra.** Khi huỷ, code chỉ trả lượt nếu `refundPercent == 100` (`SessionService.java:537`). Phiên `PENDING` chưa thanh toán nên hoàn 0% → lượt không được trả.",
+      "**Ví dụ.** Mentee đặt buổi thử nhưng ví thiếu tiền, phiên nằm ở `PENDING`. Họ bấm Huỷ để đặt giờ khác thì bị chặn `TRIAL_ALREADY_USED`, dù chưa mất đồng nào. Cùng tình huống đó mà để hết hạn sau 15 phút thì lượt lại được trả (`SessionScheduler.java:100`): hai đường cho hai kết quả.",
+      "**Gốc rễ.** `refundPercent` đang gánh hai việc: số tiền hoàn và quyền được trả lượt."
+    ],
+    fix: [
+      "**Sửa.** Trả lượt khi buổi thử bị huỷ mà mentee không mất tiền: `session.isTrial() && !reportFinalState`. Biến `reportFinalState` đã có sẵn ở `:515`, nghĩa là phiên đã xác nhận, đã thanh toán và hoàn dưới 100%.",
+      "**Vì sao đúng.** Điều kiện nói thẳng điều ta muốn ('mentee không mất tiền') thay vì suy ra gián tiếp qua một con số.",
+      "**Test.** Huỷ buổi thử `PENDING` rồi đặt lại cùng mentor phải thành công; huỷ muộn (hoàn 0%) vẫn không trả lượt."
+    ],
+    lesson: {
+      name: "Acquire / release đối xứng; một giá trị một nghĩa",
+      body: [
+        "Lượt thử là một tài nguyên có vòng đời. Đã `acquire` lúc đặt thì **mọi** đường kết thúc mà không tiêu thụ nó đều phải `release`. Hai đường (huỷ chủ động, hết hạn) cùng dẫn tới 'không mất tiền' thì phải cho cùng hệ quả.",
+        "Đừng dùng một biến để suy ra nhiều quyết định khác nhau: khi một ngày nào đó luật hoàn tiền đổi (vd. hoàn 80%), quyền trả lượt sẽ đổi theo mà không ai định thế."
+      ]
+    }
+  },
+  {
+    n: 2, groups: ["talk"], flows: ["F2", "F3", "F7"],
+    title: "Huỷ chạy đua với markPaid: học phí bị giữ nhưng không hoàn",
+    risk: "Xác suất thấp (khe hở vài mili giây) · hậu quả lớn (tiền bị giữ, phải xử lý tay)",
+    explain: [
+      "**Bối cảnh.** Hai việc có thể xảy ra gần như cùng lúc trên một phiên `PENDING`: mentee bấm Huỷ, và payment-service tạm giữ xong học phí rồi gọi `markPaid` (chuyển phiên sang `AWAITING_MENTOR`).",
+      [
+        "(1) Luồng huỷ đọc phiên, thấy `PENDING` (`:501`).",
+        "(2) Từ ảnh chụp đó, nó tính 'chưa thanh toán → hoàn 0%' nên **không gọi hoàn tiền** (`:516`).",
+        "(3) `markPaid` commit: tiền đã bị giữ, phiên sang `AWAITING_MENTOR`.",
+        "(4) Luồng huỷ vào transaction, đọc lại thấy `AWAITING_MENTOR`, vẫn huỷ được, rồi ghi `CANCELLED` với `refundPercent = 0` lấy từ ảnh chụp cũ (`:519-526`)."
+      ],
+      "**Kết quả.** Phiên bị huỷ, học phí nằm yên trong ví bị giữ, không ai hoàn. Chiều ngược lại (huỷ rồi tiền mới về) thì đã được xử lý (`markPaid` tự hoàn, `:383-388`); khe hở nằm đúng giữa lúc **đọc** và lúc **ghi**.",
+      "Hàm đọc phiên (`find`, `:657`) chỉ là `findById` thường, không khoá dòng, trong khi điểm danh, phòng học, tranh chấp đã dùng `findForUpdate`."
+    ],
+    fix: [
+      "**Tối thiểu.** Trong transaction huỷ và trong `markPaid`, đọc phiên bằng `findForUpdate` (đã có ở `SessionRepository.java:114`). Nếu trạng thái khác lúc tính quyết định thì trả 409 'trạng thái vừa đổi, thử lại'.",
+      "**Đầy đủ (làm cùng mục 4).** Khoá dòng trước, tính quyết định hoàn tiền **trong lúc đang khoá**, rồi đổi `CANCELLED` và ghi `REFUND` vào outbox trong cùng transaction.",
+      "**Vì sao hết khe hở.** Khi dòng bị khoá, `markPaid` phải chờ: hoặc huỷ xong trước (`markPaid` tự hoàn như hiện nay), hoặc `markPaid` xong trước (huỷ thấy `AWAITING_MENTOR` và hoàn 100%). Không còn trạng thái 'nửa vời'."
+    ],
+    lesson: {
+      name: "TOCTOU (check-then-act) và khoá bi quan",
+      body: [
+        "Đọc trạng thái, rồi ra quyết định dựa trên bản đọc đó, là nguy hiểm nếu trạng thái có thể đổi ở giữa. Quyết định phải được tính từ dữ liệu **đang bị khoá**, hoặc được kiểm lại đúng lúc ghi.",
+        "Khoá dòng (pessimistic locking) hợp khi xung đột hiếm và transaction ngắn, như ở đây. Cái giá: phải nhớ dùng nó ở **mọi** nơi cùng sửa một thực thể (cả `markPaid`, `confirm`, `expire`)."
+      ]
+    }
+  },
+  {
+    n: 3, groups: ["test", "talk"], flows: ["F1", "F7"],
+    title: "Strike quá rộng: phạt cả khi chưa ai bị ảnh hưởng và phạt nhân lên",
+    risk: "Xác suất vừa · hậu quả vừa (mentor có thể bị PAUSED oan)",
+    explain: [
+      "**Bối cảnh.** Mentor bị 1 strike mỗi lần huỷ; đủ 3 strike trong 30 ngày thì hồ sơ chuyển `PAUSED`. Strike chỉ phụ thuộc vai trò người huỷ (`strike = actor == MENTOR` trong `CancellationPolicy`), không xét hậu quả thực tế.",
+      "**Trường hợp A.** Mentor huỷ phiên `PENDING` (mentee chưa trả tiền, chưa ai bị ảnh hưởng) vẫn bị strike.",
+      "**Trường hợp B.** Mentor kết thúc quan hệ mentoring (F1). Hệ thống huỷ từng phiên sắp tới 'như thể mentor huỷ' (`MentorshipEndService.cancelUpcoming`), mỗi phiên một strike. Mentor có 3 phiên sắp tới, bấm 'Kết thúc' **một lần** → 3 strike → `PAUSED`."
+    ],
+    fix: [
+      "**A.** `strike = actor == MENTOR && paid`: chỉ phạt khi đã có tiền của mentee bị giữ (`AWAITING_MENTOR`, `CONFIRMED`).",
+      "**B.** Thêm tham số `countStrike` cho `cancelWithPolicy`; luồng kết thúc quan hệ truyền `false`. Bạn chọn: không phạt, hoặc phạt tối đa một strike cho cả lần kết thúc nếu còn phiên sắp tới trong vòng X giờ.",
+      "Phần B là quyết định nghiệp vụ nên phải bàn trước khi code."
+    ],
+    lesson: {
+      name: "Hình phạt tương xứng; chống khuếch đại (fan-out)",
+      body: [
+        "Gắn hình phạt vào **hậu quả thực tế**, không vào nhãn của hành động. Tách hành động hợp lệ ('kết thúc quan hệ') khỏi hành vi vi phạm ('huỷ sát giờ').",
+        "Một thao tác của người dùng không nên tự nhân thành N tác dụng phụ có hậu quả nặng. Khi tái sử dụng một hàm cho ngữ cảnh khác (huỷ hàng loạt), phải xem lại các tác dụng phụ đi kèm."
+      ]
+    }
+  },
+  {
+    n: 4, groups: ["talk"], flows: ["F3", "F7"],
+    title: "Hoàn tiền trước, đổi trạng thái sau: có thể hoàn tiền mà phiên không đổi",
+    risk: "Xác suất thấp · hậu quả lớn (tiền và trạng thái lệch nhau)",
+    explain: [
+      "**Thiết kế hiện tại.** Huỷ phiên gọi hoàn tiền đồng bộ **trước**, rồi mới đổi trạng thái (`cancelWithPolicy`, `cancelUnconfirmed`). Chủ ý: nếu hoàn tiền lỗi thì phiên giữ nguyên (502), người dùng thử lại.",
+      "**Rủi ro 1: hoàn tiền xong nhưng phiên không đổi.** Mentor bấm xác nhận đúng lúc job hết hạn đang hoàn tiền: tiền đã hoàn, nhưng `confirm` commit trước nên phiên thành `CONFIRMED`: buổi đã xác nhận mà không còn khoản thanh toán.",
+      "**Rủi ro 2: không có khoá.** `confirm` và `expire` không khoá dòng, thực thể phiên không có `@Version`, nên cả hai cùng qua kiểm tra trạng thái.",
+      "**Rủi ro 3: hoàn hai lần.** Hai yêu cầu huỷ đồng thời đều gọi hoàn tiền; yêu cầu thua chỉ bị chặn ở bước đổi trạng thái, tức là sau khi đã gọi. An toàn hay không tuỳ payment-service có idempotent hay không (mình chưa kiểm tra)."
+    ],
+    fix: [
+      "**Cách sửa.** Khoá dòng phiên (`findForUpdate`) → tính quyết định → đổi `CANCELLED` và ghi bản ghi `REFUND` vào bảng outbox trong **cùng một transaction** → sau commit gọi `flushSession`. Outbox đã có loại `REFUND` và đang dùng ở điểm danh, tranh chấp.",
+      "**Đánh đổi.** Phiên huỷ ngay, tiền về sau vài giây đến vài phút (tự thử lại nếu lỗi), thay vì 'lỗi thì phiên giữ nguyên'. Đây là quyết định sản phẩm.",
+      "**Điều kiện.** Hoàn tiền phía payment-service phải idempotent theo phiên, vì outbox đảm bảo 'ít nhất một lần'.",
+      "**Phương án nhẹ hơn.** `@Version` (khoá lạc quan) để phát hiện ghi đè, nhưng không giải quyết việc đã lỡ gọi hoàn tiền."
+    ],
+    lesson: {
+      name: "Transactional Outbox, idempotency, dual-write",
+      body: [
+        "Đừng làm việc **không hoàn tác được** (chuyển tiền) khi quyết định còn chưa chốt. Ghi 'ý định' vào cùng transaction với thay đổi trạng thái, rồi giao cho outbox gửi: tránh được lỗi dual-write (ghi hai nơi, một nơi hỏng).",
+        "Outbox là at-least-once nên bên nhận phải idempotent. 'At-least-once' cộng 'idempotent' cho kết quả tương đương 'đúng một lần'."
+      ]
+    }
+  },
+  {
+    n: 5, groups: ["test"], flows: ["F8"],
+    title: "Chấp nhận đổi lịch không kiểm lại điều kiện",
+    risk: "Xác suất thấp · hậu quả vừa (phiên rơi vào ngày mentor đã nghỉ)",
+    explain: [
+      "**Bối cảnh.** Khi đề xuất đổi lịch, hệ thống kiểm đủ: lịch rảnh hằng tuần, ngày nghỉ, trạng thái mentor, báo trước, trùng lịch (`checkSlot` + `requireFree`). Đề xuất sống tối đa 24 giờ.",
+      "**Chuyện gì xảy ra.** Khi bên kia **chấp nhận**, code chỉ kiểm lại trùng lịch (`requireFree`), không kiểm lại phần còn lại (`RescheduleService.accept`).",
+      "**Ví dụ.** Sáng mentee đề xuất dời sang 15:00 thứ Sáu. Trưa mentor khai thứ Sáu là ngày nghỉ (hoặc bị `SUSPENDED`). Chiều bên kia bấm chấp nhận → phiên vẫn dời sang thứ Sáu, đúng ngày mentor đã nghỉ."
+    ],
+    fix: [
+      "Gọi lại kiểm tra lịch rảnh, ngoại lệ và trạng thái mentor trong transaction của `accept`, trước `requireFree`.",
+      "**Chú ý.** Khớp quyết định đã chốt về đổi lịch: báo trước tối thiểu tính theo **lúc đề xuất**, không tính lại lúc chấp nhận (vì giờ mới có thể rất sát). Cần thêm hàm hoặc cờ kiểm riêng cho bước này, cộng điều kiện giờ mới vẫn còn ở tương lai."
+    ],
+    lesson: {
+      name: "Kiểm lại tại thời điểm chuyển trạng thái",
+      body: [
+        "Kiểm tra lúc tạo yêu cầu chỉ là gợi ý: dữ liệu có thể đổi trong lúc chờ. Mọi điều kiện quan trọng phải được kiểm lại ở bước **thực sự áp dụng** thay đổi (validate on commit, không chỉ on request).",
+        "Khoảng thời gian giữa 'đề xuất' và 'chấp nhận' càng dài thì càng cần kiểm lại."
+      ]
+    }
+  },
+  {
+    n: 6, groups: ["test"], flows: ["F4"],
+    title: "Buổi thử: ba kẽ hở (giới hạn 3 buổi, mentor PAUSED, mentee từng học)",
+    risk: "Xác suất thấp · hậu quả nhỏ đến vừa",
+    explain: [
+      "**(a) Giới hạn 3 buổi thử chưa diễn ra có thể bị vượt.** `requireBelowOpenLimit` đếm ngoài transaction (`SessionService.java:163`), còn khoá khi đặt lịch là theo **mentor** (`:181`). Mentee mở hai tab, đặt buổi thử với hai mentor khác nhau cùng lúc: cả hai thấy đang có 2 buổi → cả hai thành công → 4 buổi.",
+      "**(b) Mentor `PAUSED` vẫn nhận buổi thử.** `statusBlock` cho `PAUSED` đi qua vì luật đó sinh ra cho mentee đã được nhận. Nhưng buổi thử là của người **chưa** quen mentor, trong khi F1 quy định mentor `PAUSED` không nhận mentee mới: hai luồng mâu thuẫn.",
+      "**(c) Điều kiện 'chưa có yêu cầu ACCEPTED' lỏng.** Mentee từng học với mentor, quan hệ đã `ENDED`, vẫn đặt được buổi thử nếu chưa dùng lượt."
+    ],
+    fix: [
+      "**(a)** Khoá theo mentee bằng advisory lock (mẫu `lockMenteeRequests` đã có), rồi đếm **bên trong** transaction đặt lịch.",
+      "**(b)** Trong nhánh trial của `book`, yêu cầu mentor đang `ACCEPTING` (cùng luật `MENTOR_UNAVAILABLE` của F1).",
+      "**(c)** Dùng lại `countRegularWithMentor` (đã dùng cho mã giới thiệu) để chặn mentee từng học thường với mentor đó. Đây là quyết định nghiệp vụ."
+    ],
+    lesson: {
+      name: "Khoá đúng thực thể mà luật nói tới; một nguồn sự thật cho một khái niệm",
+      body: [
+        "Luật 'mỗi mentee tối đa 3' phải được thực thi dưới khoá của **mentee**. Khoá theo mentor chỉ bảo vệ luật của mentor. Phạm vi khoá phải khớp phạm vi của bất biến cần giữ.",
+        "Cùng một khái niệm ('mentor có nhận người mới không') phải có đúng một định nghĩa dùng chung, kẻo hai luồng cho hai đáp án. Ràng buộc DB (`trial_uses` có khoá chính theo cặp) bảo vệ được 'một lần mỗi cặp' nhưng không bảo vệ được 'tối đa 3'."
+      ]
+    }
+  },
+  {
+    n: 7, groups: ["test", "talk"], flows: ["F5", "F6"],
+    title: "Điểm danh và phòng học: năm kẽ hở",
+    risk: "Xác suất thấp đến vừa · hậu quả vừa đến lớn (kết quả tiền sai, phiên kẹt)",
+    explain: [
+      "**(a) Lời tố vắng mặt có thể thắng nhật ký phòng.** Khi một bên bấm 'bên kia vắng' (sau 10 phút), lời tố được lưu như một câu trả lời tham dự. Nếu bên bị tố vào phòng sau đó rồi im lặng 24 giờ, `resolveExpired` chỉ thấy một câu trả lời duy nhất → kết luận `NO_SHOW_*` dù cả hai đã vào.",
+      "**(b) 'Có mặt' chỉ là 'đã nhận token'.** Nhật ký vào phòng ghi lúc cấp JWT Jitsi, không đo việc thực sự ở trong phòng.",
+      "**(c) Phiên kẹt hoặc kết luận sai sau tranh chấp.** `sessionStatusAfter` chỉ đổi trạng thái cho `NO_REFUND` và `WARNING`; `FULL_REFUND`, `PARTIAL_REFUND`, `SUSPEND` để nguyên. Phiên `DISPUTED` đã hoàn tiền không còn đường ra. Phiên `AWAITING_ATTENDANCE` có tranh chấp do người dùng mở vẫn có thể bị `resolveExpired` chuyển `COMPLETED` (hàm này, khác `resolveByJoinLog`, không chặn phiên có tranh chấp).",
+      "**(d) Phiên đã hoàn 100% mà vẫn đánh giá được.** Hệ quả của (c): trạng thái là `COMPLETED`.",
+      "**(e) Hậu xử lý có thể mất.** Strike, thông báo và việc tạo tranh chấp tự động chạy **sau** commit. Tiến trình chết giữa chừng thì mất, và phiên `DISPUTED` có thể không có bản ghi tranh chấp: admin không thấy, tiền bị giữ."
+    ],
+    fix: [
+      "**(a)** Trong `resolveExpired`, nếu bên bị tố đã vào phòng thì không tự kết luận mà chuyển `DISPUTED` cho admin.",
+      "**(b)** Lấy tín hiệu từ Jitsi (sự kiện `videoConferenceJoined` từ frontend, hoặc webhook), hoặc ghi rõ giới hạn nếu chưa làm. Cần xem cấu hình Jitsi của dự án mới chốt được.",
+      "**(c, d)** Mỗi kết quả tranh chấp phải dẫn tới trạng thái cuối: `FULL_REFUND` và `SUSPEND` → `CANCELLED`; `PARTIAL_REFUND` → `COMPLETED` kèm `refundPercent`. Thêm `!disputeRepo.existsBySessionId` vào `resolveExpired`. Việc này tự chặn luôn (d).",
+      "**(e)** Ghi strike vào cùng transaction (tách phần gọi profile-service để sau commit). Thêm bước tự phục hồi trong `attendanceJob`: tìm phiên `DISPUTED` chưa có `Dispute` rồi tạo."
+    ],
+    lesson: {
+      name: "Tín hiệu đáng tin; state machine đầy đủ; defense in depth; đối soát",
+      body: [
+        "**Tín hiệu.** Căn cứ cho quyết định có hậu quả tiền bạc phải là sự kiện phía server, không phải lời khai của một bên.",
+        "**State machine.** Mọi kết quả đều phải có điểm đến; không có trạng thái cụt. Mọi guard (vd. 'có tranh chấp thì bỏ qua') phải có ở **mọi** đường dẫn tới cùng một trạng thái.",
+        "**Đối soát.** Việc 'ghi DB rồi làm thêm việc khác' cần cùng transaction hoặc một job đối soát (reconciliation) tìm bất biến bị phá và tự sửa, như `IndexSyncJob` của matching-service."
+      ]
+    }
+  },
+  {
+    n: 8, groups: ["now"], flows: ["F6"],
+    title: "Cửa sổ khiếu nại dài hơn thời điểm giải phóng thu nhập",
+    risk: "Xác suất vừa · hậu quả vừa (khiếu nại khi tiền đã khả dụng hoặc đã rút)",
+    explain: [
+      "**Luật đã chốt** (`ban-chot-nghiep-vu.md` §9): thu nhập khả dụng **72 giờ sau khi buổi `COMPLETED`**; khiếu nại mở tối đa 'giờ kết thúc + 24 giờ + 72 giờ', tức E+96 giờ (cấu hình `disputes.open-window = P4D`).",
+      "**Code làm gì.** Khi gửi `FINAL_STATE` sang payment-service, `endedAt` là `endsAt()` (giờ kết thúc E), không phải thời điểm buổi được kết luận (E+24h). Nên thu nhập khả dụng ở E+72h.",
+      "**Hệ quả.** Từ E+72h đến E+96h mentee vẫn mở khiếu nại được nhưng tiền của mentor đã khả dụng (có thể đã rút). Khi đó chỉ thu hồi được phần còn trong số dư (theo cách mình đọc `EarningRules`, chưa tái hiện)."
+    ],
+    fix: [
+      "Gửi **thời điểm kết luận phiên** (`resolvedAt`) làm `endedAt`, ở `AttendanceService.apply` và nhánh huỷ muộn (`SessionService.java:531`). Không đổi cấu hình `release-delay` hay `open-window`.",
+      "**Vì sao.** Khi đó khả dụng = E+24h+72h = E+96h, trùng đúng lúc khiếu nại đóng. Hai luật dùng cùng một mốc."
+    ],
+    lesson: {
+      name: "Một neo thời gian cho các mốc phụ thuộc nhau; escrow ≥ cửa sổ tranh chấp",
+      body: [
+        "Đừng đặt hai hằng số thời gian độc lập rồi hy vọng chúng khớp. Hãy suy cả hai từ **cùng một sự kiện** (neo) cộng độ lệch; khi đó chúng không thể trôi lệch nhau.",
+        "Thời gian giữ tiền (escrow) phải kéo dài ít nhất bằng cửa sổ tranh chấp, nếu không việc khiếu nại không còn gì để giữ."
+      ]
+    }
+  },
+  {
+    n: 9, groups: ["test"], flows: ["F6"],
+    title: "Đánh giá: tạo trùng đồng thời gây lỗi 500, thứ tự kiểm tra lệch, điểm gửi sớm",
+    risk: "Xác suất thấp · hậu quả nhỏ (lỗi 500, thứ tự lỗi)",
+    explain: [
+      "**(a) Hai lần đánh giá đồng thời → 500.** `create` kiểm `existsBySessionId` rồi `save`. Hai request cùng lúc cùng qua kiểm tra; cái thứ hai đụng ràng buộc unique của DB và trả 500 `INTERNAL_ERROR` thay vì 409.",
+      "**(b) `update` kiểm nội dung trước khi kiểm tồn tại và quyền,** nên người không phải chủ đánh giá có thể nhận 400 thay vì 403/404. Thứ tự lỗi không nhất quán với `create`.",
+      "**(c) Điểm gửi sang profile-service kể cả khi mới 1–2 đánh giá,** trong khi giao diện ẩn sao dưới 3 đánh giá. Với xếp hạng thì vô hại (matching tự dùng trung vị nền tảng khi `rating_count < 3`); chỉ cần phía profile cũng ẩn."
+    ],
+    fix: [
+      "**(a)** Bắt `DataIntegrityViolationException` khi `save` và trả 409 `ALREADY_REVIEWED`. Ràng buộc unique vẫn là hàng rào cuối. Hoặc khoá phiên bằng `findForUpdate` trước khi kiểm.",
+      "**(b)** Đổi thứ tự: tải đánh giá → kiểm quyền → kiểm nội dung.",
+      "**(c)** Không cần sửa code; ghi chú rằng giao diện profile áp quy tắc 'dưới 3 thì ẩn'."
+    ],
+    lesson: {
+      name: "Ràng buộc DB là hàng phòng thủ cuối, nhưng phải dịch thành lỗi nghiệp vụ; biết khi nào không cần sửa",
+      body: [
+        "Unique index giúp dữ liệu đúng ngay cả khi code sai, nhưng người dùng cần thấy 409 rõ nghĩa thay vì 500. Thứ tự kiểm chuẩn: xác thực → tồn tại → quyền → trạng thái → nội dung.",
+        "Không phải vấn đề nào cũng đáng sửa: (c) chỉ cần một ghi chú. Đánh giá chi phí và lợi ích trước khi thêm mã."
+      ]
+    }
+  },
+  {
+    n: 10, groups: ["now", "test"], flows: ["F2", "F6"],
+    title: "Đặt lịch và thanh toán: callback tin mù, giữ chỗ không giới hạn, DTO nới hơn luật",
+    risk: "Xác suất thấp đến vừa · hậu quả nhỏ đến vừa",
+    explain: [
+      "**(a) `markPaid` tin mù callback.** Nó nhận `transactionId` nhưng chỉ dùng để ghi log; không kiểm số tiền khớp giá phiên, không lưu mã giao dịch. Callback gọi lại với mã khác cũng được chấp nhận.",
+      "**(b) Giữ chỗ không giới hạn.** Một mentee có thể tạo nhiều phiên `PENDING` chưa thanh toán; mỗi phiên giữ khung giờ của mentor tới 15 phút. Chỉ buổi thử mới có trần 3. Có thể bị dùng để chiếm lịch mentor.",
+      "**(c) Gọi ví sau commit.** Phiên được tạo, rồi mới gọi `payFromWallet`; tiến trình chết giữa chừng thì phiên chờ job hết hạn 15 phút. Lành tính, chỉ phiền.",
+      "**(d) DTO nới hơn luật nghiệp vụ.** `ReplyInput` cho 2000 ký tự nhưng luật là 500; mô tả tranh chấp DTO cho 4000, luật 2000; link bằng chứng DTO cho 20, luật 5."
+    ],
+    fix: [
+      "**(a)** Lưu `payment_transaction_id` trên phiên; từ chối hoặc đánh dấu khi số tiền lệch giá; callback lặp với cùng mã thì trả lại kết quả cũ (idempotent).",
+      "**(b)** Đặt trần số phiên `PENDING` chưa thanh toán mỗi mentee (vd. 3), dưới advisory lock theo mentee.",
+      "**(c)** Chấp nhận; nếu muốn thì gom việc 'trả tiền' vào outbox.",
+      "**(d) Làm ngay.** Đưa `@Size` của DTO về đúng hằng số nghiệp vụ (500; 2000; 5 link × 500) và cập nhật `contracts/mentoring-service.yaml`."
+    ],
+    lesson: {
+      name: "Zero trust giữa các service; quota theo người dùng; một nguồn cho giới hạn",
+      body: [
+        "Callback từ service khác cũng là **đầu vào cần kiểm** (verify), không chỉ tin vì nó đến từ 'người nhà'. Lưu mã giao dịch để chống lặp và đối soát.",
+        "Tài nguyên khan hiếm (khung giờ của mentor) cần hạn mức theo người dùng. Giới hạn phải khai báo **một lần** (hằng số) và dùng cho cả DTO lẫn luật, để lỗi xuất hiện sớm và rõ ràng ngay ở biên."
+      ]
+    }
+  },
+  {
+    n: 11, groups: ["now"], flows: ["F1", "F7"],
+    title: "Di sản: endpoint, trạng thái, bảng và hằng số không còn dùng",
+    risk: "Không phải lỗi · nợ kỹ thuật",
+    explain: [
+      "**Còn sót lại.** Trạng thái yêu cầu `COMPLETED` và endpoint `POST /requests/{id}/complete` (đánh dấu `@Deprecated`, đã chuyển về `/end`); bảng và entity `late_cancellations` (cơ chế 'huỷ muộn miễn phí' đã bỏ ở v2.0); hằng `MENTOR_CANCEL_APOLOGY` và hàm `enqueueReward` (điểm xin lỗi, không còn nơi gọi).",
+      "**Mình đã kiểm.** Hàm `completeRequest` ở frontend (`features/mentoring/api.ts:62`) không còn được gọi; `LateCancellationRepository` chỉ còn một mock trong test; `enqueueReward` chỉ còn phần định nghĩa.",
+      "**Vì sao đáng dọn.** Mã chết làm người đọc hiểu sai luật hiện tại, và cứ tồn tại là cứ tốn công bảo trì."
+    ],
+    fix: [
+      "Gỡ theo **expand → migrate → contract**: (1) ngừng gọi (frontend đã xong); (2) migration chuyển yêu cầu `COMPLETED` cũ sang `ENDED`; (3) xoá endpoint `/complete`, entity, repository và mock của `late_cancellations`, thêm migration `DROP TABLE`, xoá hằng và hàm outbox không dùng.",
+      "Trước khi `DROP`, kiểm dữ liệu ở môi trường thật."
+    ],
+    lesson: {
+      name: "Gỡ bỏ an toàn (expand–migrate–contract); deprecated phải có hạn gỡ",
+      body: [
+        "Bỏ một tính năng theo thứ tự: ngừng dùng → chuyển dữ liệu → xoá. Làm ngược lại (xoá trước) dễ làm hỏng người dùng cũ hoặc mất dữ liệu.",
+        "Gắn `@Deprecated` mà không có việc xoá đi kèm thì thành nợ vĩnh viễn. Chứng minh 'không còn dùng' bằng tìm nơi gọi (grep), log hoặc số liệu, đừng đoán."
+      ]
+    }
+  }
+];
+
+const GLOSSARY = [
+  ["Transactional Outbox", "Ghi 'việc cần làm với hệ thống ngoài' vào bảng trong cùng transaction với thay đổi dữ liệu, rồi một tiến trình khác gửi đi và thử lại nếu lỗi."],
+  ["Idempotency (tính lặp an toàn)", "Gọi cùng một thao tác nhiều lần cho kết quả như gọi một lần. Cần thiết vì mạng và outbox có thể gửi lặp."],
+  ["TOCTOU / check-then-act", "Kiểm tra điều kiện rồi hành động, nhưng điều kiện đã đổi ở giữa hai bước."],
+  ["Khoá bi quan (pessimistic lock)", "Khoá dòng ngay khi đọc (`SELECT … FOR UPDATE`) để không ai sửa cùng lúc. Hợp khi xung đột hiếm, transaction ngắn."],
+  ["Khoá lạc quan (optimistic lock, `@Version`)", "Không khoá khi đọc; lúc ghi kiểm xem bản ghi đã bị ai sửa chưa, nếu có thì báo lỗi để thử lại."],
+  ["Advisory lock", "Khoá logic do ứng dụng đặt tên (vd. theo mentee, theo mentor), không gắn với một dòng cụ thể."],
+  ["Dual-write", "Ghi vào hai nơi (DB và hệ thống ngoài) mà không có bảo đảm cả hai cùng thành công."],
+  ["State machine (máy trạng thái)", "Mô tả mọi trạng thái và mọi bước chuyển hợp lệ; thiết kế tốt thì mọi kết quả đều có điểm đến."],
+  ["Reconciliation job (job đối soát)", "Tiến trình định kỳ tìm chỗ dữ liệu không khớp bất biến và tự sửa."],
+  ["Expand → migrate → contract", "Gỡ bỏ an toàn: thêm đường mới và ngừng dùng đường cũ, chuyển dữ liệu, rồi mới xoá."],
+  ["Escrow (giữ tiền)", "Tiền được giữ lại trong khoảng thời gian chờ để còn xử lý khiếu nại trước khi trả cho mentor."]
+];
+
+function rich(s) {
+  return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function cellHtml(items) {
+  return items.map((it) => Array.isArray(it)
+    ? "<ul>" + it.map((x) => "<li>" + rich(x) + "</li>").join("") + "</ul>"
+    : "<p>" + rich(it) + "</p>").join("");
+}
+
+function renderIssues() {
+  const rows = ISSUES.map((it) => {
+    const chips = it.groups.map((g) => '<span class="gchip ' + g + '">' + GROUP_LABEL[g] + "</span>").join("");
+    const links = it.flows.map((f) => '<button type="button" class="flowlink ' + FLOWS[f].kind + '" data-flow="' + f + '">' +
+      esc(FLOWS[f].code + " · " + FLOWS[f].title) + "</button>").join("");
+    return '<tr class="g-' + it.groups[0] + '" id="issue-' + it.n + '">' +
+      '<td class="num" data-label="#">' + it.n + "</td>" +
+      '<td data-label="Vấn đề và giải thích"><h3><span class="nn">#' + it.n + " </span>" + esc(it.title) + "</h3>" +
+      '<div class="meta">' + chips + '<span class="risk">' + esc(it.risk) + "</span></div>" +
+      '<div class="links">' + links + "</div>" + cellHtml(it.explain) + "</td>" +
+      '<td data-label="Cách sửa và giải thích">' + cellHtml(it.fix) + planBlock(it.n) + "</td>" +
+      '<td data-label="Bài học System Design"><div class="lname">' + esc(it.lesson.name) + "</div>" + cellHtml(it.lesson.body) + "</td></tr>";
+  }).join("");
+  $("#issues-body").innerHTML = rows;
+  $("#glossary-list").innerHTML = GLOSSARY.map((g) => "<dt>" + esc(g[0]) + "</dt><dd>" + rich(g[1]) + "</dd>").join("");
+}
+
+/* ---------- chuyển trang ---------- */
+const PAGES = {
+  map: { el: $("#page-map"), tab: $("#tab-map") },
+  issues: { el: $("#page-issues"), tab: $("#tab-issues") },
+  plan: { el: $("#page-plan"), tab: $("#tab-plan") }
+};
+const PAGE_KEYS = Object.keys(PAGES);
+const pageMap = PAGES.map.el;
+const startHash = location.hash.replace("#", "");
+const startPage = PAGE_KEYS.includes(startHash) ? startHash : "map";
+
+function showPage(which) {
+  closeNote(true);
+  PAGE_KEYS.forEach((k) => {
+    const on = k === which;
+    PAGES[k].el.hidden = !on;
+    PAGES[k].tab.setAttribute("aria-selected", String(on));
+    PAGES[k].tab.tabIndex = on ? 0 : -1;
+  });
+  if (which !== "map") {
+    try { history.replaceState(null, "", "#" + which); } catch (e) { /* bỏ qua */ }
+    window.scrollTo(0, 0);
+  } else {
+    afterChange(null);
+    redraw();
+  }
+}
+
+PAGE_KEYS.forEach((k, i) => {
+  PAGES[k].tab.addEventListener("click", () => showPage(k));
+  PAGES[k].tab.addEventListener("keydown", (ev) => {
+    const d = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : 0;
+    if (!d) return;
+    const next = PAGE_KEYS[(i + d + PAGE_KEYS.length) % PAGE_KEYS.length];
+    showPage(next);
+    PAGES[next].tab.focus();
+  });
+});
+PAGES.issues.el.addEventListener("click", (ev) => {
+  const b = ev.target.closest(".flowlink");
+  if (!b) return;
+  showPage("map");
+  openNode(b.dataset.flow);
+  afterChange(b.dataset.flow);
+});
+
+/* ---------- khởi tạo ---------- */
+loadNotes();
+const initial = decodeURIComponent(location.hash.replace("#", "")).split(",").filter((id) => FLOWS[id]);
+buildMap();
+initial.forEach(openNode);
+afterChange(null);
+drawEdges();
+if ("ResizeObserver" in window) new ResizeObserver(redraw).observe(map);
+window.addEventListener("resize", redraw);
+wide.addEventListener("change", redraw);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
+renderIssues();
+renderPlan();
+if (startPage !== "map") showPage(startPage);
+</script>
+</body>
+</html>

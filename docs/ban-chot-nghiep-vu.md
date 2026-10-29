@@ -4,6 +4,8 @@
 > **Căn cứ**: tài liệu "Phạm vi đồ án Mentor-Mentee" (bản chốt phạm vi) + đối chiếu mã nguồn nhánh `main` (`c7a50ff`).
 > **Quy ước**: mọi mục "cần xác nhận" trong bản chốt phạm vi đều đã được chốt ở đây. Cột **Hiện tại** là giá trị
 > trong code; ✔ = giữ nguyên, ✎ = sửa cấu hình, ⚒ = phải viết thêm code.
+> **Cập nhật 29/10/2026 (mentoring-service):** các mục 5, 6, 7, 9, 10 và 12 (nhắc lịch, phòng học) đã khớp code; hành vi
+> chi tiết từng luồng nằm ở [spec-mentoring-service.md](spec-mentoring-service.md), nếu khác tài liệu này thì spec thắng.
 > Mọi thông số nằm trong cấu hình (`application.yml` / `config.py` / biến môi trường), không viết cứng.
 
 ---
@@ -77,14 +79,15 @@
 
 | Nội dung | Chốt | Hiện tại |
 |---|---|---|
-| Đặt trước tối thiểu | **3 giờ** trước giờ bắt đầu | ✎ đang 1 giờ |
+| Đặt trước tối thiểu | **3 giờ** trước giờ bắt đầu (hoặc báo trước riêng của mentor nếu lớn hơn) | ✔ `booking.min-lead-time` |
 | Đặt xa nhất | 60 ngày | ✔ |
-| Giữ chỗ khi ví không đủ tiền | **15 phút** để nạp; hết hạn → nhả khung giờ | ✎ đang 30 phút (giữ chỗ chờ thanh toán) |
-| Hạn mentor xác nhận | **sớm hơn** trong hai mốc: 24 giờ sau khi gửi, hoặc 1 giờ trước giờ bắt đầu | ✎ đang 72 giờ |
-| Quá hạn / mentor từ chối | huỷ, hoàn 100% khoản tạm giữ, gợi ý 3 mentor tương tự | ✔ một phần (US-15 gợi ý) |
+| Giữ chỗ khi ví không đủ tiền | **15 phút** để nạp; hết hạn → nhả khung giờ | ✔ `booking.payment-hold` |
+| Hạn mentor xác nhận | **sớm hơn** trong hai mốc: 24 giờ sau khi học phí được tạm giữ, hoặc 1 giờ trước giờ bắt đầu | ✔ `booking.confirm-within` / `confirm-before-start` |
+| Quá hạn / mentor từ chối | huỷ, hoàn 100% khoản tạm giữ (qua hàng đợi outbox), gợi ý 3 mentor tương tự | ✔ |
 | Số yêu cầu chờ của một mentee | tối đa 3 | ✔ |
 | Mentor đầy chỗ | đạt `capacity` → tự dừng nhận yêu cầu mới, ẩn khỏi đề xuất | ✔ |
-| Dời lịch | giữ cơ chế hiện có: hai bên đồng ý, đề xuất ≥ 2 giờ trước giờ bắt đầu, tối đa 2 lần/buổi | ✔ |
+| Phiên chưa thanh toán | mỗi mentee tối đa **2** phiên `PENDING` cùng lúc | ✔ `booking.max-unpaid-per-mentee` |
+| Dời lịch | **chính sách riêng, tách khỏi huỷ**: chỉ buổi `CONFIRMED`; hai bên đồng ý; đề xuất **bất kỳ lúc nào trước giờ bắt đầu hiện tại** và chưa ai vào phòng; tối đa 2 lần/buổi, 1 đề xuất mở; đề xuất hết hạn lúc sớm hơn của 24 giờ và giờ bắt đầu hiện tại; không tiền, không lỗi vi phạm; huỷ sau khi dời luôn tính theo giờ bắt đầu mới | ✔ `reschedule.*` |
 
 **Luồng**: chọn mentor + khung giờ → kiểm tra trùng lịch → kiểm tra số dư → **tạm giữ học phí** (mục 8.3) →
 gửi yêu cầu → mentor xác nhận → buổi `CONFIRMED`.
@@ -99,10 +102,10 @@ và đó là căn cứ duy nhất để xác định vắng mặt.
 
 | Nội dung | Chốt | Hiện tại |
 |---|---|---|
-| Mở phòng | 10 phút trước giờ bắt đầu, đóng 30 phút sau giờ kết thúc | ⚒ |
-| Thời gian chờ | **10 phút** (buổi trải nghiệm: **5 phút**) sau giờ bắt đầu | ⚒ |
-| Báo vắng mặt | bên có mặt bấm "Bên kia vắng mặt" sau thời gian chờ; hệ thống đối chiếu nhật ký vào phòng | ⚒ |
-| Tự hoàn thành | **24 giờ** sau giờ kết thúc nếu không có báo cáo vắng mặt hay khiếu nại | ✎ đang 48 giờ (US-12) |
+| Mở phòng | 10 phút trước giờ bắt đầu, đóng 30 phút sau giờ kết thúc | ✔ `room.opens-before` / `closes-after` |
+| Thời gian chờ | **10 phút** (buổi trải nghiệm: **5 phút**) sau giờ bắt đầu | ✔ `room.grace` / `trial-grace` |
+| Báo vắng mặt | bên có mặt bấm "Bên kia vắng mặt" sau thời gian chờ; hệ thống đối chiếu nhật ký vào phòng | ✔ |
+| Tự hoàn thành | **24 giờ** sau giờ kết thúc nếu không có báo cáo vắng mặt hay khiếu nại | ✔ `attendance.window` |
 
 | Tình huống | Mentee | Mentor | Ghi chú |
 |---|---|---|---|
@@ -111,8 +114,10 @@ và đó là căn cứ duy nhất để xác định vắng mặt.
 | Mentee vắng | **không hoàn** | nhận giá − hoa hồng | |
 | Cả hai vắng | hoàn 100% | 0, không tính lỗi vi phạm | ghi nhận để admin theo dõi |
 | Hai bên báo ngược nhau | tạm giữ, chuyển admin | tạm giữ | xử lý như khiếu nại |
+| Một bên báo vắng nhưng nhật ký cho thấy bên kia đã vào phòng | tạm giữ, chuyển admin | tạm giữ, không lỗi vi phạm | mã `REPORT_CONTRADICTS_LOG`; bản ghi khiếu nại do hệ thống mở |
 
-**Lỗi vi phạm của mentor**: 3 lỗi (vắng mặt hoặc huỷ) trong 30 ngày → hồ sơ `PAUSED` và báo admin ✔ (US-02).
+**Lỗi vi phạm của mentor**: 3 lỗi (vắng mặt hoặc huỷ buổi **đã xác nhận**) trong 30 ngày → hồ sơ `PAUSED` và báo admin ✔ (US-02).
+Mentor từ chối / huỷ buổi còn `PENDING` hoặc `AWAITING_MENTOR` không bị lỗi vi phạm. Mentor kết thúc quan hệ chỉ bị lỗi vi phạm cho buổi đã xác nhận bắt đầu trong vòng 24 giờ.
 
 ---
 
@@ -120,16 +125,21 @@ và đó là căn cứ duy nhất để xác định vắng mặt.
 
 | Ai huỷ | Thời điểm | Mentee được hoàn | Mentor nhận |
 |---|---|---|---|
-| Mentee | trước khi mentor xác nhận | 100% | 0 |
+| Mentee | buổi còn `PENDING` (chưa tạm giữ học phí) | không mất gì (0đ) | 0 |
+| Mentee | trước khi mentor xác nhận (`AWAITING_MENTOR`) | 100% | 0 |
 | Mentee | ≥ **24 giờ** trước giờ bắt đầu | 100% | 0 |
 | Mentee | từ **4 giờ** đến dưới 24 giờ trước | **50%** | 50% giá − hoa hồng trên 50% đó |
 | Mentee | < 4 giờ trước, hoặc vắng mặt | 0% | giá − hoa hồng |
-| Mentor | bất kỳ lúc nào | 100% | 0 + 1 lỗi vi phạm |
+| Mentor | buổi đã xác nhận, bất kỳ lúc nào | 100% | 0 + 1 lỗi vi phạm |
+| Mentor | từ chối / huỷ khi chưa xác nhận | 100% nếu đã tạm giữ | 0, không lỗi vi phạm |
 | Hệ thống / admin | bất kỳ (khoá tài khoản, mentor không xác nhận…) | 100% | 0 |
 
-- Buổi trải nghiệm: mentee huỷ ≥ 2 giờ trước → hoàn 100%; muộn hơn → 0%.
+- Buổi trải nghiệm: mentee huỷ ≥ 2 giờ trước → hoàn 100%; muộn hơn → 0%. Lượt dùng thử được trả lại khi mentee không mất tiền
+  (hoàn 100%, hoặc huỷ khi còn `PENDING`).
 - **Bỏ** điểm xin lỗi khi mentor huỷ (20 điểm) và **bỏ** cơ chế chặn huỷ muộn phiên miễn phí, vì không còn buổi miễn phí.
-- Hiện tại: ≥ 72 giờ hoàn 100%, còn lại 0% → ✎ đổi mốc + ⚒ thêm bậc 50%.
+- Hoàn tiền đi qua hàng đợi (outbox) trong cùng giao dịch với việc đổi trạng thái buổi: huỷ không còn lỗi vì cổng hoàn tiền,
+  tiền về ví sau vài giây (lâu hơn nếu payment-service đang lỗi); mỗi lệnh hoàn có khoá chống hoàn trùng.
+- Hiện tại ✔: mốc 24 giờ / 4 giờ, bậc 50%.
 
 ---
 
@@ -184,8 +194,8 @@ và đó là căn cứ duy nhất để xác định vắng mặt.
 | Nội dung | Chốt | Hiện tại |
 |---|---|---|
 | Hoa hồng nền tảng | **15%**, một mức cho mọi buổi (kể cả buổi trải nghiệm), chốt vào bút toán lúc tất toán | ✔ 15% |
-| Thời gian chờ thu nhập | **72 giờ** sau khi buổi `COMPLETED` → khả dụng | ✎ đang 48 giờ |
-| Khiếu nại | mentee mở được cho đến khi thu nhập khả dụng (tối đa giờ kết thúc + 24 giờ + 72 giờ); khiếu nại đang mở → thu nhập bị giữ đến khi admin kết luận | ✎ đang mở trong 7 ngày (US-32) |
+| Thời gian chờ thu nhập | **72 giờ** sau giờ kết thúc buổi `COMPLETED` → khả dụng | ✔ `earnings.release-delay` |
+| Khiếu nại | mở được trong **72 giờ** sau giờ kết thúc (bằng thời gian giữ thu nhập, nên không còn khiếu nại gặp thu nhập đã khả dụng); khiếu nại đang mở → thu nhập bị giữ đến khi admin kết luận. Kết luận đưa buổi ra khỏi trạng thái treo: hoàn đủ / đình chỉ → `CANCELLED`, các kết luận còn lại → `COMPLETED` | ✔ `disputes.open-window` |
 | Nhận tiền | tối thiểu 200.000 đ, một yêu cầu mở cùng lúc, phải có tài khoản ngân hàng, admin đánh dấu đã chuyển | ✔ (US-42) |
 
 Làm tròn: hoa hồng làm tròn xuống đến đồng, phần lẻ thuộc mentor.
@@ -198,8 +208,8 @@ Làm tròn: hoa hồng làm tròn xuống đến đồng, phần lẻ thuộc me
 |---|---|
 | Thời lượng | 15 phút |
 | Phí | **30.000 đ** cố định toàn nền tảng, không phụ thuộc cấp độ |
-| Giới hạn | mỗi cặp mentee–mentor 1 lần; mỗi mentee tối đa 3 buổi trải nghiệm chưa diễn ra |
-| Mentor | bật/tắt nhận buổi trải nghiệm (mặc định bật) |
+| Giới hạn | mỗi cặp mentee–mentor 1 lần; mỗi mentee tối đa 3 buổi trải nghiệm chưa diễn ra (kiểm trong giao dịch đặt lịch, không vượt được khi đặt song song); cặp đã có quan hệ `ACCEPTED` hoặc `ENDED` không đặt buổi trải nghiệm |
+| Mentor | bật/tắt nhận buổi trải nghiệm (mặc định bật); mentor `PAUSED` không nhận buổi trải nghiệm |
 | Quy trình | như buổi thường: tạm giữ từ ví, mentor xác nhận, phòng học trong hệ thống, hoa hồng 15% |
 | Đánh giá | **không** chấm sao, không tính vào điểm uy tín; sau buổi chỉ hỏi "Bạn có muốn học tiếp với mentor này?" |
 | Sau buổi | nút "Đặt buổi học" với mentor đó |
@@ -230,9 +240,9 @@ nếu người dùng bỏ mã.
 | Nội dung | Chốt | Hiện tại |
 |---|---|---|
 | Học liệu | khoá học / lộ trình, đánh dấu tiến độ; tiến độ đã ghi được giữ lại kể cả khi học liệu bị gỡ | ✔ learning-service |
-| Nhắc lịch | **24 giờ và 15 phút** trước giờ bắt đầu; dời hoặc huỷ lịch thì nhắc lại theo lịch mới | ✎ đang 24 giờ và 1 giờ |
+| Nhắc lịch | **24 giờ và 15 phút** trước giờ bắt đầu; dời hoặc huỷ lịch thì nhắc lại theo lịch mới | ✔ (hằng số trong `ReminderRules`) |
 | Kênh thông báo | trong hệ thống (luôn có) + email (nếu email lỗi thì vẫn còn thông báo trong hệ thống) | ✔ (US-38 outbox) |
-| Phòng học | gọi video + chat trong hệ thống; **Jitsi Meet tự host** (docker) xác thực bằng JWT do mentoring-service cấp, chỉ người tham gia buổi lấy được token; rớt mạng thì vào lại bằng token cũ trong giờ phòng mở | ⚒ đang dùng link họp ngoài do mentor dán |
+| Phòng học | gọi video + chat trong hệ thống; **Jitsi Meet tự host** (docker) xác thực bằng JWT do mentoring-service cấp, chỉ người tham gia buổi lấy được token; rớt mạng thì vào lại bằng token cũ trong giờ phòng mở | ✔ (link họp ngoài do mentor dán vẫn dùng được như phương án phụ) |
 | Chặn thông tin liên hệ | tin nhắn **luôn** che số điện thoại, email, tài khoản mạng xã hội và đường dẫn ngoài; mỗi lần bị che ghi một vi phạm; 3 vi phạm/30 ngày → báo admin | ✎ hiện chỉ che đến buổi trả phí đầu tiên |
 | Đánh giá | chỉ buổi thường `COMPLETED`, mỗi buổi một lượt, trong 14 ngày, được sửa trong 48 giờ | ✔ (US-41) |
 
@@ -253,7 +263,7 @@ nếu người dùng bỏ mã.
 
 ## 14. Bảng thông số tổng hợp
 
-| Khoá cấu hình (đề xuất) | Giá trị | Service |
+| Khoá cấu hình (giá trị hiệu lực; mentoring-service dùng tiền tố `app.`) | Giá trị | Service |
 |---|---|---|
 | `login-protection.max-failed-attempts` / `block-duration` | 5 / PT15M | auth |
 | `password-reset.ttl` | PT15M | auth |
@@ -262,13 +272,21 @@ nếu người dùng bỏ mã.
 | `OPENAI_REALTIME_MODEL` / `OPENAI_REALTIME_VOICE` / `OPENAI_TRANSCRIBE_MODEL` | `gpt-realtime` / `marin` / `gpt-4o-transcribe` | ai |
 | ~~`interview.tier-thresholds`~~ / ~~`pricing.tiers`~~ | Đã gỡ (D6) — mentor đặt giá tự do, không còn cấp độ | — |
 | `booking.min-lead-time` / `max-advance` | PT3H / P60D | mentoring |
-| `booking.insufficient-balance-hold` | PT15M | mentoring |
-| `requests.confirm-within` / `confirm-before-start` | PT24H / PT1H | mentoring |
-| `attendance.grace` / `grace-trial` / `auto-complete-after` | PT10M / PT5M / PT24H | mentoring |
-| `cancellation.full-refund-before` / `half-refund-before` | PT24H / PT4H | mentoring |
-| `trial.duration` / `fee` / `full-refund-before` | 15 phút / 30.000 / PT2H | mentoring |
-| `reminders.before` | PT24H, PT15M | mentoring |
+| `booking.payment-hold` | PT15M | mentoring |
+| `booking.max-unpaid-per-mentee` | 2 | mentoring |
+| `booking.confirm-within` / `confirm-before-start` | PT24H / PT1H | mentoring |
+| `room.opens-before` / `closes-after` | PT10M / PT30M | mentoring |
+| `room.grace` / `trial-grace` | PT10M / PT5M | mentoring |
+| `attendance.window` | PT24H | mentoring |
+| `disputes.open-window` / `first-response-sla` | PT72H / PT48H | mentoring |
+| `cancellation.full-refund-before` / `half-refund-before` / `trial-full-refund-before` | PT24H / PT4H / PT2H | mentoring |
+| `trial.fee` / `max-open-per-mentee` | 30.000 / 3 (thời lượng 15 phút cố định trong code) | mentoring |
+| `reschedule.max-per-session` / `proposal-ttl` | 2 / PT24H | mentoring |
+| `requests.max-pending` / `expire-after` | 3 / PT24H | mentoring |
+| `requests.inactivity-warn-after` / `inactivity-end-after` | P30D / P7D | mentoring |
+| nhắc lịch trước giờ bắt đầu | PT24H, PT15M (hằng số trong `ReminderRules`) | mentoring |
 | `strikes.threshold` / `window` | 3 / P30D | mentoring |
+| `outbox.interval` | PT1M | mentoring |
 | `payment.platform-fee-rate` | 0.15 | payment |
 | `earnings.release-delay` | PT72H | payment |
 | `payout.min-amount` | 200.000 | payment |
@@ -292,7 +310,7 @@ nếu người dùng bỏ mã.
 | 7 | Giới thiệu theo cặp mentor, thưởng tiền khuyến mãi chờ 7 ngày, trần theo tháng | payment, mentoring | M |
 | 8 | Đổi thông số (mục 14) + luôn che thông tin liên hệ | tất cả | S |
 | 9 | Admin khoá mentee + đóng băng ví | auth, mentoring, payment | S |
-| 10 | Cập nhật SRD, business-domain, database-design, api-reference, contracts theo bản này | docs | M |
+| 10 | Cập nhật SRD, business-domain, database-design, api-reference, contracts theo bản này (phần mentoring-service: xong 29/10/2026, theo [spec-mentoring-service.md](spec-mentoring-service.md)) | docs | M |
 | 11 | Phỏng vấn giọng nói cho mentor + luyện phỏng vấn với AI cho mentee (mục 16; migration ai `010_voice_interviews.sql`) | ai, frontend, contracts | M |
 
 ---
