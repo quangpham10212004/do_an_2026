@@ -29,10 +29,11 @@ import java.util.UUID;
  * US-31 (PRD-REQ-6) — kết thúc quan hệ mentoring (ACCEPTED → ENDED).
  *
  * <ul>
- *   <li>Mentee / mentor (hoặc admin) kết thúc kèm lý do: các phiên sắp tới PENDING/CONFIRMED của cặp bị huỷ theo chính
- *       sách huỷ hiện có như thể người kết thúc huỷ (mentee &lt; 72 giờ → hoàn 0%, mentor → hoàn 100% + điểm xin lỗi +
- *       strike, admin → SYSTEM hoàn 100%). Huỷ phiên trước rồi mới ENDED: lỗi hoàn tiền (502) → quan hệ vẫn ACCEPTED, gọi
- *       lại an toàn (phiên đã huỷ không bị huỷ lại).</li>
+ *   <li>Mentee / mentor (hoặc admin) kết thúc kèm lý do: các phiên sắp tới PENDING/AWAITING_MENTOR/CONFIRMED của cặp
+ *       bị huỷ theo chính sách huỷ hiện có như thể người kết thúc huỷ (mentee → bậc hoàn tiền 24 giờ / 4 giờ; mentor → hoàn 100%,
+ *       chỉ phiên đã xác nhận bắt đầu trong vòng 24 giờ bị strike; admin → SYSTEM hoàn 100%). Huỷ phiên trước rồi mới ENDED; hoàn tiền
+ *       đi qua outbox nên không còn lỗi hoàn tiền làm kẹt quan hệ, lỗi bất ngờ khi huỷ một phiên thì quan hệ vẫn ACCEPTED, gọi lại
+ *       an toàn (phiên đã huỷ không bị huỷ lại).</li>
  *   <li>Job không hoạt động ({@link InactivityRules}): 30 ngày → nhắc hai bên "Bạn có muốn tiếp tục?"; thêm 7 ngày vẫn
  *       không có phiên mới → ENDED reason INACTIVE, endedBy SYSTEM. Đặt phiên mới xoá nhắc (SessionService.book).</li>
  *   <li>Số mentee đang hướng dẫn đồng bộ sang profile-service chỉ đếm ACCEPTED.</li>

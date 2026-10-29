@@ -18,8 +18,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Công cụ dev/e2e để kiểm thử luồng phụ thuộc thời gian mà không phải chờ thật (US-12 xác nhận tham dự 48 giờ,
- * US-15 yêu cầu hết hạn 72 giờ). Nằm dưới /internal/** (chỉ X-Internal-Token, không đi qua proxy frontend) và
+ * Công cụ dev/e2e để kiểm thử luồng phụ thuộc thời gian mà không phải chờ thật (US-12 xác nhận tham dự 24 giờ,
+ * US-15 yêu cầu hết hạn 24 giờ). Nằm dưới /internal/** (chỉ X-Internal-Token, không đi qua proxy frontend) và
  * KHÔNG tồn tại ở profile prod — cùng mẫu với auth-service /internal/dev/emails.
  */
 @RestController
@@ -137,7 +137,7 @@ public class InternalDevController {
         return Map.of("id", s.getId(), "confirmDeadline", s.getConfirmDeadline().toString(), "status", s.getStatus().name());
     }
 
-    /** Lùi thời điểm tạo yêu cầu về {@code createdHoursAgo} giờ trước (kiểm thử US-15 hết hạn 72 giờ). */
+    /** Lùi thời điểm tạo yêu cầu về {@code createdHoursAgo} giờ trước (kiểm thử US-15 hết hạn 24 giờ). */
     @PostMapping("/requests/{id}/shift")
     public Map<String, Object> shiftRequest(@PathVariable UUID id, @RequestBody ShiftRequestInput in) {
         int ago = in.createdHoursAgo() == null ? 0 : in.createdHoursAgo();

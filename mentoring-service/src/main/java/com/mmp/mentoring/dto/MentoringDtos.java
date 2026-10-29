@@ -52,7 +52,7 @@ public final class MentoringDtos {
     // ---------- Sessions ----------
 
     /**
-     * US-03 (PRD-SES-2) — form đặt lịch. durationMinutes ∈ {30, 45, 60, 90, 120} (mặc định 60);
+     * US-03 (PRD-SES-2) — form đặt lịch. durationMinutes = 60 (buổi thường) hoặc 15 (buổi trải nghiệm, kind = TRIAL), mặc định theo loại buổi;
      * agenda bắt buộc 20–500 ký tự (sau khi trim); preReadLink tuỳ chọn (http/https).
      * topic giữ lại để tương thích client cũ (hiển thị như tiêu đề ngắn).
      */

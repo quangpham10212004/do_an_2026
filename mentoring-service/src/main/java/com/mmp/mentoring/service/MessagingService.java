@@ -324,12 +324,12 @@ public class MessagingService {
     }
 
     static String status(MentoringRequest r) {
-        return r.effectiveStatus().name();
+        return r.getStatus().name();
     }
 
     /** Mốc yêu cầu đóng lại (bắt đầu tính 30 ngày còn nhắn được); null khi yêu cầu còn mở hoặc đã huỷ. */
     static OffsetDateTime closedAt(MentoringRequest r) {
-        return switch (r.effectiveStatus()) {
+        return switch (r.getStatus()) {
             case ENDED -> r.getEndedAt() != null ? r.getEndedAt() : r.getRespondedAt();
             case REJECTED -> r.getRespondedAt();
             case EXPIRED -> r.getExpiredAt() != null ? r.getExpiredAt() : r.getCreatedAt();

@@ -21,7 +21,7 @@ import java.util.Set;
 public final class EarningRules {
 
     /**
-     * Trạng thái cuối của phiên mà thu nhập được giải phóng (sau 48 giờ). CANCELLED = mentee huỷ muộn (hoàn 0%);
+     * Trạng thái cuối của phiên mà thu nhập được giải phóng (sau 72 giờ). CANCELLED = mentee huỷ muộn (hoàn 0%);
      * DISPUTE_RESOLVED = tranh chấp kết luận không hoàn 100% (US-32, gửi kèm releaseNow).
      */
     public static final Set<String> RELEASABLE_STATES = Set.of("COMPLETED", "NO_SHOW_MENTEE", "CANCELLED", "DISPUTE_RESOLVED");

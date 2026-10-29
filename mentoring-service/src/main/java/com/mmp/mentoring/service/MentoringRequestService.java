@@ -188,7 +188,7 @@ public class MentoringRequestService {
                 names.get(r.getMentorId()), r.getMessage(), r.getGoal(),
                 r.getSessionType() == null ? null : r.getSessionType().name(),
                 r.getFrequency() == null ? null : r.getFrequency().name(), r.getExpectedDurationMonths(),
-                r.effectiveStatus().name(), r.getRejectReason() == null ? null : r.getRejectReason().name(),
+                r.getStatus().name(), r.getRejectReason() == null ? null : r.getRejectReason().name(),
                 r.getResponseNote(), r.getCreatedAt(), r.getRespondedAt(), r.getExpiredAt(), profiles.get(r.getMenteeId()),
                 r.getEndedBy(), r.getEndReason() == null ? null : r.getEndReason().name(), r.getEndNote(), r.getEndedAt(),
                 r.getInactivityWarnedAt());

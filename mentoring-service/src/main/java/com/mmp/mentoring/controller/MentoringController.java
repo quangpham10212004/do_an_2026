@@ -76,13 +76,6 @@ public class MentoringController {
         return endService.end(CurrentUser.get(), id, in);
     }
 
-    /** @deprecated US-31 — giữ cho client cũ: = /end với reason OTHER. */
-    @Deprecated
-    @PostMapping("/requests/{id}/complete")
-    public RequestView completeRequest(@PathVariable UUID id) {
-        return endService.end(CurrentUser.get(), id, new EndRequestInput(com.mmp.mentoring.entity.MentoringRequest.EndReason.OTHER, null));
-    }
-
     // ---- Sessions (FR-5.4 → FR-5.7) ----
 
     @PostMapping("/sessions")
@@ -139,7 +132,7 @@ public class MentoringController {
         return rescheduleService.decline(CurrentUser.get(), id);
     }
 
-    /** Giữ từ Sprint 1 — US-12: = mentor trả lời HELD (chỉ trong 48 giờ sau giờ kết thúc). */
+    /** Giữ từ Sprint 1 — US-12: = mentor trả lời HELD (chỉ trong 24 giờ sau giờ kết thúc). */
     /**
      * Bản chốt v2.0 §6 — phòng học Jitsi: cấp JWT cho đúng hai người tham gia của buổi CONFIRMED trong khung giờ phòng mở; lần đầu
      * mỗi bên lấy token được ghi vào nhật ký vào phòng (căn cứ xác định vắng mặt).
@@ -189,7 +182,7 @@ public class MentoringController {
 
     // ---- US-32: tranh chấp ----
 
-    /** "Báo cáo sự cố" — mentee / mentor của phiên, trong 7 ngày sau giờ kết thúc. */
+    /** "Báo cáo sự cố" — mentee / mentor của phiên, trong 72 giờ sau giờ kết thúc. */
     @PostMapping("/sessions/{id}/disputes")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('MENTEE','MENTOR')")

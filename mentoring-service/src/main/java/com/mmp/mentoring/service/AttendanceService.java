@@ -72,7 +72,7 @@ public class AttendanceService {
                         com.mmp.mentoring.entity.Dispute dispute) {
     }
 
-    /** POST /sessions/{id}/attendance — mentee hoặc mentor của phiên trả lời (1 lần / bên) trong 48 giờ sau giờ kết thúc. */
+    /** POST /sessions/{id}/attendance — mentee hoặc mentor của phiên trả lời (1 lần / bên) trong 24 giờ sau giờ kết thúc. */
     public MentoringSession answer(AuthUser user, UUID sessionId, Attendance answer) {
         return answer(user, sessionId, answer, false);
     }
@@ -154,7 +154,7 @@ public class AttendanceService {
         return n;
     }
 
-    /** Job — hết 48 giờ sau giờ kết thúc: kết luận phiên AWAITING_ATTENDANCE (bên chưa trả lời coi là im lặng). */
+    /** Job — hết 24 giờ sau giờ kết thúc: kết luận phiên AWAITING_ATTENDANCE (bên chưa trả lời coi là im lặng). */
     public int resolveExpired(OffsetDateTime now) {
         int n = 0;
         for (String id : sessionRepo.findIdsEndedBefore(Status.AWAITING_ATTENDANCE.name(), now.minus(window))) {
@@ -239,7 +239,7 @@ public class AttendanceService {
         if (refund > 0) {
             outbox.enqueueRefund(s.getId(), refund, r.outcome() == Status.NO_SHOW_MENTOR ? "MENTOR_NO_SHOW" : "CANCELLED_ON_CALL");
         }
-        // US-25 — trạng thái cuối mentor được trả → payment-service giải phóng thu nhập 48 giờ sau giờ kết thúc
+        // US-25 — trạng thái cuối mentor được trả → payment-service giải phóng thu nhập 72 giờ sau giờ kết thúc
         if (paid && (r.outcome() == Status.COMPLETED || r.outcome() == Status.NO_SHOW_MENTEE)) {
             outbox.enqueueFinalState(s.getId(), r.outcome().name(), s.endsAt(), false);
         }

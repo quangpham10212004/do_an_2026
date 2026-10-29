@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Công cụ dev/e2e cho luồng phụ thuộc thời gian của US-25 (giải phóng thu nhập sau 48 giờ) mà không phải chờ thật.
+ * Công cụ dev/e2e cho luồng phụ thuộc thời gian của US-25 (giải phóng thu nhập sau 72 giờ) mà không phải chờ thật.
  * Nằm dưới /internal/** (chỉ X-Internal-Token, không đi qua proxy frontend) và KHÔNG tồn tại ở profile prod — cùng mẫu
  * với mentoring-service /internal/dev.
  */

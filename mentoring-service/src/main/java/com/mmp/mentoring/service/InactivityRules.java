@@ -7,8 +7,8 @@ import java.time.OffsetDateTime;
  * US-31 (PRD-REQ-6) — quan hệ ACCEPTED không hoạt động, dạng hàm thuần.
  *
  * <p>Mốc hoạt động gần nhất = max(lúc chấp nhận, lúc tạo phiên mới nhất của cặp, giờ bắt đầu phiên chưa huỷ muộn nhất)
- * — phiên đã lên lịch trong tương lai nên quan hệ có phiên sắp tới luôn được coi là đang hoạt động. Chưa có nhắn tin nên
- * "không có tin nhắn" trong PRD chưa được tính.
+ * — phiên đã lên lịch trong tương lai nên quan hệ có phiên sắp tới luôn được coi là đang hoạt động. Tin nhắn không được tính là hoạt động (mốc hoạt
+ * động chỉ gồm lúc chấp nhận và các phiên của cặp).
  * <ul>
  *   <li>Chưa nhắc và không hoạt động ≥ 30 ngày ({@code app.requests.inactivity-warn-after}) → WARN ("Bạn có muốn tiếp tục?").</li>
  *   <li>Đã nhắc mà có hoạt động sau lúc nhắc (đặt phiên mới) → CLEAR.</li>

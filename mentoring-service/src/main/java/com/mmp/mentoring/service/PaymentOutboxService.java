@@ -29,7 +29,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class PaymentOutboxService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentOutboxService.class);
-    public static final String MENTOR_CANCEL_APOLOGY = "MENTOR_CANCEL_APOLOGY";
     /** FINAL_STATE bị 404 (payment-service chưa triển khai endpoint / chưa có giao dịch) được thử lại tối đa ngần này lần. */
     static final int FINAL_STATE_404_RETRIES = 10;
     private static final AtomicReference<OffsetDateTime> LAST_CREATED = new AtomicReference<>(OffsetDateTime.MIN);
@@ -43,10 +42,6 @@ public class PaymentOutboxService {
         this.repo = repo;
         this.paymentClient = paymentClient;
         this.tx = tx;
-    }
-
-    public void enqueueReward(UUID userId, int points, String reason, UUID sessionId) {
-        enqueue(sessionId, PaymentOutbox.Kind.REWARD, Map.of("userId", userId.toString(), "points", points, "reason", reason));
     }
 
     /** US-12 — hoàn {@code percent}% giá phiên (NO_SHOW_MENTOR, CANCELLED_ON_CALL). */
@@ -66,7 +61,7 @@ public class PaymentOutboxService {
 
     /**
      * US-25 — trạng thái cuối của phiên có phí (COMPLETED / NO_SHOW_MENTEE / CANCELLED do mentee huỷ muộn) → payment-service
-     * giải phóng thu nhập sau 48 giờ; releaseNow = true khi tranh chấp đã xử lý.
+     * giải phóng thu nhập sau 72 giờ; releaseNow = true khi tranh chấp đã xử lý.
      */
     public void enqueueFinalState(UUID sessionId, String state, OffsetDateTime endedAt, boolean releaseNow) {
         enqueue(sessionId, PaymentOutbox.Kind.FINAL_STATE, Map.of("state", state, "endedAt", endedAt.toString(), "releaseNow", releaseNow));

@@ -18,7 +18,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * US-15 (PRD-REQ-3) — yêu cầu PENDING không được mentor phản hồi sau {@code app.requests.expire-after} (72 giờ) → EXPIRED.
+ * US-15 (PRD-REQ-3) — yêu cầu PENDING không được mentor phản hồi sau {@code app.requests.expire-after} (24 giờ) → EXPIRED.
  * Số mentee đang hướng dẫn của mentor không đổi (PENDING không tính vào active_mentee_count nên không đồng bộ lại).
  * Mentee được báo kèm link /matching và tối đa 3 mentor tương tự từ matching-service (best-effort, gọi ngoài transaction).
  */
@@ -51,7 +51,7 @@ public class RequestExpiryService {
         expire(OffsetDateTime.now());
     }
 
-    /** Hết hạn mọi yêu cầu PENDING tạo trước now − 72 giờ; trả về số yêu cầu đã hết hạn. */
+    /** Hết hạn mọi yêu cầu PENDING tạo trước now − 24 giờ; trả về số yêu cầu đã hết hạn. */
     public int expire(OffsetDateTime now) {
         int n = 0;
         for (UUID id : requestRepo.findPendingIdsCreatedBefore(now.minus(expireAfter))) {

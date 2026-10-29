@@ -125,7 +125,7 @@ public class PaymentClient {
     }
 
     /**
-     * US-25 — báo trạng thái cuối của phiên (payment-service giữ đồng hồ 48 giờ giải phóng thu nhập). Ném
+     * US-25 — báo trạng thái cuối của phiên (payment-service giữ đồng hồ 72 giờ giải phóng thu nhập). Ném
      * RestClientException khi lỗi để outbox phân biệt 4xx/5xx.
      */
     public void finalState(UUID sessionId, String state, java.time.OffsetDateTime endedAt, boolean releaseNow) {

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * US-27 (phía mentoring) — khoá mentor: huỷ mọi phiên sắp tới PENDING/CONFIRMED của mentor với cancelledBy = SYSTEM theo
+ * US-27 (phía mentoring) — khoá mentor: huỷ mọi phiên sắp tới PENDING/AWAITING_MENTOR/CONFIRMED của mentor với cancelledBy = SYSTEM theo
  * chính sách huỷ hiện có (SYSTEM → hoàn 100%, không strike, không điểm xin lỗi) và báo mentee (thông báo của
  * cancelWithPolicy). Idempotent: lần gọi sau không còn phiên nào để huỷ → 0. Trạng thái SUSPENDED của hồ sơ do
  * profile-service giữ (Team B gọi endpoint này sau khi đổi trạng thái; tranh chấp SUSPEND tự đổi qua ProfileClient).

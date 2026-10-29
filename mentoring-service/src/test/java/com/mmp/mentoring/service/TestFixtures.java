@@ -23,7 +23,6 @@ class TestFixtures {
     final PaymentClient paymentClient = mock(PaymentClient.class);
     final NotificationService notifications = mock(NotificationService.class);
     final TransactionTemplate tx = mock(TransactionTemplate.class);
-    final com.mmp.mentoring.repository.LateCancellationRepository lateCancelRepo = mock(com.mmp.mentoring.repository.LateCancellationRepository.class);
     final PaymentOutboxService outbox = mock(PaymentOutboxService.class);
     final StrikeService strikes = mock(StrikeService.class);
     final com.mmp.mentoring.repository.RescheduleProposalRepository proposalRepo = mock(com.mmp.mentoring.repository.RescheduleProposalRepository.class);

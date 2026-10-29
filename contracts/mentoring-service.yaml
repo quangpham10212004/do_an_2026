@@ -35,9 +35,9 @@ components:
           type: string
           enum: [PENDING, ACCEPTED, REJECTED, CANCELLED, EXPIRED, ENDED]
           description: >
-            US-31: ACCEPTED → ENDED (thay COMPLETED cũ; migration V12 đổi COMPLETED → ENDED, giá trị COMPLETED còn sót được
-            trả về là ENDED).
-            US-15: PENDING không được mentor phản hồi sau 72 giờ (app.requests.expire-after) → EXPIRED (job mỗi 5 phút).
+            US-31: ACCEPTED → ENDED (thay COMPLETED cũ; migration V12 và V23 đã đổi mọi COMPLETED → ENDED, endpoint
+            POST /requests/{id}/complete đã gỡ — dùng /end).
+            US-15: PENDING không được mentor phản hồi sau 24 giờ (app.requests.expire-after) → EXPIRED (job mỗi 5 phút).
             active_mentee_count của mentor không đổi. Mentee nhận thông báo REQUEST_EXPIRED (link /matching) kèm tối đa 3
             mentor tương tự lấy từ matching-service GET /internal/matching/similar-mentors (best-effort: lỗi/404 → không gợi ý).
         expiredAt: { type: string, format: date-time, nullable: true, description: "US-15 — thời điểm hết hạn" }
@@ -503,13 +503,6 @@ paths:
         "400": { description: INVALID_END_REASON (INACTIVE chỉ hệ thống dùng) | VALIDATION_ERROR }
         "403": { description: Không thuộc quan hệ này }
         "409": { description: REQUEST_NOT_ACTIVE }
-  /api/mentoring/requests/{id}/complete:
-    post:
-      deprecated: true
-      summary: "Giữ cho client cũ — = POST /requests/{id}/end với reason OTHER (US-31)"
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      responses:
-        "200": { description: Request (status ENDED) }
 
   # ---------------- Sessions ----------------
   /api/mentoring/sessions:
@@ -770,7 +763,7 @@ paths:
     post:
       summary: >
         (MENTOR của phiên / ADMIN thay mentor) Giữ từ Sprint 1 — từ US-12 tương đương mentor trả lời HELD ở
-        POST /attendance (cùng điều kiện cửa sổ 48 giờ). Không còn chuyển thẳng sang COMPLETED.
+        POST /attendance (cùng điều kiện cửa sổ 24 giờ). Không còn chuyển thẳng sang COMPLETED.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Session }

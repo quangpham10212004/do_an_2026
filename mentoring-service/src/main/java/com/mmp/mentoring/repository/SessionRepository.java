@@ -19,7 +19,7 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
 
     List<MentoringSession> findByMentorIdOrderByScheduledAtDesc(UUID mentorId);
 
-    /** Các phiên đang giữ chỗ (PENDING/CONFIRMED) của 1 người trong khoảng thời gian — dùng kiểm tra trùng lịch. */
+    /** Các phiên đang giữ chỗ (PENDING/AWAITING_MENTOR/CONFIRMED) của 1 người trong khoảng thời gian — dùng kiểm tra trùng lịch. */
     @Query("""
             SELECT s FROM MentoringSession s
             WHERE (s.mentorId = :userId OR s.menteeId = :userId)
@@ -80,7 +80,7 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     /** US-44 (PRD-MATCH-9) — số phiên đã hoàn thành của mentor (trang mentor công khai). */
     long countByMentorIdAndStatus(UUID mentorId, MentoringSession.Status status);
 
-    /** US-27 — phiên sắp tới đang giữ chỗ (PENDING/CONFIRMED, chưa bắt đầu) của mentor. */
+    /** US-27 — phiên sắp tới đang giữ chỗ (PENDING/AWAITING_MENTOR/CONFIRMED, chưa bắt đầu) của mentor. */
     /** Bản chốt v2.0 §2.1 — mọi buổi chưa diễn ra (đang giữ chỗ) của một người, dù là mentor hay mentee. */
     @Query("SELECT s FROM MentoringSession s WHERE (s.mentorId = :userId OR s.menteeId = :userId) AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now ORDER BY s.scheduledAt")
     List<MentoringSession> findUpcomingHoldingByUser(@Param("userId") UUID userId, @Param("now") OffsetDateTime now);

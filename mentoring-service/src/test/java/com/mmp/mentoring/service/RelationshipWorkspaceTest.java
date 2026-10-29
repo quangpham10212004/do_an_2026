@@ -220,7 +220,7 @@ class RelationshipWorkspaceTest {
     @Test
     void workspaceIsReadOnlyOnceTheRelationshipIsNoLongerAccepted() {
         UUID id = service.get(mentee, relId).goals().get(0).id();
-        request.setStatus(MentoringRequest.Status.COMPLETED); // US-31 ENDED được xử lý giống hệt (so theo tên)
+        request.setStatus(MentoringRequest.Status.ENDED);
         WorkspaceView view = service.get(mentee, relId);
         assertThat(view.readOnly()).isTrue();
         assertThat(view.canEdit()).isFalse();

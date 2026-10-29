@@ -104,7 +104,7 @@ public class InternalPaymentController {
         return Map.of("userId", req.userId(), "frozen", req.frozen());
     }
 
-    /** US-01 — mentoring-service cộng điểm xin lỗi khi mentor huỷ phiên. Gửi lại cùng nội dung → trả bản ghi cũ. */
+    /** US-01 — điểm thưởng (di sản: mentoring-service không còn gọi sau khi bỏ điểm xin lỗi khi mentor huỷ). Gửi lại cùng nội dung → trả bản ghi cũ. */
     @PostMapping("/rewards")
     public RewardResponse grantReward(@Valid @RequestBody GrantRewardRequest req) {
         return referralService.grantSessionReward(req.userId(), req.points(), req.reason(), req.sessionId());

@@ -10,11 +10,10 @@ import java.util.UUID;
 public class MentoringRequest {
 
     /**
-     * PENDING → ACCEPTED | REJECTED | CANCELLED | EXPIRED (US-15: không phản hồi sau 72 giờ);
-     * ACCEPTED → ENDED (US-31 kết thúc quan hệ mentoring). COMPLETED = giá trị cũ trước US-31 (migration V12 đã đổi sang
-     * ENDED; chỉ còn để đọc an toàn, API trả về ENDED).
+     * PENDING → ACCEPTED | REJECTED | CANCELLED | EXPIRED (US-15: không phản hồi sau {@code app.requests.expire-after}, 24 giờ);
+     * ACCEPTED → ENDED (US-31 kết thúc quan hệ mentoring). Trạng thái COMPLETED cũ đã được migration V12 / V23 đổi sang ENDED.
      */
-    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED, EXPIRED, ENDED }
+    public enum Status { PENDING, ACCEPTED, REJECTED, CANCELLED, EXPIRED, ENDED }
 
     /** US-31 — lý do kết thúc; INACTIVE chỉ do hệ thống. */
     public enum EndReason { GOAL_REACHED, NO_LONGER_NEEDED, NOT_A_FIT, OTHER, INACTIVE }
@@ -121,11 +120,6 @@ public class MentoringRequest {
     public OffsetDateTime getRespondedAt() { return respondedAt; }
     public void setRespondedAt(OffsetDateTime respondedAt) { this.respondedAt = respondedAt; }
     public OffsetDateTime getExpiredAt() { return expiredAt; }
-
-    /** Trạng thái hiển thị: COMPLETED cũ được đọc như ENDED. */
-    public Status effectiveStatus() {
-        return status == Status.COMPLETED ? Status.ENDED : status;
-    }
 
     /** US-31 — ACCEPTED → ENDED. */
     public void end(String by, EndReason reason, String note, OffsetDateTime at) {

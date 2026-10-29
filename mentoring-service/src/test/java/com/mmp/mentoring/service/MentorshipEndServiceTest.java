@@ -123,9 +123,8 @@ class MentorshipEndServiceTest {
     }
 
     @Test
-    void legacyCompletedReadsAsEnded() {
-        request.setStatus(MentoringRequest.Status.COMPLETED);
-        assertThat(request.effectiveStatus()).isEqualTo(MentoringRequest.Status.ENDED);
+    void endedRequestIsViewedAsEnded() {
+        request.setStatus(MentoringRequest.Status.ENDED);
         assertThat(MentoringRequestService.toView(request, java.util.Map.of(), java.util.Map.of()).status()).isEqualTo("ENDED");
     }
 

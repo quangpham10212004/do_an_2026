@@ -11,7 +11,7 @@ import java.util.Optional;
 /**
  * US-12 (PRD-SES-7/8) — quy tắc xác nhận tham dự dạng hàm thuần (thời điểm truyền vào để test tất định).
  *
- * <p>Cửa sổ trả lời: [giờ kết thúc, giờ kết thúc + 48 giờ) ({@code app.attendance.window}). Mentee trả lời HELD |
+ * <p>Cửa sổ trả lời: [giờ kết thúc, giờ kết thúc + 24 giờ) ({@code app.attendance.window}). Mentee trả lời HELD |
  * MENTOR_NO_SHOW | CANCELLED_ON_CALL; mentor trả lời HELD | MENTEE_NO_SHOW | CANCELLED_ON_CALL (không tự báo mình vắng
  * — vắng thì im lặng cũng cho cùng kết quả). Mỗi bên trả lời 1 lần.
  *
@@ -19,10 +19,10 @@ import java.util.Optional;
  * <ul>
  *   <li>Hai bên trả lời giống nhau → kết quả của câu đó (HELD → COMPLETED; CANCELLED_ON_CALL → CANCELLED).</li>
  *   <li>Hai bên trả lời khác nhau → DISPUTED ngay (giao dịch ON_HOLD, chờ US-32).</li>
- *   <li>Một bên trả lời, bên kia im lặng hết 48 giờ → câu trả lời đó: HELD → COMPLETED; mentor báo mentee vắng →
+ *   <li>Một bên trả lời, bên kia im lặng hết 24 giờ → câu trả lời đó: HELD → COMPLETED; mentor báo mentee vắng →
  *       NO_SHOW_MENTEE (không hoàn, mentor được trả); mentee báo mentor vắng → NO_SHOW_MENTOR (hoàn 100% + strike);
  *       CANCELLED_ON_CALL → CANCELLED.</li>
- *   <li>Không ai trả lời trong 48 giờ → COMPLETED.</li>
+ *   <li>Không ai trả lời trong 24 giờ → COMPLETED.</li>
  * </ul>
  * CANCELLED_ON_CALL (quyết định cần PM xác nhận): không biết bên nào khởi xướng nên coi như huỷ không lỗi — hoàn 100%
  * cho mentee, KHÔNG strike mentor, không điểm xin lỗi.
@@ -56,7 +56,7 @@ public final class AttendanceRules {
     }
 
     /**
-     * @param windowClosed đã hết 48 giờ sau giờ kết thúc (bên chưa trả lời bị coi là im lặng)
+     * @param windowClosed đã hết 24 giờ sau giờ kết thúc (bên chưa trả lời bị coi là im lặng)
      * @return kết luận, hoặc empty nếu còn chờ bên kia
      */
     public static Optional<Resolution> resolve(Attendance mentee, Attendance mentor, boolean windowClosed) {

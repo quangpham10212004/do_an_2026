@@ -1,6 +1,5 @@
 package com.mmp.mentoring.service;
 
-import com.mmp.mentoring.entity.LateCancellation;
 import com.mmp.mentoring.entity.MentoringSession;
 import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.security.AuthUser;
@@ -63,7 +62,6 @@ class SessionCancelTest {
         assertThat(view.refundPercent()).isZero();
         verify(f.outbox, never()).enqueueRefund(any(), anyInt(), any());
         verifyNoInteractions(f.paymentClient);
-        verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());
         // US-25 — hoàn 0% → mentor được trả: báo trạng thái cuối CANCELLED để giải phóng thu nhập sau 72 giờ
         verify(f.outbox).enqueueFinalState(eq(id), eq("CANCELLED"), eq(session.endsAt()), eq(false));
     }
@@ -84,7 +82,6 @@ class SessionCancelTest {
         session.setScheduledAt(OffsetDateTime.now().plusHours(3));
         f.service().cancel(mentor, id, null);
         verify(f.outbox).enqueueRefund(eq(id), eq(100), eq("SESSION_CANCELLED_BY_MENTOR"));
-        verify(f.outbox, never()).enqueueReward(any(), anyInt(), any(), any());   // v2.0: bỏ điểm xin lỗi
         assertThat(session.getCancelledBy()).isEqualTo("MENTOR");
         verify(f.strikes).insert(mentorId, id, com.mmp.mentoring.entity.MentorStrike.Reason.MENTOR_CANCEL); // US-02
     }

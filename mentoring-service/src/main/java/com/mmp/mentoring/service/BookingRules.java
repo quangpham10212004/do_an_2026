@@ -128,7 +128,7 @@ public final class BookingRules {
         return a.isBefore(b.plusMinutes(db)) && b.isBefore(a.plusMinutes(da));
     }
 
-    /** Các phiên đang giữ chỗ (PENDING/CONFIRMED) dưới dạng khoảng bận. */
+    /** Các phiên đang giữ chỗ (PENDING/AWAITING_MENTOR/CONFIRMED) dưới dạng khoảng bận. */
     public static List<Block> blocksOf(Collection<MentoringSession> sessions) {
         return sessions.stream()
                 .filter(s -> HOLDING_STATUSES.contains(s.getStatus()))

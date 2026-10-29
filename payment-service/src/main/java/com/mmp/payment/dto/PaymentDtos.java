@@ -196,7 +196,7 @@ public final class PaymentDtos {
 
     /**
      * mentoring-service báo trạng thái cuối của phiên. releaseNow = true khi tranh chấp được giải quyết (giải phóng phần
-     * còn lại ngay, không chờ 48 giờ).
+     * còn lại ngay, không chờ 72 giờ).
      */
     public record FinalStateRequest(@NotBlank @Size(max = 40) String state, @NotNull OffsetDateTime endedAt, Boolean releaseNow) {
     }

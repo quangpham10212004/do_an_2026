@@ -25,13 +25,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * US-25 (PRD-PAY-3, PRD-SES-9) — sổ thu nhập mentor append-only và đồng hồ giải phóng 48 giờ.
+ * US-25 (PRD-PAY-3, PRD-SES-9) — sổ thu nhập mentor append-only và đồng hồ giải phóng 72 giờ.
  *
  * <ul>
  *   <li>Charge SUCCESS → EARNING_PENDING = mentor_earning ({@link #recordPending}, trong transaction của charge).</li>
  *   <li>Mỗi lần hoàn tiền → REVERSAL = earning × refund / amount ({@link #recordReversal}, trong transaction của refund).</li>
  *   <li>mentoring-service báo trạng thái cuối ({@link #finalState}); COMPLETED / NO_SHOW_MENTEE / CANCELLED (mentee huỷ muộn)
- *       → release_at = endedAt + {@code app.earnings.release-delay} (48h); releaseNow (tranh chấp đã xử lý) → ngay.</li>
+ *       → release_at = endedAt + {@code app.earnings.release-delay} (72h); releaseNow (tranh chấp đã xử lý) → ngay.</li>
  *   <li>Job {@link #releaseDue} ghi EARNING_AVAILABLE = phần pending còn lại cho lịch tới hạn. Giao dịch ON_HOLD (tranh chấp
  *       đang mở) bị bỏ qua, chờ lần sau. Idempotent: số tiền giải phóng tính lại từ sổ dưới khoá dòng giao dịch, đã giải
  *       phóng hết thì không ghi gì.</li>

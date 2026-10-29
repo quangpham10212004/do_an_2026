@@ -96,4 +96,4 @@ app:
     open-window: ${DISPUTE_OPEN_WINDOW:PT72H}   # 72 giờ kể từ giờ kết thúc = thời gian payment-service giữ thu nhập của mentor (earnings.release-delay); quá hạn → 409 DISPUTE_WINDOW_CLOSED
     first-response-sla: PT48H       # admin phản hồi đầu tiên trong 48 giờ (cờ overdue ở danh sách admin)
   outbox:
-    interval: PT1M                  # gửi lại lời gọi payment-service (điểm thưởng) chưa thành công
+    interval: PT1M                  # gửi lại lời gọi payment-service chưa thành công (REFUND, HOLD, RELEASE, FINAL_STATE)

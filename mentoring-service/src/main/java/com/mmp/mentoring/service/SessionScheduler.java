@@ -19,9 +19,9 @@ import java.util.UUID;
 
 /**
  * Tác vụ nền mỗi phút:
- * - US-34: nhắc lịch 24 giờ và 1 giờ trước giờ bắt đầu cho phiên CONFIRMED.
+ * - US-34: nhắc lịch 24 giờ và 15 phút trước giờ bắt đầu cho phiên CONFIRMED.
  * - Phiên PENDING quá hạn thanh toán → EXPIRED để giải phóng khung giờ.
- * - US-12: tới giờ kết thúc CONFIRMED → AWAITING_ATTENDANCE; hết 48 giờ → kết luận tham dự (thay cho tự hoàn thành
+ * - US-12: tới giờ kết thúc CONFIRMED → AWAITING_ATTENDANCE; hết 24 giờ → kết luận tham dự (thay cho tự hoàn thành
  *   sau 2 giờ của Sprint 1).
  */
 @Component
@@ -52,7 +52,7 @@ public class SessionScheduler {
     }
 
     /**
-     * US-34 (PRD-SES-14) — nhắc 24 giờ và 1 giờ trước giờ bắt đầu, nội dung theo múi giờ của từng người nhận, kèm link
+     * US-34 (PRD-SES-14) — nhắc 24 giờ và 15 phút trước giờ bắt đầu, nội dung theo múi giờ của từng người nhận, kèm link
      * tham gia và agenda. Đánh dấu "đã nhắc" bằng UPDATE có điều kiện trước rồi mới gửi (ngoài transaction, vì cần gọi
      * profile-service lấy tên + múi giờ) — mỗi lần nhắc chỉ gửi đúng 1 lần kể cả khi job chạy chồng nhau.
      */
@@ -111,7 +111,7 @@ public class SessionScheduler {
         }
     }
 
-    /** US-12 — CONFIRMED đã kết thúc → AWAITING_ATTENDANCE; AWAITING_ATTENDANCE quá 48 giờ → kết luận. */
+    /** US-12 — CONFIRMED đã kết thúc → AWAITING_ATTENDANCE; AWAITING_ATTENDANCE quá 24 giờ → kết luận. */
     @Scheduled(fixedDelayString = "${app.attendance.interval:PT1M}", initialDelayString = "PT50S")
     public void attendanceJob() {
         attendance.runJob();

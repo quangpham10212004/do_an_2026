@@ -11,7 +11,9 @@ import java.util.UUID;
 public class MentoringSession {
 
     /**
-     * PENDING (chờ thanh toán) → CONFIRMED | EXPIRED (quá hạn thanh toán); PENDING/CONFIRMED → CANCELLED (trước giờ bắt đầu);
+     * PENDING (chờ thanh toán) → AWAITING_MENTOR (học phí đã tạm giữ, chờ mentor xác nhận) | EXPIRED (quá hạn thanh toán);
+     * AWAITING_MENTOR → CONFIRMED | CANCELLED (mentor từ chối / mentee huỷ) | EXPIRED (mentor không xác nhận kịp);
+     * PENDING/AWAITING_MENTOR/CONFIRMED → CANCELLED (trước giờ bắt đầu);
      * CONFIRMED → AWAITING_ATTENDANCE (tới giờ kết thúc, US-12) → COMPLETED | NO_SHOW_MENTEE | NO_SHOW_MENTOR | DISPUTED |
      * CANCELLED (huỷ trong buổi gọi).
      */
@@ -123,7 +125,7 @@ public class MentoringSession {
     @Column(name = "reminder_sent", nullable = false)
     private boolean reminderSent;
 
-    /** US-34 — đã gửi nhắc 24 giờ / 1 giờ trước giờ bắt đầu (null = chưa). */
+    /** US-34 — đã gửi nhắc 24 giờ / 15 phút trước giờ bắt đầu (null = chưa; tên cột và hằng giữ "1h"). */
     @Column(name = "reminder_24h_sent_at")
     private OffsetDateTime reminder24hSentAt;
 

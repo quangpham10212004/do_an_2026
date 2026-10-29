@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * US-25 — lịch giải phóng thu nhập của 1 giao dịch: trạng thái cuối của phiên (do mentoring-service báo) và thời điểm
- * được giải phóng (release_at = ended_at + 48 giờ, hoặc ngay khi tranh chấp được giải quyết). settled_at = job đã xử lý
+ * được giải phóng (release_at = ended_at + 72 giờ, hoặc ngay khi tranh chấp được giải quyết). settled_at = job đã xử lý
  * (đã ghi EARNING_AVAILABLE hoặc không còn gì để giải phóng).
  */
 @Entity

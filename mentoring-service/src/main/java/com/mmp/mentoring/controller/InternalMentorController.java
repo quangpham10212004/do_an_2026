@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /**
  * US-27 (interface với profile-service, Team B) — sau khi admin chuyển mentor sang SUSPENDED, profile-service gọi endpoint
- * này (X-Internal-Token): huỷ mọi phiên sắp tới PENDING/CONFIRMED của mentor (cancelledBy SYSTEM, hoàn 100%) và báo mentee.
+ * này (X-Internal-Token): huỷ mọi phiên sắp tới PENDING/AWAITING_MENTOR/CONFIRMED của mentor (cancelledBy SYSTEM, hoàn 100%) và báo mentee.
  * Idempotent: gọi lại trả {@code cancelledSessions: 0}.
  */
 @RestController
