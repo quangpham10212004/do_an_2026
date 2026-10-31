@@ -19,7 +19,7 @@ thực**, để báo cáo trung thực trước hội đồng. Phụ trách: Qua
 | Giới hạn đầu vào? | PDF, ≤ 5MB, ≤ 10 trang, không đặt mật khẩu, có lớp văn bản ≥ 50 ký tự | ✅ |
 | Ai đọc được file? | Chủ CV, ADMIN, service nội bộ, và **mentor đang có yêu cầu mentoring (PENDING/ACCEPTED) với chủ CV** | ✅ kiểm tra qua mentoring-service, lỗi thì từ chối (fail-closed) |
 | Có gửi ra ngoài không? | Chỉ khi **cả hai**: server cấu hình `DEEPSEEK_API_KEY` **và** người dùng đánh dấu đồng ý cho CV đó (`consentExternalAi = true`, US-19). Không đồng ý ⇒ chỉ engine rule-based, không request nào tới DeepSeek | ✅ hỏi ý kiến trước khi tải (mục 5) |
-| Lưu bao lâu? | **Vô thời hạn** — không có chính sách hết hạn | ❌ chưa hiện thực |
+| Lưu bao lâu? | **12 tháng** — job `purge_expired_cvs_forever()` chạy 6 giờ/lần, xoá file PDF + `raw_text`; `parsed_json` chưa duyệt cũng bị xoá; kết quả đã duyệt (`confirmed_fields`) giữ lại | ✅ migration `008`, `enrichment/service.py` |
 | Người dùng tự xoá được không? | **Có** — `DELETE /api/ai/cv/{cvId}` (chủ CV hoặc ADMIN); xem danh sách CV của mình qua `GET /api/ai/cv/mine` | ✅ API + mục "CV của tôi" trên trang `/profile` |
 | Mã hoá khi lưu? | Không — file và văn bản lưu dạng rõ | ❌ chưa hiện thực |
 
@@ -141,8 +141,7 @@ Phạm vi gửi đi khi đã đồng ý và có `DEEPSEEK_API_KEY`:
 
 ## 6. Thời hạn lưu trữ và xoá dữ liệu
 
-**Thời hạn lưu**: chưa có chính sách hết hạn hay job dọn dẹp — CV tồn tại tới khi chủ CV/ADMIN xoá hoặc
-volume bị xoá. Khoá tài khoản ở auth-service **không** xoá CV.
+**Thời hạn lưu**: **12 tháng** kể từ ngày tải lên. Job `purge_expired_cvs_forever()` (chạy mỗi 6 giờ) xoá file PDF, `raw_text`, và `parsed_json` của CV chưa duyệt; `confirmed_fields` được giữ lại. Khi xoá, job cũng gọi profile-service gỡ `cvFileUrl` nếu hồ sơ còn trỏ tới CV đó (best-effort, lỗi chỉ log). Khoá tài khoản ở auth-service **không** xoá CV.
 
 ### 6.1 Người dùng tự xoá (luồng chuẩn)
 
@@ -227,7 +226,7 @@ Kiểm tra: `docker compose exec ai-service ls /data/cv/<USER_ID>` báo không t
 | # | Hạn chế | Đề xuất |
 |---|---|---|
 | 1 | ~~Không có API xoá CV cho người dùng~~ | ✅ **Đã sửa**: `GET /api/ai/cv/mine` + `DELETE /api/ai/cv/{cvId}` (chủ CV/ADMIN), xoá hội thoại → `cv_documents` → file → `cvFileUrl` (mục 6.2). Còn lại: goal/kỹ năng suy ra từ CV không tự gỡ |
-| 2 | Lưu vô thời hạn, bản cũ không bị dọn | Chỉ giữ CV mới nhất mỗi người, hoặc job xoá CV quá N tháng |
+| 2 | ~~Lưu vô thời hạn, bản cũ không bị dọn~~ | ✅ **Đã sửa**: job `purge_expired_cvs_forever()` xoá file + `raw_text` sau 12 tháng; `confirmed_fields` giữ lại (migration `008`) |
 | 3 | ~~Mọi MENTOR tải được mọi CV nếu biết `cvId`~~ | ✅ **Đã sửa**: chỉ mentor có yêu cầu mentoring PENDING/ACCEPTED với mentee (fail-closed) |
 | 4 | `raw_text` nhân đôi nội dung CV trong CSDL | Xoá `raw_text` sau khi parse xong, hoặc chỉ giữ `parsed_json` |
 | 5 | Không mã hoá khi lưu | Mã hoá volume / dùng object storage có mã hoá phía server (S3/MinIO) — `storage.py` đã tách riêng để thay thế |
