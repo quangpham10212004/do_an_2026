@@ -77,24 +77,29 @@ public class RoomService {
         return "mentorhub-" + sessionId.toString().replace("-", "");
     }
 
+    void requireOpenRoom(AuthUser user, MentoringSession session, OffsetDateTime now) {
+        if (!session.getMentorId().equals(user.userId()) && !session.getMenteeId().equals(user.userId())) {
+            throw ApiException.forbidden("Chỉ mentor và mentee của buổi mới vào được phòng học");
+        }
+        if (session.getStatus() != MentoringSession.Status.CONFIRMED
+                && session.getStatus() != MentoringSession.Status.AWAITING_ATTENDANCE) {
+            throw ApiException.conflict("ROOM_NOT_AVAILABLE", "Phòng học chỉ mở cho buổi đã được mentor xác nhận");
+        }
+        if (!RoomRules.open(session.getScheduledAt(), session.endsAt(), now, opensBefore, closesAfter)) {
+            throw ApiException.conflict("ROOM_CLOSED", "Phòng học mở từ " + opensBefore.toMinutes()
+                    + " phút trước giờ bắt đầu đến " + closesAfter.toMinutes() + " phút sau giờ kết thúc");
+        }
+    }
+
     public RoomView join(AuthUser user, UUID sessionId) {
         OffsetDateTime now = OffsetDateTime.now();
         com.mmp.mentoring.entity.RescheduleProposal[] closedProposal = {null};
         MentoringSession session = tx.execute(s -> {
             MentoringSession ss = sessionRepo.findForUpdate(sessionId)
                     .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Không tìm thấy phiên mentoring"));
-            boolean mentor = user.userId() != null && user.userId().equals(ss.getMentorId());
-            boolean mentee = user.userId() != null && user.userId().equals(ss.getMenteeId());
-            if (!mentor && !mentee) {
-                throw ApiException.forbidden("Chỉ mentor và mentee của buổi mới vào được phòng học");
-            }
-            if (ss.getStatus() != MentoringSession.Status.CONFIRMED && ss.getStatus() != MentoringSession.Status.AWAITING_ATTENDANCE) {
-                throw ApiException.conflict("ROOM_NOT_AVAILABLE", "Phòng học chỉ mở cho buổi đã được mentor xác nhận");
-            }
-            if (!RoomRules.open(ss.getScheduledAt(), ss.endsAt(), now, opensBefore, closesAfter)) {
-                throw ApiException.conflict("ROOM_CLOSED", "Phòng học mở từ " + opensBefore.toMinutes() + " phút trước giờ bắt đầu đến "
-                        + closesAfter.toMinutes() + " phút sau giờ kết thúc");
-            }
+            requireOpenRoom(user, ss, now);
+            boolean mentor = user.userId().equals(ss.getMentorId());
+            boolean mentee = user.userId().equals(ss.getMenteeId());
             boolean newlyJoined = false;
             if (mentor && ss.getMentorJoinedAt() == null) {
                 ss.setMentorJoinedAt(now);

@@ -7,12 +7,45 @@ from fastapi.responses import StreamingResponse
 
 from app import config, errors
 from app.cv.models import ConfirmedFields
+from app.db import get_pool
 from app.enrichment import service
 from app.enrichment.views import CvSummaryView, CvUploadResult, CvView
 from app.ratelimit import RateLimiter
+from app.schemas import CamelModel
 from app.security import AuthUser, require_role, require_user
 
 router = APIRouter(prefix="/api/ai")
+
+
+class CvPrivacy(CamelModel):
+    allow_external_ai: bool
+
+
+@router.get("/cv/privacy", response_model=CvPrivacy)
+async def get_privacy(user: AuthUser = Depends(require_role("MENTEE", "MENTOR", "ADMIN"))) -> CvPrivacy:
+    if user.user_id is None:
+        raise errors.forbidden("Cài đặt CV cần tài khoản người dùng")
+    pool = await get_pool()
+    value = await pool.fetchval("SELECT allow_external_ai FROM cv_privacy_preferences WHERE user_id = $1",
+                                user.user_id)
+    return CvPrivacy(allow_external_ai=bool(value))
+
+
+@router.put("/cv/privacy", response_model=CvPrivacy)
+async def set_privacy(body: CvPrivacy, user: AuthUser = Depends(require_role("MENTEE", "MENTOR", "ADMIN"))) -> CvPrivacy:
+    if user.user_id is None:
+        raise errors.forbidden("Cài đặt CV cần tài khoản người dùng")
+    pool = await get_pool()
+    await pool.execute("""
+        INSERT INTO cv_privacy_preferences (user_id, allow_external_ai) VALUES ($1, $2)
+        ON CONFLICT (user_id) DO UPDATE SET allow_external_ai = EXCLUDED.allow_external_ai
+    """, user.user_id, body.allow_external_ai)
+    return body
+
+
+@router.get("/cv/{cv_id}/completeness")
+async def completeness(cv_id: UUID, user: AuthUser = Depends(require_user)) -> dict:
+    return await service.cv_completeness(user, cv_id)
 
 # US-46 (NFR-10) — tối đa 5 CV / giờ / người dùng (upload cho chatbot + parse của mentor), đếm sau khi form hợp lệ.
 upload_limiter = RateLimiter(config.CV_UPLOADS_PER_HOUR, 3600)

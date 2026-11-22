@@ -134,6 +134,11 @@ public class WalletLedger {
      * Ném 402 INSUFFICIENT_FUNDS nếu không đủ.
      */
     public Allocation debitForSession(UUID userId, UUID transactionId, UUID sessionId, BigDecimal price, OffsetDateTime now) {
+        return debitForSession(userId, transactionId, sessionId, price, now, null);
+    }
+
+    public Allocation debitForSession(UUID userId, UUID transactionId, UUID sessionId, BigDecimal price, OffsetDateTime now,
+                                      UUID priorityLot) {
         BigDecimal promoAvail = promo(userId, now);
         BigDecimal cashAvail = cash(userId);
         Allocation a = WalletRules.allocate(price, promoAvail, cashAvail).orElseThrow(() ->
@@ -143,7 +148,7 @@ public class WalletLedger {
         if (left.signum() > 0) {
             List<Map<String, Object>> lots = jdbc.queryForList(
                     "SELECT id, remaining FROM wallet_promo_lots WHERE user_id = ? AND remaining > 0 AND expires_at > ? "
-                            + "ORDER BY expires_at, created_at FOR UPDATE", userId, now);
+                            + "ORDER BY (id = CAST(? AS uuid)) DESC, expires_at, created_at FOR UPDATE", userId, now, priorityLot);
             for (Map<String, Object> lot : lots) {
                 if (left.signum() <= 0) break;
                 UUID lotId = (UUID) lot.get("id");

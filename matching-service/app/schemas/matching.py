@@ -57,6 +57,58 @@ class RankedMentor(CamelModel):
     # Giá vượt ngân sách (maxRate) của mentee: vẫn được gợi ý nhưng đứng cuối danh sách. over_budget_by = số đồng vượt / giờ.
     over_budget: bool = False
     over_budget_by: float | None = None
+    # Chuyển ngách: lĩnh vực mentor từng làm; transition_fit = mentor từng chuyển đúng từ lĩnh vực hiện tại của mentee.
+    previous_domains: list[str] = []
+    transition_fit: bool = False
+
+
+class NearestMentor(CamelModel):
+    display_name: str
+    similarity: float
+
+
+class TopScored(CamelModel):
+    display_name: str
+    final_score: float
+    score_parts: dict[str, float] = {}
+
+
+class FilterStage(CamelModel):
+    ms: float = 0.0
+    considered: int = 0
+    excluded: dict[str, int] = {}
+    eligible: int = 0
+
+
+class RetrieveStage(CamelModel):
+    ms: float = 0.0
+    model: str
+    dim: int
+    k: int
+    retrieved: int
+    # Văn bản đã đưa vào embedding làm truy vấn (chỉ chế độ chuyển ngách; hồ sơ mentee dùng vector có sẵn thì None).
+    query_text: str | None = None
+    nearest: list[NearestMentor] = []
+
+
+class RerankStage(CamelModel):
+    ms: float = 0.0
+    weights: dict[str, float]
+    top: list[TopScored] = []
+
+
+class ExplainStage(CamelModel):
+    ms: float = 0.0
+    reasons: int = 0
+
+
+class PipelineStages(CamelModel):
+    """Số liệu thật từng bước của lượt tìm — giao diện dùng để trình bày pipeline AI Matching."""
+
+    filter: FilterStage
+    retrieve: RetrieveStage
+    rerank: RerankStage
+    explain: ExplainStage
 
 
 class PipelineStats(CamelModel):
@@ -73,6 +125,7 @@ class PipelineStats(CamelModel):
     # tính trên server, phục vụ đo độ trễ (docs/design-ai-matching-spec.md §8) mà không cần dựng
     # histogram riêng; không tính overhead xác thực/rate-limit phía router.
     took_ms: float = 0.0
+    stages: PipelineStages | None = None
 
 
 class EffectiveFilters(CamelModel):
@@ -87,11 +140,20 @@ class EffectiveFilters(CamelModel):
     from_profile_defaults: list[str] = []
 
 
+class MatchIntentEcho(CamelModel):
+    """Mục đích lượt tìm đã áp dụng: CURRENT (lĩnh vực hồ sơ) hoặc SWITCH (học thứ mới / chuyển ngách)."""
+
+    mode: Literal["CURRENT", "SWITCH"] = "CURRENT"
+    target_domain: str | None = None
+    goal_text: str | None = None
+
+
 class MatchingResponse(CamelModel):
     mentee_id: str
     mentors: list[RankedMentor]
     pipeline: PipelineStats
     filters: EffectiveFilters = EffectiveFilters()
+    intent: MatchIntentEcho = MatchIntentEcho()
     excluded_by: dict[str, int] = {}
     # US-36 — id của danh sách vừa hiển thị (gửi kèm phản hồi "Không phù hợp"); None khi rỗng / ghi nhật ký lỗi.
     impression_id: str | None = None

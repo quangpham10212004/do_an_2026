@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Đọc bài viết</title>
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef3ec}
+a{color:inherit;text-decoration:none}
+input,textarea,button{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 2100px; background: #eef3ec; color: #12200d; font-family: 'Be Vietnam Pro', system-ui, sans-serif">
+
+<header style="background: #ffffff; border-bottom: 1px solid #dbe6d3">
+<div style="max-width: 1180px; margin: 0 auto; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px">
+<a href="/dashboard" style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px"><span style="width: 34px; height: 34px; border-radius: 8px; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700">M</span>MentorHub</a>
+<nav style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; color: #4d5f41"><a href="/dashboard" style="padding: 12px 4px">Tổng quan</a><a href="/matching" style="padding: 12px 4px">Tìm mentor</a><a href="/blog" style="padding: 12px 4px; color: #15803d; font-weight: 600; border-bottom: 2px solid #16a34a">Blog</a><a href="/blog/me" style="padding: 12px 4px">Bài của tôi</a></nav>
+</div>
+</header>
+
+<div style="max-width: 1180px; margin: 0 auto; padding: 24px 24px 64px">
+<a href="/blog" style="display: inline-block; padding: 8px 0; font-size: 14px; color: #4d5f41">← Blog</a>
+
+<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+<!-- like rail -->
+<div style="flex: 0 0 56px; position: sticky; top: 16px; display: grid; gap: 14px; justify-items: center">
+<button aria-label="Thích bài viết" style="width: 48px; height: 48px; border-radius: 50%; border: 2px solid #16a34a; background: #eef8ee; color: #16a34a; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg></button><span style="font-size: 12px; font-weight: 600; margin-top: -8px">97</span>
+<a href="#binh-luan" aria-label="Bình luận" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid #c5d9b8; background: #fff; color: #4d5f41; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></a><span style="font-size: 12px; font-weight: 600; margin-top: -8px">12</span>
+<button aria-label="Lưu bài" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid #c5d9b8; background: #fff; color: #4d5f41; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+<button aria-label="Chia sẻ" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid #c5d9b8; background: #fff; color: #4d5f41; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></button>
+</div>
+
+<main style="flex: 999 1 560px; min-width: 0; display: grid; gap: 20px">
+<article style="border-radius: 16px; background: #fff; border: 1px solid #dbe6d3; overflow: hidden">
+<div style="height: 260px; background: linear-gradient(120deg, #bfe8c9, #4cb97a)"></div>
+<div style="padding: 32px 40px 36px">
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><span style="font-size: 12px; padding: 3px 12px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Thiết kế hệ thống</span><span style="font-size: 12px; padding: 3px 12px; border-radius: 999px; border: 1px solid #c5d9b8">PostgreSQL</span></div>
+<h1 style="margin: 14px 0 0; font-size: 34px; line-height: 1.25; font-weight: 700">Thiết kế database cho hệ thống đặt lịch học</h1>
+
+<!-- author row -->
+<div style="margin-top: 20px; padding: 16px 0; border-top: 1px solid #e1ebd9; border-bottom: 1px solid #e1ebd9; display: flex; flex-wrap: wrap; gap: 14px; align-items: center">
+<a href="/blog/author/1" style="width: 52px; height: 52px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; flex: none">QB</a>
+<div style="flex: 1 1 200px; min-width: 0"><a href="/blog/author/1" style="font-size: 16px; font-weight: 700">Trần Quốc Bảo</a> <span style="font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">✓ Mentor</span><div style="font-size: 13px; color: #4d5f41; margin-top: 2px">Senior Backend Engineer · 12 bài · 340 người theo dõi</div><div style="font-size: 12px; color: #5b6d4f; margin-top: 2px">20/11/2026 · 7 phút đọc · 1.240 lượt xem</div></div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><button style="height: 44px; padding: 0 22px; border: 0; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600">+ Theo dõi</button><a href="/mentors/1" style="height: 44px; padding: 0 18px; box-sizing: border-box; border-radius: 999px; border: 1px solid #16a34a; color: #15803d; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center">Xem hồ sơ mentor</a></div>
+</div>
+
+<div style="margin-top: 24px; font-size: 16px; line-height: 1.85; color: #25361c; display: grid; gap: 16px">
+<p style="margin: 0">Khi mình viết hệ thống đặt lịch lần đầu, mình tưởng chỉ cần một bảng <b>sessions</b>. Ba lần viết lại sau, mình rút ra vài nguyên tắc mà bài này sẽ chia sẻ.</p>
+<h2 id="slot" style="margin: 12px 0 0; font-size: 24px; line-height: 1.3; font-weight: 700">1. Tách slot khỏi session</h2>
+<p style="margin: 0">Slot là thời gian rảnh của mentor, session là cuộc hẹn cụ thể. Gộp hai thứ này làm việc đổi lịch rất khó.</p>
+<pre style="margin: 0; padding: 18px 20px; border-radius: 12px; background: #12200d; color: #d9f2df; font-size: 13px; line-height: 1.7; overflow-x: auto; font-family: ui-monospace, monospace">CREATE TABLE availability_slots (
+  id UUID PRIMARY KEY,
+  mentor_id UUID NOT NULL,
+  day_of_week SMALLINT NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL
+);</pre>
+<blockquote style="margin: 0; padding: 14px 20px; border-left: 4px solid #16a34a; background: #f1f7ee; border-radius: 0 12px 12px 0; font-size: 16px; color: #14532d">Thiết kế dữ liệu đúng từ đầu rẻ hơn rất nhiều so với sửa khi đã có người dùng.</blockquote>
+<h2 id="trung" style="margin: 12px 0 0; font-size: 24px; line-height: 1.3; font-weight: 700">2. Chống đặt trùng bằng ràng buộc</h2>
+<p style="margin: 0">Đừng chỉ kiểm tra trong code. Hai request cùng lúc vẫn có thể lọt qua. Dùng khoá hoặc ràng buộc loại trừ ở tầng database.</p>
+</div>
+
+<div style="margin-top: 28px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding-top: 20px; border-top: 1px solid #e1ebd9"><button style="height: 44px; padding: 0 22px; border-radius: 999px; border: 2px solid #16a34a; background: #eef8ee; color: #15803d; font-weight: 700; display: inline-flex; align-items: center; gap: 8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>Đã thích · 97</button><span style="font-size: 14px; color: #4d5f41">Bài viết có ích với bạn?</span><button style="margin-left: auto; height: 44px; padding: 0 16px; border: 0; background: transparent; color: #7b8c6d; font-size: 13px">Báo cáo bài viết</button></div>
+</div>
+</article>
+
+<!-- author card -->
+<section style="border-radius: 16px; background: #fff; border: 1px solid #dbe6d3; padding: 24px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center">
+<div style="width: 72px; height: 72px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 24px; flex: none">QB</div>
+<div style="flex: 1 1 280px; min-width: 0"><div style="font-size: 12px; color: #5b6d4f; letter-spacing: 0.06em; text-transform: uppercase">Viết bởi</div><b style="font-size: 18px">Trần Quốc Bảo</b><p style="margin: 6px 0 0; font-size: 14px; line-height: 1.6; color: #4d5f41">Senior Backend Engineer, 8 năm làm hệ thống thanh toán. Mentor Java và thiết kế hệ thống trên MentorHub.</p></div>
+<div style="display: grid; gap: 8px"><button style="height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600">+ Theo dõi</button><a href="/mentoring/request/1" style="height: 44px; padding: 0 20px; box-sizing: border-box; border-radius: 999px; border: 1px solid #16a34a; color: #15803d; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; justify-content: center">Gửi yêu cầu mentoring</a></div>
+</section>
+
+<!-- comments -->
+<section id="binh-luan" style="border-radius: 16px; background: #fff; border: 1px solid #dbe6d3; padding: 28px 32px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 10px; background: #dff3e5; color: #15803d; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Bình luận (12)</h2>
+<form style="margin-top: 18px; display: flex; gap: 12px; align-items: flex-start"><span style="width: 40px; height: 40px; border-radius: 50%; background: #86d29e; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none">LA</span><div style="flex: 1; min-width: 0; display: grid; gap: 10px"><textarea aria-label="Viết bình luận" rows="3" placeholder="Chia sẻ suy nghĩ của bạn…" style="padding: 12px 16px; border: 1px solid #9cb08c; border-radius: 12px; font-size: 14px; line-height: 1.6; resize: vertical"></textarea><div style="display: flex; justify-content: space-between; align-items: center; gap: 10px"><span style="font-size: 12px; color: #5b6d4f">Hãy bình luận lịch sự và đúng chủ đề</span><button type="submit" style="height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600">Gửi</button></div></div></form>
+<div style="margin-top: 22px; display: flex; gap: 14px; font-size: 13px"><span style="font-weight: 700; color: #15803d">Mới nhất</span><span style="color: #4d5f41">Nhiều thích nhất</span></div>
+<div style="margin-top: 14px; display: grid; gap: 20px">
+<div style="display: flex; gap: 12px"><span style="width: 40px; height: 40px; border-radius: 50%; background: #bfe8c9; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none">HN</span><div style="flex: 1; min-width: 0"><div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><b style="font-size: 14px">Hoàng Nam</b><span style="font-size: 11px; color: #5b6d4f">Mentee · 2 giờ trước</span></div><p style="margin: 4px 0 0; font-size: 14px; line-height: 1.7; color: #25361c">Phần chống đặt trùng bằng ràng buộc rất hữu ích. Anh có ví dụ với exclusion constraint của PostgreSQL không ạ?</p><div style="margin-top: 6px; display: flex; gap: 6px; align-items: center"><button style="height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: #4d5f41; font-size: 13px; display: inline-flex; align-items: center; gap: 6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>5</button><button style="height: 36px; padding: 0 12px; border: 0; background: transparent; color: #4d5f41; font-size: 13px; font-weight: 600">Trả lời</button></div>
+<div style="margin-top: 12px; display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #f1f7ee"><span style="width: 34px; height: 34px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none">QB</span><div style="flex: 1; min-width: 0"><div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><b style="font-size: 14px">Trần Quốc Bảo</b><span style="font-size: 10px; padding: 1px 8px; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 700">Tác giả</span><span style="font-size: 11px; color: #5b6d4f">1 giờ trước</span></div><p style="margin: 4px 0 0; font-size: 14px; line-height: 1.7; color: #25361c">Có nhé Nam, mình sẽ bổ sung ví dụ EXCLUDE USING gist vào bài này tối nay.</p></div></div></div></div>
+<div style="display: flex; gap: 12px"><span style="width: 40px; height: 40px; border-radius: 50%; background: #a8e0ba; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none">PA</span><div style="flex: 1; min-width: 0"><div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><b style="font-size: 14px">Phạm Anh</b><span style="font-size: 11px; color: #5b6d4f">Mentor · hôm qua</span></div><p style="margin: 4px 0 0; font-size: 14px; line-height: 1.7; color: #25361c">Đồng ý với việc tách slot khỏi session. Mình từng gộp chung và rất khổ khi cho phép đổi lịch.</p><div style="margin-top: 6px; display: flex; gap: 6px; align-items: center"><button style="height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: #4d5f41; font-size: 13px; display: inline-flex; align-items: center; gap: 6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>9</button><button style="height: 36px; padding: 0 12px; border: 0; background: transparent; color: #4d5f41; font-size: 13px; font-weight: 600">Trả lời</button></div></div></div>
+</div>
+<a href="#" style="display: block; margin-top: 18px; text-align: center; padding: 12px; min-height: 44px; box-sizing: border-box; border-radius: 999px; border: 1px solid #16a34a; color: #15803d; font-weight: 600">Xem thêm 10 bình luận</a>
+</section>
+</main>
+
+<aside style="flex: 1 1 280px; max-width: 320px; min-width: 0; display: grid; gap: 16px; position: sticky; top: 16px">
+<section style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; padding: 20px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">Nội dung bài viết</h2>
+<ul style="margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px"><li><a href="#slot" style="display: block; padding: 8px 12px; border-left: 3px solid #16a34a; background: #eef8ee; font-weight: 600; color: #15803d; border-radius: 0 8px 8px 0">1. Tách slot khỏi session</a></li><li><a href="#trung" style="display: block; padding: 8px 12px; border-left: 3px solid transparent; color: #4d5f41">2. Chống đặt trùng</a></li></ul>
+</section>
+<section style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; padding: 20px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">Bài khác của tác giả</h2>
+<div style="margin-top: 12px; display: grid; gap: 14px"><a href="#" style="display: block"><b style="font-size: 14px; line-height: 1.4">Review code Spring Boot: 3 sai lầm</b><div style="font-size: 12px; color: #5b6d4f; margin-top: 2px">15/11 · 5 phút đọc</div></a><a href="#" style="display: block; padding-top: 14px; border-top: 1px solid #e1ebd9"><b style="font-size: 14px; line-height: 1.4">Transaction và lost update</b><div style="font-size: 12px; color: #5b6d4f; margin-top: 2px">02/11 · 8 phút đọc</div></a></div>
+</section>
+<section style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; padding: 20px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">Có thể bạn quan tâm</h2>
+<div style="margin-top: 12px; display: grid; gap: 14px"><a href="#" style="display: block"><b style="font-size: 14px; line-height: 1.4">Docker cho người mới</b><div style="font-size: 12px; color: #5b6d4f; margin-top: 2px">Phạm Anh · 9 phút đọc</div></a><a href="#" style="display: block; padding-top: 14px; border-top: 1px solid #e1ebd9"><b style="font-size: 14px; line-height: 1.4">Ba câu hỏi Java phỏng vấn fresher</b><div style="font-size: 12px; color: #5b6d4f; margin-top: 2px">Lê Minh Châu · 5 phút đọc</div></a></div>
+</section>
+</aside>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2100}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -20,7 +20,10 @@ components:
         domain: { type: string }
         level: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
         skills: { type: array, items: { type: string } }
+        coverUrl: { type: string, nullable: true, description: "http(s) hoặc đường dẫn cùng origin bắt đầu bằng /" }
+        instructor: { type: string, nullable: true }
         materialCount: { type: integer }
+        durationMinutes: { type: integer, description: "Tổng thời lượng các tài liệu (phút)" }
         enrolled: { type: boolean }
         percentComplete: { type: number, format: float }
     Material:
@@ -32,6 +35,7 @@ components:
         url: { type: string, nullable: true }
         content: { type: string, nullable: true }
         orderIndex: { type: integer }
+        durationMinutes: { type: integer }
         completed: { type: boolean }
     CourseDetail:
       allOf:
@@ -39,6 +43,8 @@ components:
         - type: object
           properties:
             enrollmentCount: { type: integer }
+            outcomes: { type: array, items: { type: string }, description: "Bạn sẽ học được" }
+            nextMaterialId: { type: string, format: uuid, nullable: true, description: "Tài liệu chưa hoàn thành đầu tiên; null khi đã xong hết" }
             materials: { type: array, items: { $ref: "#/components/schemas/Material" } }
     Progress:
       type: object
@@ -53,7 +59,11 @@ components:
         title: { type: string }
         track: { type: string }
         description: { type: string }
+        coverUrl: { type: string, nullable: true }
+        level: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+        estimatedWeeks: { type: integer, nullable: true }
         percentComplete: { type: number }
+        nextItemId: { type: string, format: uuid, nullable: true, description: "Bước chưa hoàn thành đầu tiên" }
         items:
           type: array
           items:
@@ -63,9 +73,96 @@ components:
               title: { type: string }
               description: { type: string }
               orderIndex: { type: integer }
+              stage: { type: string, nullable: true, description: "Giai đoạn; các bước liên tiếp cùng giai đoạn được nhóm khi hiển thị" }
+              estimatedHours: { type: integer, nullable: true }
               courseId: { type: string, format: uuid, nullable: true }
               courseTitle: { type: string, nullable: true }
-              completed: { type: boolean }
+              courseCoverUrl: { type: string, nullable: true }
+              coursePercent: { type: number, nullable: true, description: "Tiến độ của người dùng ở khoá gắn kèm" }
+              completed: { type: boolean, description: "Đánh dấu tay HOẶC khoá gắn kèm đạt 100%" }
+    BlogPostSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        coverUrl: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        authorId: { type: string, format: uuid }
+        authorName: { type: string }
+        authorRole: { type: string, enum: [MENTOR, MENTEE, ADMIN] }
+        status: { type: string, enum: [DRAFT, PUBLISHED, UNPUBLISHED] }
+        readingMinutes: { type: integer }
+        likeCount: { type: integer }
+        commentCount: { type: integer }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        liked: { type: boolean }
+        bookmarked: { type: boolean }
+    BlogPostDetail:
+      allOf:
+        - $ref: "#/components/schemas/BlogPostSummary"
+        - type: object
+          properties:
+            contentMd: { type: string }
+            unpublishReason: { type: string, nullable: true }
+            followingAuthor: { type: boolean }
+    BlogPostPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/BlogPostSummary" } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    BlogPostInput:
+      type: object
+      required: [title, contentMd]
+      properties:
+        title: { type: string, minLength: 10, maxLength: 150 }
+        summary: { type: string, maxLength: 300, description: "Bỏ trống thì tự cắt từ nội dung" }
+        contentMd: { type: string, maxLength: 50000, description: "Markdown. Đăng (publish) cần tối thiểu 300 ký tự" }
+        coverUrl: { type: string, nullable: true, description: "http(s) URL" }
+        tags: { type: array, maxItems: 5, items: { type: string } }
+    BlogComment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        postId: { type: string, format: uuid }
+        parentId: { type: string, format: uuid, nullable: true }
+        authorId: { type: string, format: uuid }
+        authorName: { type: string }
+        body: { type: string, description: "Rỗng nếu bình luận đã bị gỡ (status REMOVED)" }
+        status: { type: string, enum: [VISIBLE, REMOVED] }
+        createdAt: { type: string, format: date-time }
+    BlogTag:
+      type: object
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        postCount: { type: integer }
+    BlogAuthor:
+      type: object
+      properties:
+        authorId: { type: string, format: uuid }
+        authorName: { type: string }
+        authorRole: { type: string }
+        postCount: { type: integer }
+        followerCount: { type: integer, description: "Số người đang theo dõi tác giả" }
+        followingCount: { type: integer, description: "Số tác giả mà người này đang theo dõi" }
+        following: { type: boolean, description: "Người dùng hiện tại có đang theo dõi tác giả không" }
+    BlogReport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        targetType: { type: string, enum: [POST, COMMENT] }
+        targetId: { type: string, format: uuid }
+        postId: { type: string, format: uuid }
+        postTitle: { type: string }
+        excerpt: { type: string }
+        reporterId: { type: string, format: uuid }
+        reason: { type: string }
+        status: { type: string, enum: [OPEN, RESOLVED] }
+        createdAt: { type: string, format: date-time }
 security:
   - bearerAuth: []
 paths:
@@ -154,7 +251,7 @@ paths:
     get:
       summary: FR-3.2 Danh sách roadmap
       responses:
-        "200": { description: "[{ id, title, track, description, itemCount }]" }
+        "200": { description: "[{ id, title, track, description, coverUrl, level, estimatedWeeks, itemCount, percentComplete }] — percentComplete tính theo người dùng hiện tại" }
   /api/learning/roadmaps/{id}:
     get:
       summary: FR-3.2 Chi tiết roadmap + tiến độ
@@ -194,6 +291,9 @@ paths:
                 domain: { type: string }
                 level: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
                 skills: { type: array, items: { type: string } }
+                coverUrl: { type: string }
+                instructor: { type: string }
+                outcomes: { type: array, items: { type: string }, maxItems: 10 }
       responses:
         "201": { description: Course }
   /api/learning/admin/courses/{id}:
@@ -222,8 +322,9 @@ paths:
                 title: { type: string }
                 type: { type: string, enum: [ARTICLE, VIDEO, DOCUMENT, EXERCISE] }
                 url: { type: string }
-                content: { type: string }
+                content: { type: string, description: "Markdown (tối đa 30000 ký tự)" }
                 orderIndex: { type: integer }
+                durationMinutes: { type: integer, minimum: 1, maximum: 600 }
       responses:
         "201": { description: Material }
   /api/learning/admin/materials/{id}:
@@ -251,6 +352,9 @@ paths:
                 title: { type: string }
                 track: { type: string }
                 description: { type: string }
+                coverUrl: { type: string }
+                level: { type: string, enum: [BEGINNER, INTERMEDIATE, ADVANCED] }
+                estimatedWeeks: { type: integer, minimum: 1, maximum: 104 }
       responses:
         "201": { description: Roadmap }
   /api/learning/admin/roadmaps/{id}:
@@ -266,7 +370,7 @@ paths:
         "204": { description: OK }
   /api/learning/admin/roadmaps/{id}/items:
     post:
-      summary: Thêm bước vào roadmap (có thể liên kết courseId)
+      summary: Thêm bước vào roadmap (có thể liên kết courseId; body gồm title, description, orderIndex, stage, estimatedHours, courseId)
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "201": { description: RoadmapItem }
@@ -278,6 +382,284 @@ paths:
         "200": { description: RoadmapItem }
     delete:
       summary: Xoá bước roadmap
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+
+  # ---------- Blog (mentor + mentee viết; đăng ngay, admin gỡ khi vi phạm) ----------
+  # Lỗi: BLOG_POST_NOT_FOUND 404, BLOG_COMMENT_NOT_FOUND 404, BLOG_INVALID 400 (tiêu đề/nội dung/tag/ảnh bìa không hợp lệ),
+  # BLOG_CONTENT_TOO_SHORT 400 (< 300 ký tự khi đăng), BLOG_POST_TAKEN_DOWN 409 (bài bị admin gỡ, tác giả không tự đăng lại),
+  # BLOG_RATE_LIMITED 429, BLOG_SELF_FOLLOW 400, BLOG_ALREADY_REPORTED 409. Bài chưa PUBLISHED chỉ tác giả và ADMIN xem được (404 với người khác).
+  /api/learning/blog/me/following:
+    get:
+      summary: Danh sách tác giả tôi đang theo dõi (BlogAuthor[]), mới theo dõi trước
+      responses:
+        "200": { description: "BlogAuthor[]" }
+  /api/learning/blog/posts:
+    get:
+      summary: Danh sách bài đã đăng (mới nhất trước), lọc theo tag / từ khoá / tác giả
+      parameters:
+        - { name: tag, in: query, schema: { type: string }, description: "slug của tag" }
+        - { name: q, in: query, schema: { type: string }, description: "tìm trong tiêu đề, tóm tắt và nội dung" }
+        - { name: author, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 10, maximum: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPostPage" }
+    post:
+      summary: Tạo bài ở trạng thái DRAFT (MENTOR / MENTEE / ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BlogPostInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPostDetail" }
+        "400": { description: BLOG_INVALID }
+        "429": { description: BLOG_RATE_LIMITED }
+  /api/learning/blog/posts/{slug}:
+    get:
+      summary: Đọc bài theo slug (kèm trạng thái đã like / lưu / theo dõi tác giả của người gọi)
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPostDetail" }
+        "404": { description: BLOG_POST_NOT_FOUND }
+  /api/learning/blog/posts/{id}/edit:
+    get:
+      summary: Lấy bài của chính mình theo id để chỉnh sửa (kể cả DRAFT / UNPUBLISHED)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPostDetail" }
+        "404": { description: BLOG_POST_NOT_FOUND }
+  /api/learning/blog/posts/{id}:
+    put:
+      summary: Sửa bài của mình (đổi tiêu đề không đổi slug sau khi đã đăng)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BlogPostInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPostDetail" }
+        "403": { description: FORBIDDEN }
+    delete:
+      summary: Xoá bài của mình
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/blog/posts/{id}/publish:
+    post:
+      summary: Đăng bài (DRAFT / UNPUBLISHED do tác giả gỡ → PUBLISHED)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: BlogPostDetail }
+        "400": { description: BLOG_CONTENT_TOO_SHORT }
+        "409": { description: BLOG_POST_TAKEN_DOWN }
+  /api/learning/blog/posts/{id}/unpublish:
+    post:
+      summary: Tác giả tự gỡ bài về nháp (PUBLISHED → DRAFT)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: BlogPostDetail }
+  /api/learning/blog/me/posts:
+    get:
+      summary: Bài của tôi (kể cả DRAFT / UNPUBLISHED)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BlogPostSummary" } }
+  /api/learning/blog/me/bookmarks:
+    get:
+      summary: Bài tôi đã lưu (chỉ bài đang PUBLISHED)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BlogPostSummary" } }
+  /api/learning/blog/posts/{id}/like:
+    put:
+      summary: Thích bài (idempotent)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "{ liked: true, likeCount }" }
+    delete:
+      summary: Bỏ thích (idempotent)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "{ liked: false, likeCount }" }
+  /api/learning/blog/posts/{id}/bookmark:
+    put:
+      summary: Lưu bài (idempotent)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+    delete:
+      summary: Bỏ lưu (idempotent)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/blog/posts/{id}/comments:
+    get:
+      summary: Bình luận của bài (cũ trước; câu trả lời nằm sau bình luận gốc, 1 cấp)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BlogComment" } }
+    post:
+      summary: Bình luận (1–2000 ký tự); parentId phải là bình luận gốc của cùng bài
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 2000 }
+                parentId: { type: string, format: uuid, nullable: true }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogComment" }
+        "429": { description: BLOG_RATE_LIMITED }
+  /api/learning/blog/comments/{id}:
+    delete:
+      summary: Gỡ bình luận (người viết, tác giả bài hoặc ADMIN) — chuyển REMOVED
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/blog/authors/{id}:
+    get:
+      summary: Hồ sơ tác giả blog
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogAuthor" }
+  /api/learning/blog/authors/{id}/follow:
+    put:
+      summary: Theo dõi tác giả (idempotent; không tự theo dõi mình)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+        "400": { description: BLOG_SELF_FOLLOW }
+    delete:
+      summary: Bỏ theo dõi (idempotent)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/blog/feed:
+    get:
+      summary: Bài mới của những tác giả tôi theo dõi
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 10, maximum: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPostPage" }
+  /api/learning/blog/tags:
+    get:
+      summary: Tag kèm số bài đang đăng (nhiều bài trước)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BlogTag" } }
+  /api/learning/blog/posts/{id}/report:
+    post:
+      summary: Báo cáo bài vi phạm (10–500 ký tự lý do; mỗi người một báo cáo mở cho một bài)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "204": { description: OK }
+        "409": { description: BLOG_ALREADY_REPORTED }
+  /api/learning/blog/comments/{id}/report:
+    post:
+      summary: Báo cáo bình luận vi phạm (body như báo cáo bài)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+        "409": { description: BLOG_ALREADY_REPORTED }
+  /api/learning/admin/blog/reports:
+    get:
+      summary: Báo cáo blog đang mở (cũ trước)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [OPEN, RESOLVED], default: OPEN } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BlogReport" } }
+  /api/learning/admin/blog/posts/{id}/unpublish:
+    post:
+      summary: Gỡ bài vi phạm (PUBLISHED → UNPUBLISHED, bắt buộc lý do); tác giả không tự đăng lại được
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200": { description: BlogPostDetail }
+  /api/learning/admin/blog/comments/{id}/remove:
+    post:
+      summary: Gỡ bình luận vi phạm
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: OK }
+  /api/learning/admin/blog/reports/{id}/resolve:
+    post:
+      summary: Đánh dấu đã xử lý báo cáo
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "204": { description: OK }

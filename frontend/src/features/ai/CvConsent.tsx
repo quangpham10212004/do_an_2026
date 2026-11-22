@@ -19,22 +19,22 @@ export default function CvConsent({ checked, onChange, audience, disabled }: CvC
   return (
     <div className="flex flex-col gap-3">
       <div className="well flex flex-col gap-2 text-small">
-        <div className="font-semibold">CV của bạn sẽ đi đâu?</div>
+        <div className="font-semibold">Về dữ liệu CV của bạn</div>
         <ul className="flex list-disc flex-col gap-1 pl-5 text-ink-muted">
-          <li>Được lưu trên MentorHub (file PDF và thông tin trích xuất). Bạn xoá được bất cứ lúc nào ở mục “CV của tôi”.</li>
-          <li>Được gửi tới DeepSeek (AI bên ngoài) để phân tích khi engine AI đang bật, <strong className="text-ink">chỉ khi bạn đồng ý bên dưới</strong>.</li>
           <li>
             {audience === "MENTEE"
-              ? "Mentor mà bạn gửi yêu cầu mentoring (đang chờ hoặc đã nhận) xem được file CV; quản trị viên cũng xem được."
-              : "Chỉ bạn và quản trị viên xem được file CV."}
+              ? "CV chỉ bạn và hệ thống đọc được, mentor chỉ thấy sau khi bạn gửi yêu cầu cho họ."
+              : "CV chỉ bạn, hệ thống và quản trị viên đọc được."}
           </li>
+          <li>Nội dung được AI phân tích để rút kỹ năng, kinh nghiệm và dự án.</li>
+          <li>Bạn có thể xoá CV bất cứ lúc nào trong “CV của tôi”.</li>
         </ul>
       </div>
       <Checkbox
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        label="Tôi đồng ý gửi nội dung CV tới DeepSeek (AI bên ngoài) để phân tích chính xác hơn."
+        label="Tôi đồng ý gửi nội dung CV tới dịch vụ AI bên ngoài (DeepSeek) để phân tích chính xác hơn."
       />
       <div className="field-hint">
         {checked

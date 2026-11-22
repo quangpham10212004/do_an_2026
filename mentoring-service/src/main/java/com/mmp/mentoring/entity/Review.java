@@ -27,6 +27,9 @@ public class Review {
 
     private String comment;
 
+    @Column(name = "show_name", nullable = false)
+    private boolean showName = true;
+
     /** US-41 (PRD-REV-2) — điểm thành phần 1–5 (null ở đánh giá trước US-41). */
     private Integer knowledge;
 
@@ -91,5 +94,7 @@ public class Review {
     public UUID getMentorId() { return mentorId; }
     public int getRating() { return rating; }
     public String getComment() { return comment; }
+    public boolean isShowName() { return showName; }
+    public void setShowName(boolean showName) { this.showName = showName; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

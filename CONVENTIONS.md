@@ -147,7 +147,7 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
   hạng mentor ngay trong PostgreSQL thay vì gọi HTTP cho từng ứng viên. Kết nối dùng role
   `matching_reader` chỉ có quyền `SELECT` (tạo trong `db/init/profile-service.sql`). Mọi thao tác WRITE
   vào các bảng này chỉ do `profile-service` thực hiện. Ngoại lệ khác phải được cả nhóm thống nhất và ghi
-  chú tại đây trước khi code. Lý do và hệ quả: `docs/adr.md` ADR-01. Hệ quả cần nhớ: **đổi tên/xoá cột**
+  chú tại đây trước khi code. Lý do: embedding thuộc matching-service, profile-service chỉ báo hồ sơ đổi. Hệ quả cần nhớ: **đổi tên/xoá cột**
   trong 3 bảng trên phải báo người phụ trách matching-service (`_SPEC` trong `index_service.py`, câu
   SELECT trong `matching_pipeline.py`).
 - **Chỉ mục embedding thuộc `matching_db`** (`mentor_embeddings`, `mentee_embeddings`): vector, hash
@@ -161,7 +161,7 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
   (`docker compose down -v` để khởi tạo lại — **xoá dữ liệu**). Hibernate đặt `ddl-auto: none`. Thay đổi
   schema sau baseline đi qua **migration** ở mọi service (Flyway `db/migration/V<n>__*.sql` cho Java, V1 =
   baseline `db/init`; runner `migrations/NNN_*.sql` + bảng `schema_migrations` cho Python), không sửa
-  `db/init`, không cần `down -v`; quy trình ở `docs/deployment-guide.md` mục 8.1, quyết định ở ADR-06.
+  `db/init`, không cần `down -v`.
 - Khoá chính `UUID`; thời gian `TIMESTAMPTZ`; trạng thái `TEXT` + `CHECK`.
 
 ## 8. Environment & ports
@@ -187,7 +187,7 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 
 ## 10. Scope đã chốt (không mở rộng nếu chưa thống nhất nhóm)
 
-- Trong scope: Auth, Career Profile, Learning Hub, AI Matching (embedding + pgvector, do
+- Trong scope: Auth, Career Profile, Learning Hub (khoá học, roadmap và Blog của mentor/mentee), AI Matching (embedding + pgvector, do
   matching-service sở hữu trọn vẹn), AI Interview,
   CV Parsing + Chatbot enrichment, Mentoring workflow, Payment (sandbox) + Referral.
 - Ngoài scope: chatbot trợ lý học tập độc lập (chỉ giữ chatbot enrichment hẹp phục vụ matching),

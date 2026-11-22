@@ -61,7 +61,7 @@ public class WalletController {
     @PostMapping("/pay")
     @PreAuthorize("hasRole('MENTEE')")
     public TransactionResponse pay(@Valid @RequestBody PayFromWalletRequest req) {
-        return wallet.pay(CurrentUser.get(), req.sessionId(), req.amount());
+        return wallet.pay(CurrentUser.get(), req.sessionId(), req.amount(), req.voucherId());
     }
 
     @PostMapping("/reactivate")

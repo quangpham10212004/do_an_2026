@@ -840,7 +840,18 @@ paths:
         "400": { description: INVALID_BANK_ACCOUNT }
   /api/payment/payouts:
     post:
-      summary: US-42 (MENTOR) — yêu cầu rút TOÀN BỘ số dư khả dụng; admin nhận thông báo PAYOUT_REQUESTED.
+      summary: US-42 (MENTOR) — yêu cầu rút một phần hoặc toàn bộ số dư khả dụng.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: integer
+                  minimum: 200000
+                  description: Số tiền muốn rút theo VND. Bỏ qua trường này để rút toàn bộ số dư khả dụng.
       responses:
         "201":
           description: Đã tạo
@@ -848,7 +859,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Payout" }
         "400": { description: PAYOUT_BELOW_MINIMUM (< 200.000đ) / BANK_ACCOUNT_REQUIRED }
-        "409": { description: PAYOUT_ALREADY_OPEN }
+        "409": { description: PAYOUT_ALREADY_OPEN / PAYOUT_EXCEEDS_AVAILABLE / ACCOUNT_FROZEN }
   /api/payment/transactions/{id}/receipt:
     get:
       summary: >

@@ -34,6 +34,9 @@ public class User {
     @Column(nullable = false)
     private Status status = Status.ACTIVE;
 
+    @Column(name = "suspended_until")
+    private OffsetDateTime suspendedUntil;
+
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
 
@@ -69,6 +72,8 @@ public class User {
     public void setRole(Role role) { this.role = role; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
+    public OffsetDateTime getSuspendedUntil() { return suspendedUntil; }
+    public void setSuspendedUntil(OffsetDateTime suspendedUntil) { this.suspendedUntil = suspendedUntil; }
     public boolean isEmailVerified() { return emailVerified; }
     public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
     public String getEmailVerificationToken() { return emailVerificationToken; }

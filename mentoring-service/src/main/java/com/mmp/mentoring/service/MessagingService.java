@@ -157,7 +157,7 @@ public class MessagingService {
             messageRepo.markRead(conversationId, user.userId(), now);
             return new Sent(m, firstUnread);
         });
-        if (sent.firstUnread()) {
+        if (sent.firstUnread() && !isMuted(conversationId, counterpart(r, user))) {
             // Chỉ báo 1 lần cho mỗi đợt tin chưa đọc để không spam trung tâm thông báo.
             String from = profileClient.displayNames(List.of(user.userId())).getOrDefault(user.userId(), "Người dùng");
             notifications.notifyUser(counterpart(r, user), "MESSAGE_RECEIVED", "Tin nhắn mới",
@@ -260,6 +260,46 @@ public class MessagingService {
     private MentoringRequest findConversation(UUID id) {
         return requestRepo.findById(id)
                 .orElseThrow(() -> ApiException.notFound("CONVERSATION_NOT_FOUND", "Không tìm thấy cuộc trò chuyện"));
+    }
+
+    public boolean muted(AuthUser user, UUID conversationId) {
+        requireParticipant(user, findConversation(conversationId));
+        return isMuted(conversationId, user.userId());
+    }
+
+    public void mute(AuthUser user, UUID conversationId, boolean muted) {
+        requireParticipant(user, findConversation(conversationId));
+        if (muted) {
+            jdbc.update("INSERT INTO conversation_mutes (conversation_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    conversationId, user.userId());
+        } else {
+            jdbc.update("DELETE FROM conversation_mutes WHERE conversation_id = ? AND user_id = ?",
+                    conversationId, user.userId());
+        }
+    }
+
+    private boolean isMuted(UUID conversationId, UUID userId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM conversation_mutes WHERE conversation_id = ? AND user_id = ?)
+                """, Boolean.class, conversationId, userId));
+    }
+
+    public record Presence(boolean online, OffsetDateTime lastSeenAt) {}
+
+    public Presence presence(AuthUser user, UUID conversationId, UUID target) {
+        MentoringRequest request = findConversation(conversationId);
+        requireParticipant(user, request);
+        if (!target.equals(counterpart(request, user))) {
+            throw ApiException.forbidden("Chỉ xem được trạng thái của người trong cuộc trò chuyện");
+        }
+        jdbc.update("""
+                INSERT INTO message_presence (user_id, last_seen_at) VALUES (?, now())
+                ON CONFLICT (user_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+                WHERE message_presence.last_seen_at < now() - interval '20 seconds'
+                """, user.userId());
+        OffsetDateTime seen = jdbc.query("SELECT last_seen_at FROM message_presence WHERE user_id = ?",
+                (row, i) -> row.getObject(1, OffsetDateTime.class), target).stream().findFirst().orElse(null);
+        return new Presence(seen != null && seen.isAfter(OffsetDateTime.now().minusMinutes(2)), seen);
     }
 
     private MessageReport findReport(UUID id) {

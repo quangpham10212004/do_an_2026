@@ -2,6 +2,7 @@ package com.mmp.auth.service;
 
 import com.mmp.auth.dto.AuthDtos.PageResponse;
 import com.mmp.auth.dto.AuthDtos.UserResponse;
+import com.mmp.auth.dto.AuditDtos.AuditRequest;
 import com.mmp.auth.client.MentoringClient;
 import com.mmp.auth.entity.User;
 import com.mmp.auth.exception.ApiException;
@@ -9,11 +10,14 @@ import com.mmp.auth.repository.RefreshTokenRepository;
 import com.mmp.auth.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 /** FR-1.5 — Admin xem, khoá/mở khoá tài khoản. */
@@ -46,10 +50,26 @@ public class UserAdminService {
 
     @Transactional
     public UserResponse updateStatus(UUID actingAdminId, UUID userId, String status, String reason) {
+        return changeStatus(actingAdminId, userId, User.Status.valueOf(status), reason, null);
+    }
+
+    @Transactional
+    public UserResponse suspend(UUID adminId, UUID userId, String duration, String reason) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime until = switch (duration) {
+            case "7d" -> now.plusDays(7);
+            case "30d" -> now.plusDays(30);
+            case "permanent" -> null;
+            default -> throw ApiException.badRequest("INVALID_SUSPENSION_DURATION", "Thời hạn đình chỉ không hợp lệ");
+        };
+        return changeStatus(adminId, userId, User.Status.LOCKED, reason, until);
+    }
+
+    private UserResponse changeStatus(UUID actingAdminId, UUID userId, User.Status newStatus,
+                                      String reason, OffsetDateTime until) {
         String why = reason == null || reason.isBlank() ? null : reason.strip();
-        User user = userRepository.findById(userId)
+        User user = userRepository.lockById(userId)
                 .orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "Không tìm thấy người dùng"));
-        User.Status newStatus = User.Status.valueOf(status);
         if (newStatus == User.Status.LOCKED) {
             if (user.getId().equals(actingAdminId)) {
                 throw ApiException.badRequest("CANNOT_LOCK_SELF", "Không thể tự khoá tài khoản của chính mình");
@@ -63,17 +83,34 @@ public class UserAdminService {
             refreshTokenRepository.revokeAllForUser(user.getId());
         }
         User.Status oldStatus = user.getStatus();
+        OffsetDateTime oldUntil = user.getSuspendedUntil();
         user.setStatus(newStatus);
-        if (oldStatus != newStatus) {
-            // US-30: ghi cùng transaction với thay đổi trạng thái — khoá/mở khoá luôn có dòng nhật ký.
+        user.setSuspendedUntil(until);
+        if (oldStatus != newStatus || !Objects.equals(oldUntil, until)) {
+            var after = new java.util.LinkedHashMap<String, Object>();
+            after.put("status", newStatus.name());
+            after.put("email", user.getEmail());
+            if (why != null) after.put("reason", why);
+            if (until != null) after.put("suspendedUntil", until.toString());
             auditService.recordAdmin(actingAdminId, newStatus == User.Status.LOCKED ? "USER_LOCKED" : "USER_UNLOCKED",
                     "USER", user.getId().toString(),
                     java.util.Map.of("status", oldStatus.name(), "email", user.getEmail()),
-                    why == null ? java.util.Map.of("status", newStatus.name(), "email", user.getEmail())
-                            : java.util.Map.of("status", newStatus.name(), "email", user.getEmail(), "reason", why));
-            notifyMentoringAfterCommit(user.getId(), newStatus == User.Status.LOCKED, actingAdminId, why);
+                    after);
         }
+        if (oldStatus != newStatus) notifyMentoringAfterCommit(user.getId(), newStatus == User.Status.LOCKED, actingAdminId, why);
         return UserResponse.from(user);
+    }
+
+    @Scheduled(fixedDelayString = "${app.suspensions.release-delay-ms:60000}")
+    @Transactional
+    public void releaseExpiredSuspensions() {
+        for (User user : userRepository.lockExpiredSuspensions(OffsetDateTime.now(), PageRequest.of(0, 100))) {
+            user.setStatus(User.Status.ACTIVE);
+            user.setSuspendedUntil(null);
+            auditService.record(new AuditRequest(null, "SYSTEM", "USER_UNLOCKED", "USER",
+                    user.getId().toString(), null, null));
+            notifyMentoringAfterCommit(user.getId(), false, null, "SUSPENSION_EXPIRED");
+        }
     }
 
     /**

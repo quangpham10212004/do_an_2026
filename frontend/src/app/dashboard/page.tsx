@@ -8,11 +8,12 @@ import WelcomeAlerts from "@/components/WelcomeAlerts";
 import { Avatar, ButtonLink, Card, CardBody, CardHeader, List, ListRow, PageHeader, Progress, Stat, Stats, StatusBadge } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
 import { aiApi } from "@/features/ai/api";
+import { verifyApi } from "@/features/verification/api";
 import { mentoringApi } from "@/features/mentoring/api";
-import { learningApi } from "@/features/learning/api";
+import MenteeProgress from "@/features/progress/MenteeProgress";
 import { formatDateTime } from "@/lib/format";
 import { SESSION_STATUS_LABELS, mentoringTone } from "@/features/mentoring/labels";
-import type { CourseSummary, CvUploadResult, Interview, MenteeProfile, MentorProfile, MentoringRequest, MentoringSession, SessionUser } from "@/types";
+import type { CvUploadResult, MenteeProfile, MentorProfile, MentoringRequest, MentoringSession, SessionUser } from "@/types";
 
 interface StepProps {
   done: boolean;
@@ -37,22 +38,20 @@ function Step({ done, title, desc, href, action }: StepProps) {
 
 function Dashboard({ user }: { user: SessionUser }) {
   const [profile, setProfile] = useState<MentorProfile | MenteeProfile | null | undefined>(undefined);
-  const [interview, setInterview] = useState<Interview | null | undefined>(undefined);
+  const [interviewOpen, setInterviewOpen] = useState(false);
   const [enrichment, setEnrichment] = useState<CvUploadResult | null | undefined>(undefined);
   const [sessions, setSessions] = useState<MentoringSession[]>([]);
   const [requests, setRequests] = useState<MentoringRequest[]>([]);
-  const [courses, setCourses] = useState<CourseSummary[]>([]);
   const isMentor = user.role === "MENTOR";
   const mentorProfile = profile && "verificationStatus" in profile ? profile : null;
 
   useEffect(() => {
     const loadProfile: Promise<MentorProfile | MenteeProfile> = isMentor ? profileApi.getMentor(user.userId) : profileApi.getMentee(user.userId);
     loadProfile.then(setProfile).catch(() => setProfile(null));
-    if (isMentor) aiApi.myInterview().then(setInterview).catch(() => setInterview(null));
+    if (isMentor) verifyApi.overview().then((o) => setInterviewOpen(o.tracks.some((t) => t.stage === "IN_PROGRESS"))).catch(() => setInterviewOpen(false));
     else aiApi.latestEnrichment(user.userId).then(setEnrichment).catch(() => setEnrichment(null));
     mentoringApi.sessions().then(setSessions).catch(() => {});
     mentoringApi.requests().then(setRequests).catch(() => {});
-    learningApi.myCourses().then(setCourses).catch(() => {});
   }, [user, isMentor]);
 
   const upcoming = sessions
@@ -72,10 +71,10 @@ function Dashboard({ user }: { user: SessionUser }) {
         { done: !!mentorProfile?.availability.length, title: "Khai báo lịch rảnh", desc: "Mentee chỉ đặt được lịch trong khung giờ này", href: "/profile#availability", action: "Cập nhật" },
         {
           done: mentorProfile?.verificationStatus === "APPROVED",
-          title: "Vượt qua AI Interview",
+          title: "Vượt qua phỏng vấn xác thực",
           desc: mentorProfile ? <span className="inline-flex items-center gap-2">Trạng thái <StatusBadge status={mentorProfile.verificationStatus} /></span> : "Cần có hồ sơ trước",
           href: "/interview",
-          action: interview?.status === "IN_PROGRESS" ? "Tiếp tục" : "Xem",
+          action: interviewOpen ? "Tiếp tục" : "Xem",
         },
       ]
     : [
@@ -91,7 +90,7 @@ function Dashboard({ user }: { user: SessionUser }) {
       ];
   const remaining = steps.filter((st) => !st.done).length;
   const next = nextStep();
-  const hasActivity = upcoming.length > 0 || requests.length > 0 || courses.length > 0;
+  const hasActivity = upcoming.length > 0 || requests.length > 0;
 
   /** Một việc quan trọng nhất lúc này — thay cho nhiều nút "Tìm mentor" rải rác. */
   function nextStep(): { icon: LucideIcon; title: string; desc: string; href: string; action: string } | null {
@@ -138,12 +137,12 @@ function Dashboard({ user }: { user: SessionUser }) {
             <Stat label="Phiên sắp tới" value={upcoming.length} hint={upcoming[0] ? `Gần nhất ${formatDateTime(upcoming[0].scheduledAt)}` : "Chưa có lịch"} />
             <Stat label={isMentor ? "Yêu cầu chờ phản hồi" : "Yêu cầu đã gửi"} value={isMentor ? pendingRequests.length : requests.length}
               hint={isMentor ? "Phản hồi trong 48 giờ" : `${pendingRequests.length} đang chờ mentor`} />
-            <Stat label="Khoá học" value={courses.length} hint={courses.length ? `${courses.filter((c) => c.percentComplete >= 100).length} đã hoàn thành` : "Chưa đăng ký"} />
           </Stats>
         )}
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 flex-col gap-6">
+            {!isMentor && profile !== undefined && <MenteeProgress sessions={sessions} name={user.fullName} goal={profile && "goal" in profile ? profile.goal : null} />}
             {upcoming.length > 1 && (
               <Card>
                 <CardHeader title="Phiên sắp tới" actions={<Link href="/mentoring/sessions" className="text-small">Xem tất cả</Link>} />
@@ -173,30 +172,8 @@ function Dashboard({ user }: { user: SessionUser }) {
                 </List>
               </Card>
             )}
-            {courses.length > 0 && (
-              <Card>
-                <CardHeader title="Khoá học của tôi" actions={<Link href="/learning" className="text-small">Learning Hub</Link>} />
-                <List>
-                  {courses.slice(0, 4).map((c) => (
-                    <ListRow key={c.id} href={`/learning/courses/${c.id}`} title={c.title}
-                      trailing={<span className="text-small text-ink-muted tabular">{c.percentComplete}%</span>}>
-                      <div className="mt-2 max-w-[360px]"><Progress value={c.percentComplete} label={`Tiến độ ${c.title}`} /></div>
-                    </ListRow>
-                  ))}
-                </List>
-              </Card>
-            )}
           </div>
           <div className="flex min-w-0 flex-col gap-6">
-            {courses.length === 0 && (
-              <Card>
-                <CardBody className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 font-semibold"><BookOpen aria-hidden="true" className="size-4 text-accent" />Learning Hub</div>
-                  <p className="text-small text-ink-muted">Khoá học và roadmap giúp bạn {isMentor ? "chia sẻ tài liệu với mentee" : "tự học giữa các phiên"}.</p>
-                  <Link href="/learning" className="text-small font-medium">Xem khoá học</Link>
-                </CardBody>
-              </Card>
-            )}
             {!isMentor && (
               <p className="text-small text-ink-muted">
                 Muốn tự chọn mentor? <Link href="/mentors">Xem tất cả mentor</Link>.

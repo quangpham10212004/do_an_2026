@@ -7,6 +7,19 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
 @import "../styles/components.css" layer(components);
+@import "../styles/blog.css" layer(components);
+@import "../styles/landing.css" layer(components);
+@import "../styles/theme-green.css" layer(components);
+@import "../styles/app-shell.css" layer(components);
+@import "../styles/profile.css" layer(components);
+@import "../styles/flow.css" layer(components);
+@import "../styles/mobile.css" layer(components);
+@import "../styles/verification.css" layer(components);
+@import "../styles/domains.css" layer(components);
+@import "../styles/social.css" layer(components);
+@import "../styles/sessions.css" layer(components);
+@import "../styles/admin.css" layer(components);
+@import "../styles/onboarding.css" layer(components);
 
 @theme inline {
   --color-*: initial;
@@ -24,6 +37,12 @@
   --color-accent-ink: var(--accent-ink);
   --color-on-accent: var(--on-accent);
   --color-amber: var(--amber);
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-on-navy: var(--on-navy);
+  --color-on-navy-muted: var(--on-navy-muted);
+  --color-highlight: var(--highlight);
+  --color-on-highlight: var(--on-highlight);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
   --color-success: var(--success);
@@ -47,9 +66,9 @@
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
 
-  --text-display: 36px;
-  --text-display--line-height: 44px;
-  --text-display--letter-spacing: -0.02em;
+  --text-display: 48px;
+  --text-display--line-height: 58px;
+  --text-display--letter-spacing: -0.025em;
   --text-display--font-weight: 700;
   --text-title-1: 24px;
   --text-title-1--line-height: 32px;

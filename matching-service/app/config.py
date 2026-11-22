@@ -39,6 +39,9 @@ MATCH_WEIGHT_RATING = float(os.getenv("MATCH_WEIGHT_RATING", "0.15"))
 MATCH_WEIGHT_EXPERIENCE = float(os.getenv("MATCH_WEIGHT_EXPERIENCE", "0.1"))
 MATCH_WEIGHT_SCHEDULE = float(os.getenv("MATCH_WEIGHT_SCHEDULE", "0.1"))
 MATCH_WEIGHT_RESPONSIVENESS = float(os.getenv("MATCH_WEIGHT_RESPONSIVENESS", "0.05"))
+# Chế độ chuyển ngách: phần trọng số dành cho tín hiệu "mentor từng chuyển đúng hướng" — lấy bớt từ similarity
+# (tổng vẫn 1,00) nên không cần nằm trong kiểm tra tổng ở weight_errors().
+MATCH_WEIGHT_TRANSITION = float(os.getenv("MATCH_WEIGHT_TRANSITION", "0.15"))
 
 # US-11 — áp dụng matching-service/migrations/*.sql lúc khởi động (bảng schema_migrations).
 MIGRATE_ON_STARTUP = os.getenv("MIGRATE_ON_STARTUP", "true").lower() == "true"

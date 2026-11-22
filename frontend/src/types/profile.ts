@@ -51,6 +51,8 @@ export interface MentorProfileInput {
   isAvailable?: boolean;
   /** US-37 — ≤ 80 ký tự; undefined = giữ nguyên, "" = xoá. */
   headline?: string;
+  /** Lĩnh vực từng làm trước lĩnh vực hiện tại (chuyển ngách); undefined = giữ nguyên, [] = xoá. */
+  previousDomains?: string[];
 }
 
 /** US-37 (PRD-PROF-1) — điểm hoàn thiện hồ sơ. */
@@ -122,6 +124,8 @@ export interface MentorProfile {
   /** US-37 */
   headline: string | null;
   avatarUrl: string | null;
+  /** Lĩnh vực từng làm trước lĩnh vực hiện tại — hành trình chuyển ngách. */
+  previousDomains: string[];
   /** null khi xem hồ sơ người khác. */
   completeness: Completeness | null;
   /** US-35 — trung vị thời gian phản hồi yêu cầu (giờ); null = chưa có dữ liệu. */

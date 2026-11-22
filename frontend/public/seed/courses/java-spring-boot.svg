@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Spring Boot">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14532d"/><stop offset="1" stop-color="#4d7c0f"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#fff" stroke-opacity="0.07"/></pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="1090" cy="598" r="135" fill="#bef264" opacity="0.06"/><rect x="804" y="152" width="155" height="97" rx="18" fill="#bef264" opacity="0.14" transform="rotate(15 804 152)"/><circle cx="851" cy="143" r="151" fill="#bef264" opacity="0.13"/><rect x="1044" y="158" width="299" height="187" rx="18" fill="#bef264" opacity="0.10" transform="rotate(-2 1044 158)"/><circle cx="800" cy="375" r="208" fill="#bef264" opacity="0.11"/>
+  <rect x="80" y="250" width="72" height="8" rx="4" fill="#bef264"/>
+  <text x="80" y="348" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="78" font-weight="700" fill="#fff">Spring Boot</text>
+  <text x="80" y="402" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="30" fill="#fff" fill-opacity="0.8">REST API · JPA · PostgreSQL</text>
+</svg>

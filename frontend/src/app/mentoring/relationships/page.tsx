@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Handshake } from "lucide-react";
-import { Alert, Avatar, Badge, ButtonLink, Card, EmptyState, List, ListRow, Loading, PageHeader } from "@/components/ui";
+import { Alert, ButtonLink, Card, EmptyState, Loading } from "@/components/ui";
+import { FlowHead, FlowMini, FlowPill, FlowTile } from "@/features/mentoring/FlowKit";
 import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { MentoringRequest, SessionUser } from "@/types";
@@ -20,37 +21,41 @@ function Relationships({ user }: { user: SessionUser }) {
 
   const isMentor = user.role === "MENTOR";
   return (
-    <>
-      <PageHeader title="Quan hệ mentoring" description="Mục tiêu chung, phiên học và ghi chú của từng quan hệ mentoring." />
+    <div className="fl-page">
+      <FlowHead title="Quan hệ mentoring" lead="Mục tiêu chung, phiên học và ghi chú của từng quan hệ mentoring." />
       <Alert className="mb-6">{error}</Alert>
-      {!items ? (error ? null : <Loading />) : (
+      {!items ? (error ? null : <Loading />) : items.length === 0 ? (
         <Card>
-          {items.length === 0 ? (
-            <EmptyState icon={Handshake} title="Chưa có quan hệ mentoring nào"
-              action={!isMentor && <ButtonLink href="/matching" size="sm">Tìm mentor</ButtonLink>}>
-              Khi mentor chấp nhận yêu cầu, không gian mentoring sẽ xuất hiện ở đây.
-            </EmptyState>
-          ) : (
-            <List>
-              {items.map((r) => {
-                const name = isMentor ? r.menteeName : r.mentorName;
-                const active = r.status === "ACCEPTED";
-                return (
-                  <ListRow
-                    key={r.id}
-                    href={`/mentoring/relationships/${r.id}`}
-                    leading={<Avatar name={name} />}
-                    title={<span className="inline-flex flex-wrap items-center gap-2">{name}<Badge tone={active ? "success" : "neutral"}>{RELATIONSHIP_STATUS_LABELS[r.status] || r.status}</Badge></span>}
-                    meta={<>Bắt đầu {formatDate(r.respondedAt || r.createdAt)} · {r.goal.length > 140 ? `${r.goal.slice(0, 140)}…` : r.goal}</>}
-                    trailing={<span className="text-small font-medium text-accent">{active ? "Mở không gian" : "Xem lại"}</span>}
-                  />
-                );
-              })}
-            </List>
-          )}
+          <EmptyState icon={Handshake} title="Chưa có quan hệ mentoring nào"
+            action={!isMentor && <ButtonLink href="/matching" size="sm">Tìm mentor</ButtonLink>}>
+            Khi mentor chấp nhận yêu cầu, không gian mentoring sẽ xuất hiện ở đây.
+          </EmptyState>
         </Card>
+      ) : (
+        <div className="fl-list" style={{ maxWidth: 900 }}>
+          {items.map((r) => {
+            const name = isMentor ? r.menteeName : r.mentorName;
+            const active = r.status === "ACCEPTED";
+            return (
+              <article key={r.id} className="fl-req" data-open={active} aria-label={`Quan hệ với ${name}`}>
+                <div className="fl-req-top">
+                  <FlowTile name={name} tone={active ? undefined : "muted"} />
+                  <div className="fl-req-name">
+                    <div className="fl-req-badges">
+                      <b>{name}</b>
+                      <FlowPill tone={active ? "success" : undefined}>{RELATIONSHIP_STATUS_LABELS[r.status] || r.status}</FlowPill>
+                    </div>
+                    <div className="fl-req-sub">Bắt đầu {formatDate(r.respondedAt || r.createdAt)}</div>
+                    <div className="fl-req-sub fl-req-line">{r.goal}</div>
+                  </div>
+                  <ButtonLink href={`/mentoring/relationships/${r.id}`} variant={active ? "primary" : "secondary"}>{active ? "Mở không gian" : "Xem lại"}</ButtonLink>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
-    </>
+    </div>
   );
 }
 

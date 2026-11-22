@@ -114,6 +114,8 @@ services:
       REDIS_HOST: redis
       PAYMENT_SERVICE_URL: http://payment-service:8084
       MENTORING_SERVICE_URL: http://mentoring-service:8083
+      MATCHING_SERVICE_URL: http://matching-service:8090
+      JITSI_HEALTH_URL: ${JITSI_HEALTH_URL:-http://jitsi-web/external_api.js}
       # US-38 — múi giờ người nhận (giờ yên tĩnh); EMAIL_MODE=smtp + `docker compose --profile mail up` để gửi qua Mailpit.
       PROFILE_SERVICE_URL: http://profile-service:8082
       EMAIL_MODE: ${EMAIL_MODE:-log}
@@ -146,6 +148,7 @@ services:
       DB_HOST: profile-db
       DB_PORT: 5432
       DB_NAME: profile_db
+      AI_SERVICE_URL: http://ai-service:8091
       # Chỉ để báo matching-service lập lại chỉ mục sau khi hồ sơ đổi. Lời gọi là
       # best-effort nên profile-service không phụ thuộc matching-service lúc khởi động.
       MATCHING_SERVICE_URL: http://matching-service:8090
@@ -218,6 +221,7 @@ services:
       DB_HOST: learning-db
       DB_PORT: 5432
       DB_NAME: learning_db
+      PROFILE_SERVICE_URL: http://profile-service:8082   # tên hiển thị tác giả blog
     depends_on:
       learning-db: { condition: service_healthy }
     healthcheck:
@@ -310,7 +314,7 @@ services:
   # ---------- Frontend ----------
   frontend:
     build: ./frontend
-    ports: ["3000:3000"]
+    ports: ["${FRONTEND_PORT:-3000}:3000"]
     environment:
       AUTH_SERVICE_URL: http://auth-service:8081
       PROFILE_SERVICE_URL: http://profile-service:8082

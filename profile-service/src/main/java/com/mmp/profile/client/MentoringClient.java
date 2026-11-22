@@ -53,6 +53,27 @@ public class MentoringClient {
                 .build();
     }
 
+    /** Số liệu mentee từ mentoring-service (GET /internal/mentees/{id}/summary); lỗi → null, trang vẫn hiện phần hồ sơ. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> menteeSummary(UUID menteeId) {
+        return internalGet("/internal/mentees/{id}/summary", menteeId);
+    }
+
+    /** Mentee đã học với mentor (GET /internal/mentors/{id}/classmates); lỗi → null. */
+    public Map<String, Object> classmates(UUID mentorId) {
+        return internalGet("/internal/mentors/{id}/classmates", mentorId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> internalGet(String path, UUID id) {
+        try {
+            return restClient.get().uri(path, id).retrieve().body(Map.class);
+        } catch (RestClientException e) {
+            log.warn("Không lấy được {} từ mentoring-service: {}", path, e.getMessage());
+            return null;
+        }
+    }
+
     public SuspendResult suspendMentor(UUID mentorId, String reason, UUID actorId) {
         Map<String, Object> body = new HashMap<>();
         body.put("reason", reason);

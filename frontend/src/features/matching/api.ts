@@ -29,11 +29,16 @@ export const matchingApi = {
    * US-17 — không truyền filters: server lấy sở thích hồ sơ làm bộ lọc. Truyền filters thì gửi kèm
    * useProfileDefaults=false (mặc định) để bộ lọc trên thanh lọc là toàn bộ điều kiện của lượt tìm này.
    */
-  mentorsFor: (menteeId: Uuid, { limit = 10, filters, useProfileDefaults = filters === undefined }: MatchQuery = {}) => {
+  mentorsFor: (menteeId: Uuid, { limit = 10, filters, intent, useProfileDefaults = filters === undefined }: MatchQuery = {}) => {
     const p = filters ? filterParams(filters) : new URLSearchParams();
     p.set("menteeId", menteeId);
     p.set("limit", String(limit));
     p.set("useProfileDefaults", String(useProfileDefaults));
+    if (intent?.mode === "SWITCH" && intent.targetDomain) {
+      p.set("intent", "SWITCH");
+      p.set("targetDomain", intent.targetDomain);
+      if (intent.goalText) p.set("goalText", intent.goalText);
+    }
     return api<MatchResult>(`/api/matching/mentors?${p.toString()}`);
   },
   // US-36 — "Không phù hợp": ẩn mentor 30 ngày
@@ -52,7 +57,7 @@ export const matchingApi = {
 };
 
 export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
-  notVerified: "chưa qua AI Interview",
+  notVerified: "chưa xác thực năng lực",
   unavailable: "tạm ngưng nhận mentee",
   noSchedule: "chưa có lịch rảnh",
   fullCapacity: "đã đủ số mentee",

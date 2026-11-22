@@ -108,6 +108,14 @@ components:
           description: >
             M4 (NFR-1) — thời gian xử lý pipeline tính trên server (hard filter, top-K, re-rank,
             giải thích, ghi match_impressions); không tính overhead xác thực/rate-limit của router.
+        stages:
+          type: object
+          nullable: true
+          description: >
+            Số liệu thật từng bước của lượt tìm (mili-giây + dữ liệu của bước) để giao diện trình bày pipeline.
+            filter {ms, considered, excluded, eligible}; retrieve {ms, model, dim, k, retrieved, nearest[{displayName, similarity}]};
+            rerank {ms, weights, top[{displayName, finalScore, scoreParts}]}; explain {ms, reasons}.
+          additionalProperties: true
     TimeOfDay:
       type: string
       enum: [MORNING, AFTERNOON, EVENING]

@@ -21,9 +21,12 @@ public class NotificationService {
     private final NotificationRepository repository;
     private final EmailClient emailClient;
 
-    public NotificationService(NotificationRepository repository, EmailClient emailClient) {
+    private final NotificationPrefsService prefs;
+
+    public NotificationService(NotificationRepository repository, EmailClient emailClient, NotificationPrefsService prefs) {
         this.repository = repository;
         this.emailClient = emailClient;
+        this.prefs = prefs;
     }
 
     /** Thông báo trong ứng dụng; loại có ✉ (US-38, EmailClient.CATEGORIES) còn được chuyển sang auth-service gửi email. */
@@ -35,8 +38,12 @@ public class NotificationService {
     /** sessionStart — nhắc lịch (US-34): email nhắc phiên nằm trong giờ yên tĩnh vẫn được gửi ngay. */
     @Transactional
     public void notifyUser(UUID userId, String type, String title, String message, String link, OffsetDateTime sessionStart) {
-        repository.save(new Notification(userId, null, type, title, message, link));
-        emailClient.maybeSend(userId, type, title, message, link, sessionStart);
+        if (prefs.wantsInApp(userId, type)) {
+            repository.save(new Notification(userId, null, type, title, message, link));
+        }
+        if (prefs.wantsEmail(userId, type)) {
+            emailClient.maybeSend(userId, type, title, message, link, sessionStart);
+        }
     }
 
     /** PRD-NOTI-3 — giữ thông báo 90 ngày; job mỗi ngày 03:45 xoá thông báo cũ hơn. */

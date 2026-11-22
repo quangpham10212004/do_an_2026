@@ -15,8 +15,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from common import (AI, AUTH, LEARNING, MATCHING, MENTORING, PAYMENT, PROFILE, SAMPLE_CV_LINES, ApiError, call,
-                    charge, make_pdf, multipart_file, round1_review, start_voice_interview, upload_video_chunks, finish_video, voice_transcript,
-                    propose_slots, choose_first_slot, round2_decision, GOOD_ROUND2_SCORES)
+                    charge, make_pdf, multipart_file, STRONG_VOICE_ANSWER)
 
 VN = timezone(timedelta(hours=7))
 # US-03: form đặt lịch bắt buộc loại phiên + agenda 20–500 ký tự
@@ -185,36 +184,38 @@ def main():
                                       {"mentorId": mentor["userId"], **REQUEST_FORM}, token=mentee_token), 400)
     check(5, "Không gửi được yêu cầu tới mentor chưa xác thực", ok)
 
-    started = start_voice_interview(mentor_token)
-    interview = started["interview"]
-    check(4, "Phỏng vấn giọng nói được tạo (FR-7.7): IN_PROGRESS, mode VOICE", interview["status"] == "IN_PROGRESS" and interview["mode"] == "VOICE")
-    interview = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
-                     voice_transcript(interview["maxTurns"]), token=mentor_token)
-    upload_video_chunks(mentor_token, interview["id"])
-    finish_video(mentor_token, interview["id"])
-    check(4, "Điểm từng câu bị ẩn với mentor khi chờ duyệt (PRD-AIV-5)", all(t["score"] is None for t in interview["turns"]))
-    check(4, f"Chấm đủ {interview['maxTurns']} chủ đề theo kế hoạch (FR-7.3)", len(interview["turns"]) == interview["maxTurns"])
-    check(4, "Engine AI được ghi nhận (ai-service: DEEPSEEK hoặc RULE_BASED)", interview["engine"] in ("DEEPSEEK", "RULE_BASED"),
-          interview["engine"])
-    check(4, "Tổng hợp điểm + nhận xét, chờ admin duyệt (FR-7.4)",
-          interview["status"] == "PENDING_REVIEW" and interview["overallScore"] is not None and interview["summary"], interview.get("overallScore"))
+    status = call("GET", f"{AI}/api/ai/verification/status", token=mentor_token)
+    track = next((t for t in status["tracks"] if t["domain"] == "backend"), None)
+    check(4, "Lượt xác thực lĩnh vực backend được tạo ở trạng thái READY", track is not None and track["stage"] == "READY", status)
+    interview = call("POST", f"{AI}/api/ai/verification/interviews", {"trackId": track["id"], "consent": True}, token=mentor_token)
+    check(4, "Phỏng vấn AI trực tiếp được tạo: IN_PROGRESS, có câu hỏi đầu", interview["status"] == "IN_PROGRESS" and interview["question"])
+    total = len(interview["topics"])
+    while interview["question"]:
+        fields = {"questionId": interview["question"]["id"], "transcript": STRONG_VOICE_ANSWER, "durationSeconds": "45"}
+        body, ctype = multipart_file("media", "answer.webm", b"webm-answer", "video/webm", fields)
+        interview = call("POST", f"{AI}/api/ai/verification/interviews/{interview['id']}/answers", token=mentor_token,
+                         raw_body=body, content_type=ctype)
+    check(4, f"Trả lời đủ {total} chủ đề theo kế hoạch (FR-7.3)", len(interview["turns"]) >= 2 * total)
+    result = call("POST", f"{AI}/api/ai/verification/interviews/{interview['id']}/submit", token=mentor_token)
+    check(4, "Có điểm tổng + tiêu chí + nhận xét (FR-7.4)", result["totalScore"] > 0 and result["criteria"] and result["summary"], result)
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
-    check(4, "Trạng thái xác thực mentor = PENDING_REVIEW", mentor_profile["verificationStatus"] == "PENDING_REVIEW")
-    ids, _ = mentor_ids_in_matching()
-    check(5, "Mentor chờ duyệt vẫn chưa xuất hiện trong matching (NFR-8)", mentor["userId"] not in ids)
-    pending = call("GET", f"{AI}/api/ai/admin/verification/applications?status=ROUND1_REVIEW", token=admin_token)
-    check(4, "Admin thấy đợt xác thực trong danh sách chờ duyệt vòng 1", any(a["id"] == interview["applicationId"] for a in pending))
-    round1_review(admin_token, interview, "PASS", "Tra loi tot")
+    if result["outcome"] == "UNCLEAR":
+        check(4, "Chưa rõ ràng: hồ sơ chờ admin (PENDING_REVIEW)", mentor_profile["verificationStatus"] == "PENDING_REVIEW")
+        ids, _ = mentor_ids_in_matching()
+        check(5, "Mentor chờ duyệt vẫn chưa xuất hiện trong matching (NFR-8)", mentor["userId"] not in ids)
+        queue = call("GET", f"{AI}/api/ai/admin/verification/queue?filter=UNCLEAR", token=admin_token)
+        check(4, "Admin thấy ca trong hàng đợi chưa rõ ràng", any(i["id"] == result["id"] for i in queue["items"]))
+        call("POST", f"{AI}/api/ai/admin/verification/{result['id']}/decision",
+             {"decision": "APPROVE", "note": "Dat sau khi nghe video", "reviewedVideo": True}, token=admin_token)
+    else:
+        check(4, "AI tự quyết định (không cần admin)", result["decidedBy"] == "AI", result["outcome"])
     mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
-    check(4, "Qua vòng 1 chưa kích hoạt: còn phỏng vấn vòng 2 (PENDING_REVIEW)", mentor_profile["verificationStatus"] == "PENDING_REVIEW")
-    propose_slots(admin_token, interview["applicationId"])
-    choose_first_slot(mentor_token)
-    round2_decision(admin_token, interview["applicationId"], "APPROVE", GOOD_ROUND2_SCORES, "Dat sau phong van vong 2")
-    mentor_profile = call("GET", f"{PROFILE}/api/profile/mentor/{mentor['userId']}", token=mentor_token)
-    check(4, "Admin duyệt sau vòng 2 → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED")
+    check(4, "Đạt → mentor được kích hoạt (APPROVED)", mentor_profile["verificationStatus"] == "APPROVED", mentor_profile["verificationStatus"])
 
     # ---------------- DoD 6 & 7: Matching ----------------
     print("\nDoD 6/7 — Danh sách đề xuất có điểm, lý do, đã lọc ràng buộc")
+    wait_indexed(mentor["userId"], mentor_token)
+    time.sleep(3)   # profile-service báo reindex kiểu bắn-rồi-quên sau khi lĩnh vực được xác thực
     started = time.time()
     ids, matching = mentor_ids_in_matching()
     latency = time.time() - started

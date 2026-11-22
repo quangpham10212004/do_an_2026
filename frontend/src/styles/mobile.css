@@ -1,0 +1,78 @@
+/* Mobile (< 900px): ngăn kéo bộ lọc, tìm mentor, tiến độ. Khớp FindMobile, Matching, MentorBrowse, ProgressMobile. */
+
+/* Bảng lọc: khối thường trên máy tính */
+.fsheet-backdrop { display: none; }
+.fsheet-grip, .fsheet-close { display: none; }
+.fsheet { background: var(--surface); }
+.fsheet[data-always="false"][data-open="false"] { display: none; }
+.fsheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fsheet-head b { font-size: 16px; }
+.fsheet-head .pop-link { padding: 12px 4px; }
+
+@media (min-width: 901px) {
+  .fsheet[data-always="true"] { display: block; }
+  .fsheet[data-always="true"] .fsheet-head { padding-bottom: 12px; }
+  .fsheet:not([data-always="true"]) .fsheet-head { display: none; }
+}
+
+@media (max-width: 900px) {
+  .fsheet-backdrop[data-open="true"] { display: block; position: fixed; inset: 0; z-index: 80; background: var(--overlay); }
+  .fsheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 85; display: flex; flex-direction: column; max-height: 88vh; border-radius: 20px 20px 0 0; border: 1px solid var(--border); border-bottom: 0; box-shadow: 0 -8px 30px #12200d22; padding-bottom: env(safe-area-inset-bottom); outline: none; animation: fsheet-up 200ms ease; }
+  .fsheet[data-open="false"] { display: none; }
+  .fsheet-grip { display: block; width: 40px; height: 4px; margin: 10px auto 0; border-radius: 4px; background: var(--border-strong, var(--border)); flex: none; }
+  .fsheet-close { display: inline-flex; }
+  .fsheet-head { padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--border); flex: none; }
+  .fsheet-head b { font-size: 17px; }
+  .fsheet-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 20px; }
+  /* Biểu mẫu có sẵn bên trong ngăn kéo: bỏ khung thẻ, nút áp dụng dính đáy */
+  .fsheet-body .card { border: 0; box-shadow: none; background: transparent; }
+  .fsheet-body .card-body { padding-left: 0; padding-right: 0; }
+  .fsheet-body .card-foot { position: sticky; bottom: -20px; background: var(--surface); border-top: 1px solid var(--border); margin: 0 -20px -20px; padding: 14px 20px; }
+  .fsheet input, .fsheet select, .fsheet .input, .fsheet .select { min-height: 44px; }
+  .fsheet .chip { min-height: 44px; }
+  @keyframes fsheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .fsheet { animation: none; } }
+
+  /* Thanh tìm + nút Lọc (FindMobile) */
+  .mb-bar { display: flex; gap: 10px; }
+  .mb-bar .mb-search { position: relative; flex: 1; min-width: 0; }
+  .mb-bar .mb-search svg { position: absolute; left: 14px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--ink-subtle); pointer-events: none; }
+  .mb-bar .mb-search input { width: 100%; height: 44px; padding: 0 16px 0 38px; border: 1px solid var(--border-strong, var(--border)); border-radius: 999px; background: var(--surface); font-size: 14px; }
+  .mb-bar .mb-filter-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--accent); color: var(--on-accent); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .mb-bar .mb-filter-btn svg { width: 16px; height: 16px; }
+  .mb-chips { flex-wrap: nowrap; padding-bottom: 4px; overflow-x: auto; scrollbar-width: none; }
+  .mb-desk, .mb-desk-only { display: none !important; }
+  .mb-sheet.fsheet { padding: 0 0 env(safe-area-inset-bottom); border: 1px solid var(--border); border-bottom: 0; border-radius: 20px 20px 0 0; }
+  .mb-sheet-foot { display: block; position: sticky; bottom: -20px; margin: 0 -20px -20px; padding: 14px 20px; background: var(--surface); border-top: 1px solid var(--border); }
+  .mb-bar { margin-bottom: 12px; }
+
+  /* Tìm mentor: tiêu đề, thẻ */
+  .find-title { font-size: 26px; }
+  .match-top { grid-template-columns: 1fr; }
+  .intent-bar { padding: 18px; }
+  .intent-bar .btn { min-height: 44px; }
+  .match-over { grid-template-columns: 1fr; }
+  .pipe-strip { gap: 6px 16px; padding: 14px 16px; }
+
+  /* Tiến độ (ProgressMobile) */
+  .ses-prog-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .ses-prog-stat { padding: 12px; background: var(--surface); border: 1px solid var(--border); }
+  .ses-prog-stat .l { font-size: 11px; }
+  .ses-prog-stat .v { font-size: 22px; }
+  .ses-prog-stat .h { font-size: 11px; line-height: 1.35; }
+  .ses-legend { flex-wrap: wrap; }
+  .ses-todo a { min-height: 48px; }
+}
+@media (min-width: 901px) {
+  .prog-sessions { display: none; }
+}
+
+
+@media (max-width: 640px) {
+  .prog-hello { font-size: 18px; }
+  .prog-filters { width: 100%; }
+  .prog-filters label { flex: 1 1 140px; }
+  .prog-hero-v { font-size: 30px; }
+  .intent-free input { flex-basis: 100%; }
+  .match-grid { grid-template-columns: 1fr; }
+}

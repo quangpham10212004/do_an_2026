@@ -6,6 +6,7 @@ import RequireAuth from "@/components/RequireAuth";
 import { ArrowDown, ArrowUp, CalendarPlus, MessageSquare, Pencil, Plus, Trash2 } from "lucide-react";
 import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardFooter, CardHeader, EmptyState, Field, FlashAlerts, Input, Loading, PageHeader, Progress, Select, Textarea, useDialog, type BadgeTone, type Flash } from "@/components/ui";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
+import { FlowMini, FlowPill, FlowTile } from "@/features/mentoring/FlowKit";
 import { SESSION_STATUS_LABELS } from "@/features/mentoring/labels";
 import { SESSION_TYPE_LABELS } from "@/features/profile/api";
 import { ApiError, errorMessage } from "@/lib/api";
@@ -142,6 +143,19 @@ function Workspace({ user, id }: { user: SessionUser; id: string }) {
         </>}
       />
       <div className="flex flex-col gap-6">
+        <section className="fl-req" data-open={!readOnly} aria-label="Trạng thái quan hệ mentoring">
+          <div className="fl-req-top">
+            <FlowTile name={partner} tone={readOnly ? "muted" : undefined} />
+            <div className="fl-req-name">
+              <div className="fl-req-badges">
+                <b>{partner || "—"}</b>
+                <FlowPill tone={readOnly ? undefined : "success"}>{RELATIONSHIP_STATUS_LABELS[r.status] || r.status}</FlowPill>
+              </div>
+              <div className="fl-req-sub">Bắt đầu {formatDate(r.respondedAt || r.createdAt)} · {sessions.length} buổi học · {doneCount}/{goals.length} mục tiêu đã xong</div>
+            </div>
+          </div>
+          {!readOnly && isMentee && <div className="fl-req-body"><FlowMini current={sessions.length > 0 ? 3 : 2} /></div>}
+        </section>
         <FlashAlerts flash={flash} />
         {readOnly && <Alert tone="info">Quan hệ mentoring này đã kết thúc, không gian chỉ còn để xem lại.</Alert>}
         {!isParticipant && <Alert tone="info">Bạn đang xem với quyền quản trị viên (chỉ đọc).</Alert>}

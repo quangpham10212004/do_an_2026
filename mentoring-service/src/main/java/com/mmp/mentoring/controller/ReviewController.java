@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** US-41 (PRD-REV-1..5) — đánh giá có cấu trúc, phản hồi của mentor, nhận xét riêng về mentee. */
@@ -49,6 +50,17 @@ public class ReviewController {
         return reviews.reliabilityFor(CurrentUser.get(), menteeId);
     }
 
+    @GetMapping("/mentees/{menteeId}/scores")
+    public List<ReviewService.MenteeScore> scores(@PathVariable UUID menteeId,
+                                                  @RequestParam(required = false) UUID mentorId) {
+        return reviews.scores(CurrentUser.get(), menteeId, mentorId);
+    }
+
+    @GetMapping("/mentees/{menteeId}/feedback-summary")
+    public ReviewService.FeedbackSummary feedbackSummary(@PathVariable UUID menteeId) {
+        return reviews.feedbackSummary(CurrentUser.get(), menteeId);
+    }
+
     /** Danh sách đánh giá (mới nhất trước) — giữ đường dẫn cũ, mỗi phần tử có thêm điểm thành phần, thẻ, phản hồi. */
     @GetMapping("/mentors/{mentorId}/reviews")
     public List<ReviewDetail> mentorReviews(@PathVariable UUID mentorId) {
@@ -59,5 +71,10 @@ public class ReviewController {
     @GetMapping("/mentors/{mentorId}/review-summary")
     public MentorReviewSummary summary(@PathVariable UUID mentorId) {
         return reviews.summary(CurrentUser.get(), mentorId);
+    }
+
+    @GetMapping("/mentors/completed-counts")
+    public Map<UUID, Long> completedCounts(@RequestParam List<UUID> ids) {
+        return reviews.completedCounts(ids);
     }
 }

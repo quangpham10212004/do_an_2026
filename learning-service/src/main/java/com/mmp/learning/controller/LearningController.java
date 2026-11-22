@@ -64,7 +64,7 @@ public class LearningController {
 
     @GetMapping("/roadmaps")
     public List<RoadmapSummary> roadmaps() {
-        return learningService.listRoadmaps();
+        return learningService.listRoadmaps(CurrentUser.get().userId());
     }
 
     @GetMapping("/roadmaps/{roadmapId}")

@@ -5,11 +5,13 @@ import com.mmp.profile.dto.ProfileDtos.*;
 import com.mmp.profile.entity.MenteeProfile;
 import com.mmp.profile.entity.MentorAvailability;
 import com.mmp.profile.entity.MentorAvailabilityException;
+import com.mmp.profile.entity.MentorDomain;
 import com.mmp.profile.entity.MentorProfile;
 import com.mmp.profile.exception.ApiException;
 import com.mmp.profile.repository.MenteeProfileRepository;
 import com.mmp.profile.repository.MentorAvailabilityExceptionRepository;
 import com.mmp.profile.repository.MentorAvailabilityRepository;
+import com.mmp.profile.repository.MentorDomainRepository;
 import com.mmp.profile.repository.MentorProfileRepository;
 import com.mmp.profile.repository.ProfileAvatarRepository;
 import com.mmp.profile.entity.ProfileAvatar;
@@ -22,8 +24,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Nghiệp vụ hồ sơ nghề nghiệp. Service này KHÔNG sở hữu embedding: vector, hash
@@ -46,6 +50,7 @@ public class ProfileService {
     private final Clock clock;
     /** US-37 — null trong các unit test cũ (coi như không ai có ảnh). */
     private final ProfileAvatarRepository avatarRepo;
+    private final MentorDomainRepository domainRepo;
 
     /**
      * Không thể kiểm tra trùng với phiên CONFIRMED: dữ liệu phiên thuộc mentoring-service và hiện chưa
@@ -62,12 +67,20 @@ public class ProfileService {
         this(mentorRepo, menteeRepo, availabilityRepo, exceptionRepo, matchingIndexClient, tx, clock, null);
     }
 
-    @Autowired
     public ProfileService(MentorProfileRepository mentorRepo, MenteeProfileRepository menteeRepo,
                           MentorAvailabilityRepository availabilityRepo,
                           MentorAvailabilityExceptionRepository exceptionRepo,
                           MatchingIndexClient matchingIndexClient, TransactionTemplate tx, Clock clock,
                           ProfileAvatarRepository avatarRepo) {
+        this(mentorRepo, menteeRepo, availabilityRepo, exceptionRepo, matchingIndexClient, tx, clock, avatarRepo, null);
+    }
+
+    @Autowired
+    public ProfileService(MentorProfileRepository mentorRepo, MenteeProfileRepository menteeRepo,
+                          MentorAvailabilityRepository availabilityRepo,
+                          MentorAvailabilityExceptionRepository exceptionRepo,
+                          MatchingIndexClient matchingIndexClient, TransactionTemplate tx, Clock clock,
+                          ProfileAvatarRepository avatarRepo, MentorDomainRepository domainRepo) {
         this.mentorRepo = mentorRepo;
         this.menteeRepo = menteeRepo;
         this.availabilityRepo = availabilityRepo;
@@ -76,12 +89,47 @@ public class ProfileService {
         this.tx = tx;
         this.clock = clock;
         this.avatarRepo = avatarRepo;
+        this.domainRepo = domainRepo;
     }
 
     // ---------------- Mentor ----------------
 
     public MentorProfileResponse getMentor(UUID userId) {
         return toResponse(findMentor(userId));
+    }
+
+    public record MentorExtra(UUID userId, int slotsLeft, Integer trialMinutes, List<Integer> days,
+                              List<String> timeOfDay, List<String> sessionTypes, List<String> languages) {}
+
+    public List<MentorExtra> mentorExtras(List<UUID> ids, boolean includeUnverified) {
+        if (ids.size() > 100) {
+            throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "TOO_MANY_MENTORS",
+                    "Chỉ được tra tối đa 100 mentor mỗi lần");
+        }
+        if (ids.isEmpty()) return List.of();
+        var availability = availabilityRepo.findByMentorIdIn(ids).stream()
+                .collect(Collectors.groupingBy(MentorAvailability::getMentorId));
+        return mentorRepo.findAllById(ids).stream()
+                .filter(p -> includeUnverified || p.getVerificationStatus() == MentorProfile.VerificationStatus.APPROVED)
+                .map(p -> {
+                    var slots = availability.getOrDefault(p.getUserId(), List.of());
+                    var days = slots.stream().map(MentorAvailability::getDayOfWeek).distinct().sorted().toList();
+                    List<String> periods = new ArrayList<>();
+                    addPeriod(periods, slots, "MORNING", 6, 12);
+                    addPeriod(periods, slots, "AFTERNOON", 12, 18);
+                    addPeriod(periods, slots, "EVENING", 18, 23);
+                    int left = effectiveStatus(p) == MentorProfile.Status.ACCEPTING
+                            ? Math.max(0, p.getCapacity() - p.getActiveMenteeCount()) : 0;
+                    return new MentorExtra(p.getUserId(), left, p.isTrialEnabled() ? 15 : null, days, periods,
+                            Arrays.asList(p.getSessionTypes()), Arrays.asList(p.getLanguages()));
+                }).toList();
+    }
+
+    private static void addPeriod(List<String> periods, List<MentorAvailability> slots, String name, int from, int to) {
+        if (slots.stream().anyMatch(s -> s.getStartTime().isBefore(LocalTime.of(to, 0))
+                && s.getEndTime().isAfter(LocalTime.of(from, 0)))) {
+            periods.add(name);
+        }
     }
 
     private MentorProfileResponse toResponse(MentorProfile p) {
@@ -107,21 +155,26 @@ public class ProfileService {
      */
     public MentorProfileResponse upsertMentor(UUID userId, MentorProfileInput in) {
         MentorProfile saved = tx.execute(status -> {
-            MentorProfile p = mentorRepo.findById(userId).orElseGet(() -> {
+            MentorProfile p = (domainRepo == null ? mentorRepo.findById(userId) : mentorRepo.findForUpdate(userId)).orElseGet(() -> {
                 MentorProfile n = new MentorProfile();
                 n.setUserId(userId);
                 return n;
             });
             p.setDisplayName(in.displayName().trim());
             p.setSkills(normalizeList(in.skills()));
-            p.setDomain(normalizeDomain(in.domain()));
+            BigDecimal domainRate = applyProfileDomain(p, normalizeDomain(in.domain()), in.hourlyRate());
             p.setBio(in.bio().trim());
             p.setYearsExperience(Optional.ofNullable(in.yearsExperience()).orElse(p.getYearsExperience()));
             p.setCvFileUrl(in.cvFileUrl());
             p.setPortfolioLinks(normalizeList(in.portfolioLinks()));
-            BigDecimal rate = Optional.ofNullable(in.hourlyRate()).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO));
+            BigDecimal rate = Optional.ofNullable(domainRate).orElse(Optional.ofNullable(p.getHourlyRate()).orElse(BigDecimal.ZERO));
             p.setHourlyRate(rate);
             p.setCapacity(Optional.ofNullable(in.capacity()).orElse(p.getCapacity()));
+            if (in.previousDomains() != null) {
+                // Lĩnh vực trước đây khác lĩnh vực hiện tại mới có nghĩa; chuẩn hoá như domain để so khớp được.
+                p.setPreviousDomains(in.previousDomains().stream().map(ProfileService::normalizeDomain)
+                        .filter(d -> !d.equals(p.getDomain())).distinct().toArray(String[]::new));
+            }
             if (in.headline() != null) {
                 p.setHeadline(blankToNull(in.headline().strip().replaceAll("\\s+", " ")));
             }
@@ -134,6 +187,32 @@ public class ProfileService {
         });
         matchingIndexClient.reindexAsync(ROLE_MENTOR, saved.getUserId());
         return getMentor(userId);
+    }
+
+    private BigDecimal applyProfileDomain(MentorProfile profile, String nextDomain, BigDecimal rate) {
+        String current = profile.getDomain();
+        if (domainRepo != null && current != null) {
+            var domains = domainRepo.findByMentorIdOrderByAddedAtAscDomainAsc(profile.getUserId());
+            var next = domains.stream().filter(d -> nextDomain.equalsIgnoreCase(d.getDomain())).findFirst();
+            if (!nextDomain.equalsIgnoreCase(current)) {
+                boolean approved = profile.getVerificationStatus() == MentorProfile.VerificationStatus.APPROVED;
+                if (approved && next.filter(d -> d.getState() == MentorDomain.State.VERIFIED).isEmpty()) {
+                    throw ApiException.conflict("DOMAIN_NOT_VERIFIED", "Chỉ có thể đặt lĩnh vực đã xác thực làm chính");
+                }
+                if (!approved && next.isEmpty() && domains.size() >= 3) {
+                    throw ApiException.conflict("DOMAIN_LIMIT", "Bạn đã có tối đa 3 lĩnh vực");
+                }
+                domains.stream().filter(d -> current.equalsIgnoreCase(d.getDomain()) && d.getState() == MentorDomain.State.VERIFIED)
+                        .findFirst().ifPresent(d -> d.updateSettings(profile.getHourlyRate(), null));
+                if (rate == null || rate.compareTo(profile.getHourlyRate()) == 0) {
+                    rate = next.map(MentorDomain::getHourlyRate).orElse(rate);
+                }
+            }
+            // An edit to the primary price must agree with its per-domain settings when an override exists.
+            if (next.isPresent() && next.get().getHourlyRate() != null) next.get().updateSettings(rate, null);
+        }
+        profile.setDomain(nextDomain);
+        return rate;
     }
 
     public List<AvailabilitySlot> availability(UUID mentorId) {

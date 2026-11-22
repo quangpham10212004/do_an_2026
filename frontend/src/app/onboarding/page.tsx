@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Info, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileUp, Info, Sparkles } from "lucide-react";
 import RequireAuth from "@/components/RequireAuth";
 import WelcomeAlerts from "@/components/WelcomeAlerts";
 import { Alert, Button, Card, CardBody, Chip, Chips, Field, Input, Loading } from "@/components/ui";
@@ -132,7 +133,15 @@ function Onboarding({ user }: { user: SessionUser }) {
       <div className="wizard-steps" aria-hidden="true">
         {[0, 1, 2].map((i) => <span key={i} data-done={i <= step} />)}
       </div>
-      <p className="text-small text-ink-muted">Bước {step + 1} / 3</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-small text-ink-muted">Bước {step + 1} / 3</p>
+        <Link href="/dashboard" className="text-small">Làm sau</Link>
+      </div>
+      <Link href="/cv-enrichment" className="card card-link mt-3 flex min-h-11 items-center gap-3 p-3">
+        <span className="ob-file-ico"><FileUp aria-hidden="true" className="size-5" /></span>
+        <span className="flex-1 text-small"><strong className="block text-ink">Có sẵn CV?</strong><span className="text-ink-muted">Tải CV để AI điền giúp lĩnh vực, kỹ năng và mục tiêu.</span></span>
+        <ArrowRight aria-hidden="true" className="size-4 text-ink-subtle" />
+      </Link>
       <Card className="mt-2">
         <CardBody className="flex flex-col gap-5">
           {step === 0 && (

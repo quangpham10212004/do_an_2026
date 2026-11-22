@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { PhoneOff } from "lucide-react";
-import { Alert, Badge, Card, EmptyState, Loading, PageHeader, Table, Tabs } from "@/components/ui";
-import { mentoringApi } from "@/features/mentoring/api";
-import { errorMessage } from "@/lib/api";
+import { Alert, Card, EmptyState, Loading, PageHeader, Table, Tabs } from "@/components/ui";
+import { listContactViolations, listMessageReports, type ViolationRow } from "@/features/modx/api";
+import ModSubnav from "@/features/modx/ModSubnav";
 import { formatDateTime } from "@/lib/format";
-import type { ContactKind, ContactViolationSummary } from "@/types";
 
 const PERIODS: [string, string][] = [
   ["30", "30 ngày"],
@@ -15,51 +14,55 @@ const PERIODS: [string, string][] = [
   ["365", "12 tháng"],
 ];
 
-const KIND_LABELS: Record<ContactKind, string> = {
-  PHONE: "Số điện thoại",
-  EMAIL: "Email",
-  LINK: "Đường dẫn ngoài",
-  SOCIAL: "Mạng xã hội",
-};
+const ROLE: Record<string, string> = { MENTEE: "Mentee", MENTOR: "Mentor" };
 
-/** Bản chốt v2.0 §12 — người gửi tin nhắn chứa thông tin liên hệ (đã bị che), nhiều lần nhất trước. */
+/** Bản chốt v2.0 §12 — người gửi tin nhắn chứa thông tin liên hệ (nội dung đã che), nhiều lần nhất trước. */
 function Violations() {
   const [days, setDays] = useState("30");
-  const [items, setItems] = useState<ContactViolationSummary[] | null>(null);
+  const [items, setItems] = useState<ViolationRow[] | null>(null);
   const [error, setError] = useState("");
+  const [openReports, setOpenReports] = useState<number | undefined>();
 
   useEffect(() => {
     setItems(null);
     setError("");
-    mentoringApi.adminContactViolations(Number(days)).then(setItems).catch((e) => { setItems([]); setError(errorMessage(e)); });
+    listContactViolations(Number(days)).then((r) => { setItems(r.items); setError(r.error ?? ""); });
   }, [days]);
+  useEffect(() => {
+    listMessageReports().then((r) => setOpenReports(r.items.filter((x) => x.status === "OPEN").length));
+  }, []);
 
   return (
     <>
-      <PageHeader title="Chia sẻ liên hệ ngoài nền tảng"
-        description="Tin nhắn luôn che số điện thoại, email, đường dẫn ngoài và mạng xã hội. Từ 3 lần trong 30 ngày, người gửi được đánh dấu và quản trị viên nhận thông báo." />
-      <Alert className="mb-6">{error}</Alert>
+      <PageHeader title="Kiểm duyệt tin nhắn"
+        description="Báo cáo từ người dùng và tin nhắn bị hệ thống ghi nhận chứa thông tin liên hệ." />
+      <ModSubnav active="violations" reports={openReports} violations={items?.length} />
+      <Alert className="mb-4">{error}</Alert>
       <Tabs className="mb-4" value={days} onChange={setDays} tabs={PERIODS.map(([v, l]) => ({ id: v, label: l }))} />
       {!items ? <Loading /> : (
         <Card>
           {items.length === 0 ? <EmptyState icon={PhoneOff} title="Không có tin nhắn nào bị che liên hệ" /> : (
             <Table>
               <thead>
-                <tr><th>Người gửi</th><th>Số tin bị che</th><th>Loại liên hệ</th><th>Gần nhất</th><th></th></tr>
+                <tr><th>Người dùng</th><th>Nội dung phát hiện</th><th>Lần</th><th>Thời gian</th><th>Trạng thái</th></tr>
               </thead>
               <tbody>
                 {items.map((v) => (
                   <tr key={v.userId}>
-                    <td>{v.userName || <span className="font-mono text-small">{v.userId.slice(0, 8)}</span>}</td>
-                    <td>{v.count}</td>
-                    <td className="text-small">{v.kinds.map((k) => KIND_LABELS[k] ?? k).join(", ")}</td>
-                    <td className="whitespace-nowrap">{formatDateTime(v.lastAt)}</td>
-                    <td>{v.flagged && <Badge tone="warning">Đã báo admin</Badge>}</td>
+                    <td>
+                      <b>{v.userName || <span className="font-mono text-small">{v.userId.slice(0, 8)}</span>}</b>
+                      {v.role && <div className="text-small text-ink-muted">{ROLE[v.role]}</div>}
+                    </td>
+                    <td className="min-w-[240px]"><span className="adm-mask">{v.detected}</span></td>
+                    <td><span className={`adm-pill ${v.count >= 3 ? "danger" : v.count === 2 ? "warning" : ""}`}>{v.count}</span></td>
+                    <td className="whitespace-nowrap text-small">{formatDateTime(v.lastAt)}</td>
+                    <td>{v.flagged ? <span className="adm-pill warning">Đã báo quản trị viên</span> : <span className="text-ink-subtle">—</span>}</td>
                   </tr>
                 ))}
               </tbody>
             </Table>
           )}
+          <p className="p-4 text-small leading-relaxed text-ink-muted">Lần 1: cảnh báo trong khung chat. Lần 2: thông báo chính thức. Từ lần 3 trong 30 ngày: người gửi được đánh dấu và quản trị viên nhận thông báo để xem xét đình chỉ.</p>
         </Card>
       )}
     </>

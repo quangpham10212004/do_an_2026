@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Mic } from "lucide-react";
+import { Mic, TrendingDown, TrendingUp } from "lucide-react";
 import RequireAuth from "@/components/RequireAuth";
 import { Alert, Badge, ButtonLink, Card, EmptyState, Loading, PageHeader, Table } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
@@ -70,8 +70,8 @@ function MockHistory() {
                   <td className="whitespace-nowrap text-right font-mono tabular">
                     {Number(r.overall).toFixed(2)}
                     {r.delta !== null && r.delta !== 0 && (
-                      <span className={r.delta > 0 ? "text-success" : "text-danger"} title="So với lần trước cùng dạng">
-                        {" "}{r.delta > 0 ? "▲" : "▼"}{Math.abs(r.delta).toFixed(2)}
+                      <span className={`ml-1 inline-flex items-center gap-0.5 ${r.delta > 0 ? "text-success" : "text-danger"}`} title="So với lần trước cùng dạng">
+                        {r.delta > 0 ? <TrendingUp aria-label="Tăng" className="size-3.5" /> : <TrendingDown aria-label="Giảm" className="size-3.5" />}{Math.abs(r.delta).toFixed(2)}
                       </span>
                     )}
                   </td>

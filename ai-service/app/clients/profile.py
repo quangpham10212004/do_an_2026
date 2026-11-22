@@ -6,6 +6,7 @@ trạng thái xác thực mentor sau AI Interview (FR-7.5) và goal đã làm r�
 enrichment (FR-8.5). Không truy cập CSDL của profile-service.
 """
 import logging
+from urllib.parse import quote
 from uuid import UUID
 
 import httpx
@@ -41,6 +42,19 @@ async def _get(path: str) -> dict | None:
 
 async def find_mentor(mentor_id: UUID) -> dict | None:
     return await _get(f"/internal/mentor/{mentor_id}")
+
+
+async def mentor_domains(mentor_id: UUID) -> dict | None:
+    return await _get(f"/internal/mentor/{mentor_id}/domains")
+
+
+async def update_domain_verification(mentor_id: UUID, domain: str, body: dict) -> None:
+    try:
+        res = await _client().put(f"/internal/mentor/{mentor_id}/domains/{quote(domain, safe='')}/verification",
+                                  json=body)
+        res.raise_for_status()
+    except httpx.HTTPError as e:
+        raise _unavailable(str(e)) from None
 
 
 async def find_mentee(mentee_id: UUID) -> dict | None:

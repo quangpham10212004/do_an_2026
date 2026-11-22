@@ -21,7 +21,59 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    DomainCode:
+      name: domain
+      in: path
+      required: true
+      schema: { type: string, maxLength: 50 }
   schemas:
+    MentorDomain:
+      type: object
+      required: [domain, state, primary, addedAt]
+      properties:
+        domain: { type: string }
+        state: { type: string, enum: [PENDING, VERIFIED, REJECTED] }
+        primary: { type: boolean }
+        addedAt: { type: string, format: date-time }
+        verifiedAt: { type: string, format: date-time }
+        summary: { type: string }
+        hourlyRate: { type: number }
+        rating: { type: number }
+        accepting: { type: boolean }
+        slotsLeft: { type: integer }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [key, label, state]
+            properties:
+              key: { type: string, enum: [CV, TEST, VIDEO, ADMIN] }
+              label: { type: string }
+              state: { type: string, enum: [DONE, CURRENT, TODO] }
+        testScore: { type: integer, minimum: 0, maximum: 100 }
+        rejectedReason: { type: string }
+        retryAt: { type: string, format: date-time }
+    MentorDomains:
+      type: object
+      required: [domains, max]
+      properties:
+        domains: { type: array, items: { $ref: "#/components/schemas/MentorDomain" } }
+        max: { type: integer, example: 3 }
+    InternalMentorDomains:
+      allOf:
+        - $ref: "#/components/schemas/MentorDomains"
+        - type: object
+          required: [records]
+          properties:
+            records:
+              type: array
+              items:
+                type: object
+                required: [domain, id]
+                properties:
+                  domain: { type: string }
+                  id: { type: string, format: uuid }
+                  cvId: { type: string, format: uuid, nullable: true }
     AvailabilitySlot:
       type: object
       required: [dayOfWeek, startTime, endTime]
@@ -341,6 +393,126 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MentorProfile" }
         "403": { description: Không phải chủ hồ sơ / không phải MENTOR }
+
+  /api/profile/mentor/{userId}/domains:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    get:
+      summary: Danh sách lĩnh vực và tiến độ xác thực của mentor sở hữu hồ sơ
+      responses:
+        "200":
+          description: Danh sách lĩnh vực
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorDomains" }
+    post:
+      summary: Thêm lĩnh vực để xác thực
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain: { type: string, enum: [backend, frontend, fullstack, devops, data, mobile] }
+                cv: { type: string, format: binary, description: "PDF hoặc DOCX, tối đa 5 MB" }
+      responses:
+        "201":
+          description: Lĩnh vực đang xác thực
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorDomain" }
+        "409": { description: Lĩnh vực đã có hoặc đã đạt giới hạn }
+
+  /api/profile/mentor/{userId}/domains/public:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    get:
+      security: []
+      summary: Danh sách lĩnh vực đã xác thực, lĩnh vực chính đứng đầu
+      responses:
+        "200":
+          description: Lĩnh vực công khai
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorDomains" }
+
+  /api/profile/mentor/{userId}/domains/{domain}/primary:
+    parameters: [{ $ref: "#/components/parameters/UserId" }, { $ref: "#/components/parameters/DomainCode" }]
+    put:
+      summary: Đặt lĩnh vực đã xác thực làm lĩnh vực chính
+      responses:
+        "200":
+          description: Danh sách cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorDomains" }
+        "409": { description: Lĩnh vực chưa được xác thực }
+
+  /api/profile/mentor/{userId}/domains/{domain}:
+    parameters: [{ $ref: "#/components/parameters/UserId" }, { $ref: "#/components/parameters/DomainCode" }]
+    patch:
+      summary: Đổi mức phí hoặc trạng thái nhận mentee của lĩnh vực đã xác thực
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hourlyRate: { type: number, minimum: 50000, maximum: 100000000 }
+                accepting: { type: boolean }
+      responses:
+        "200":
+          description: Danh sách cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorDomains" }
+    delete:
+      summary: Gỡ lĩnh vực phụ và hủy lượt xác thực liên quan
+      responses:
+        "200":
+          description: Danh sách cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MentorDomains" }
+        "409": { description: Cần đổi lĩnh vực chính trước khi gỡ }
+
+  /api/profile/mentor/{userId}/cvs:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    get:
+      summary: Liệt kê CV hiện có của mentor sở hữu hồ sơ
+      responses:
+        "200":
+          description: Danh sách CV
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cvs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, domain]
+                      properties:
+                        name: { type: string }
+                        domain: { type: string }
+                        note: { type: string }
+
+  /api/profile/domains/suggestions:
+    post:
+      summary: Lưu đề xuất lĩnh vực từ mentor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 120 }
+      responses:
+        "204": { description: Đã lưu }
 
   /api/profile/mentor/{userId}/booking-settings:
     put:
@@ -765,6 +937,46 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MentorProfile" }
 
+  /internal/mentor/{userId}/domains:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    get:
+      security: [{ internalToken: [] }]
+      summary: Lĩnh vực và định danh hồ sơ dùng để đồng bộ xác thực
+      responses:
+        "200":
+          description: Danh sách lĩnh vực nội bộ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternalMentorDomains" }
+
+  /internal/mentor/{userId}/domains/{domain}/verification:
+    parameters: [{ $ref: "#/components/parameters/UserId" }, { $ref: "#/components/parameters/DomainCode" }]
+    put:
+      security: [{ internalToken: [] }]
+      summary: Đồng bộ một lượt hoặc đăng ký lượt mới ở trạng thái PENDING
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [PENDING, VERIFIED, REJECTED] }
+                stage: { type: string, enum: [CV, TEST, VIDEO, ADMIN] }
+                testScore: { type: integer, minimum: 0, maximum: 100 }
+                rejectedReason: { type: string, maxLength: 2000 }
+                retryAt: { type: string, format: date-time }
+                register: { type: boolean }
+                profileDomainId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Tiến độ đã được lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternalMentorDomains" }
+        "404": { description: Lượt xác thực không còn khớp với lĩnh vực }
+
   /internal/mentor/{userId}/verification:
     put:
       summary: Nội bộ — cập nhật trạng thái xác thực (mentoring-service gọi sau AI Interview / admin review)
@@ -878,3 +1090,16 @@ paths:
       responses:
         "204": { description: OK (đã gỡ hoặc không có gì để gỡ) }
         "400": { description: BAD_REQUEST (thiếu cvFileUrl) }
+  /api/profile/mentors/{id}/classmates:
+    get:
+      summary: "Tên hiển thị (tối đa 3) của mentee đã học với mentor + tổng số mentee. Số liệu từ mentoring-service."
+      parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        "200": { description: "{ names: string[], total: integer }" }
+  /api/profile/mentee/{id}/extras:
+    get:
+      summary: "Số liệu trang cá nhân mentee: ngày tham gia, số phiên hoàn thành, tỉ lệ đúng giờ (null khi < 3 phiên), kỹ năng mong muốn, mentor đã học cùng, nhận xét từ mentor. Mentee chỉ xem của mình."
+      parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        "200": { description: "MenteeExtras (frontend/src/features/profilex/api.ts)" }
+        "403": { description: Mentee xem hồ sơ người khác }

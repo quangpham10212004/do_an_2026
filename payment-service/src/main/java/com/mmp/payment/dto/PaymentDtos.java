@@ -159,7 +159,7 @@ public final class PaymentDtos {
                                @Valid CardInput card) {
     }
 
-    public record PayFromWalletRequest(@NotNull UUID sessionId, BigDecimal amount) {
+    public record PayFromWalletRequest(@NotNull UUID sessionId, BigDecimal amount, UUID voucherId) {
     }
 
     public record TopupRefundBody(@NotNull @jakarta.validation.constraints.Positive BigDecimal amount,

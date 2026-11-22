@@ -75,15 +75,15 @@ public class PasswordResetService {
 
     /** POST /api/auth/forgot-password — không bao giờ ném lỗi nghiệp vụ (luôn 202). */
     @Transactional
-    public void requestReset(String rawEmail) {
+    public boolean requestReset(String rawEmail) {
         String email = rawEmail.trim().toLowerCase();
         if (!rateLimiter.tryAcquire(RATE_KEY_PREFIX + email, MAX_REQUESTS_PER_HOUR, Duration.ofHours(1))) {
             log.info("Password reset rate limit reached for an email; request ignored");
-            return;
+            return false;
         }
         User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
         if (user == null || user.getStatus() != User.Status.ACTIVE) {
-            return; // không tiết lộ email không tồn tại / bị khoá
+            return false; // không tiết lộ email không tồn tại / bị khoá
         }
         OffsetDateTime now = OffsetDateTime.now(clock);
         resetTokenRepository.invalidateAllForUser(user.getId(), now);
@@ -92,6 +92,7 @@ public class PasswordResetService {
         // Email bảo mật — luôn gửi, không phụ thuộc tuỳ chọn email / giờ yên tĩnh (PRD-NOTI-1).
         emailSender.send(user.getEmail(), EmailTemplates.RESET_SUBJECT,
                 EmailTemplates.resetBody(frontendUrl, token, TOKEN_TTL.toMinutes()));
+        return true;
     }
 
     /** POST /api/auth/reset-password — token sai / hết hạn / đã dùng => 400 RESET_TOKEN_INVALID. */

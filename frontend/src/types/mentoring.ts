@@ -343,8 +343,8 @@ export interface CancelPreview {
 
 export interface Review {
   id: Uuid;
-  sessionId: Uuid;
-  menteeId: Uuid;
+  sessionId: Uuid | null;
+  menteeId: Uuid | null;
   menteeName: string;
   mentorId: Uuid;
   rating: number;
@@ -361,6 +361,7 @@ export interface Review {
   mentorRepliedAt?: IsoDateTime | null;
   canEdit?: boolean;
   canReply?: boolean;
+  showName?: boolean;
 }
 
 /** US-41 — đánh giá có cấu trúc. */
@@ -371,6 +372,7 @@ export interface StructuredReviewInput {
   preparation: number;
   comment?: string;
   tags: string[];
+  showName?: boolean;
 }
 
 /** US-41 (PRD-REV-5) — rating = trung bình Bayes, chỉ có khi reviewCount ≥ 3. */

@@ -106,7 +106,10 @@ def _topic(s: str | None) -> str:
 
 def evaluate(llm: DeepSeekClient, ctx: InterviewContext, history: list[TurnRecord], current: TurnRecord,
              is_last_turn: bool) -> tuple[TurnEvaluation, bool]:
-    prompt = (_profile(ctx) + f"\n<history>\n{_transcript(history)}\n</history>\n"
+    criteria = (f"\n<grading_criteria>{ctx.assessment_criteria}</grading_criteria>"
+                "\nDùng tiêu chí này để chấm. Không nhắc lại tiêu chí trong câu hỏi."
+                if ctx.assessment_criteria else "")
+    prompt = (_profile(ctx) + criteria + f"\n<history>\n{_transcript(history)}\n</history>\n"
               f"\n<current_turn>\nChủ đề: {current.topic}\nCâu hỏi: {current.question}\n<answer>\n{current.answer}\n</answer>\n</current_turn>\n"
               f"\nĐây là lượt {current.turn_no}/{ctx.max_turns}. "
               + ('Đây là LƯỢT CUỐI: chỉ chấm điểm 4 tiêu chí, đặt "next" = null.' if is_last_turn

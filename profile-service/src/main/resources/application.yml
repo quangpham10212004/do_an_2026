@@ -2,11 +2,11 @@ server:
   port: 8082
 
 spring:
-  # US-37 — ảnh đại diện ≤ 2 MB (giới hạn chính kiểm tra ở AvatarRules; đây là trần của servlet).
+  # Trần servlet cho CV 5 MB; AvatarRules vẫn giới hạn ảnh đại diện ở 2 MB.
   servlet:
     multipart:
-      max-file-size: 3MB
-      max-request-size: 3MB
+      max-file-size: 5MB
+      max-request-size: 6MB
   application:
     name: profile-service
   datasource:
@@ -42,6 +42,7 @@ app:
     # US-37 — ảnh đại diện tải bằng thẻ <img> (không gửi được token).
     public-paths: "/api/profile/avatars/**"
   services:
+    ai-url: ${AI_SERVICE_URL:http://localhost:8091}
     # Chỉ dùng để báo matching-service lập lại chỉ mục sau khi hồ sơ thay đổi
     # (POST /internal/embeddings/reindex, bắn rồi quên).
     matching-url: ${MATCHING_SERVICE_URL:http://localhost:8090}

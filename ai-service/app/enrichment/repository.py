@@ -57,6 +57,14 @@ async def decide_goal(conn: Db, conversation_id: UUID, status: str, goal: str | 
         conversation_id, status, goal, added_skills)
 
 
+async def replace_draft(conn: Db, conversation_id: UUID, current: str | None, goal: str) -> bool:
+    result = await conn.execute("""
+        UPDATE enrichment_conversations SET enriched_goal = $3
+        WHERE id = $1 AND goal_status = 'DRAFT' AND enriched_goal IS NOT DISTINCT FROM $2
+    """, conversation_id, current, goal)
+    return result == "UPDATE 1"
+
+
 async def messages_of(conn: Db, conversation_id: UUID) -> list[asyncpg.Record]:
     return await conn.fetch(
         "SELECT * FROM enrichment_messages WHERE conversation_id = $1 ORDER BY turn_no ASC", conversation_id)

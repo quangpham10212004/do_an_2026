@@ -11,7 +11,10 @@ export interface CourseSummary {
   domain: string;
   level: Level;
   skills: string[];
+  coverUrl: string | null;
+  instructor: string | null;
   materialCount: number;
+  durationMinutes: number;
   enrolled: boolean;
   percentComplete: number;
 }
@@ -23,11 +26,14 @@ export interface Material {
   url: string | null;
   content: string | null;
   orderIndex: number;
+  durationMinutes: number;
   completed: boolean;
 }
 
 export interface CourseDetail extends CourseSummary {
   enrollmentCount: number;
+  outcomes: string[];
+  nextMaterialId: Uuid | null;
   materials: Material[];
 }
 
@@ -36,7 +42,11 @@ export interface RoadmapSummary {
   title: string;
   track: string;
   description: string;
+  coverUrl: string | null;
+  level: Level;
+  estimatedWeeks: number | null;
   itemCount: number;
+  percentComplete: number;
 }
 
 export interface RoadmapItem {
@@ -44,8 +54,13 @@ export interface RoadmapItem {
   title: string;
   description: string;
   orderIndex: number;
+  stage: string | null;
+  estimatedHours: number | null;
   courseId: Uuid | null;
   courseTitle: string | null;
+  courseCoverUrl: string | null;
+  /** Chỉ có khi mục gắn khoá học; mục tự hoàn thành khi khoá đạt 100% */
+  coursePercent: number | null;
   completed: boolean;
 }
 
@@ -54,7 +69,11 @@ export interface RoadmapDetail {
   title: string;
   track: string;
   description: string;
+  coverUrl: string | null;
+  level: Level;
+  estimatedWeeks: number | null;
   percentComplete: number;
+  nextItemId: Uuid | null;
   items: RoadmapItem[];
 }
 
@@ -64,6 +83,9 @@ export interface CourseInput {
   domain: string;
   level: Level;
   skills: string[];
+  coverUrl?: string;
+  instructor?: string;
+  outcomes?: string[];
 }
 
 export interface MaterialInput {
@@ -71,16 +93,22 @@ export interface MaterialInput {
   type: MaterialType;
   url?: string;
   content?: string;
+  durationMinutes?: number;
 }
 
 export interface RoadmapInput {
   title: string;
   track: string;
   description: string;
+  coverUrl?: string;
+  level?: Level;
+  estimatedWeeks?: number;
 }
 
 export interface RoadmapItemInput {
   title: string;
   description: string;
+  stage?: string;
+  estimatedHours?: number;
   courseId: Uuid | null;
 }

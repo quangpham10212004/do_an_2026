@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Blog MentorHub</title>
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef3ec}
+a{color:inherit;text-decoration:none}
+input,button{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 1800px; background: #eef3ec; color: #12200d; font-family: 'Be Vietnam Pro', system-ui, sans-serif">
+
+<header style="background: #ffffff; border-bottom: 1px solid #dbe6d3">
+<div style="max-width: 1180px; margin: 0 auto; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px">
+<a href="/dashboard" style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px"><span style="width: 34px; height: 34px; border-radius: 8px; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700">M</span>MentorHub</a>
+<nav style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; color: #4d5f41"><a href="/dashboard" style="padding: 12px 4px">Tổng quan</a><a href="/matching" style="padding: 12px 4px">Tìm mentor</a><a href="/blog" style="padding: 12px 4px; color: #15803d; font-weight: 600; border-bottom: 2px solid #16a34a">Blog</a><a href="/blog/me" style="padding: 12px 4px">Bài của tôi</a></nav>
+<a href="/blog/write" style="padding: 8px 20px; min-height: 44px; box-sizing: border-box; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center">Viết bài</a>
+</div>
+</header>
+
+<div style="max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px">
+
+<section style="border-radius: 16px; background: linear-gradient(135deg, #16a34a, #14532d); color: #fff; padding: 32px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center">
+<div style="flex: 1 1 360px"><h1 style="margin: 0; font-size: 32px; font-weight: 700; line-height: 1.2">Blog cộng đồng MentorHub</h1><p style="margin: 8px 0 0; font-size: 15px; line-height: 1.6; opacity: 0.92">Kinh nghiệm học và làm nghề từ mentor và mentee.</p></div>
+<div style="flex: 1 1 320px; display: flex; gap: 8px"><input aria-label="Tìm bài viết" placeholder="Tìm bài viết, tác giả, tag…" style="flex: 1; min-width: 0; height: 48px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 15px"><button style="height: 48px; padding: 0 22px; border: 0; border-radius: 999px; background: #fff; color: #15803d; font-weight: 700">Tìm</button></div>
+</section>
+
+<nav aria-label="Sắp xếp" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 24px; border-bottom: 1px solid #dbe6d3; font-size: 15px"><a href="#" style="padding: 12px 0; color: #15803d; font-weight: 600; border-bottom: 3px solid #16a34a">Mới nhất</a><a href="#" style="padding: 12px 0; color: #4d5f41">Phổ biến</a><a href="#" style="padding: 12px 0; color: #4d5f41">Đang theo dõi</a></nav>
+<div style="margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap"><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; background: #16a34a; color: #fff; font-size: 13px; display: inline-flex; align-items: center">Tất cả</span><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; border: 1px solid #9cb08c; font-size: 13px; display: inline-flex; align-items: center">Java</span><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; border: 1px solid #9cb08c; font-size: 13px; display: inline-flex; align-items: center">Phỏng vấn</span><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; border: 1px solid #9cb08c; font-size: 13px; display: inline-flex; align-items: center">Sự nghiệp</span><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; border: 1px solid #9cb08c; font-size: 13px; display: inline-flex; align-items: center">Frontend</span><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; border: 1px solid #9cb08c; font-size: 13px; display: inline-flex; align-items: center">DevOps</span><span style="padding: 8px 16px; min-height: 40px; box-sizing: border-box; border-radius: 999px; border: 1px solid #9cb08c; font-size: 13px; display: inline-flex; align-items: center">Kinh nghiệm học</span></div>
+
+<div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+<main style="flex: 999 1 640px; min-width: 0; display: grid; gap: 20px">
+
+<!-- featured -->
+<article style="border-radius: 16px; background: #fff; border: 1px solid #dbe6d3; overflow: hidden; display: flex; flex-wrap: wrap">
+<div style="flex: 1 1 300px; min-height: 220px; background: linear-gradient(120deg, #bfe8c9, #4cb97a)"></div>
+<div style="flex: 1 1 340px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; gap: 8px; align-items: center"><span style="font-size: 11px; padding: 3px 10px; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 700">NỔI BẬT</span><span style="font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Thiết kế hệ thống</span></div>
+<h2 style="margin: 0; font-size: 22px; line-height: 1.3; font-weight: 700"><a href="/blog/db-dat-lich">Thiết kế database cho hệ thống đặt lịch học</a></h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.6; color: #4d5f41">Từ bảng slot đến chống đặt trùng: những quyết định thiết kế mình rút ra sau 3 lần viết lại.</p>
+<div style="margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center"><span style="width: 40px; height: 40px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: none">QB</span><div style="flex: 1 1 140px; min-width: 0"><b style="font-size: 14px">Trần Quốc Bảo</b> <span style="font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Mentor</span><div style="font-size: 12px; color: #5b6d4f">20/11 · 7 phút đọc</div></div><button style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #16a34a; background: #fff; color: #15803d; font-weight: 600; font-size: 13px">+ Theo dõi</button></div>
+<div style="display: flex; gap: 16px; font-size: 13px; color: #4d5f41"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg> 96</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 12</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg> 1,2K</span></div>
+</div>
+</article>
+
+<!-- grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px">
+
+<article style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; overflow: hidden; display: flex; flex-direction: column">
+<div style="height: 140px; background: linear-gradient(120deg, #d9f2df, #86d29e)"></div>
+<div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1">
+<div style="display: flex; gap: 6px; flex-wrap: wrap"><span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Phỏng vấn</span><span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid #c5d9b8">Java</span></div>
+<h3 style="margin: 0; font-size: 17px; line-height: 1.35; font-weight: 700"><a href="/blog/pv-java">Ba câu hỏi Java phỏng vấn fresher hay gặp nhất</a></h3>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4d5f41">Mình tổng hợp từ 20 buổi phỏng vấn thử với mentee.</p>
+<div style="margin-top: auto; display: flex; gap: 10px; align-items: center; padding-top: 10px; border-top: 1px solid #e1ebd9"><span style="width: 34px; height: 34px; border-radius: 50%; background: #bfe8c9; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none">LM</span><div style="flex: 1; min-width: 0"><b style="font-size: 13px">Lê Minh Châu</b> <span style="font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Mentor</span><div style="font-size: 11px; color: #5b6d4f">18/11 · 5 phút</div></div><button style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #16a34a; background: #fff; color: #15803d; font-weight: 600; font-size: 12px">Theo dõi</button></div>
+<div style="display: flex; gap: 14px; font-size: 12px; color: #4d5f41"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg> 54</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 8</span></div>
+</div>
+</article>
+
+<article style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; overflow: hidden; display: flex; flex-direction: column">
+<div style="height: 140px; background: linear-gradient(120deg, #a8e0ba, #4cb97a)"></div>
+<div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1">
+<div style="display: flex; gap: 6px; flex-wrap: wrap"><span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Kinh nghiệm học</span></div>
+<h3 style="margin: 0; font-size: 17px; line-height: 1.35; font-weight: 700"><a href="/blog/3-thang">3 tháng chuyển từ QA sang backend: mình đã làm gì</a></h3>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4d5f41">Kế hoạch học theo tuần, sai lầm và điều mình ước biết sớm hơn.</p>
+<div style="margin-top: auto; display: flex; gap: 10px; align-items: center; padding-top: 10px; border-top: 1px solid #e1ebd9"><span style="width: 34px; height: 34px; border-radius: 50%; background: #86d29e; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none">HN</span><div style="flex: 1; min-width: 0"><b style="font-size: 13px">Hoàng Nam</b> <span style="font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #e1ebd9; color: #4d5f41; font-weight: 600">Mentee</span><div style="font-size: 11px; color: #5b6d4f">15/11 · 6 phút</div></div><span style="height: 32px; padding: 0 12px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600; font-size: 12px; display: inline-flex; align-items: center">✓ Đang theo dõi</span></div>
+<div style="display: flex; gap: 14px; font-size: 12px; color: #4d5f41"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg> 41</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 15</span></div>
+</div>
+</article>
+
+<article style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; overflow: hidden; display: flex; flex-direction: column">
+<div style="height: 140px; background: linear-gradient(120deg, #bfe8c9, #6cc98f)"></div>
+<div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1">
+<div style="display: flex; gap: 6px; flex-wrap: wrap"><span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">DevOps</span><span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid #c5d9b8">Docker</span></div>
+<h3 style="margin: 0; font-size: 17px; line-height: 1.35; font-weight: 700"><a href="/blog/docker">Docker cho người mới: đóng gói app Spring Boot trong 15 phút</a></h3>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4d5f41">Dockerfile tối giản, cách chạy kèm database và lỗi hay gặp.</p>
+<div style="margin-top: auto; display: flex; gap: 10px; align-items: center; padding-top: 10px; border-top: 1px solid #e1ebd9"><span style="width: 34px; height: 34px; border-radius: 50%; background: #a8e0ba; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none">PA</span><div style="flex: 1; min-width: 0"><b style="font-size: 13px">Phạm Anh</b> <span style="font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Mentor</span><div style="font-size: 11px; color: #5b6d4f">12/11 · 9 phút</div></div><button style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #16a34a; background: #fff; color: #15803d; font-weight: 600; font-size: 12px">Theo dõi</button></div>
+<div style="display: flex; gap: 14px; font-size: 12px; color: #4d5f41"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg> 77</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 9</span></div>
+</div>
+</article>
+
+<article style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; overflow: hidden; display: flex; flex-direction: column">
+<div style="height: 140px; background: linear-gradient(120deg, #cfeedb, #4cb97a)"></div>
+<div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1">
+<div style="display: flex; gap: 6px; flex-wrap: wrap"><span style="font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Sự nghiệp</span></div>
+<h3 style="margin: 0; font-size: 17px; line-height: 1.35; font-weight: 700"><a href="/blog/cv">Viết CV cho fresher: những gì nhà tuyển dụng thật sự đọc</a></h3>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4d5f41">Cấu trúc một trang, cách mô tả dự án cá nhân cho thuyết phục.</p>
+<div style="margin-top: auto; display: flex; gap: 10px; align-items: center; padding-top: 10px; border-top: 1px solid #e1ebd9"><span style="width: 34px; height: 34px; border-radius: 50%; background: #4cb97a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none">VT</span><div style="flex: 1; min-width: 0"><b style="font-size: 13px">Vũ Tuấn</b> <span style="font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600">Mentor</span><div style="font-size: 11px; color: #5b6d4f">10/11 · 4 phút</div></div><button style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #16a34a; background: #fff; color: #15803d; font-weight: 600; font-size: 12px">Theo dõi</button></div>
+<div style="display: flex; gap: 14px; font-size: 12px; color: #4d5f41"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg> 63</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 11</span></div>
+</div>
+</article>
+</div>
+
+<nav aria-label="Phân trang" style="display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 14px"><a href="#" aria-label="Trang trước" style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid #c5d9b8; display: flex; align-items: center; justify-content: center; color: #7b8c6d">‹</a><a href="#" aria-current="page" style="width: 44px; height: 44px; border-radius: 50%; background: #16a34a; color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center">1</a><a href="#" style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid #c5d9b8; display: flex; align-items: center; justify-content: center">2</a><a href="#" style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid #c5d9b8; display: flex; align-items: center; justify-content: center">3</a><a href="#" aria-label="Trang sau" style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid #c5d9b8; display: flex; align-items: center; justify-content: center">›</a></nav>
+
+<div style="padding: 24px; border-radius: 14px; background: #fff; border: 2px dashed #b7cca8; text-align: center"><div style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5b6d4f">Tab "Đang theo dõi" khi chưa theo dõi ai</div><b style="display: block; margin-top: 8px; font-size: 16px">Bạn chưa theo dõi tác giả nào</b><p style="margin: 6px 0 14px; font-size: 13px; color: #4d5f41">Theo dõi để thấy bài mới của họ ở đây.</p><button style="height: 44px; padding: 0 22px; border: 0; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600">Khám phá tác giả</button></div>
+</main>
+
+<aside style="flex: 1 1 300px; max-width: 340px; min-width: 0; display: grid; gap: 16px">
+<section style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; padding: 20px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 700">Tác giả nên theo dõi</h2>
+<div style="margin-top: 14px; display: grid; gap: 14px">
+<div style="display: flex; gap: 12px; align-items: center"><span style="width: 44px; height: 44px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex: none">QB</span><div style="flex: 1; min-width: 0"><b style="font-size: 14px">Trần Quốc Bảo</b><div style="font-size: 12px; color: #5b6d4f">Mentor · 12 bài · 340 người theo dõi</div></div><button style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #16a34a; background: #fff; color: #15803d; font-weight: 600; font-size: 12px">Theo dõi</button></div>
+<div style="display: flex; gap: 12px; align-items: center"><span style="width: 44px; height: 44px; border-radius: 50%; background: #bfe8c9; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex: none">LM</span><div style="flex: 1; min-width: 0"><b style="font-size: 14px">Lê Minh Châu</b><div style="font-size: 12px; color: #5b6d4f">Mentor · 8 bài · 210 người theo dõi</div></div><button style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #16a34a; background: #fff; color: #15803d; font-weight: 600; font-size: 12px">Theo dõi</button></div>
+<div style="display: flex; gap: 12px; align-items: center"><span style="width: 44px; height: 44px; border-radius: 50%; background: #86d29e; color: #14532d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex: none">HN</span><div style="flex: 1; min-width: 0"><b style="font-size: 14px">Hoàng Nam</b><div style="font-size: 12px; color: #5b6d4f">Mentee · 3 bài · 56 người theo dõi</div></div><span style="height: 36px; padding: 0 12px; border-radius: 999px; background: #dff3e5; color: #15803d; font-weight: 600; font-size: 12px; display: inline-flex; align-items: center">✓ Đang theo dõi</span></div>
+</div>
+</section>
+<section style="border-radius: 14px; background: #fff; border: 1px solid #dbe6d3; padding: 20px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 700">Tag phổ biến</h2>
+<div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px"><span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #c5d9b8; font-size: 13px">Java · 48</span><span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #c5d9b8; font-size: 13px">Phỏng vấn · 36</span><span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #c5d9b8; font-size: 13px">Sự nghiệp · 29</span><span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #c5d9b8; font-size: 13px">React · 24</span><span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #c5d9b8; font-size: 13px">Docker · 17</span></div>
+</section>
+<section style="border-radius: 14px; background: #e3f4e6; border: 1px solid #c5e6cf; padding: 20px"><b style="font-size: 15px; color: #14532d">Bạn có kinh nghiệm muốn chia sẻ?</b><p style="margin: 6px 0 12px; font-size: 13px; line-height: 1.5; color: #34452b">Mentor và mentee đều viết được bài.</p><a href="/blog/write" style="display: inline-flex; align-items: center; padding: 8px 20px; min-height: 44px; box-sizing: border-box; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600; font-size: 14px">Viết bài</a></section>
+</aside>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

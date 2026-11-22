@@ -59,7 +59,9 @@ export const paymentApi = {
   payoutOverview: () => api<PayoutOverview>("/api/payment/payouts/overview"),
   saveBankAccount: (body: { bankName: string; accountNumber: string; holderName: string }) =>
     api<BankAccount>("/api/payment/bank-account", { method: "PUT", body }),
-  requestPayout: () => api<Payout>("/api/payment/payouts", { method: "POST" }),
+  requestPayout: (amount?: number) => api<Payout>("/api/payment/payouts", {
+    method: "POST", body: amount === undefined ? undefined : { amount },
+  }),
   receipt: (transactionId: Uuid) => api<Receipt>(`/api/payment/transactions/${transactionId}/receipt`),
   downloadEarningsCsv: async (month: string) => {
     const blob = await apiBlob(`/api/payment/earnings/export?month=${month}`);

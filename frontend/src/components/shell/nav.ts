@@ -12,6 +12,7 @@ import {
   Inbox,
   LayoutDashboard,
   Mic,
+  PenLine,
   Library,
   MessageSquare,
   PhoneOff,
@@ -32,7 +33,7 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   /** Số đếm hiển thị cạnh mục (vd. tin nhắn chưa đọc). */
-  badge?: "messages";
+  badge?: "messages" | "verification" | "disputes" | "payouts" | "reports";
   /** Đường dẫn khác cũng tính là mục này (vd. "Tìm mentor" gồm cả /mentors). */
   also?: string[];
 }
@@ -68,7 +69,7 @@ export const NAV: Record<Role, NavGroup[]> = {
         { href: "/cv-enrichment", label: "CV & mục tiêu", icon: FileText },
         { href: "/mock-interviews", label: "Phỏng vấn thử", icon: Mic },
         { href: "/practice-interview", label: "Luyện phỏng vấn với AI", icon: AudioLines },
-        { href: "/learning", label: "Learning Hub", icon: BookOpen },
+        { href: "/blog", label: "Blog", icon: PenLine, also: ["/blog/write", "/blog/me"] },
       ],
     },
   ],
@@ -86,8 +87,9 @@ export const NAV: Record<Role, NavGroup[]> = {
       label: "Hồ sơ mentor",
       items: [
         { href: "/profile", label: "Hồ sơ", icon: UserRound },
-        { href: "/interview", label: "AI Interview", icon: BadgeCheck },
-        { href: "/learning", label: "Learning Hub", icon: BookOpen },
+        { href: "/interview", label: "Xác thực năng lực", icon: BadgeCheck },
+        { href: "/profile/domains", label: "Lĩnh vực của tôi", icon: Library },
+        { href: "/blog", label: "Blog", icon: PenLine, also: ["/blog/write", "/blog/me"] },
       ],
     },
   ],
@@ -97,7 +99,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       label: "Người dùng",
       items: [
         { href: "/admin/users", label: "Tài khoản", icon: Users },
-        { href: "/admin/verification", label: "Duyệt mentor", icon: ShieldCheck },
+        { href: "/admin/verification", label: "Duyệt mentor", icon: ShieldCheck, badge: "verification" },
         { href: "/admin/mentors", label: "Mentor", icon: GraduationCap },
       ],
     },
@@ -105,17 +107,17 @@ export const NAV: Record<Role, NavGroup[]> = {
       label: "Tài chính",
       items: [
         { href: "/admin/transactions", label: "Giao dịch", icon: Receipt },
-        { href: "/admin/payouts", label: "Rút tiền", icon: Banknote },
+        { href: "/admin/payouts", label: "Rút tiền", icon: Banknote, badge: "payouts" },
         { href: "/admin/wallet", label: "Ví người dùng", icon: Wallet },
       ],
     },
     {
       label: "Kiểm duyệt",
       items: [
-        { href: "/admin/disputes", label: "Tranh chấp", icon: Scale },
-        { href: "/admin/message-reports", label: "Báo cáo tin nhắn", icon: Flag },
+        { href: "/admin/disputes", label: "Tranh chấp", icon: Scale, badge: "disputes" },
+        { href: "/admin/message-reports", label: "Báo cáo tin nhắn", icon: Flag, badge: "reports" },
         { href: "/admin/contact-violations", label: "Chia sẻ liên hệ", icon: PhoneOff },
-        { href: "/admin/learning", label: "Nội dung học", icon: Library },
+        { href: "/admin/blog", label: "Kiểm duyệt blog", icon: Flag },
         { href: "/admin/audit", label: "Nhật ký", icon: ClipboardList },
       ],
     },
@@ -145,4 +147,51 @@ export function activeItem(role: Role, pathname: string): NavItem | undefined {
     }
   }
   return best;
+}
+
+/** Điều hướng ngang trên cùng cho mentee và mentor (quản trị viên dùng thanh bên NAV.ADMIN). */
+export const TOP_NAV: Record<"MENTEE" | "MENTOR", { href: string; label: string; also?: string[] }[]> = {
+  MENTEE: [
+    { href: "/dashboard", label: "Tiến độ" },
+    { href: "/matching", label: "Tìm mentor", also: ["/mentors"] },
+    { href: "/mentoring/requests", label: "Yêu cầu" },
+    { href: "/mentoring/sessions", label: "Phiên học", also: ["/mentoring/relationships", "/payment"] },
+    { href: "/blog", label: "Blog", also: ["/blog/write", "/blog/me"] },
+  ],
+  MENTOR: [
+    { href: "/dashboard", label: "Tổng quan" },
+    { href: "/mentoring/requests", label: "Yêu cầu" },
+    { href: "/mentoring/sessions", label: "Phiên học", also: ["/mentoring/relationships"] },
+    { href: "/earnings", label: "Thu nhập", also: ["/payment/transactions"] },
+    { href: "/blog", label: "Blog", also: ["/blog/write", "/blog/me"] },
+  ],
+};
+
+export function activeTop(role: "MENTEE" | "MENTOR", pathname: string): string | undefined {
+  let best: { href: string } | undefined;
+  for (const item of TOP_NAV[role]) {
+    const hit = item.href === "/dashboard" ? pathname === item.href
+      : [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(h + "/"));
+    if (hit && (!best || item.href.length > best.href.length)) best = item;
+  }
+  return best?.href;
+}
+
+/** Biểu tượng cho thanh tab dưới cùng trên điện thoại (theo href của TOP_NAV). */
+export const TAB_ICONS: Record<string, LucideIcon> = {
+  "/dashboard": LayoutDashboard,
+  "/matching": Sparkles,
+  "/mentoring/requests": Inbox,
+  "/mentoring/sessions": CalendarDays,
+  "/earnings": Wallet,
+  "/blog": PenLine,
+  "/messages": MessageSquare,
+};
+
+/** Thanh tab dưới cùng: các mục TOP_NAV (trừ Blog, nằm trong ngăn menu) cộng Tin nhắn. */
+export function mobileTabs(role: "MENTEE" | "MENTOR"): { href: string; label: string; badge?: "messages" }[] {
+  return [
+    ...TOP_NAV[role].filter((i) => i.href !== "/blog"),
+    { href: "/messages", label: "Tin nhắn", badge: "messages" as const },
+  ];
 }

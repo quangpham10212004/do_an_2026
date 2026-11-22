@@ -3,13 +3,15 @@
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { Alert, Avatar, Button, ButtonLink, Card, CardBody, CardHeader, DescriptionList, Field, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
+import { CalendarDays, FileText, Info } from "lucide-react";
+import { Alert, Button, ButtonLink, Field, Input, Loading, Select, Textarea } from "@/components/ui";
+import { FlowChoice, FlowHead, FlowTile } from "@/features/mentoring/FlowKit";
 import { profileApi } from "@/features/profile/api";
 import { mentoringApi } from "@/features/mentoring/api";
 import SlotPicker from "@/features/mentoring/SlotPicker";
-import { AGENDA_MAX, AGENDA_MIN, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
+import { AGENDA_MAX, AGENDA_MIN, SESSION_DURATIONS, SESSION_TYPES, SESSION_TYPE_LABELS } from "@/features/mentoring/labels";
 import { MOCK_LEVELS, MOCK_LEVEL_LABELS, MOCK_TYPES, MOCK_TYPE_LABELS } from "@/features/mentoring/mockLabels";
-import { formatDateTime, formatMoney, formatRate } from "@/lib/format";
+import { formatMoney, getDisplayTimeZone } from "@/lib/format";
 import { errorMessage } from "@/lib/api";
 import type { IsoDateTime, MentorProfile, MentoringRequest, MockIntakeInput, SessionDuration, SessionType, SessionUser } from "@/types";
 
@@ -29,6 +31,17 @@ const INITIAL: BookingForm = {
   mock: { interviewType: "BACKEND", level: "FRESHER", targetRole: "", targetCompany: "", interviewDate: "", jdUrl: "" },
 };
 const isHttpUrl = (v: string) => /^https?:\/\/\S+$/i.test(v);
+const REFERRAL_FORMAT = /^[A-Z0-9]{4,20}$/;
+
+/** "T4, 26/11 · 19:30 – 20:30" theo múi giờ hiển thị của người dùng. */
+function slotLabel(startAt: string, minutes: number): string {
+  const timeZone = getDisplayTimeZone();
+  const start = new Date(startAt);
+  const end = new Date(start.getTime() + minutes * 60_000);
+  const day = start.toLocaleDateString("vi-VN", { timeZone, weekday: "short", day: "2-digit", month: "2-digit" });
+  const hm = (d: Date) => d.toLocaleTimeString("vi-VN", { timeZone, hour: "2-digit", minute: "2-digit" });
+  return `${day} · ${hm(start)} – ${hm(end)}`;
+}
 
 /** US-03 / US-05 — form đặt lịch phiên mentoring (PRD-SES-1, PRD-SES-2). */
 function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }) {
@@ -40,6 +53,7 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
   const [slotsVersion, setSlotsVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refNote, setRefNote] = useState("");
   const pickSlot = useCallback((scheduledAt: IsoDateTime | null) => setForm((f) => ({ ...f, scheduledAt })), []);
 
   useEffect(() => {
@@ -86,9 +100,8 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
           jdUrl: form.mock.jdUrl.trim() || undefined,
         } : undefined,
       });
-      // Ví đủ tiền → học phí đã được tạm giữ (AWAITING_MENTOR, chờ mentor xác nhận); thiếu tiền → trang nạp ví / thanh toán
-      if (session.status === "PENDING") router.push(`/payment/${session.id}`);
-      else router.push("/mentoring/sessions?booked=1");
+      // Ví đủ tiền → học phí đã được tạm giữ (AWAITING_MENTOR) → màn hình hoàn tất; thiếu tiền (PENDING) → nạp ví / thanh toán.
+      router.push(session.status === "PENDING" ? `/payment/${session.id}` : `/payment/${session.id}?booked=1`);
     } catch (err) {
       setError(errorMessage(err));
       setSlotsVersion((v) => v + 1); // khung giờ có thể vừa bị người khác đặt → tải lại
@@ -108,30 +121,51 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
   }
   const price = trial ? 30_000 : Number(mentor.hourlyRate);   // Bản chốt v2.0: buổi thường cố định 60 phút (giá theo cấp), trải nghiệm 15 phút 30.000đ
   const ready = !!form.scheduledAt && agendaValid && linkValid && mockValid;
+  const durations: SessionDuration[] = trial ? [15] : SESSION_DURATIONS;
+
+  function applyReferral() {
+    const code = form.referralCode.trim().toUpperCase();
+    // TODO(backend): kiểm tra mã trước khi đặt lịch (chưa có endpoint) — hiện chỉ kiểm định dạng, mã được xác thực khi gửi đặt lịch.
+    setRefNote(REFERRAL_FORMAT.test(code) ? "Đã ghi nhận mã, sẽ được kiểm tra khi bạn đặt lịch." : "Mã gồm 4–20 chữ cái hoặc chữ số.");
+  }
 
   return (
-    <>
-      <PageHeader title={trial ? "Đặt buổi trải nghiệm 15 phút" : "Đặt lịch phiên mentoring"} back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} />
-      <form onSubmit={submit} className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-6">
+    <div className="fl-page">
+      <FlowHead back={{ href: `/mentors/${mentorId}`, label: mentor.displayName }} step={2}
+        title={trial ? "Đặt buổi trải nghiệm 15 phút" : "Đặt lịch phiên mentoring"} />
+      <form onSubmit={submit} className="fl-layout">
+        <div className="fl-main">
           <Alert>{error}</Alert>
-          <Card>
-            <CardHeader title="Chọn thời gian" />
-            <CardBody className="flex flex-col gap-5">
-              <div className="form-grid">
-                <Field label="Loại phiên" id="sessionType">
-                  <Select id="sessionType" value={form.sessionType} onChange={(e) => setForm({ ...form, sessionType: e.target.value as SessionType })}>
-                    {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
-                  </Select>
-                </Field>
+          <section className="fl-panel">
+            <div className="fl-panel-head">
+              <h2><span className="fl-ico" aria-hidden="true"><CalendarDays /></span>Chọn thời gian</h2>
+              <p>Giờ hiển thị theo múi giờ {getDisplayTimeZone().replace("Asia/Ho_Chi_Minh", "GMT+7")} của bạn.</p>
+            </div>
+            <div className="fl-panel-body">
+              <div className="fl-group">
+                <div className="fl-group-label">Loại phiên</div>
+                <FlowChoice label="Loại phiên" value={form.sessionType} onChange={(sessionType) => setForm({ ...form, sessionType })}
+                  options={SESSION_TYPES.map((t) => ({ id: t, label: SESSION_TYPE_LABELS[t] }))} />
               </div>
-              <SlotPicker mentorId={mentorId} durationMinutes={form.durationMinutes} value={form.scheduledAt} onChange={pickSlot} refreshKey={slotsVersion} />
-            </CardBody>
-          </Card>
+              <div className="fl-group">
+                <div className="fl-group-label">Thời lượng</div>
+                <FlowChoice label="Thời lượng" value={form.durationMinutes} onChange={(durationMinutes) => setForm({ ...form, durationMinutes, scheduledAt: null })}
+                  options={durations.map((d) => ({ id: d, label: `${d} phút` }))} />
+              </div>
+              <div className="fl-group">
+                <div className="fl-group-label">Chọn ngày và giờ</div>
+                <SlotPicker mentorId={mentorId} durationMinutes={form.durationMinutes} value={form.scheduledAt} onChange={pickSlot} refreshKey={slotsVersion} />
+              </div>
+            </div>
+          </section>
+
           {isMock && (
-            <Card>
-              <CardHeader title="Thông tin phỏng vấn thử" description="Mentor dùng thông tin này để chuẩn bị câu hỏi sát với buổi phỏng vấn thật của bạn." />
-              <CardBody className="flex flex-col gap-5">
+            <section className="fl-panel">
+              <div className="fl-panel-head">
+                <h2><span className="fl-ico" aria-hidden="true"><FileText /></span>Thông tin phỏng vấn thử</h2>
+                <p>Mentor dùng thông tin này để chuẩn bị câu hỏi sát với buổi phỏng vấn thật của bạn.</p>
+              </div>
+              <div className="fl-panel-body" style={{ gap: 18 }}>
                 <div className="form-grid">
                   <Field label="Dạng phỏng vấn" id="mockType" required>
                     <Select id="mockType" value={form.mock.interviewType} onChange={(e) => setMock({ interviewType: e.target.value as MockIntakeInput["interviewType"] })}>
@@ -166,62 +200,78 @@ function BookSession({ user, mentorId }: { user: SessionUser; mentorId: string }
                       onChange={(e) => setMock({ jdUrl: e.target.value })} />
                   </Field>
                 </div>
-              </CardBody>
-            </Card>
+              </div>
+            </section>
           )}
-          <Card>
-            <CardHeader title="Nội dung phiên" />
-            <CardBody className="flex flex-col gap-5">
+
+          <section className="fl-panel">
+            <div className="fl-panel-head">
+              <h2><span className="fl-ico" aria-hidden="true"><Info /></span>Nội dung phiên</h2>
+            </div>
+            <div className="fl-panel-body" style={{ gap: 18 }}>
               <Field label="Agenda" id="agenda" required
                 error={agenda.length > 0 && agenda.length < AGENDA_MIN ? `Cần thêm ${AGENDA_MIN - agenda.length} ký tự (tối thiểu ${AGENDA_MIN}).` : undefined}
                 hint={`${agenda.length}/${AGENDA_MAX} ký tự, tối thiểu ${AGENDA_MIN}.`}>
-                <Textarea id="agenda" value={form.agenda} maxLength={AGENDA_MAX} required
+                <Textarea id="agenda" value={form.agenda} maxLength={AGENDA_MAX} required rows={3}
                   placeholder="Bạn muốn trao đổi gì trong phiên này? Ví dụ: review kiến trúc REST API của dự án quản lý kho"
                   onChange={(e) => setForm({ ...form, agenda: e.target.value })} />
               </Field>
-              {!trial && (
-                <Field label="Mã giới thiệu" id="referral" hint="Không bắt buộc. Chỉ dùng được ở buổi học đầu tiên với mentor này, không được giảm giá; người giới thiệu nhận thưởng sau khi buổi học hoàn thành.">
-                  <Input id="referral" value={form.referralCode} maxLength={20} placeholder="VD: K7M2X9QA" className="font-mono uppercase"
-                    onChange={(e) => setForm({ ...form, referralCode: e.target.value })} />
-                </Field>
-              )}
-              <Field label="Tài liệu đọc trước" id="preRead" hint="Không bắt buộc."
+              <Field label="Tài liệu đọc trước (không bắt buộc)" id="preRead"
                 error={linkValid ? undefined : "Link phải bắt đầu bằng http:// hoặc https://"}>
                 <Input id="preRead" type="url" value={form.preReadLink} maxLength={500} placeholder="https://github.com/…"
                   onChange={(e) => setForm({ ...form, preReadLink: e.target.value })} />
               </Field>
-            </CardBody>
-          </Card>
+              {!trial && (
+                <Field label="Mã giới thiệu (không bắt buộc, dùng cho buổi đầu tiên)" id="referral"
+                  hint={refNote || "Chỉ dùng được ở buổi học đầu tiên với mentor này, không được giảm giá; người giới thiệu nhận thưởng sau khi buổi học hoàn thành."}>
+                  <div className="input-group">
+                    <Input id="referral" value={form.referralCode} maxLength={20} placeholder="VD: K7M2X9QA" className="font-mono uppercase"
+                      onChange={(e) => { setForm({ ...form, referralCode: e.target.value }); setRefNote(""); }} />
+                    <Button type="button" disabled={!form.referralCode.trim()} onClick={applyReferral}>Áp dụng</Button>
+                  </div>
+                </Field>
+              )}
+            </div>
+          </section>
+
+          {!isMock && (
+            <section className="fl-note">
+              <b>Mock interview?</b> Chọn loại phiên “{SESSION_TYPE_LABELS.MOCK_INTERVIEW}” để điền thêm dạng phỏng vấn, cấp độ, vị trí và công ty. Mentor dùng thông tin này để chuẩn bị câu hỏi sát thực tế.
+            </section>
+          )}
         </div>
-        <Card className="lg:sticky lg:top-20">
-          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-            <Avatar name={mentor.displayName} src={mentor.avatarUrl} />
-            <div className="min-w-0">
-              <div className="font-semibold">{mentor.displayName}</div>
-              <div className="text-small text-ink-muted">{formatRate(mentor.hourlyRate)}</div>
+
+        <aside className="fl-aside fl-aside-sticky" aria-label="Tóm tắt đặt lịch">
+          <section className="fl-panel fl-side" style={{ padding: 22 }}>
+            <h2 style={{ fontSize: 16 }}>Tóm tắt đặt lịch</h2>
+            <div className="mt-3.5 flex items-center gap-3 border-b border-border pb-3.5">
+              <FlowTile name={mentor.displayName} src={mentor.avatarUrl} size="sm" />
+              <div className="min-w-0">
+                <b>{mentor.displayName}</b>
+                {mentor.headline && <div className="text-[12px] text-ink-muted">{mentor.headline}</div>}
+              </div>
             </div>
-          </div>
-          <CardBody className="flex flex-col gap-4">
-            <DescriptionList items={[
-              ["Thời gian", form.scheduledAt ? formatDateTime(form.scheduledAt) : <span key="t" className="text-ink-subtle">Chưa chọn</span>],
-              ["Thời lượng", `${form.durationMinutes} phút`],
-              ["Loại phiên", SESSION_TYPE_LABELS[form.sessionType]],
-            ]} />
-            <hr className="divider" />
-            <div className="flex items-baseline justify-between">
-              <span className="text-ink-muted">Chi phí</span>
-              <span className="font-mono text-title-2 font-medium tabular">{formatMoney(price)}</span>
-            </div>
-            <Button type="submit" variant="primary" size="lg" block loading={busy} disabled={!ready}>
-              {busy ? "Đang kiểm tra lịch…" : "Đặt lịch và tạm giữ học phí từ ví"}
+            <dl className="fl-dl">
+              <div><dt>Loại phiên</dt><dd>{SESSION_TYPE_LABELS[form.sessionType]}</dd></div>
+              <div><dt>Thời gian</dt><dd>{form.scheduledAt ? slotLabel(form.scheduledAt, form.durationMinutes) : <span className="text-ink-subtle">Chưa chọn</span>}</dd></div>
+              <div><dt>Thời lượng</dt><dd>{form.durationMinutes} phút</dd></div>
+            </dl>
+            <div className="fl-total"><span className="text-ink-muted">Học phí</span><b className="tabular">{formatMoney(price)}</b></div>
+            <Button type="submit" variant="primary" size="lg" block loading={busy} disabled={!ready} className="mt-4">
+              {busy ? "Đang kiểm tra lịch…" : "Tiếp tục thanh toán →"}
             </Button>
-            {!form.scheduledAt && <p className="text-center text-small text-ink-muted">Chọn một khung giờ để tiếp tục.</p>}
-            <p className="text-small text-ink-muted">Học phí được tạm giữ từ ví ngay khi đặt. Mentor xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, bạn được hoàn 100%.{" "}
-              {trial ? "Buổi trải nghiệm: huỷ trước 2 giờ hoàn 100%, dưới 2 giờ không hoàn." : "Huỷ trước 24 giờ: hoàn 100%, 4–24 giờ: 50%, dưới 4 giờ: không hoàn."}</p>
-          </CardBody>
-        </Card>
+            {!form.scheduledAt && <p className="fl-fine" style={{ textAlign: "center" }}>Chọn một khung giờ để tiếp tục.</p>}
+            <p className="fl-fine">
+              Ví đủ tiền thì học phí được tạm giữ ngay, thiếu thì bạn nạp thêm ở bước sau. Mentor xác nhận trong 24 giờ; nếu không xác nhận hoặc từ chối, bạn được hoàn 100%.{" "}
+              {trial ? "Buổi trải nghiệm: huỷ trước 2 giờ hoàn 100%, dưới 2 giờ không hoàn." : "Huỷ trước 24 giờ: hoàn 100%, 4–24 giờ: 50%, dưới 4 giờ: không hoàn."}
+            </p>
+          </section>
+          <section className="fl-note fl-note-warn">
+            <b>Giữ chỗ 15 phút</b><br />Khung giờ được giữ cho bạn trong lúc thanh toán. Hết 15 phút chưa thanh toán, khung giờ được mở lại.
+          </section>
+        </aside>
       </form>
-    </>
+    </div>
   );
 }
 

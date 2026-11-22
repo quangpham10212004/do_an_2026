@@ -122,7 +122,7 @@ class AuditServiceTest {
         u.setId(UUID.randomUUID());
         u.setEmail("mentee@example.com");
         u.setRole(User.Role.MENTEE);
-        when(users.findById(u.getId())).thenReturn(Optional.of(u));
+        when(users.lockById(u.getId())).thenReturn(Optional.of(u));
         UserAdminService admin = new UserAdminService(users, mock(RefreshTokenRepository.class), audit, mock(com.mmp.auth.client.MentoringClient.class));
         UUID adminId = UUID.randomUUID();
 

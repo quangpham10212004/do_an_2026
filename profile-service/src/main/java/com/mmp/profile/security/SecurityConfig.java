@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -39,6 +40,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/health", "/actuator/health/**", "/error", "/metrics").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, "/api/profile/mentor/*/domains/public").permitAll();
                     publicPaths.stream().filter(p -> !p.isBlank())
                             .forEach(p -> auth.requestMatchers(p.trim()).permitAll());
                     auth.requestMatchers("/internal/**").hasRole(AuthUser.ROLE_INTERNAL);

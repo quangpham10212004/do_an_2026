@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
-import { CalendarDays, CalendarPlus, FileText, Flag, Link2, MessageSquareText, Mic, Repeat, Star, Video, X } from "lucide-react";
+import { CalendarDays, CalendarPlus, Clock, FileText, Flag, Link2, MessageSquareText, Mic, Repeat, Star, Video, X } from "lucide-react";
 import { Alert, Badge, Button, ButtonLink, Card, EmptyState, FlashAlerts, Loading, PageHeader, Stars, Tabs, useDialog, type AskFn, type Flash } from "@/components/ui";
 import { mentoringApi } from "@/features/mentoring/api";
 import DisputeForm, { canReportIssue } from "@/features/mentoring/DisputeForm";
@@ -187,6 +187,20 @@ function DateTile({ iso }: { iso: string }) {
   );
 }
 
+/** "Bắt đầu sau 1 giờ 24 phút" — cập nhật mỗi phút cho phiên đã xác nhận sắp diễn ra. */
+function Countdown({ iso }: { iso: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const mins = Math.floor((new Date(iso).getTime() - now) / 60000);
+  if (mins <= 0 || mins > 72 * 60) return null;
+  const text = mins >= 1440 ? `${Math.floor(mins / 1440)} ngày ${Math.floor((mins % 1440) / 60)} giờ`
+    : mins >= 60 ? `${Math.floor(mins / 60)} giờ ${mins % 60} phút` : `${mins} phút`;
+  return <span className="ses-count"><Clock aria-hidden="true" />Bắt đầu sau {text}</span>;
+}
+
 function Sessions({ user }: { user: SessionUser }) {
   const params = useSearchParams();
   const [items, setItems] = useState<MentoringSession[] | undefined>(undefined);
@@ -218,7 +232,7 @@ function Sessions({ user }: { user: SessionUser }) {
 
   return (
     <>
-      <PageHeader title="Phiên học" description="Các phiên sắp tới và lịch sử phiên mentoring của bạn." />
+      <PageHeader title="Phiên học" description="Các phiên sắp tới và lịch sử phiên mentoring của bạn. Phòng học mở 10 phút trước giờ bắt đầu." />
       {dialog}
       <FlashAlerts flash={msg} className="mb-6" />
       <Tabs className="mb-4" value={filter} onChange={setFilter} tabs={FILTERS.map(([v, l]) => ({ id: v, label: l }))} />
@@ -240,7 +254,7 @@ function Sessions({ user }: { user: SessionUser }) {
             const outcome = outcomeText(s);
             const dispute = disputeText(s);
             return (
-              <Card as="article" key={s.id}>
+              <Card as="article" key={s.id} className={`ses-card${s.status === "CONFIRMED" || s.status === "AWAITING_ATTENDANCE" ? " is-live" : ""}${["AWAITING_MENTOR", "PENDING"].includes(s.status) ? " is-warn" : ""}${["DISPUTED", "NO_SHOW_MENTOR", "NO_SHOW_MENTEE"].includes(s.status) ? " is-bad" : ""}`}>
                 <div className="flex flex-col gap-4 p-5 max-sm:p-4">
                   <div className="flex items-start gap-4">
                     <DateTile iso={s.scheduledAt} />
@@ -250,6 +264,7 @@ function Sessions({ user }: { user: SessionUser }) {
                         <MentoringStatusBadge status={s.status} labels={SESSION_STATUS_LABELS} />
                         {s.kind === "TRIAL" && <Badge tone="info">Trải nghiệm</Badge>}
                         {s.reviewed && <Stars value={s.reviewRating} />}
+                        {s.status === "CONFIRMED" && future && <Countdown iso={s.scheduledAt} />}
                       </div>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-small text-ink-muted">
                         <span title={tzTitle} className="tabular">{formatDateTime(s.scheduledAt)}</span>
@@ -268,7 +283,7 @@ function Sessions({ user }: { user: SessionUser }) {
                       )}
                     </div>
                     {(s.status === "CONFIRMED" || s.status === "AWAITING_ATTENDANCE") && canJoin(s) && (
-                      <ButtonLink variant="primary" href={`/mentoring/sessions/${s.id}/room`} icon={Video}>Vào phòng học</ButtonLink>
+                      <ButtonLink variant="primary" size="lg" href={`/mentoring/sessions/${s.id}/room`} icon={Video}>Vào phòng học</ButtonLink>
                     )}
                   </div>
                   {(s.agenda || s.preReadLink) && (
@@ -333,6 +348,7 @@ function Sessions({ user }: { user: SessionUser }) {
                     }}>Huỷ phiên</Button>
                   )}
                   {canReportIssue(s) && <Button variant="ghost" icon={Flag} className="mr-auto" onClick={toggle(reporting, setReporting)}>Báo cáo sự cố</Button>}
+                  <ButtonLink href={`/mentoring/sessions/${s.id}`}>Chi tiết</ButtonLink>
                   {!["PENDING", "AWAITING_MENTOR", "EXPIRED"].includes(s.status) && (
                     <ButtonLink href={`/mentoring/sessions/${s.id}/notes`} icon={FileText}>Ghi chú</ButtonLink>
                   )}

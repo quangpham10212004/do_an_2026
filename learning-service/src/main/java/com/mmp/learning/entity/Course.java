@@ -27,6 +27,14 @@ public class Course {
     @Column(columnDefinition = "text[]", nullable = false)
     private String[] skills = new String[0];
 
+    @Column(name = "cover_url")
+    private String coverUrl;
+
+    private String instructor;
+
+    @Column(columnDefinition = "text[]", nullable = false)
+    private String[] outcomes = new String[0];
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -41,5 +49,11 @@ public class Course {
     public void setLevel(String level) { this.level = level; }
     public String[] getSkills() { return skills; }
     public void setSkills(String[] skills) { this.skills = skills; }
+    public String getCoverUrl() { return coverUrl; }
+    public void setCoverUrl(String coverUrl) { this.coverUrl = coverUrl; }
+    public String getInstructor() { return instructor; }
+    public void setInstructor(String instructor) { this.instructor = instructor; }
+    public String[] getOutcomes() { return outcomes; }
+    public void setOutcomes(String[] outcomes) { this.outcomes = outcomes; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

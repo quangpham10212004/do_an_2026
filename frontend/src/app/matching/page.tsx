@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Check, ChevronRight, EyeOff, Send, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Check, ChevronRight, EyeOff, Send, SlidersHorizontal, Sparkles, Users, Wallet, X } from "lucide-react";
 import { Alert, Avatar, Badge, Button, ButtonLink, Card, Chip, Chips, EmptyState, Input, Loading, PageHeader, Stars } from "@/components/ui";
-import { EXCLUSION_LABELS, NOT_RELEVANT_LABELS, matchingApi } from "@/features/matching/api";
+import { NOT_RELEVANT_LABELS, matchingApi } from "@/features/matching/api";
 import FindMentorTabs from "@/features/matching/FindMentorTabs";
+import IntentBar from "@/features/matching/IntentBar";
+import FilterSheet from "@/features/matching/FilterSheet";
+import PipelineRun, { PipelineStrip } from "@/features/matching/PipelineRun";
+import ScoreBreakdown from "@/features/matching/ScoreBreakdown";
 import MatchingFilters, { NO_FILTERS, biggestBlocker, describeFilter, dropFilter } from "@/features/matching/MatchingFilters";
 import { mentoringApi } from "@/features/mentoring/api";
 import { profileApi } from "@/features/profile/api";
 import { CompletenessCard } from "@/features/profile/ProfileExtras";
+import { domainLabel } from "@/features/profile/api";
 import { formatMoney, formatRate } from "@/lib/format";
 import { ApiError, errorMessage } from "@/lib/api";
-import type { Completeness, ExclusionReason, MatchFilterName, MatchFilterValues, NotRelevantReason, MatchResult, PipelineWeights, RankedMentor, SessionUser } from "@/types";
+import type { Completeness, MatchFilterName, MatchFilterValues, MatchIntentValue, NotRelevantReason, MatchResult, RankedMentor, SessionUser } from "@/types";
 
 const LIMIT = 10;
 /** Số mentor nổi bật hiện dạng thẻ; phần còn lại là danh sách gọn (Hick's Law). */
@@ -21,40 +26,6 @@ const TOP = 3;
 const MAX_REASONS = 3;
 
 const pct = (x: number) => Math.round(x * 100);
-
-const PART_META: { key: keyof PipelineWeights; label: string }[] = [
-  { key: "similarity", label: "Tương đồng hồ sơ" },
-  { key: "rating", label: "Đánh giá" },
-  { key: "experience", label: "Kinh nghiệm" },
-  { key: "scheduleFit", label: "Khớp lịch" },
-  { key: "responsiveness", label: "Phản hồi nhanh" },
-];
-
-/** US-35 — các phần điểm do matching-service trả về (scoreParts), cộng lại đúng bằng finalScore. */
-function scoreParts(m: RankedMentor) {
-  return PART_META.map((p) => ({
-    ...p,
-    label: p.key === "rating" && m.newMentor ? "Đánh giá (trung vị nền tảng)" : p.label,
-    value: m.scoreParts?.[p.key] ?? 0,
-  }));
-}
-
-function ScoreBreakdown({ m }: { m: RankedMentor }) {
-  const parts = scoreParts(m);
-  const summary = parts.map((p) => `${p.label} ${pct(p.value)}`).join(", ");
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="meter" role="img" aria-label={`Điểm phù hợp ${pct(m.finalScore)}%: ${summary}`}>
-        {parts.map((p) => <span key={p.key} style={{ width: `${p.value * 100}%` }} />)}
-      </div>
-      <div className="legend">
-        {parts.map((p) => (
-          <span key={p.key}><i />{p.label} <span className="tabular">+{pct(p.value)}</span></span>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** Lý do riêng của từng mentor: bỏ những lý do mọi mentor trong danh sách đều có (không giúp so sánh). */
 function distinctReasons(mentors: RankedMentor[]): Map<string, string[]> {
@@ -177,7 +148,10 @@ function TopMatchCard({ m, reasons, requested, onNotRelevant, tag, best }: Match
   return (
     <Card as="article" className={best ? "match-card match-card-best" : "match-card"}>
       <div className="flex items-start justify-between gap-3">
-        {tag ? <Badge tone={best ? "accent" : "neutral"}>{tag}</Badge> : <span />}
+        <div className="flex flex-wrap gap-2">
+          {tag ? <Badge tone={best ? "accent" : "neutral"}>{tag}</Badge> : <span />}
+          {m.transitionFit && <Badge tone="success" title="Từng chuyển đúng từ lĩnh vực của bạn">Từng chuyển ngách</Badge>}
+        </div>
         <div className="match-score" aria-label={`Phù hợp ${pct(m.finalScore)}%`}>
           <strong>{pct(m.finalScore)}%</strong><span>phù hợp</span>
         </div>
@@ -190,6 +164,9 @@ function TopMatchCard({ m, reasons, requested, onNotRelevant, tag, best }: Match
           <div className="mt-1"><MentorMeta m={m} /></div>
         </div>
       </div>
+      {reasons.length > 0 && (
+        <p className="match-why"><b>Vì sao phù hợp:</b> {reasons.join(". ")}.</p>
+      )}
       <ul className="reasons">
         {reasons.map((r) => <li key={r}><Check aria-hidden="true" />{r}</li>)}
       </ul>
@@ -216,6 +193,7 @@ function MatchRow({ m, reasons, requested, onNotRelevant }: MatchItemProps) {
         <div className="flex flex-wrap items-baseline gap-x-3">
           <Link href={`/mentors/${m.mentorId}`} className="font-semibold text-ink">{m.displayName}</Link>
           <span className="text-small font-semibold text-accent-ink tabular">{pct(m.finalScore)}% phù hợp</span>
+          {m.transitionFit && <Badge tone="success">Từng chuyển ngách</Badge>}
         </div>
         <MentorMeta m={m} />
         {reasons[0] && <div className="text-small text-ink-muted">{reasons[0]}</div>}
@@ -231,11 +209,63 @@ function MatchRow({ m, reasons, requested, onNotRelevant }: MatchItemProps) {
   );
 }
 
-/** Tóm tắt bộ lọc đang bật, ví dụ "giá ≤ 150.000đ · buổi tối". */
-function activeFilters(f: MatchFilterValues): string[] {
+/** Thẻ lưới cho "Lựa chọn khác": điểm, kỹ năng, một lý do; chi tiết điểm và "Không phù hợp" mở khi cần. */
+function MatchGridCard({ m, reasons, requested, onNotRelevant }: MatchItemProps) {
+  return (
+    <Card as="article" className="match-gcard">
+      <div className="flex items-start gap-3">
+        <Avatar name={m.displayName} size="lg" />
+        <div className="min-w-0 flex-1">
+          <Link href={`/mentors/${m.mentorId}`} className="font-semibold text-ink">{m.displayName}</Link>
+          {m.headline && <div className="line-clamp-2 text-small text-ink-muted">{m.headline}</div>}
+        </div>
+        <span className="match-score" aria-label={`Phù hợp ${pct(m.finalScore)}%`}><strong>{pct(m.finalScore)}</strong></span>
+      </div>
+      <MentorMeta m={m} />
+      {m.matchedSkills.length > 0 && <Chips>{m.matchedSkills.slice(0, 3).map((s) => <Chip key={s} match>{s}</Chip>)}</Chips>}
+      {reasons[0] && <p className="text-small text-ink-muted">{reasons[0]}</p>}
+      <div className="mt-auto flex flex-wrap gap-2">
+        {requested
+          ? <Badge tone="success">Đã gửi yêu cầu</Badge>
+          : <ButtonLink href={`/mentoring/request/${m.mentorId}`} size="sm" icon={Send}>Gửi yêu cầu</ButtonLink>}
+        <ButtonLink href={`/mentors/${m.mentorId}`} size="sm" variant="ghost">Hồ sơ</ButtonLink>
+      </div>
+      <MatchDetails m={m} onNotRelevant={onNotRelevant} />
+    </Card>
+  );
+}
+
+/** Bộ lọc đang bật: [tên, mô tả ngắn], ví dụ ["maxRate", "ngân sách ≤ 150.000đ"]. */
+function activeFilters(f: MatchFilterValues): [MatchFilterName, string][] {
   return (Object.keys(NO_FILTERS) as MatchFilterName[])
     .filter((k) => JSON.stringify(f[k]) !== JSON.stringify(NO_FILTERS[k]))
-    .map((k) => describeFilter(k, f));
+    .map((k) => [k, describeFilter(k, f)]);
+}
+
+/** Thẻ gọn cho mentor phù hợp nhưng vượt ngân sách. */
+function OverBudgetCard({ m, requested }: { m: RankedMentor; requested: boolean }) {
+  return (
+    <article className="match-over-card">
+      <Avatar name={m.displayName} size="lg" />
+      <div className="min-w-0 flex-1" style={{ flexBasis: 160 }}>
+        <Link href={`/mentors/${m.mentorId}`} className="font-semibold text-ink">{m.displayName}</Link>
+        {m.headline && <div className="line-clamp-2 text-small text-ink-muted">{m.headline}</div>}
+        {m.overBudgetBy != null && <span className="mt-1.5 inline-block"><Badge tone="warning">Vượt ngân sách +{formatMoney(m.overBudgetBy)}/giờ</Badge></span>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <ButtonLink href={`/mentors/${m.mentorId}`} size="sm" variant="secondary">Xem hồ sơ</ButtonLink>
+        {requested && <Badge tone="success">Đã gửi yêu cầu</Badge>}
+      </div>
+    </article>
+  );
+}
+
+function SectionTitle({ id, icon: Icon, tone, large, children }: { id: string; icon: typeof Sparkles; tone?: "warning"; large?: boolean; children: ReactNode }) {
+  return (
+    <h2 id={id} className={large ? "find-h find-h-lg" : "find-h"}>
+      <span className="find-h-ico" data-tone={tone} aria-hidden="true"><Icon /></span>{children}
+    </h2>
+  );
 }
 
 function Matching({ user }: { user: SessionUser }) {
@@ -243,6 +273,13 @@ function Matching({ user }: { user: SessionUser }) {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  /** Đang trình bày pipeline; `pending` = kết quả đã về nhưng chờ các bước hiện xong mới hiện danh sách. */
+  const [playing, setPlaying] = useState(false);
+  /** Mục đích tìm (chuyển ngách...) áp cho mọi lượt tìm tiếp theo, kể cả khi đổi bộ lọc. */
+  const [intent, setIntent] = useState<MatchIntentValue>({ mode: "CURRENT" });
+  const [menteeDomain, setMenteeDomain] = useState<string | null>(null);
+  const intentRef = useRef<MatchIntentValue>({ mode: "CURRENT" });
+  const [pending, setPending] = useState<MatchResult | undefined>(undefined);
   /** US-37 — hồ sơ hoàn thiện < 50% thì chưa cho dùng AI Matching. */
   const [gate, setGate] = useState<Completeness | null>(null);
   const [hiddenMsg, setHiddenMsg] = useState("");
@@ -250,15 +287,22 @@ function Matching({ user }: { user: SessionUser }) {
   const lastFilters = useRef<MatchFilterValues | undefined>(undefined);
 
   /** filters undefined = để server lấy sở thích hồ sơ làm bộ lọc (US-17); có giá trị = ghi đè cho lượt này. */
-  const search = useCallback((filters?: MatchFilterValues) => {
+  const search = useCallback((filters?: MatchFilterValues, nextIntent?: MatchIntentValue) => {
     lastFilters.current = filters;
+    if (nextIntent) {
+      intentRef.current = nextIntent;
+      setIntent(nextIntent);
+    }
     setBusy(true);
     setError(null);
-    matchingApi.mentorsFor(user.userId, { limit: LIMIT, filters })
-      .then(setData)
+    setPending(undefined);
+    setPlaying(true);
+    matchingApi.mentorsFor(user.userId, { limit: LIMIT, filters, intent: intentRef.current })
+      .then(setPending)
       .catch((e: unknown) => {
         setError({ code: e instanceof ApiError ? e.code : "UNKNOWN", message: errorMessage(e) });
         setData(null);
+        setPlaying(false);
       })
       .finally(() => setBusy(false));
   }, [user]);
@@ -266,6 +310,7 @@ function Matching({ user }: { user: SessionUser }) {
   useEffect(() => {
     profileApi.getMentee(user.userId)
       .then((p) => {
+        setMenteeDomain(p.domain);
         if (p.matchingEnabled) search();
         else {
           setGate(p.completeness);
@@ -275,6 +320,25 @@ function Matching({ user }: { user: SessionUser }) {
       .catch(() => search()); // chưa có hồ sơ → matching-service trả MENTEE_PROFILE_INCOMPLETE
     mentoringApi.requests().then((rs) => setRequested(new Set(rs.filter((r) => ["PENDING", "ACCEPTED"].includes(r.status)).map((r) => r.mentorId)))).catch(() => {});
   }, [user, search]);
+
+  useEffect(() => {
+    if (!data) return;
+    try {
+      data.mentors.forEach((m) => sessionStorage.setItem(`match:${m.mentorId}`, JSON.stringify({
+        finalScore: m.finalScore, scoreParts: m.scoreParts, reasons: m.reasons, newMentor: m.newMentor,
+        transitionFit: m.transitionFit, intent: data.intent,
+      })));
+    } catch { /* sessionStorage có thể bị chặn — chỉ mất phần giải thích trên trang mentor */ }
+  }, [data]);
+
+  const finishPlaying = useCallback((result: MatchResult) => {
+    setData(result);
+    setPlaying(false);
+  }, []);
+  const replay = () => {
+    setPending(data ?? undefined);
+    setPlaying(true);
+  };
 
   if (gate) {
     return (
@@ -300,10 +364,10 @@ function Matching({ user }: { user: SessionUser }) {
       <FindMentorTabs current="matching" />
     </>
   );
+  if (playing) {
+    return <>{header}<PipelineRun mode="live" result={pending} onDone={finishPlaying} /></>;
+  }
   if (data === undefined) return <>{header}<Loading text="AI đang tìm mentor phù hợp…" /></>;
-  const excluded = data?.pipeline?.excluded || {};
-  const excludedEntries = Object.entries(excluded) as [ExclusionReason, number][];
-  const excludedTotal = excludedEntries.reduce((sum, [, n]) => sum + n, 0);
   // US-18 — kết quả ít hơn LIMIT: chỉ ra bộ lọc loại nhiều mentor nhất và cho nới bằng một cú nhấp.
   // Mentor trong ngân sách đứng đầu; mentor phù hợp nhưng vượt ngân sách xếp riêng ở cuối (không bị loại).
   const fit = (data?.mentors ?? []).filter((m) => !m.overBudget);
@@ -312,6 +376,7 @@ function Matching({ user }: { user: SessionUser }) {
   const reasons = distinctReasons(data?.mentors ?? []);
   const tags = highlightTags(fit);
   const filtersOn = data ? activeFilters(data.filters) : [];
+  const closeFilters = () => setShowFilters(false);
 
   const notRelevant = (m: RankedMentor) => async (reason: NotRelevantReason, note: string) => {
     if (!data) return;
@@ -332,21 +397,37 @@ function Matching({ user }: { user: SessionUser }) {
           <Alert tone="warning" action={<ButtonLink href="/profile" size="sm">Tạo hồ sơ</ButtonLink>}>{error.message}.</Alert>
         )}
         {error && error.code !== "MENTEE_PROFILE_INCOMPLETE" && <Alert>{error.message}</Alert>}
+        <IntentBar key={intent.mode} value={intent} menteeDomain={menteeDomain} busy={busy}
+          onChange={(next) => (next.mode === "SWITCH" && !next.targetDomain ? setIntent(next) : search(lastFilters.current, next))} />
+        {data?.intent.mode === "SWITCH" && data.intent.targetDomain && (
+          <Alert tone="info">
+            Đang tìm mentor <b>{domainLabel(data.intent.targetDomain)}</b> cho bạn
+            {menteeDomain ? <> (chuyển từ {domainLabel(menteeDomain)})</> : null}. Mentor từng chuyển đúng hướng được ưu tiên.
+          </Alert>
+        )}
         {data && (
           <>
+            <PipelineStrip result={data} />
             <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="find-filterbar">
                 <Button icon={SlidersHorizontal} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}>
-                  Bộ lọc{filtersOn.length > 0 && ` (${filtersOn.length})`}
+                  Bộ lọc{filtersOn.length > 0 && ` · ${filtersOn.length}`}
                 </Button>
-                <span className="text-small text-ink-muted">
-                  {filtersOn.length ? `Đang lọc: ${filtersOn.join(" · ")}` : "Chưa lọc — hiện mọi mentor phù hợp."}
-                  {data.filters.fromProfileDefaults.length > 0 && " Một số bộ lọc lấy từ sở thích trong hồ sơ."}
-                </span>
+                {filtersOn.map(([name, label]) => (
+                  <button key={name} type="button" className="find-fchip" disabled={busy} aria-label={`Bỏ bộ lọc ${label}`}
+                    onClick={() => search(dropFilter(data.filters, name))}>
+                    {label}<X aria-hidden="true" />
+                  </button>
+                ))}
+                {filtersOn.length === 0 && <span className="text-small text-ink-muted">Chưa lọc, hiện mọi mentor phù hợp.</span>}
+                {data.filters.fromProfileDefaults.length > 0 && <span className="text-small text-ink-muted">Một số bộ lọc lấy từ sở thích trong hồ sơ.</span>}
+                {filtersOn.length > 0 && <button type="button" className="find-clear" disabled={busy} onClick={() => search(NO_FILTERS)}>Xoá bộ lọc</button>}
               </div>
               {showFilters && (
-                <MatchingFilters value={data.filters} fromProfile={data.filters.fromProfileDefaults} busy={busy}
-                  onSearch={(f) => search(f)} onUseProfile={() => search()} />
+                <FilterSheet open onClose={closeFilters} onClear={() => { closeFilters(); search(NO_FILTERS); }}>
+                  <MatchingFilters value={data.filters} fromProfile={data.filters.fromProfileDefaults} busy={busy}
+                    onSearch={(f) => { closeFilters(); search(f); }} onUseProfile={() => { closeFilters(); search(); }} />
+                </FilterSheet>
               )}
             </div>
             {hiddenMsg && <Alert tone="success">{hiddenMsg}</Alert>}
@@ -371,9 +452,9 @@ function Matching({ user }: { user: SessionUser }) {
                 )}
                 {fit.length > 0 && (
                   <section className="flex flex-col gap-3" aria-labelledby="top-title">
-                    <h2 id="top-title" className="text-title-2 font-semibold">
-                      {Math.min(TOP, fit.length)} mentor phù hợp nhất với bạn
-                    </h2>
+                    <SectionTitle id="top-title" icon={Sparkles} large>
+                      {fit.length === 1 ? "Phù hợp nhất với bạn" : `${Math.min(TOP, fit.length)} mentor phù hợp nhất với bạn`}
+                    </SectionTitle>
                     <div className="match-top">
                       {fit.slice(0, TOP).map((m, i) => (
                         <TopMatchCard key={m.mentorId} m={m} best={i === 0} tag={tags.get(m.mentorId)}
@@ -384,46 +465,40 @@ function Matching({ user }: { user: SessionUser }) {
                 )}
                 {fit.length > TOP && (
                   <section className="flex flex-col gap-3" aria-labelledby="more-title">
-                    <h2 id="more-title" className="text-title-3 font-semibold">Lựa chọn khác</h2>
-                    <Card>
+                    <SectionTitle id="more-title" icon={Users}>Lựa chọn khác</SectionTitle>
+                    <div className="match-grid">
                       {fit.slice(TOP).map((m) => (
-                        <MatchRow key={m.mentorId} m={m} reasons={reasons.get(m.mentorId) ?? []}
+                        <MatchGridCard key={m.mentorId} m={m} reasons={reasons.get(m.mentorId) ?? []}
                           requested={requested.has(m.mentorId)} onNotRelevant={notRelevant(m)} />
                       ))}
-                    </Card>
+                    </div>
                   </section>
                 )}
                 {over.length > 0 && (
                   <section className="flex flex-col gap-3" aria-labelledby="over-title">
-                    <h2 id="over-title" className="text-title-3 font-semibold">Phù hợp nhưng vượt ngân sách</h2>
+                    <SectionTitle id="over-title" icon={Wallet} tone="warning">Phù hợp nhưng vượt ngân sách</SectionTitle>
                     <p className="text-small text-ink-muted">
                       Các mentor này khớp với hồ sơ của bạn nhưng giá cao hơn mức {data.filters.maxRate !== null ? `${formatMoney(data.filters.maxRate)}/giờ ` : ""}
                       bạn đặt. Họ đứng cuối để bạn vẫn thấy được lựa chọn.
                       {data.pipeline.overBudget > over.length && ` Còn ${data.pipeline.overBudget - over.length} mentor khác cũng vượt ngân sách.`}
                     </p>
-                    <Card>
-                      {over.map((m) => (
-                        <MatchRow key={m.mentorId} m={m} reasons={reasons.get(m.mentorId) ?? []}
-                          requested={requested.has(m.mentorId)} onNotRelevant={notRelevant(m)} />
-                      ))}
-                    </Card>
+                    <div className="match-over">
+                      {over.map((m) => <OverBudgetCard key={m.mentorId} m={m} requested={requested.has(m.mentorId)} />)}
+                    </div>
                   </section>
                 )}
               </>
             )}
+            <p className="find-note">
+              Chưa thấy ai ưng ý? <Link href="/mentors" className="font-semibold">Xem tất cả mentor &rarr;</Link>
+            </p>
             <div className="flex flex-col gap-2 text-small text-ink-muted">
               {data.pipeline.hidden > 0 && (
                 <p>Đang ẩn {data.pipeline.hidden} mentor bạn đánh dấu không phù hợp. <Link href="/matching/hidden">Xem hoặc bỏ ẩn</Link>.</p>
               )}
               <details className="disclosure">
                 <summary><ChevronRight aria-hidden="true" />Cách AI chọn {data.mentors.length} mentor này từ {data.pipeline.considered} mentor</summary>
-                <p className="mt-2 max-w-[90ch]">
-                  Xét {data.pipeline.considered} mentor, loại {excludedTotal} không đủ điều kiện
-                  {excludedTotal > 0 && ` (${excludedEntries.map(([k, v]) => `${v} ${EXCLUSION_LABELS[k] || k}`).join(", ")})`}, còn {data.pipeline.eligible} mentor
-                  thoả bộ lọc. Lấy {data.pipeline.retrieved} mentor gần nhất về nội dung (top-K = {data.pipeline.k}), rồi xếp hạng lại với
-                  trọng số tương đồng {data.pipeline.weights.similarity}, đánh giá {data.pipeline.weights.rating}, kinh nghiệm {data.pipeline.weights.experience},
-                  khớp lịch {data.pipeline.weights.scheduleFit}, phản hồi nhanh {data.pipeline.weights.responsiveness}.
-                </p>
+                <div className="mt-2"><PipelineRun mode="static" result={data} onReplay={replay} /></div>
               </details>
             </div>
           </>

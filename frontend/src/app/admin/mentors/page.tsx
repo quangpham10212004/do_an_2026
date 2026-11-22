@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import { Search } from "lucide-react";
-import { Badge, Button, Card, EmptyState, FlashAlerts, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table, useDialog, type Flash } from "@/components/ui";
+import { Avatar, Badge, Button, Card, EmptyState, FlashAlerts, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table, useDialog, type Flash } from "@/components/ui";
 import { MENTOR_STATUS_LABELS, domainLabel, mentorStatusText, profileApi } from "@/features/profile/api";
 import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -91,8 +91,8 @@ function AdminMentors() {
       <PageHeader title="Mentor" description="Trạng thái, xác thực và tạm ngưng mentor vi phạm." />
       {dialog}
       <FlashAlerts flash={flash} className="mb-6" />
-      <div className="mb-4 flex flex-wrap gap-2">
-        <div className="relative w-full max-w-[300px]">
+      <div className="adm-filter">
+        <div className="adm-search">
           <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
           <Input type="search" aria-label="Tìm mentor" placeholder="Tìm theo tên hoặc lĩnh vực" value={filters.q} className="pl-9"
             onChange={(e) => setFilters({ ...filters, q: e.target.value, page: 0 })} />
@@ -105,6 +105,7 @@ function AdminMentors() {
           <option value="">Mọi trạng thái xác thực</option>
           {VERIFICATIONS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
         </Select>
+        {data && <span className="adm-count">{data.totalItems} mentor</span>}
       </div>
       {!data ? (flash.error ? null : <Loading />) : (
         <Card>
@@ -116,7 +117,7 @@ function AdminMentors() {
               <tbody>
                 {data.items.map((m) => (
                   <tr key={m.userId}>
-                    <td><Link href={`/mentors/${m.userId}`} className="font-medium">{m.displayName}</Link></td>
+                    <td><div className="adm-person"><Avatar name={m.displayName} size="sm" /><Link href={`/mentors/${m.userId}`} className="font-semibold">{m.displayName}</Link></div></td>
                     <td>{domainLabel(m.domain)}</td>
                     <td><StatusBadge status={m.verificationStatus} /></td>
                     <td>

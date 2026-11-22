@@ -82,7 +82,7 @@ def _clean(s: str) -> str:
     return re.sub(r"[.。]+$", "", re.sub(r"\s+", " ", s.strip()))
 
 
-def summarize_goal(ctx: MenteeContext, history: list[Exchange]) -> str:
+def summarize_goal(ctx: MenteeContext, history: list[Exchange], *, alternative: bool = False) -> str:
     answers: dict[str, str] = {}
     for e in history:
         if e.answer and e.answer.strip():
@@ -99,5 +99,8 @@ def summarize_goal(ctx: MenteeContext, history: list[Exchange]) -> str:
     if cv.projects:
         background += "; đã làm dự án " + ", ".join(p.name for p in cv.projects[:3])
     parts.append(background)
+    if alternative:
+        result = "\n".join(f"- {part}" for part in parts)
+        return result[:2900]
     result = ". ".join(parts) + "."
     return result[:2900] + "…" if len(result) > 2900 else result

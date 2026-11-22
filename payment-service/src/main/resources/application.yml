@@ -34,7 +34,7 @@ app:
   security:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
-    public-paths: "/api/payment/momo/ipn,/api/payment/vnpay/ipn"   # US-56 — cổng gọi server → server, không có JWT (bảo vệ bằng chữ ký)
+    public-paths: "/api/payment/momo/ipn,/api/payment/vnpay/ipn,/api/payment/referrals/codes/*"
   services:
     mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
     profile-url: ${PROFILE_SERVICE_URL:http://localhost:8082}   # US-42 — tên trên biên lai

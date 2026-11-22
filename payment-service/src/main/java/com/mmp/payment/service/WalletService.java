@@ -40,6 +40,7 @@ public class WalletService {
     private static final Logger log = LoggerFactory.getLogger(WalletService.class);
 
     private final WalletLedger ledger;
+    private final ReferralVoucherService vouchers;
     private final PaymentService payments;
     private final TransactionRepository transactions;
     private final RefundRepository refunds;
@@ -58,7 +59,7 @@ public class WalletService {
     private final int refundRequestsPerMonth;
     private final int dormantAfterMonths;
 
-    public WalletService(WalletLedger ledger, PaymentService payments, TransactionRepository transactions, RefundRepository refunds,
+    public WalletService(WalletLedger ledger, ReferralVoucherService vouchers, PaymentService payments, TransactionRepository transactions, RefundRepository refunds,
                          ReferralService referralService, EarningService earnings, PaymentGateway sandbox,
                          List<RedirectGateway> redirectGateways, MentoringClient mentoring, AuditClient audit,
                          TransactionTemplate tx, JdbcTemplate jdbc,
@@ -69,6 +70,7 @@ public class WalletService {
                          @Value("${app.wallet.refund-requests-per-month:2}") int refundRequestsPerMonth,
                          @Value("${app.wallet.dormant-after-months:12}") int dormantAfterMonths) {
         this.ledger = ledger;
+        this.vouchers = vouchers;
         this.payments = payments;
         this.transactions = transactions;
         this.refunds = refunds;
@@ -166,6 +168,10 @@ public class WalletService {
      * Không đủ tiền → 402 INSUFFICIENT_FUNDS (không ghi gì).
      */
     public TransactionResponse pay(AuthUser payer, UUID sessionId, BigDecimal amount) {
+        return pay(payer, sessionId, amount, null);
+    }
+
+    public TransactionResponse pay(AuthUser payer, UUID sessionId, BigDecimal amount, UUID voucherId) {
         payer.requireVerifiedEmail();
         SessionInfo session = payments.payableSession(payer, sessionId, amount);
         if (!session.menteeId().equals(payer.userId())) {
@@ -176,6 +182,12 @@ public class WalletService {
         try {
             paid = tx.execute(s -> {
                 requireUsable(ledger.lock(session.menteeId()));
+                OffsetDateTime now = OffsetDateTime.now();
+                UUID voucherLot = null;
+                if (voucherId != null) {
+                    BigDecimal discount = vouchers.redeem(session.menteeId(), voucherId, sessionId, session.price(), now);
+                    voucherLot = ledger.grantPromo(session.menteeId(), discount, "REFERRAL_VOUCHER", voucherId.toString(), now);
+                }
                 Transaction t = new Transaction();
                 t.setSessionId(session.id());
                 t.setPayerId(session.menteeId());
@@ -186,7 +198,7 @@ public class WalletService {
                 t.setSessionKind(session.trial() ? "TRIAL" : "REGULAR");
                 Transaction first = transactions.saveAndFlush(t);
                 WalletRules.Allocation a = ledger.debitForSession(session.menteeId(), first.getId(), session.id(), session.price(),
-                        OffsetDateTime.now());
+                        now, voucherLot);
                 first.applyFunding(a.promo(), a.cash());
                 first.setProviderReference("wallet_" + first.getId().toString().replace("-", "").substring(0, 20));
                 first.setStatus(Transaction.Status.SUCCESS);

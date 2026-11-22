@@ -67,6 +67,24 @@ public class MessagingController {
         return messaging.send(user, id, in);
     }
 
+    public record MuteView(@jakarta.validation.constraints.NotNull Boolean muted) {}
+
+    @GetMapping("/conversations/{id}/mute")
+    public MuteView muted(@PathVariable UUID id) {
+        return new MuteView(messaging.muted(CurrentUser.get(), id));
+    }
+
+    @PutMapping("/conversations/{id}/mute")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void mute(@PathVariable UUID id, @Valid @RequestBody MuteView in) {
+        messaging.mute(CurrentUser.get(), id, in.muted());
+    }
+
+    @GetMapping("/conversations/{id}/presence/{userId}")
+    public MessagingService.Presence presence(@PathVariable UUID id, @PathVariable UUID userId) {
+        return messaging.presence(CurrentUser.get(), id, userId);
+    }
+
     @PostMapping("/messages/{messageId}/report")
     @ResponseStatus(HttpStatus.CREATED)
     public MessageReportView report(@PathVariable UUID messageId, @Valid @RequestBody ReportMessageInput in) {

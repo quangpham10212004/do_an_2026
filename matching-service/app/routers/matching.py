@@ -10,6 +10,8 @@ from app.schemas.matching import (
     FeedbackItem,
     FeedbackRequest,
     MatchingResponse,
+    MatchIntentEcho,
+    PipelineStages,
     PipelineStats,
     RankedMentor,
     SimilarMentor,
@@ -83,6 +85,9 @@ async def get_matches(
     minRating: float | None = Query(None, ge=0, le=5),
     useProfileDefaults: bool = Query(True),
     includeOverBudget: bool = Query(True),
+    intent: Literal["CURRENT", "SWITCH"] = Query("CURRENT"),
+    targetDomain: str | None = Query(None, max_length=50),
+    goalText: str | None = Query(None, max_length=500),
     caller: Caller = Depends(require_user),
 ) -> MatchingResponse:
     _parse_uuid(menteeId, "menteeId")
@@ -100,6 +105,13 @@ async def get_matches(
                 detail={"code": "RATE_LIMITED", "message": f"Bạn tìm mentor quá nhanh. Vui lòng thử lại sau {wait} giây."},
                 headers={"Retry-After": str(wait)},
             )
+    target = (targetDomain or "").strip().lower() or None
+    if intent == "SWITCH" and target is None:
+        raise _bad_request("targetDomain là bắt buộc khi intent=SWITCH")
+    match_intent = pipeline.MatchIntent(
+        mode=intent, target_domain=target if intent == "SWITCH" else None,
+        goal_text=(goalText or "").strip() or None if intent == "SWITCH" else None,
+    )
     requested = {
         match_filters.MAX_RATE: maxRate,
         match_filters.DAYS: parse_days(days),
@@ -114,7 +126,7 @@ async def get_matches(
     started = time.perf_counter()
     result = await pipeline.match_mentors_for_mentee(
         menteeId, limit=limit, requested=requested, use_profile_defaults=useProfileDefaults,
-        include_over_budget=includeOverBudget,
+        include_over_budget=includeOverBudget, intent=match_intent,
     )
     if result is None:
         raise HTTPException(
@@ -149,6 +161,8 @@ async def get_matches(
             headline=m.get("headline"),
             over_budget=m.get("over_budget", False),
             over_budget_by=m.get("over_budget_by"),
+            previous_domains=list(m.get("previous_domains") or []),
+            transition_fit=bool(m.get("transition_fit")),
         )
         for m in result["mentors"]
     ]
@@ -168,10 +182,13 @@ async def get_matches(
             k=stats["k"],
             retrieved=stats["retrieved"],
             returned=stats["returned"],
-            weights=pipeline.WEIGHTS,
+            weights=pipeline.switch_weights() if match_intent.is_switch else pipeline.WEIGHTS,
             took_ms=took_ms,
+            stages=PipelineStages(**stats["stages"]) if "stages" in stats else None,
         ),
         filters=EffectiveFilters(**filters_echo),
+        intent=MatchIntentEcho(mode=match_intent.mode if match_intent.is_switch else "CURRENT",
+                               target_domain=match_intent.target_domain, goal_text=match_intent.goal_text),
         excluded_by=result["excluded_by"],
         impression_id=impression_id,
     )

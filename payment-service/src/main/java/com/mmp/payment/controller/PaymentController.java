@@ -67,6 +67,13 @@ public class PaymentController {
         return mentorReferrals.overview(CurrentUser.get().userId());
     }
 
+    @GetMapping("/referrals/codes/{code}")
+    public com.mmp.payment.service.MentorReferralService.InviteInfo previewReferral(
+            @PathVariable String code,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.mmp.payment.security.AuthUser viewer) {
+        return mentorReferrals.preview(code, viewer == null ? null : viewer.userId());
+    }
+
     /** Lấy (hoặc tạo lần đầu) mã giới thiệu của cặp (tôi, mentor); 409 REFERRAL_NOT_ELIGIBLE nếu chưa hoàn thành buổi nào với mentor. */
     @PostMapping("/referrals/codes")
     @PreAuthorize("hasRole('MENTEE')")
@@ -105,8 +112,8 @@ public class PaymentController {
     @PostMapping("/payouts")
     @PreAuthorize("hasRole('MENTOR')")
     @ResponseStatus(HttpStatus.CREATED)
-    public PayoutDtos.PayoutView requestPayout() {
-        return payoutService.request(CurrentUser.get());
+    public PayoutDtos.PayoutView requestPayout(@Valid @RequestBody(required = false) PayoutDtos.PayoutInput in) {
+        return payoutService.request(CurrentUser.get(), in == null ? null : in.amount());
     }
 
     /** Biên lai (PRD-PAY-6) — người trả, mentor của giao dịch, admin. */

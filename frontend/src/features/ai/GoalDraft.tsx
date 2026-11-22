@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Plus, Sparkles } from "lucide-react";
 import { Alert, Button, ButtonLink, Chip, Chips, Field, Textarea, useDialog } from "@/components/ui";
 import { aiApi } from "@/features/ai/api";
+import { regenerateGoal } from "@/features/onbx/api";
 import { errorMessage } from "@/lib/api";
 import type { Conversation } from "@/types";
 
@@ -38,6 +39,21 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
     try {
       onChange(await action());
       setEditing(false);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Có API: AI viết bản khác; chưa có (mock): người dùng tự sửa mục tiêu. */
+  async function rewrite() {
+    setBusy(true);
+    setError("");
+    try {
+      const next = await regenerateGoal(conversation.id);
+      onChange(next);
+      setText(next.enrichedGoal ?? "");
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -81,7 +97,7 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
   return (
     <div className="flex flex-col gap-4">
       {dialog}
-      <Alert tone="info">Đây là bản nháp. Hồ sơ của bạn chưa thay đổi cho tới khi bạn chọn “Dùng mục tiêu này”.</Alert>
+      <Alert tone="info">Đây là bản nháp. Hồ sơ của bạn chưa thay đổi cho tới khi bạn chọn “Lưu và xem gợi ý mentor”.</Alert>
       <Alert>{error}</Alert>
       {editing ? (
         <Field label="Mục tiêu đã làm rõ" id="goal-text"
@@ -96,7 +112,7 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
         </div>
       )}
       {suggested.length > 0 && (
-        <Field label="Kỹ năng từ CV" hint={`Chọn kỹ năng muốn thêm vào hồ sơ (${chosen.length}/${suggested.length} đã chọn).`}>
+        <Field label={`Thêm kỹ năng muốn học vào hồ sơ (${chosen.length}/${suggested.length} đã chọn)`} hint="Bấm vào kỹ năng để chọn hoặc bỏ chọn.">
           <Chips>
             {suggested.map((s) => (
               <Chip key={s} selected={chosen.includes(s)} onClick={busy ? undefined : () => toggle(s)}>
@@ -109,9 +125,9 @@ export default function GoalDraft({ conversation, onChange }: GoalDraftProps) {
       )}
       <div className="form-actions">
         <Button variant="primary" loading={busy} disabled={!valid} onClick={() => run(() => aiApi.confirmGoal(conversation.id, trimmed, chosen))}>
-          {busy ? "Đang lưu…" : "Dùng mục tiêu này"}
+          {busy ? "Đang lưu…" : "Lưu và xem gợi ý mentor"}
         </Button>
-        {!editing && <Button disabled={busy} onClick={() => setEditing(true)}>Sửa</Button>}
+        {!editing && <Button disabled={busy} onClick={rewrite}>Viết lại bản khác</Button>}
         <Button variant="ghost" disabled={busy} onClick={discard}>Bỏ qua</Button>
       </div>
     </div>

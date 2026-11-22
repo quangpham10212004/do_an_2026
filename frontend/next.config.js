@@ -5,6 +5,11 @@ const nextConfig = {
   // (đọc URL service lúc runtime, nên không phải build lại image khi đổi địa chỉ service).
   output: "standalone",
   reactStrictMode: true,
+  // Ổ exFAT trả EISDIR khi readlink file thường làm webpack lỗi; dự án không dùng symlink nên tắt phân giải symlink.
+  webpack: (config) => {
+    config.resolve.symlinks = false;
+    return config;
+  },
 };
 
 module.exports = nextConfig;

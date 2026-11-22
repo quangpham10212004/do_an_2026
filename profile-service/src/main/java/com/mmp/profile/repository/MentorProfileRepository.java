@@ -1,20 +1,29 @@
 package com.mmp.profile.repository;
 
 import com.mmp.profile.entity.MentorProfile;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface MentorProfileRepository extends JpaRepository<MentorProfile, UUID> {
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM MentorProfile m WHERE m.userId = :id")
+    Optional<MentorProfile> findForUpdate(@Param("id") UUID id);
+
     @Query("""
             SELECT m FROM MentorProfile m
-            WHERE (:domain IS NULL OR LOWER(m.domain) = LOWER(CAST(:domain AS string)))
+            WHERE (:domain IS NULL OR LOWER(m.domain) = LOWER(CAST(:domain AS string))
+                   OR EXISTS (SELECT 1 FROM MentorDomain d WHERE d.mentorId = m.userId
+                              AND d.domain = :domain AND d.verifiedAt IS NOT NULL))
               AND (:status IS NULL OR m.verificationStatus = :status)
               AND (:q IS NULL OR LOWER(m.displayName) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
                    OR LOWER(COALESCE(m.bio, '')) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))

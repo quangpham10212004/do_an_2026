@@ -45,6 +45,9 @@ public class MentorProfile {
     @Column(name = "portfolio_links", columnDefinition = "text[]", nullable = false)
     private String[] portfolioLinks = new String[0];
 
+    @Column(name = "previous_domains", columnDefinition = "text[]", nullable = false)
+    private String[] previousDomains = new String[0];
+
     @Column(name = "hourly_rate", nullable = false)
     private BigDecimal hourlyRate = BigDecimal.ZERO;
 
@@ -154,6 +157,8 @@ public class MentorProfile {
     public void setCvFileUrl(String cvFileUrl) { this.cvFileUrl = cvFileUrl; }
     public String[] getPortfolioLinks() { return portfolioLinks; }
     public void setPortfolioLinks(String[] portfolioLinks) { this.portfolioLinks = portfolioLinks; }
+    public String[] getPreviousDomains() { return previousDomains; }
+    public void setPreviousDomains(String[] previousDomains) { this.previousDomains = previousDomains; }
     public BigDecimal getHourlyRate() { return hourlyRate; }
     public void setHourlyRate(BigDecimal hourlyRate) { this.hourlyRate = hourlyRate; }
     public int getCapacity() { return capacity; }
@@ -248,5 +253,6 @@ public class MentorProfile {
     public void setTrialEnabled(boolean trialEnabled) { this.trialEnabled = trialEnabled; }
     public VerificationStatus getVerificationStatus() { return verificationStatus; }
     public void setVerificationStatus(VerificationStatus s) { this.verificationStatus = s; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

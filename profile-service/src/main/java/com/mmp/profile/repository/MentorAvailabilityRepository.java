@@ -13,6 +13,8 @@ public interface MentorAvailabilityRepository extends JpaRepository<MentorAvaila
 
     List<MentorAvailability> findByMentorIdOrderByDayOfWeekAscStartTimeAsc(UUID mentorId);
 
+    List<MentorAvailability> findByMentorIdIn(List<UUID> mentorIds);
+
     @Modifying
     @Query("DELETE FROM MentorAvailability a WHERE a.mentorId = :mentorId")
     void deleteByMentorId(@Param("mentorId") UUID mentorId);

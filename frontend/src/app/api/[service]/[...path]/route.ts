@@ -8,6 +8,8 @@ const SERVICES: Record<string, string> = {
   auth: process.env.AUTH_SERVICE_URL || "http://localhost:8081",
   profile: process.env.PROFILE_SERVICE_URL || "http://localhost:8082",
   mentoring: process.env.MENTORING_SERVICE_URL || "http://localhost:8083",
+  // /api/notifications/preferences do mentoring-service phục vụ (sở hữu thông báo)
+  notifications: process.env.MENTORING_SERVICE_URL || "http://localhost:8083",
   payment: process.env.PAYMENT_SERVICE_URL || "http://localhost:8084",
   learning: process.env.LEARNING_SERVICE_URL || "http://localhost:8085",
   matching: process.env.MATCHING_SERVICE_URL || "http://localhost:8090",
@@ -29,7 +31,7 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
   const headers = new Headers();
   // idempotency-key: US-13 — POST /api/payment/charge bắt buộc header này
   // range: phát video (GET /api/ai/verification/videos/{id}/stream) cần tua được
-  for (const name of ["authorization", "content-type", "accept", "idempotency-key", "range"]) {
+  for (const name of ["authorization", "content-type", "accept", "idempotency-key", "range", "x-duration-seconds", "x-video-consent"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
@@ -52,7 +54,7 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
       if (value) responseHeaders.set(name, value);
     }
     // Video: chuyển tiếp dạng stream (không đệm cả file vào bộ nhớ) cùng Range / Content-Range
-    if (params.service === "ai" && /^verification\/videos\/[^/]+\/stream$/.test(params.path.join("/"))) {
+    if (params.service === "ai" && /^verification\/(?:answer-)?videos\/[^/]+\/stream$/.test(params.path.join("/"))) {
       for (const name of ["accept-ranges", "content-range", "content-length"]) {
         const value = upstream.headers.get(name);
         if (value) responseHeaders.set(name, value);

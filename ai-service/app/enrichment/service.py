@@ -24,6 +24,7 @@ from app.cv import repository as cv_repo
 from app.db import get_pool
 from app.enrichment import engine as enrichment_engine
 from app.enrichment import repository as repo
+from app.enrichment import rule_based
 from app.cv.models import ConfirmedFields
 from app.enrichment.models import Exchange, MenteeContext
 from app.enrichment.views import (ConversationView, CvSummaryView, CvUploadResult, CvView, conversation_view,
@@ -82,6 +83,25 @@ async def confirm_fields(user: AuthUser, cv_id: UUID, fields: ConfirmedFields) -
     pool = await get_pool()
     cv = await _own_cv(pool, user, cv_id)
     return cv_view(await cv_repo.set_confirmed(pool, cv["id"], fields))
+
+
+async def cv_completeness(user: AuthUser, cv_id: UUID) -> dict:
+    pool = await get_pool()
+    cv = await _own_cv(pool, user, cv_id)
+    confirmed = cv_repo.confirmed_of(cv)
+    fields = confirmed.as_parsed() if confirmed else cv_repo.parsed_of(cv)
+    missing = []
+    for value, label in (
+        (fields.current_role, "vị trí hiện tại"),
+        (fields.projects, "dự án đã làm"),
+        (fields.education, "học vấn"),
+    ):
+        if not value:
+            missing.append(label)
+    missing.extend(["mục tiêu nghề nghiệp", "thời gian muốn đạt được", "bạn cần mentor giúp gì"])
+    percent = (15 * bool(fields.current_role) + 15 * (fields.years_experience is not None)
+               + 6 * min(len(fields.skills), 5) + 25 * bool(fields.projects) + 15 * bool(fields.education))
+    return {"percent": percent, "missing": missing}
 
 
 async def start_conversation(user: AuthUser, cv_id: UUID) -> CvUploadResult:
@@ -167,6 +187,25 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str, skipped: bool
                                       next_question.question.question)
             await repo.set_current_turn(conn, conversation_id, next_turn)
 
+    return await _view(pool, conversation_id)
+
+
+async def regenerate_goal(user: AuthUser, conversation_id: UUID) -> ConversationView:
+    pool = await get_pool()
+    conversation = await _owned_completed(pool, user, conversation_id)
+    if conversation["goal_status"] != "DRAFT":
+        raise errors.conflict("GOAL_ALREADY_DECIDED", "Chỉ có thể viết lại mục tiêu đang ở dạng nháp")
+    mentee = await profile.find_mentee(user.user_id)
+    if mentee is None:
+        raise errors.not_found("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ mentee")
+    cv = await _own_cv(pool, user, conversation["cv_id"])
+    ctx = _context(mentee, cv_repo.chat_context_of(cv), conversation["max_turns"])
+    messages = await repo.messages_of(pool, conversation_id)
+    history = [repo.to_exchange(message) for message in messages if message["answer"] is not None]
+    current = conversation["enriched_goal"]
+    goal = rule_based.summarize_goal(ctx, history, alternative=not (current or "").startswith("- "))
+    if not await repo.replace_draft(pool, conversation_id, current, goal):
+        raise errors.conflict("GOAL_CHANGED", "Mục tiêu vừa được cập nhật. Hãy tải lại và thử lại")
     return await _view(pool, conversation_id)
 
 

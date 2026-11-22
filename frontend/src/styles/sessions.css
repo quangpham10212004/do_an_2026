@@ -1,0 +1,179 @@
+/* Phiên học, phòng học, thu nhập, tiến độ — bản thiết kế xanh lá + trắng */
+
+.ses-sec { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.ses-sec-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px 0; }
+.ses-sec-head h2 { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; }
+.ses-ico { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-ink); flex: none; }
+.ses-ico svg { width: 18px; height: 18px; }
+.ses-sec-body { padding: 16px 22px 22px; }
+.ses-grid { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: flex-start; }
+.ses-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.ses-side { flex: 1 1 300px; max-width: 380px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+@media (max-width: 900px) { .ses-side { max-width: none; } .ses-sec-head { padding: 16px 16px 0; } .ses-sec-body { padding: 14px 16px 18px; } }
+
+/* thẻ phiên */
+.ses-card { border-left: 4px solid var(--border); }
+.ses-card.is-live { border-left-color: var(--accent); }
+.ses-card.is-warn { border-left-color: var(--warning); }
+.ses-card.is-bad { border-left-color: var(--danger); }
+.ses-count { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ses-count svg { width: 14px; height: 14px; }
+
+/* phòng học */
+.ses-room-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 14px 18px; border-radius: 14px; background: #14532d; color: #fff; }
+.ses-room-bar a { color: #fff; display: inline-flex; align-items: center; min-height: 44px; gap: 6px; }
+.ses-room-title { flex: 1 1 240px; min-width: 0; }
+.ses-room-title b { display: block; font-size: 16px; }
+.ses-room-title span { font-size: 12px; opacity: .85; }
+.ses-timer { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; background: rgb(255 255 255 / .18); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ses-timer svg { width: 16px; height: 16px; }
+.ses-end { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: #fff; color: #b3261e; font-weight: 700; cursor: pointer; }
+.ses-end:focus-visible, .ses-room-bar a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.ses-room-stage { border-radius: 14px; overflow: hidden; background: #0f2a17; padding: 8px; }
+.ses-presence { display: flex; flex-wrap: wrap; gap: 8px; }
+.ses-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--surface-sunken); font-size: 13px; color: var(--ink-muted); }
+.ses-pill[data-on="true"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.ses-dialog-actions { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+
+/* thu nhập */
+.ses-chart { display: flex; align-items: flex-end; gap: 12px; height: 200px; padding: 8px 4px 0; }
+.ses-chart-col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; }
+.ses-chart-val { font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ses-chart-bar { width: 100%; max-width: 56px; min-height: 4px; border-radius: 8px 8px 0 0; background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.ses-chart-col[data-current="true"] .ses-chart-bar { background: var(--accent); }
+.ses-chart-axis { display: flex; gap: 12px; padding: 8px 4px 0; border-top: 1px solid var(--border); }
+.ses-chart-axis span { flex: 1 1 0; text-align: center; font-size: 12px; color: var(--ink-muted); }
+
+/* tiến độ */
+.ses-prog-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.ses-prog-stat { padding: 14px 16px; border-radius: 12px; background: var(--surface-sunken); }
+.ses-prog-stat .l { font-size: 13px; color: var(--ink-muted); }
+.ses-prog-stat .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ses-prog-stat .h { font-size: 12px; color: var(--ink-muted); }
+.ses-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-muted); }
+.ses-legend i { display: inline-block; width: 18px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--accent-ink); }
+.ses-legend i.dash { background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 9px); }
+.ses-todo { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 6px 0; font-size: 14px; }
+.ses-todo[data-done="true"] span { text-decoration: line-through; color: var(--ink-muted); }
+
+/* chi tiết phiên, xác nhận, đánh giá, tiền của phiên */
+.ses-hero { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 24px; padding: 28px 32px; border-radius: 16px; background: linear-gradient(135deg, var(--accent), #14532d); color: #fff; }
+.ses-hero-main { flex: 1 1 320px; min-width: 0; }
+.ses-hero h1 { margin-top: 12px; font-size: 28px; line-height: 1.2; font-weight: 700; color: #fff; overflow-wrap: anywhere; }
+.ses-hero p { margin-top: 8px; font-size: 15px; color: rgb(255 255 255 / .92); }
+.ses-hero-tag { display: inline-block; padding: 4px 12px; border-radius: 999px; background: rgb(255 255 255 / .2); font-size: 13px; font-weight: 600; }
+.ses-hero-clock { text-align: center; padding: 16px 28px; border-radius: 14px; background: rgb(255 255 255 / .16); }
+.ses-hero-clock span { display: block; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: rgb(255 255 255 / .9); }
+.ses-hero-clock b { display: block; margin-top: 4px; font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) { .ses-hero { padding: 20px 16px; } .ses-hero h1 { font-size: 22px; } .ses-hero-clock { width: 100%; } }
+.ses-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.ses-actions-text { flex: 1 1 260px; min-width: 0; }
+.ses-label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
+.ses-check { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.ses-check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.ses-opt { display: flex; gap: 12px; align-items: flex-start; min-height: 44px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; background: var(--surface); }
+.ses-opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.ses-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ses-opt input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+.ses-opt b { display: block; }
+.ses-opt small { display: block; font-size: 13px; color: var(--ink-muted); }
+.ses-steps { list-style: none; display: grid; gap: 0; }
+.ses-step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding-bottom: 18px; position: relative; }
+.ses-step:not(:last-child)::before { content: ""; position: absolute; left: 13px; top: 28px; bottom: 0; width: 2px; background: var(--border); }
+.ses-step-dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; border: 2px solid var(--border-strong, var(--border)); background: var(--surface); color: var(--ink-muted); }
+.ses-step[data-state="done"] .ses-step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ses-step[data-state="now"] .ses-step-dot { border-color: var(--accent); color: var(--accent-ink); }
+.ses-step[data-state="bad"] .ses-step-dot { border-color: var(--danger); color: var(--danger); }
+.ses-step-dot svg { width: 16px; height: 16px; }
+.ses-step b { display: block; }
+.ses-step .t { font-size: 13px; color: var(--ink-muted); }
+.ses-dl { display: grid; gap: 0; }
+.ses-dl > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ses-dl > div:last-child { border-bottom: 0; font-weight: 700; }
+.ses-dl dd { font-variant-numeric: tabular-nums; }
+.ses-hold { border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); padding: 18px 20px; }
+.ses-hold .amt { margin-top: 6px; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ses-bignote { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 16px; text-align: center; }
+.ses-bignote .ico { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); }
+.ses-bignote .ico svg { width: 28px; height: 28px; }
+
+/* ---- SesRoom: khung họp + bảng ghi chú / việc cần làm / chat ---- */
+.ses-room-split { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1024px) { .ses-room-split { grid-template-columns: minmax(0, 1fr) 380px; } }
+.ses-room-main { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.ses-room-panel { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+@media (min-width: 1024px) { .ses-room-panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); } }
+.ses-room-tabs { display: flex; gap: 4px 18px; padding: 0 16px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.ses-room-tabs button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; flex: none; padding: 0; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--ink-muted); font-size: 14px; cursor: pointer; white-space: nowrap; }
+.ses-room-tabs button[aria-selected="true"] { color: var(--accent-ink); font-weight: 600; border-bottom-color: var(--accent); }
+.ses-room-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ses-room-pane { display: flex; flex-direction: column; gap: 12px; padding: 16px; min-height: 0; overflow-y: auto; }
+.ses-room-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 12px; color: var(--ink-muted); }
+.ses-saved { color: var(--accent-ink); }
+.ses-room-ta { font-family: var(--font-mono, ui-monospace, monospace); font-size: 14px; line-height: 1.7; min-height: 220px; resize: vertical; }
+.ses-room-todos { list-style: none; display: flex; flex-direction: column; }
+.ses-room-todos .ses-todo { align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ses-room-check { width: 20px; height: 20px; margin-top: 3px; flex: none; accent-color: var(--accent); }
+.ses-room-addtodo { display: flex; flex-direction: column; gap: 8px; }
+.ses-chat { display: flex; flex-direction: column; gap: 10px; }
+.ses-chat-log { display: flex; flex-direction: column; gap: 12px; min-height: 240px; max-height: 420px; overflow-y: auto; font-size: 14px; }
+.ses-msg { max-width: 85%; align-self: flex-start; }
+.ses-msg[data-mine="true"] { align-self: flex-end; }
+.ses-msg-meta { margin-bottom: 3px; font-size: 11px; color: var(--ink-muted); }
+.ses-msg[data-mine="true"] .ses-msg-meta { text-align: right; }
+.ses-msg-bubble { padding: 10px 14px; border-radius: 14px 14px 14px 4px; background: var(--surface-sunken); line-height: 1.5; overflow-wrap: anywhere; }
+.ses-msg[data-mine="true"] .ses-msg-bubble { border-radius: 14px 14px 4px 14px; background: var(--accent); color: #fff; }
+.ses-chat-form { display: flex; gap: 10px; }
+.ses-chat-form > :first-child { flex: 1; min-width: 0; }
+
+/* ---- SesReview ---- */
+.ses-rate-hero { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ses-rate-hero h3 { font-size: 18px; font-weight: 700; }
+.ses-rate-big { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.ses-rate-big .stars button { width: 44px; height: 44px; }
+.ses-rate-big .stars svg { width: 32px; height: 32px; }
+.ses-rate-label { font-weight: 600; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+.ses-counter { align-self: flex-end; font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.ses-share-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 8px; padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); text-align: left; }
+.ses-share-card > div { flex: 1 1 220px; min-width: 0; }
+
+/* ---- Earnings: kỳ xem, cột phụ rút tiền ---- */
+.ses-period { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-muted); }
+.ses-withdraw { display: flex; flex-direction: column; gap: 12px; }
+.ses-withdraw-max { font-size: 12px; color: var(--ink-muted); }
+.ses-wait { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 14px; background: var(--warning-soft, #fdf3dc); color: var(--warning-ink, #7a4a00); }
+.ses-wait b { display: flex; align-items: center; gap: 8px; }
+.ses-wait b::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.ses-wait p { font-size: 13px; }
+.ses-payhist { list-style: none; display: flex; flex-direction: column; }
+.ses-payhist li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ses-payhist li:last-child { border-bottom: 0; }
+.ses-payhist small { display: block; font-size: 12px; color: var(--ink-muted); }
+.ses-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 22px; border-top: 1px solid var(--border); font-size: 13px; color: var(--ink-muted); }
+
+/* SesRoom: khung họp + ghi chú 2 cột */
+.ses-room-cols { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-start; }
+.ses-room-video { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.ses-room-aside { flex: 1 1 340px; max-width: 460px; min-width: 0; }
+.ses-room-stage { min-height: 440px; }
+.ses-roompanel .tabs { overflow-x: auto; }
+.ses-chat { display: flex; flex-direction: column; gap: 12px; min-height: 240px; max-height: 360px; overflow-y: auto; }
+.ses-chat-msg { align-self: flex-start; max-width: 88%; font-size: 14px; }
+.ses-chat-msg small { display: block; font-size: 11px; color: var(--ink-muted); margin-bottom: 3px; }
+.ses-chat-msg > div { padding: 10px 14px; border-radius: 14px 14px 14px 4px; background: var(--surface-sunken); overflow-wrap: anywhere; }
+.ses-chat-msg[data-mine="true"] { align-self: flex-end; }
+.ses-chat-msg[data-mine="true"] small { text-align: right; }
+.ses-chat-msg[data-mine="true"] > div { border-radius: 14px 14px 4px 14px; background: var(--accent); color: #fff; }
+@media (max-width: 900px) { .ses-room-aside { max-width: none; flex-basis: 100%; } .ses-room-stage { min-height: 320px; } }
+
+/* SesReview */
+.ses-rate-big { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; text-align: center; }
+.ses-rate-big h3 { font-size: 18px; font-weight: 700; }
+.ses-rate-big .stars button { width: 44px; height: 44px; }
+.ses-rate-big .stars svg { width: 32px; height: 32px; }
+.ses-rate-word { font-weight: 600; color: var(--accent-ink); min-height: 24px; }
+.ses-count-txt { text-align: right; font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+/* Earnings */
+.ses-pending-note { display: flex; gap: 10px; align-items: flex-start; padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); font-size: 14px; }
+.ses-pending-note i { width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: var(--warning, #b7791f); flex: none; }

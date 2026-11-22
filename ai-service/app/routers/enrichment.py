@@ -30,6 +30,11 @@ async def answer(conversation_id: UUID, body: AnswerInput,
     return await service.answer(user, conversation_id, body.answer, body.skipped)
 
 
+@router.post("/enrichment/conversations/{conversation_id}/regenerate-goal", response_model=ConversationView)
+async def regenerate_goal(conversation_id: UUID, user: AuthUser = Depends(require_role("MENTEE"))) -> ConversationView:
+    return await service.regenerate_goal(user, conversation_id)
+
+
 @router.post("/enrichment/conversations/{conversation_id}/confirm-goal", response_model=ConversationView,
              response_model_by_alias=True)
 async def confirm_goal(conversation_id: UUID, body: GoalInput,

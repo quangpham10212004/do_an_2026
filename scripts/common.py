@@ -236,14 +236,26 @@ def finish_video(token, interview_id):
     return call("POST", f"{AI}/api/ai/verification/videos/{interview_id}/finish", token=token)
 
 
-def complete_voice_interview(token, answer=STRONG_VOICE_ANSWER, starts_ms=(0, 10_000)):
-    """Mentor bắt đầu buổi giọng nói, nộp bản chép lời giả lập và tải + chốt video => đợt ROUND1_REVIEW (chờ admin)."""
-    interview = start_voice_interview(token)["interview"]
-    done = call("POST", f"{AI}/api/ai/interviews/{interview['id']}/voice-transcript",
-                voice_transcript(interview["maxTurns"], answer), token=token)
-    upload_video_chunks(token, interview["id"], starts_ms)
-    finish_video(token, interview["id"])
-    return call("GET", f"{AI}/api/ai/interviews/{interview['id']}", token=token) or done
+def live_interview(token, transcript="", media=b"fake-webm", domain=None):
+    """Luồng xác thực mentor mới (ai-service live interview): bắt đầu → trả lời hết các chủ đề → nộp bài.
+
+    Trả về kết quả (LiveResult). transcript rỗng => cờ NO_TRANSCRIPT => UNCLEAR chờ admin; STRONG_VOICE_ANSWER thường đạt."""
+    status = call("GET", f"{AI}/api/ai/verification/status", token=token)
+    track = next((t for t in status["tracks"] if domain in (None, t["domain"])), None)
+    if track is None:
+        track = call("POST", f"{AI}/api/ai/verification/tracks", {"domain": domain or "backend"}, token=token)
+    interview = call("POST", f"{AI}/api/ai/verification/interviews", {"trackId": track["id"], "consent": True}, token=token)
+    while interview["question"]:
+        fields = {"questionId": interview["question"]["id"], "transcript": transcript, "durationSeconds": "40"}
+        body, ctype = multipart_file("media", "answer.webm", media, "video/webm", fields)
+        interview = call("POST", f"{AI}/api/ai/verification/interviews/{interview['id']}/answers", token=token,
+                         raw_body=body, content_type=ctype)
+    return call("POST", f"{AI}/api/ai/verification/interviews/{interview['id']}/submit", token=token)
+
+
+def complete_voice_interview(token, answer="", starts_ms=None):
+    """Tương thích script cũ: chạy cả buổi phỏng vấn mới. Mặc định bản chép lời rỗng => UNCLEAR chờ admin duyệt."""
+    return live_interview(token, answer)
 
 
 def round1_review(admin_token, interview, decision, note=None):
@@ -273,9 +285,10 @@ def round2_decision(admin_token, application_id, decision, scores=None, note=Non
                 {"decision": decision, "scores": scores, "scoreNotes": score_notes, "note": note}, token=admin_token)
 
 
-def approve_mentor(admin_token, mentor_token, interview, note="Duyet cho e2e: mentor thu nghiem"):
-    """Đưa mentor qua cả hai vòng: PASS vòng 1 → admin đề xuất giờ → mentor chọn → admin chấm phiếu và APPROVE (mentor APPROVED)."""
-    round1_review(admin_token, interview, "PASS", note)
-    propose_slots(admin_token, interview["applicationId"])
-    choose_first_slot(mentor_token)
-    return round2_decision(admin_token, interview["applicationId"], "APPROVE", GOOD_ROUND2_SCORES, note)
+def approve_mentor(admin_token, mentor_token, result, note="Duyet cho e2e: mentor thu nghiem"):
+    """Admin duyệt kết quả UNCLEAR của buổi phỏng vấn (`result` từ live_interview/complete_voice_interview) => lĩnh vực VERIFIED."""
+    if result.get("outcome") == "PASSED":
+        return result
+    call("POST", f"{AI}/api/ai/admin/verification/{result['id']}/decision",
+         {"decision": "APPROVE", "note": note, "reviewedVideo": True}, token=admin_token)
+    return call("GET", f"{AI}/api/ai/verification/results/{result['id']}", token=mentor_token)

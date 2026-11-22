@@ -548,6 +548,111 @@ components:
       properties:
         answer: { type: string, maxLength: 5000, description: "Bắt buộc (không rỗng) trừ khi skipped = true — 400 ANSWER_REQUIRED" }
         skipped: { type: boolean, default: false, description: "US-45 (PRD-CV-3) — “Bỏ qua”: câu được lưu answer rỗng, skipped = true; vẫn sinh goal khi hết câu" }
+    # ---- Phỏng vấn AI trực tiếp xác thực mentor (app/verification/live*.py) ----
+    LiveCriterion:
+      type: object
+      required: [key, label, score, comment]
+      properties:
+        key: { type: string, enum: [knowledge, depth, communication, mentoring] }
+        label: { type: string }
+        score: { type: number, description: "Thang 5 (= điểm rubric 0–10 / 2)" }
+        comment: { type: string }
+    LiveTrack:
+      type: object
+      required: [id, domain, stage]
+      properties:
+        id: { type: string, format: uuid }
+        domain: { type: string, enum: [backend, frontend, fullstack, devops, data, mobile] }
+        stage: { type: string, enum: [READY, IN_PROGRESS, PENDING_REVIEW, PASSED, FAILED, EXPIRED] }
+        interviewId: { type: string, format: uuid, description: "Khi IN_PROGRESS" }
+        resumeDeadline: { type: string, format: date-time }
+        progressLabel: { type: string, example: "Chủ đề 3/5" }
+        topicsDone: { type: integer }
+        topicsTotal: { type: integer }
+        retryAt: { type: string, format: date-time, description: "FAILED: được phỏng vấn lại từ lúc này" }
+        lastScore: { type: number }
+        submittedAt: { type: string, format: date-time }
+        resultId: { type: string, format: uuid }
+        adminNote: { type: string }
+    LiveOverview:
+      type: object
+      required: [tracks, maxDomains, availableDomains, rules]
+      properties:
+        tracks: { type: array, items: { $ref: "#/components/schemas/LiveTrack" } }
+        maxDomains: { type: integer }
+        availableDomains: { type: array, items: { type: string } }
+        rules:
+          type: object
+          properties:
+            maxMinutes: { type: integer }
+            topics: { type: array, items: { type: string } }
+            resumeHours: { type: integer }
+            retakeDays: { type: integer }
+            passScore: { type: number, description: "Thang 5; = ngưỡng APPROVE của rubric (70/100)" }
+    LiveInterview:
+      type: object
+      required: [id, trackId, domain, status, startedAt, resumeDeadline, remainingSeconds, topics, topicIndex, turns]
+      properties:
+        id: { type: string, format: uuid }
+        trackId: { type: string, format: uuid }
+        domain: { type: string }
+        status: { type: string, enum: [IN_PROGRESS, SUBMITTED, EXPIRED] }
+        startedAt: { type: string, format: date-time }
+        resumeDeadline: { type: string, format: date-time }
+        remainingSeconds: { type: integer }
+        topics: { type: array, items: { type: string } }
+        topicIndex: { type: integer }
+        question:
+          type: object
+          nullable: true
+          description: "null khi đã trả lời hết (chờ nộp bài) hoặc buổi đã đóng"
+          properties:
+            id: { type: string }
+            topic: { type: string }
+            text: { type: string }
+            isLast: { type: boolean }
+            suggestedSeconds: { type: integer }
+        turns:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              role: { type: string, enum: [ai, mentor] }
+              text: { type: string }
+              topic: { type: string, nullable: true }
+              at: { type: string, format: date-time }
+    LiveResult:
+      type: object
+      required: [id, trackId, domain, outcome, totalScore, passScore, criteria, improvements, summary, submittedAt]
+      properties:
+        id: { type: string, format: uuid }
+        trackId: { type: string, format: uuid }
+        domain: { type: string }
+        outcome: { type: string, enum: [PASSED, FAILED, UNCLEAR] }
+        totalScore: { type: number }
+        passScore: { type: number }
+        criteria: { type: array, items: { $ref: "#/components/schemas/LiveCriterion" } }
+        improvements: { type: array, items: { type: string } }
+        summary: { type: string }
+        retryAt: { type: string, format: date-time, nullable: true }
+        submittedAt: { type: string, format: date-time }
+        decidedBy: { type: string, enum: [AI, ADMIN], nullable: true }
+        adminNote: { type: string, nullable: true }
+    LiveQueueItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: "= id của LiveResult" }
+        name: { type: string }
+        email: { type: string }
+        years: { type: integer }
+        domain: { type: string }
+        totalScore: { type: number }
+        recommendation: { type: string, enum: [APPROVE, REVIEW, REJECT] }
+        confidence: { type: string, enum: [LOW, MEDIUM, HIGH] }
+        waitingSince: { type: string, format: date-time }
+        overdue: { type: boolean, description: "Chờ ≥ 3 ngày" }
+        status: { type: string, enum: [UNCLEAR, APPROVED, REJECTED] }
 security:
   - bearerAuth: []
 paths:
@@ -568,15 +673,122 @@ paths:
         "200": { description: "{ status, service, dbConnected, llmEnabled, llmProvider, model }" }
 
   # ---------------- AI Interview (FR-7.x) ----------------
-  /api/ai/verification/status:
+  /api/ai/verification/legacy-status:
     get:
-      summary: "(MENTOR) Đợt xác thực hiện tại: bước, số lần còn lại, thời gian chờ 15 ngày, có bắt đầu được không"
+      summary: "(MENTOR) Đợt xác thực vòng 1/vòng 2 cũ: bước, số lần còn lại, thời gian chờ 15 ngày, có bắt đầu được không (frontend không còn gọi)"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VerificationStatus" }
+  # ---- Phỏng vấn AI trực tiếp xác thực mentor (frontend features/verification; mã app/verification/live*.py) ----
+  /api/ai/verification/status:
+    get:
+      summary: "(MENTOR) Các lượt xác thực theo lĩnh vực (tối đa 3) + quy định phỏng vấn. Tự đăng ký lượt cho lĩnh vực đã có trong hồ sơ; buổi dở quá hạn được đóng (EXPIRED)."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/LiveOverview" } } } }
+  /api/ai/verification/tracks:
+    post:
+      summary: "(MENTOR) Thêm một lĩnh vực cần xác thực. 409 VERIFICATION_DOMAIN_LIMIT khi đủ số lĩnh vực tối đa."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [domain], properties: { domain: { type: string } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/LiveTrack" } } } }
+  /api/ai/verification/interviews:
+    post:
+      summary: "(MENTOR) Bắt đầu buổi phỏng vấn AI trực tiếp (đang có buổi dở còn hạn thì trả lại buổi đó)."
+      description: "400 VIDEO_CONSENT_REQUIRED; 409 ALREADY_VERIFIED | INTERVIEW_PENDING_REVIEW | INTERVIEW_COOLDOWN (kèm retryAt)."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [trackId, consent], properties: { trackId: { type: string, format: uuid }, consent: { type: boolean } } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/LiveInterview" } } } }
+  /api/ai/verification/interviews/{id}:
+    get:
+      summary: "(MENTOR) Buổi phỏng vấn của tôi, để tiếp tục khi bị gián đoạn. Quá hạn tiếp tục → status EXPIRED."
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/LiveInterview" } } } }
+        "404": { description: INTERVIEW_NOT_FOUND }
+  /api/ai/verification/interviews/{id}/answers:
+    post:
+      summary: "(MENTOR) Trả lời câu hiện tại (multipart). Engine chấm câu, trả nhận xét kèm câu kế tiếp; trả lời hết thì question = null."
+      description: "409 QUESTION_MISMATCH | INTERVIEW_CLOSED; 413 MEDIA_TOO_LARGE (LIVE_ANSWER_MAX_BYTES)."
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [questionId]
+              properties:
+                questionId: { type: string }
+                transcript: { type: string, description: "Văn bản nhận dạng giọng nói; rỗng thì câu không chấm được và hồ sơ chuyển admin (cờ NO_TRANSCRIPT)" }
+                durationSeconds: { type: number }
+                media: { type: string, format: binary, description: "Video + âm thanh của câu trả lời" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/LiveInterview" } } } }
+  /api/ai/verification/interviews/{id}/heartbeat:
+    post:
+      summary: "(MENTOR) Lưu đồng hồ còn lại và gia hạn thời gian tiếp tục. Đồng hồ chỉ giảm."
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [remainingSeconds], properties: { remainingSeconds: { type: number } } } } }
+      responses:
+        "204": { description: Đã lưu }
+  /api/ai/verification/interviews/{id}/submit:
+    post:
+      summary: "(MENTOR) Kết thúc và nộp bài (idempotent). ≥ 3.5/5 PASSED; < 2.5 FAILED (phỏng vấn lại sau 7 ngày); còn lại hoặc có cờ → UNCLEAR chờ admin. Câu chưa trả lời tính 0."
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/LiveResult" } } } }
+        "409": { description: NO_ANSWERS | INTERVIEW_CLOSED }
+  /api/ai/verification/results/{id}:
+    get:
+      summary: (MENTOR) Kết quả của tôi
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/LiveResult" } } } }
+  /api/ai/verification/history:
+    get:
+      summary: "(MENTOR) Lịch sử các lần phỏng vấn (kết quả + buổi bỏ dở: outcome INCOMPLETE)"
+      responses:
+        "200": { description: "[{ id, domain, at, outcome, totalScore }]" }
+  /api/ai/verification/answer-videos/{id}/stream:
+    get:
+      summary: "Phát video một câu trả lời bằng token ngắn hạn `?token=` (admin xem được; hỗ trợ Range). 401 token sai/hết hạn."
+      security: []
+      parameters: [ { $ref: "#/components/parameters/Id" }, { name: token, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: video }
+        "206": { description: Partial Content }
+  /api/ai/admin/verification/queue:
+    get:
+      summary: "(ADMIN) Hàng đợi ca phỏng vấn: UNCLEAR (cần xem xét) hoặc DECIDED (admin đã quyết)."
+      parameters:
+        - { name: filter, in: query, schema: { type: string, enum: [UNCLEAR, DECIDED], default: UNCLEAR } }
+        - { name: q, in: query, schema: { type: string }, description: "Tìm theo tên / email" }
+      responses:
+        "200": { description: "{ stats: { unclear, overdue, approvedThisMonth, rejectedThisMonth }, counts: { UNCLEAR, DECIDED }, items: LiveQueueItem[] }" }
+  /api/ai/admin/verification/{id}:
+    get:
+      summary: "(ADMIN) Chi tiết ca: điểm từng tiêu chí, lý do AI, văn bản + video từng câu (xem video được ghi nhật ký VIDEO_VIEWED)."
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      responses:
+        "200": { description: VerifyAdminDetail (frontend/src/types/verification.ts) }
+  /api/ai/admin/verification/{id}/decision:
+    post:
+      summary: "(ADMIN) Quyết định ca chưa rõ ràng. REJECT cần note ≥ 10 ký tự; có video thì reviewedVideo phải true (422 INVALID_VERIFICATION_DECISION). Lặp lại cùng quyết định → 204; đổi ý → 409 VERIFICATION_ALREADY_DECIDED."
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [APPROVE, REJECT] }, note: { type: string }, reviewedVideo: { type: boolean } } } } }
+      responses:
+        "204": { description: Đã quyết định }
   /api/ai/verification/applications:
     post:
       summary: (MENTOR) Mở đợt xác thực mới (idempotent — đã có đợt mở thì trả lại trạng thái hiện tại). POST /interviews/voice cũng tự mở đợt.

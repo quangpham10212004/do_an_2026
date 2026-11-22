@@ -39,9 +39,12 @@ public class LearningService {
         Set<UUID> enrolled = progressJdbc.enrolledCourseIds(userId);
         return courseRepo.search(blankToNull(domain), blankToNull(q)).stream()
                 .filter(c -> !enrolledOnly || enrolled.contains(c.getId()))
-                .map(c -> new CourseSummary(c.getId(), c.getTitle(), c.getDescription(), c.getDomain(), c.getLevel(),
-                        Arrays.asList(c.getSkills()), materialRepo.countByCourseId(c.getId()), enrolled.contains(c.getId()),
-                        percent(c.getId(), userId)))
+                .map(c -> {
+                    List<CourseMaterial> mats = materialRepo.findByCourseIdOrderByOrderIndexAsc(c.getId());
+                    return new CourseSummary(c.getId(), c.getTitle(), c.getDescription(), c.getDomain(), c.getLevel(),
+                            Arrays.asList(c.getSkills()), c.getCoverUrl(), c.getInstructor(), mats.size(),
+                            totalMinutes(mats), enrolled.contains(c.getId()), percent(c.getId(), userId));
+                })
                 .toList();
     }
 
@@ -49,13 +52,16 @@ public class LearningService {
     public CourseDetail courseDetail(UUID courseId, UUID userId) {
         Course c = findCourse(courseId);
         Set<UUID> done = progressJdbc.completedMaterialIds(courseId, userId);
-        List<MaterialView> materials = materialRepo.findByCourseIdOrderByOrderIndexAsc(courseId).stream()
+        List<CourseMaterial> mats = materialRepo.findByCourseIdOrderByOrderIndexAsc(courseId);
+        List<MaterialView> materials = mats.stream()
                 .map(m -> new MaterialView(m.getId(), m.getTitle(), m.getType(), m.getUrl(), m.getContent(),
-                        m.getOrderIndex(), done.contains(m.getId())))
+                        m.getOrderIndex(), m.getDurationMinutes(), done.contains(m.getId())))
                 .toList();
+        UUID next = materials.stream().filter(m -> !m.completed()).map(MaterialView::id).findFirst().orElse(null);
         return new CourseDetail(c.getId(), c.getTitle(), c.getDescription(), c.getDomain(), c.getLevel(),
-                Arrays.asList(c.getSkills()), progressJdbc.isEnrolled(courseId, userId), percent(courseId, userId),
-                progressJdbc.enrollmentCount(courseId), materials);
+                Arrays.asList(c.getSkills()), c.getCoverUrl(), c.getInstructor(), Arrays.asList(c.getOutcomes()),
+                totalMinutes(mats), progressJdbc.isEnrolled(courseId, userId), percent(courseId, userId),
+                progressJdbc.enrollmentCount(courseId), next, materials);
     }
 
     @Transactional
@@ -109,6 +115,10 @@ public class LearningService {
         progressRepo.save(p);
     }
 
+    static int totalMinutes(List<CourseMaterial> mats) {
+        return mats.stream().mapToInt(CourseMaterial::getDurationMinutes).sum();
+    }
+
     private float percent(UUID courseId, UUID userId) {
         return progressRepo.findByCourseIdAndUserId(courseId, userId).map(CourseProgress::getPercentComplete).orElse(0f);
     }
@@ -116,11 +126,12 @@ public class LearningService {
     // ---------------- Roadmaps (FR-3.2, FR-3.3) ----------------
 
     @Transactional(readOnly = true)
-    public List<RoadmapSummary> listRoadmaps() {
-        return roadmapRepo.findAllByOrderByCreatedAtAsc().stream()
-                .map(r -> new RoadmapSummary(r.getId(), r.getTitle(), r.getTrack(), r.getDescription(),
-                        itemRepo.findByRoadmapIdOrderByOrderIndexAsc(r.getId()).size()))
-                .toList();
+    public List<RoadmapSummary> listRoadmaps(UUID userId) {
+        return roadmapRepo.findAllByOrderByCreatedAtAsc().stream().map(r -> {
+            RoadmapDetail d = roadmapDetail(r.getId(), userId);
+            return new RoadmapSummary(r.getId(), r.getTitle(), r.getTrack(), r.getDescription(), r.getCoverUrl(),
+                    r.getLevel(), r.getEstimatedWeeks(), d.items().size(), d.percentComplete());
+        }).toList();
     }
 
     @Transactional(readOnly = true)
@@ -129,15 +140,21 @@ public class LearningService {
                 .orElseThrow(() -> ApiException.notFound("ROADMAP_NOT_FOUND", "Không tìm thấy roadmap"));
         List<RoadmapItem> items = itemRepo.findByRoadmapIdOrderByOrderIndexAsc(roadmapId);
         Set<UUID> done = progressJdbc.completedRoadmapItemIds(roadmapId, userId);
-        Map<UUID, String> courseTitles = courseRepo.findAllById(items.stream().map(RoadmapItem::getCourseId)
+        Map<UUID, Course> courses = courseRepo.findAllById(items.stream().map(RoadmapItem::getCourseId)
                         .filter(Objects::nonNull).collect(Collectors.toSet())).stream()
-                .collect(Collectors.toMap(Course::getId, Course::getTitle, (a, b) -> a));
-        List<RoadmapItemView> views = items.stream()
-                .map(i -> new RoadmapItemView(i.getId(), i.getTitle(), i.getDescription(), i.getOrderIndex(),
-                        i.getCourseId(), courseTitles.get(i.getCourseId()), done.contains(i.getId())))
-                .toList();
-        return new RoadmapDetail(r.getId(), r.getTitle(), r.getTrack(), r.getDescription(),
-                computePercent(done.size(), items.size()), views);
+                .collect(Collectors.toMap(Course::getId, Function.identity(), (a, b) -> a));
+        List<RoadmapItemView> views = items.stream().map(i -> {
+            Course c = i.getCourseId() == null ? null : courses.get(i.getCourseId());
+            Float coursePercent = c == null ? null : percent(c.getId(), userId);
+            boolean completed = done.contains(i.getId()) || (coursePercent != null && coursePercent >= 100f);
+            return new RoadmapItemView(i.getId(), i.getTitle(), i.getDescription(), i.getOrderIndex(), i.getStage(),
+                    i.getEstimatedHours(), i.getCourseId(), c == null ? null : c.getTitle(),
+                    c == null ? null : c.getCoverUrl(), coursePercent, completed);
+        }).toList();
+        long completedCount = views.stream().filter(RoadmapItemView::completed).count();
+        UUID next = views.stream().filter(v -> !v.completed()).map(RoadmapItemView::id).findFirst().orElse(null);
+        return new RoadmapDetail(r.getId(), r.getTitle(), r.getTrack(), r.getDescription(), r.getCoverUrl(),
+                r.getLevel(), r.getEstimatedWeeks(), computePercent(completedCount, views.size()), next, views);
     }
 
     @Transactional
@@ -162,6 +179,9 @@ public class LearningService {
         c.setDomain(in.domain().trim().toLowerCase());
         if (in.level() != null) c.setLevel(in.level());
         c.setSkills(in.skills() == null ? new String[0] : in.skills().stream().map(String::trim).distinct().toArray(String[]::new));
+        c.setCoverUrl(blankToNull(in.coverUrl()));
+        c.setInstructor(blankToNull(in.instructor()));
+        c.setOutcomes(in.outcomes() == null ? new String[0] : in.outcomes().stream().map(String::trim).toArray(String[]::new));
         return courseRepo.save(c);
     }
 
@@ -187,6 +207,7 @@ public class LearningService {
         m.setUrl(in.url());
         m.setContent(in.content());
         if (in.orderIndex() != null) m.setOrderIndex(in.orderIndex());
+        if (in.durationMinutes() != null) m.setDurationMinutes(in.durationMinutes());
         return materialRepo.save(m);
     }
 
@@ -202,6 +223,9 @@ public class LearningService {
         r.setTitle(in.title().trim());
         r.setTrack(in.track().trim());
         r.setDescription(in.description());
+        r.setCoverUrl(blankToNull(in.coverUrl()));
+        if (in.level() != null) r.setLevel(in.level());
+        r.setEstimatedWeeks(in.estimatedWeeks());
         return roadmapRepo.save(r);
     }
 
@@ -225,6 +249,8 @@ public class LearningService {
         i.setTitle(in.title().trim());
         i.setDescription(in.description());
         i.setCourseId(in.courseId());
+        i.setStage(blankToNull(in.stage()));
+        i.setEstimatedHours(in.estimatedHours());
         if (in.orderIndex() != null) i.setOrderIndex(in.orderIndex());
         return itemRepo.save(i);
     }

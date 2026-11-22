@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Learn in public">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#134e4a"/><stop offset="1" stop-color="#0f766e"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#fff" stroke-opacity="0.07"/></pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="1030" cy="241" r="145" fill="#99f6e4" opacity="0.06"/><rect x="930" y="425" width="227" height="142" rx="18" fill="#99f6e4" opacity="0.07" transform="rotate(-15 930 425)"/><circle cx="735" cy="401" r="187" fill="#99f6e4" opacity="0.08"/><rect x="723" y="106" width="197" height="123" rx="18" fill="#99f6e4" opacity="0.06" transform="rotate(1 723 106)"/><circle cx="765" cy="591" r="111" fill="#99f6e4" opacity="0.09"/>
+  <rect x="80" y="250" width="72" height="8" rx="4" fill="#99f6e4"/>
+  <text x="80" y="348" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="78" font-weight="700" fill="#fff">Learn in public</text>
+  <text x="80" y="402" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="30" fill="#fff" fill-opacity="0.8">Blog</text>
+</svg>

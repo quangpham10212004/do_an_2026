@@ -206,6 +206,20 @@ public class RedirectPaymentService {
     }
 
     /** PRD-PAY-14 — giao dịch PENDING lâu hơn {@code olderThan}: hỏi cổng; quá hạn link + 5 phút mà chưa trả → FAILED. */
+    public TransactionResponse reconcileTransaction(AuthUser admin, UUID transactionId) {
+        if (!admin.isAdmin()) throw ApiException.forbidden("Bạn không có quyền đối soát giao dịch");
+        Transaction transaction = transactions.findById(transactionId)
+                .orElseThrow(() -> ApiException.notFound("TRANSACTION_NOT_FOUND", "Không tìm thấy giao dịch"));
+        if (transaction.getStatus() == Transaction.Status.PENDING) {
+            RedirectGateway gateway = Optional.ofNullable(gateways.get(transaction.getProvider()))
+                    .filter(RedirectGateway::configured)
+                    .orElseThrow(() -> ApiException.conflict("GATEWAY_NOT_CONFIGURED", "Cổng thanh toán chưa được cấu hình để đối soát"));
+            reconcile(gateway, transaction);
+        }
+        return payments.get(admin, transactionId);
+    }
+
+    /** Reconcile pending redirect payments in the background. */
     public int reconcilePending(Duration olderThan) {
         int n = 0;
         for (RedirectGateway gw : gateways.values()) {

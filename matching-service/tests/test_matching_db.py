@@ -149,6 +149,27 @@ async def test_system_constraints_are_counted_over_all_mentors(conn):
     assert result["excluded_by"] == {}
 
 
+async def test_verified_secondary_domain_controls_matching_and_rate(conn):
+    mentor_id = await add_mentor(conn, domain="data", rate=500000)
+    pending_id = await add_mentor(conn, domain="data", rate=100000)
+    await conn.execute(
+        """INSERT INTO mentor_domains (mentor_id, domain, state, added_at, verified_at, hourly_rate)
+           VALUES ($1::uuid, 'backend', 'VERIFIED', now(), now(), 100000),
+                  ($2::uuid, 'backend', 'PENDING', now(), NULL, 100000)""",
+        mentor_id, pending_id,
+    )
+    mentee = await add_mentee(conn)
+    result = await match(mentee, maxRate=150000)
+    assert ids(result) == {mentor_id}
+    assert result["mentors"][0]["domain"] == "backend"
+    assert float(result["mentors"][0]["hourly_rate"]) == 100000
+
+    await conn.execute("UPDATE mentor_domains SET accepting = false WHERE mentor_id = $1::uuid", mentor_id)
+    result = await match(mentee)
+    assert not result["mentors"]
+    assert result["stats"]["excluded"] == {"unavailable": 1, "domainMismatch": 1}
+
+
 async def test_days_and_time_of_day_windows(conn):
     """C06 — ngày và buổi trong ngày."""
     monday_evening = await add_mentor(conn, slots=((1, "19:00", "21:00"),))
@@ -344,6 +365,57 @@ async def test_platform_median_rating_for_cold_start(conn):
         await add_mentor(conn, rating=r, rating_count=10)
     await add_mentor(conn, rating=5.0, rating_count=1)
     assert await matching_pipeline.platform_median_rating() == 4.0
+
+
+async def test_pipeline_reports_real_stage_numbers(conn):
+    """Giao diện trình bày pipeline bằng số liệu thật: stages khớp considered/eligible/retrieved của cùng lượt tìm."""
+    for _ in range(4):
+        await add_mentor(conn)
+    mentee = await add_mentee(conn)
+
+    stats = (await match(mentee, limit=3))["stats"]
+    stages = stats["stages"]
+    assert set(stages) == {"filter", "retrieve", "rerank", "explain"}
+    assert all(stages[name]["ms"] >= 0 for name in stages)
+    assert stages["filter"]["considered"] == stats["considered"] and stages["filter"]["eligible"] == stats["eligible"]
+    assert stages["retrieve"]["retrieved"] == stats["retrieved"] and stages["retrieve"]["dim"] == 384
+    assert 1 <= len(stages["retrieve"]["nearest"]) <= 3 and len(stages["rerank"]["top"]) <= 3
+    assert stages["explain"]["reasons"] > 0
+
+
+async def test_switch_intent_targets_new_domain_and_rewards_past_switchers(conn):
+    """
+    Chuyển ngách backend → data: mentor backend KHÔNG còn là ứng viên, mentor data mới là ứng viên; mentor data từng
+    làm backend đứng trước mentor data thuần (cùng độ tương đồng) và có transition trong score_parts + lý do.
+    """
+    backend = await add_mentor(conn, domain="backend")
+    pure = await add_mentor(conn, domain="data", bio="Chuyên gia dữ liệu")
+    switcher = await add_mentor(conn, domain="data", bio="Chuyên gia dữ liệu")
+    await conn.execute("UPDATE mentor_profiles SET previous_domains = '{backend}' WHERE user_id = $1::uuid", switcher)
+    mentee = await add_mentee(conn)
+    await index_service.reconcile(batch=500)
+
+    intent = matching_pipeline.MatchIntent(mode="SWITCH", target_domain="data", goal_text="Muốn học machine learning")
+    result = await matching_pipeline.match_mentors_for_mentee(mentee, limit=5, intent=intent)
+
+    assert ids(result) == {pure, switcher} and backend not in ids(result)
+    first = result["mentors"][0]
+    assert str(first["mentor_id"]) == switcher and first["transition_fit"] == 1.0
+    assert first["score_parts"]["transition"] > 0 and abs(sum(first["score_parts"].values()) - first["final_score"]) < 1e-3
+    assert any("Từng chuyển từ backend sang data" in r for r in first["reasons"])
+    assert result["mentors"][1]["transition_fit"] == 0.0
+    stages = result["stats"]["stages"]
+    assert "Domain: data" in stages["retrieve"]["query_text"] and "Muốn học machine learning" in stages["retrieve"]["query_text"]
+    assert stages["rerank"]["weights"]["transition"] > 0
+    assert abs(sum(stages["rerank"]["weights"].values()) - 1.0) < 1e-9
+
+
+async def test_current_intent_has_no_transition_signal(conn):
+    await add_mentor(conn, domain="backend")
+    mentee = await add_mentee(conn)
+    result = await match(mentee)
+    assert "transition" not in result["mentors"][0]["score_parts"]
+    assert result["stats"]["stages"]["retrieve"]["query_text"] is None
 
 
 async def test_over_budget_mentors_come_last_not_dropped(conn):

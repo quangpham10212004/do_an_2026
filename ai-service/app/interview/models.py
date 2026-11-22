@@ -16,6 +16,7 @@ class InterviewContext(CamelModel):
     max_turns: int = 5
     # v2.1 — buổi giọng nói theo kế hoạch AI soạn: tên chủ đề → khái niệm kỳ vọng (rule-based chấm câu không có trong ngân hàng)
     planned_concepts: dict[str, list[str]] = {}
+    assessment_criteria: str | None = None
 
 
 class TurnRecord(CamelModel):

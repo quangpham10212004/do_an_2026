@@ -15,8 +15,13 @@ venv/
 *.iml
 .DS_Store
 
-# Env & runtime data
+# Env & runtime data (file chứa khoá / bí mật)
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
 uploads/
 
 # Claude Code agent worktrees
@@ -25,3 +30,9 @@ uploads/
 # Playwright MCP screenshots / snapshots
 .playwright-mcp/
 .backups/
+
+# Tài liệu đồ án chỉ giữ ở máy, repo chỉ có README.md
+docs/
+
+# Cấu hình Claude Code cục bộ (có thể chứa đường dẫn, quyền, token)
+.claude/

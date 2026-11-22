@@ -34,14 +34,24 @@ public final class ProfileDtos {
             /** Đã thay bằng status (US-08) — vẫn nhận để tương thích: true → ACCEPTING, false → PAUSED. */
             @Deprecated Boolean isAvailable,
             /** US-37 — câu giới thiệu ngắn ≤ 80 ký tự; null = giữ nguyên, chuỗi rỗng = xoá. */
-            @Size(max = 80) String headline) {
+            @Size(max = 80) String headline,
+            /** Lĩnh vực từng làm trước đây (chuyển ngách); null = giữ nguyên, danh sách rỗng = xoá. */
+            @Size(max = 5) List<@NotBlank @Size(max = 50) String> previousDomains) {
+
+        /** Tương thích lời gọi cũ (có headline, không có previousDomains). */
+        public MentorProfileInput(String displayName, List<String> skills, String domain, String bio, Integer yearsExperience,
+                                  String cvFileUrl, List<String> portfolioLinks, BigDecimal hourlyRate, Integer capacity,
+                                  Boolean isAvailable, String headline) {
+            this(displayName, skills, domain, bio, yearsExperience, cvFileUrl, portfolioLinks, hourlyRate, capacity,
+                    isAvailable, headline, null);
+        }
 
         /** Tương thích lời gọi cũ (không có headline). */
         public MentorProfileInput(String displayName, List<String> skills, String domain, String bio, Integer yearsExperience,
                                   String cvFileUrl, List<String> portfolioLinks, BigDecimal hourlyRate, Integer capacity,
                                   Boolean isAvailable) {
             this(displayName, skills, domain, bio, yearsExperience, cvFileUrl, portfolioLinks, hourlyRate, capacity,
-                    isAvailable, null);
+                    isAvailable, null, null);
         }
     }
 
@@ -78,7 +88,9 @@ public final class ProfileDtos {
             /** US-35 (PRD-MATCH-9) — trung vị thời gian phản hồi yêu cầu (giờ); null = chưa có dữ liệu. */
             BigDecimal medianResponseHours,
             /** Bản chốt v2.0 §10 — nhận buổi trải nghiệm 15 phút. */
-            boolean trialEnabled) {
+            boolean trialEnabled,
+            /** Lĩnh vực mentor từng làm trước lĩnh vực hiện tại (hành trình chuyển ngách). */
+            List<String> previousDomains) {
 
         /** Link họp chỉ cho chủ hồ sơ, admin và service nội bộ (mentoring-service gửi cho mentee khi phiên CONFIRMED). */
         public MentorProfileResponse withoutMeetingLink() {
@@ -86,7 +98,7 @@ public final class ProfileDtos {
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, statusReason, null, bufferMinutes, minNoticeHours,
                     languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, completeness,
-                    medianResponseHours, trialEnabled);
+                    medianResponseHours, trialEnabled, previousDomains);
         }
 
         /**
@@ -99,7 +111,7 @@ public final class ProfileDtos {
                     portfolioLinks, hourlyRate, capacity, activeMenteeCount, isAvailable, rating, ratingCount,
                     verificationStatus, status, onLeaveUntil, reason, null, bufferMinutes, minNoticeHours,
                     languages, sessionTypes, timezone, availability, exceptions, headline, avatarUrl, null,
-                    medianResponseHours, trialEnabled);
+                    medianResponseHours, trialEnabled, previousDomains);
         }
 
         /**
@@ -126,7 +138,7 @@ public final class ProfileDtos {
                     effective == p.getStatus() ? p.getStatusReason() : null, p.getMeetingLink(), p.getBufferMinutes(),
                     p.getMinNoticeHours(), Arrays.asList(p.getLanguages()), Arrays.asList(p.getSessionTypes()),
                     p.getTimezone(), slots, exceptions, p.getHeadline(), avatarUrl, completeness,
-                    p.getMedianResponseHours(), p.isTrialEnabled());
+                    p.getMedianResponseHours(), p.isTrialEnabled(), Arrays.asList(p.getPreviousDomains()));
         }
     }
 

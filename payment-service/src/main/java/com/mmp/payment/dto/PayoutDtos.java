@@ -3,6 +3,7 @@ package com.mmp.payment.dto;
 import com.mmp.payment.entity.Payout;
 import com.mmp.payment.service.PayoutRules;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -45,6 +46,9 @@ public final class PayoutDtos {
     }
 
     public record RejectInput(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    public record PayoutInput(@Digits(integer = 12, fraction = 0) BigDecimal amount) {
     }
 
     public record ReceiptRefund(String receiptNumber, UUID refundId, BigDecimal amount, String reason, OffsetDateTime createdAt) {

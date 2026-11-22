@@ -22,11 +22,16 @@ vector nào phải truyền qua mạng.
 
 Các hàm thuần (re_rank, explain, match_filters.*) không truy cập DB để test độc lập.
 """
+import asyncio
 import re
+import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app import config
 from app.db import get_matching_pool, get_profile_pool
+from app.services.embedding_service import EMBEDDING_DIM
+from app.services import profile_text
 from app.services import feedback_service
 from app.services import index_service
 from app.services import match_filters
@@ -51,6 +56,42 @@ WEIGHTS = {
     "scheduleFit": WEIGHT_SCHEDULE,
     "responsiveness": WEIGHT_RESPONSIVENESS,
 }
+INTENT_CURRENT = "CURRENT"
+INTENT_SWITCH = "SWITCH"
+
+
+@dataclass(frozen=True)
+class MatchIntent:
+    """
+    Mục đích lượt tìm. CURRENT = phát triển trong lĩnh vực hồ sơ (hành vi cũ). SWITCH = học thứ mới / chuyển ngách:
+    lĩnh vực mentor là target_domain (không còn là lĩnh vực hiện tại của mentee), vector truy vấn dựng từ mục tiêu mới +
+    kỹ năng nền hiện có, và mentor từng làm đúng lĩnh vực hiện tại của mentee được cộng điểm "transition".
+    """
+    mode: str = INTENT_CURRENT
+    target_domain: str | None = None
+    goal_text: str | None = None
+
+    @property
+    def is_switch(self) -> bool:
+        return self.mode == INTENT_SWITCH and bool(self.target_domain)
+
+
+def switch_weights() -> dict:
+    """Trọng số chế độ chuyển ngách: tách TRANSITION khỏi similarity để tổng vẫn bằng 1,00."""
+    t = config.MATCH_WEIGHT_TRANSITION
+    return {**WEIGHTS, "similarity": WEIGHTS["similarity"] - t, "transition": t}
+
+
+def query_text(mentee: dict, intent: MatchIntent) -> str:
+    """Văn bản đưa vào embedding làm truy vấn: mục tiêu mới + kỹ năng nền, cùng cấu trúc với hồ sơ mentee."""
+    return profile_text.normalize_mentee({
+        "domain": intent.target_domain,
+        "skills": mentee.get("skills"),
+        "current_level": mentee.get("current_level"),
+        "goal": intent.goal_text or mentee.get("goal"),
+    })
+
+
 MAX_YEARS_EXPERIENCE_NORM = 10  # chuẩn hoá years_experience về [0, 1]
 # Rating dùng khi chưa tính được trung vị nền tảng (chưa mentor nào có ≥ 3 đánh giá) — cold-start.
 NEUTRAL_RATING = signals.FALLBACK_MEDIAN_RATING
@@ -68,7 +109,7 @@ async def get_mentee(mentee_id: str) -> dict | None:
     pool = await get_profile_pool()
     row = await pool.fetchrow(
         """
-        SELECT user_id, domain, goal, skills,
+        SELECT user_id, domain, goal, skills, current_level,
                preferred_days, preferred_time_of_day, budget_max_per_hour, languages, timezone
         FROM mentee_profiles WHERE user_id = $1::uuid
         """,
@@ -85,19 +126,23 @@ async def get_mentee(mentee_id: str) -> dict | None:
 #   $10 MIN_REVIEWS (ngưỡng rating thật)   $11 trung vị nền tảng đã có fallback (G1, D9)
 _CANDIDATES_CTE = """
 WITH c AS (
-    SELECT m.user_id AS mentor_id, m.display_name, m.domain, m.skills, m.capacity, m.active_mentee_count,
-           m.rating, m.rating_count, m.years_experience, m.hourly_rate, m.verification_status,
-           m.timezone, m.median_response_hours, m.headline,
+    SELECT m.user_id AS mentor_id, m.display_name, COALESCE(d.domain, m.domain) AS domain,
+           m.skills, m.capacity, m.active_mentee_count,
+           m.rating, m.rating_count, m.years_experience, COALESCE(d.hourly_rate, m.hourly_rate) AS hourly_rate,
+           m.verification_status,
+           m.timezone, m.median_response_hours, m.headline, m.previous_domains,
            CASE
                WHEN m.verification_status <> 'APPROVED' THEN 'notVerified'
                -- US-08: trạng thái hiệu lực — ON_LEAVE đã qua hết on_leave_until tính là ACCEPTING.
                WHEN NOT (m.status = 'ACCEPTING' OR (m.status = 'ON_LEAVE'
                          AND m.on_leave_until < (now() AT TIME ZONE m.timezone)::date)) THEN 'unavailable'
+               WHEN d.accepting IS FALSE THEN 'unavailable'
                WHEN NOT EXISTS (SELECT 1 FROM mentor_availability a WHERE a.mentor_id = m.user_id) THEN 'noSchedule'
                WHEN m.active_mentee_count >= m.capacity THEN 'fullCapacity'
-               WHEN $1::text IS NOT NULL AND lower(trim(m.domain)) <> lower(trim($1::text)) THEN 'domainMismatch'
+               WHEN $1::text IS NOT NULL AND d.mentor_id IS NULL
+                    AND lower(trim(m.domain)) <> lower(trim($1::text)) THEN 'domainMismatch'
            END AS reason,
-           ($2::numeric IS NULL OR m.hourly_rate <= $2::numeric) AS rate_ok,
+           ($2::numeric IS NULL OR COALESCE(d.hourly_rate, m.hourly_rate) <= $2::numeric) AS rate_ok,
            (cardinality($6::text[]) = 0 OR m.languages && $6::text[]) AS language_ok,
            ($7::text IS NULL OR $7::text = ANY (m.session_types)) AS session_ok,
            -- G1/D9: minRating so với rating HIỆU LỰC (effective_rating) — cùng khái niệm với tín hiệu
@@ -114,6 +159,8 @@ WITH c AS (
                    AND (cardinality($3::int[]) = 0 OR a.day_of_week = ANY ($3::int[]))
                    AND ($4::time IS NULL OR (a.start_time < $5::time AND a.end_time > $4::time))) AS days_time_ok
     FROM mentor_profiles m
+    LEFT JOIN mentor_domains d ON d.mentor_id = m.user_id AND d.verified_at IS NOT NULL
+          AND d.domain = COALESCE(lower(trim($1::text)), lower(trim(m.domain)))
     WHERE NOT (m.user_id = ANY ($9::uuid[]))
 )
 """
@@ -161,15 +208,29 @@ async def eligible_candidates(
     return [dict(r) for r in rows], {r["reason"]: r["n"] for r in counts}
 
 
-async def rank_by_similarity(mentee_id: str, mentor_ids: list, k: int) -> list[dict]:
+async def rank_by_similarity(mentee_id: str, mentor_ids: list, k: int, query_vector: list[float] | None = None) -> list[dict]:
     """
     Bước 2 — trên matching_db: K mentor (chỉ trong mentor_ids) có vector gần mentee nhất theo cosine
-    distance (pgvector <=>). Vector của mentee lấy bằng subquery ngay trong DB. Mentor hợp lệ nhưng
-    chưa có vector (hồ sơ vừa tạo, chờ IndexSyncJob) thì chưa xếp hạng được.
+    distance (pgvector <=>). Mặc định vector của mentee lấy bằng subquery ngay trong DB; chế độ chuyển ngách
+    truyền query_vector (embedding của mục tiêu mới). Mentor hợp lệ nhưng chưa có vector (hồ sơ vừa tạo,
+    chờ IndexSyncJob) thì chưa xếp hạng được.
     """
     if not mentor_ids:
         return []
     pool = await get_matching_pool()
+    if query_vector is not None:
+        rows = await pool.fetch(
+            """
+            WITH q AS (SELECT $1::vector AS embedding)
+            SELECT e.user_id AS mentor_id, e.embedding <=> q.embedding AS distance
+            FROM mentor_embeddings e, q
+            WHERE e.embedding IS NOT NULL AND e.user_id = ANY ($2::uuid[])
+            ORDER BY e.embedding <=> q.embedding ASC
+            LIMIT $3
+            """,
+            index_service._to_pgvector(query_vector), mentor_ids, k,
+        )
+        return [dict(r) for r in rows]
     rows = await pool.fetch(
         """
         WITH q AS (SELECT embedding FROM mentee_embeddings WHERE user_id = $1::uuid AND embedding IS NOT NULL)
@@ -207,6 +268,8 @@ def re_rank(candidates: list[dict], platform_median: float | None = None, weight
             "scheduleFit": w.get("scheduleFit", 0.0) * fit,
             "responsiveness": w.get("responsiveness", 0.0) * responsive,
         }
+        if "transition" in w:
+            parts["transition"] = w["transition"] * float(c.get("transition_fit") or 0.0)
         c["similarity_score"] = round(similarity, 4)
         c["rating_used"] = round(rating, 2)
         c["new_mentor"] = signals.is_new_mentor(c.get("rating_count", 0))
@@ -279,7 +342,9 @@ def explain(candidate: dict, mentee: dict) -> tuple[list[str], list[str]]:
         reasons.append("Trùng kỹ năng: " + ", ".join(matched[:5]))
     if goal_hits:
         reasons.append("Có chuyên môn phù hợp mục tiêu của bạn: " + ", ".join(goal_hits[:5]))
-    if mentee.get("domain") and (candidate.get("domain") or "").lower() == mentee["domain"].lower():
+    if candidate.get("transition_fit"):
+        reasons.insert(0, f"Từng chuyển từ {mentee['domain']} sang {candidate['domain']} — đã đi đúng con đường bạn muốn đi")
+    elif mentee.get("domain") and (candidate.get("domain") or "").lower() == mentee["domain"].lower():
         reasons.append(f"Cùng lĩnh vực {candidate['domain']}")
     similarity = candidate.get("similarity_score", 0)
     if similarity >= 0.6:
@@ -307,6 +372,7 @@ async def match_mentors_for_mentee(
     use_profile_defaults: bool = True,
     exclude_ids: list[str] | None = None,
     include_over_budget: bool = True,
+    intent: MatchIntent | None = None,
 ) -> dict | None:
     """
     Chạy toàn bộ pipeline. Trả về None nếu mentee chưa có hồ sơ/embedding.
@@ -329,32 +395,61 @@ async def match_mentors_for_mentee(
     filters = match_filters.resolve(requested or {}, mentee, use_profile_defaults)
     # US-36 — mentor mentee đã bấm "Không phù hợp" bị ẩn 30 ngày, loại TRƯỚC khi xếp hạng.
     hidden = await feedback_service.hidden_mentor_ids(mentee_id)
-    result = await _run(mentee, filters, limit, list(exclude_ids or []) + hidden, include_over_budget)
+    result = await _run(mentee, filters, limit, list(exclude_ids or []) + hidden, include_over_budget, intent)
     result["stats"]["hidden"] = len(hidden)
     return result
 
 
-async def _retrieve_and_rank(mentee: dict, pool: list[dict], k: int, platform_median: float | None) -> list[dict]:
-    """Bước 2 + 3 + 4 cho một nhóm mentor đã qua bộ lọc: top-K theo vector → re-rank → lý do. Chưa cắt theo limit."""
+async def _retrieve_and_rank(mentee: dict, pool: list[dict], k: int, platform_median: float | None,
+                             timing: dict | None = None, intent: MatchIntent | None = None) -> list[dict]:
+    """
+    Bước 2 + 3 + 4 cho một nhóm mentor đã qua bộ lọc: top-K theo vector → re-rank → lý do. Chưa cắt theo limit.
+    timing: nếu truyền, cộng dồn mili-giây từng bước vào timing["retrieve"/"rerank"/"explain"] và giữ
+    vài mentor gần nhất về vector ở timing["nearest"] để giao diện trình bày pipeline.
+    """
+    t = timing if timing is not None else {}
     by_id = {c["mentor_id"]: c for c in pool}
-    nearest = await rank_by_similarity(str(mentee["user_id"]), list(by_id), k)
+    t0 = time.perf_counter()
+    switch = intent is not None and intent.is_switch
+    query_vector = None
+    if switch:
+        text = query_text(mentee, intent)
+        t["query_text"] = text
+        query_vector = await asyncio.to_thread(index_service.embed_text, text)
+    nearest = await rank_by_similarity(str(mentee["user_id"]), list(by_id), k, query_vector)
+    t1 = time.perf_counter()
     now = datetime.now(timezone.utc)
     availability, blocked = await schedule_inputs([r["mentor_id"] for r in nearest], now)
     candidates = []
     for r in nearest:
         c = dict(by_id[r["mentor_id"]])
         c["distance"] = r["distance"]
+        # Chuyển ngách: mentor từng làm đúng lĩnh vực hiện tại của mentee đã đi đúng con đường mentee muốn đi.
+        c["transition_fit"] = 1.0 if switch and (mentee.get("domain") or "").lower() in [
+            d.lower() for d in (c.get("previous_domains") or [])] else 0.0
         c["schedule_fit"] = signals.schedule_fit(now, mentee, c.get("timezone"), availability.get(r["mentor_id"], []),
                                                  blocked.get(r["mentor_id"], []))
         candidates.append(c)
-    ranked = re_rank(candidates, platform_median)
+    ranked = re_rank(candidates, platform_median, switch_weights() if switch else None)
+    t2 = time.perf_counter()
+    reason_count = 0
     for c in ranked:
         c["reasons"], c["matched_skills"] = explain(c, mentee)
+        reason_count += len(c["reasons"])
+    t3 = time.perf_counter()
+    t["retrieve"] = t.get("retrieve", 0.0) + (t1 - t0) * 1000
+    t["rerank"] = t.get("rerank", 0.0) + (t2 - t1) * 1000
+    t["explain"] = t.get("explain", 0.0) + (t3 - t2) * 1000
+    t["reasons"] = t.get("reasons", 0) + reason_count
+    t.setdefault("nearest", []).extend(
+        {"display_name": c["display_name"], "similarity": max(0.0, min(1.0, 1 - float(c["distance"])))}
+        for c in sorted(candidates, key=lambda x: x["distance"])[:3]
+    )
     return ranked
 
 
 async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: list[str],
-               include_over_budget: bool = False) -> dict:
+               include_over_budget: bool = False, intent: MatchIntent | None = None) -> dict:
     """
     include_over_budget: maxRate trở thành ưu tiên mềm. Mentor vượt ngân sách (nhưng qua mọi bộ lọc khác) không bị loại
     mà được xếp RIÊNG và đặt SAU mọi mentor trong ngân sách, kèm over_budget / over_budget_by. Hai nhóm lấy top-K riêng
@@ -363,15 +458,20 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
     soft = include_over_budget and filters.max_rate is not None
     # G1/D9: trung vị nền tảng tính TRƯỚC để minRating (SQL, rating_ok) và chấm điểm (re_rank, C13)
     # dùng cùng một effective_rating cho mentor mới — không còn hai nguồn sự thật khác nhau.
+    timing: dict = {}
+    t_filter = time.perf_counter()
     median = await platform_median_rating()
-    base, excluded = await eligible_candidates(mentee["domain"], filters, exclude_ids, platform_median=median)
+    intent = intent or MatchIntent()
+    domain = intent.target_domain if intent.is_switch else mentee["domain"]
+    base, excluded = await eligible_candidates(domain, filters, exclude_ids, platform_median=median)
     eligible, excluded_by = match_filters.apply(base, filters, soft_rate=soft)
+    filter_ms = (time.perf_counter() - t_filter) * 1000
 
     k = max(DEFAULT_K, limit * 5)
     in_budget = [c for c in eligible if not match_filters.over_budget(c, filters)]
     over = [c for c in eligible if match_filters.over_budget(c, filters)]
 
-    ranked_in = await _retrieve_and_rank(mentee, in_budget, k, median)
+    ranked_in = await _retrieve_and_rank(mentee, in_budget, k, median, timing, intent)
     ranked = ranked_in[:limit]
     retrieved = len(ranked_in)
 
@@ -380,7 +480,7 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
         # Đủ chỗ để mentee thấy lựa chọn ngoài ngân sách: tối thiểu OVER_BUDGET_SHOWN, và bù cho đủ `limit`
         # khi mentor trong ngân sách ít.
         slots = max(config.OVER_BUDGET_SHOWN, limit - len(ranked))
-        ranked_over = await _retrieve_and_rank(mentee, over, k, median)
+        ranked_over = await _retrieve_and_rank(mentee, over, k, median, timing, intent)
         retrieved += len(ranked_over)
         shown_over = ranked_over[:slots]
         for c in shown_over:
@@ -392,6 +492,7 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
         "mentors": mentors,
         "filters": filters,
         "excluded_by": excluded_by,
+        "intent": intent,
         "stats": {
             "considered": len(base) + sum(excluded.values()),
             "excluded": excluded,
@@ -400,7 +501,29 @@ async def _run(mentee: dict, filters: MatchFilters, limit: int, exclude_ids: lis
             "retrieved": retrieved,
             "returned": len(mentors),
             "k": k,
+            "stages": _stages(timing, filter_ms, len(base) + sum(excluded.values()), excluded, len(eligible), k, retrieved,
+                              mentors, switch_weights() if intent.is_switch else WEIGHTS),
         },
+    }
+
+
+def _stages(timing: dict, filter_ms: float, considered: int, excluded: dict, eligible: int, k: int,
+            retrieved: int, mentors: list[dict], weights: dict) -> dict:
+    """Số liệu THẬT của từng bước pipeline (đo trong _run) để giao diện trình bày kỹ thuật AI Matching."""
+    nearest = sorted(timing.get("nearest", []), key=lambda n: n["similarity"], reverse=True)[:3]
+    return {
+        "filter": {"ms": round(filter_ms, 1), "considered": considered, "excluded": excluded, "eligible": eligible},
+        "retrieve": {
+            "ms": round(timing.get("retrieve", 0.0), 1), "model": config.EMBEDDING_MODEL, "dim": EMBEDDING_DIM,
+            "k": k, "retrieved": retrieved, "query_text": timing.get("query_text"),
+            "nearest": [{"display_name": n["display_name"], "similarity": round(n["similarity"], 4)} for n in nearest],
+        },
+        "rerank": {
+            "ms": round(timing.get("rerank", 0.0), 1), "weights": weights,
+            "top": [{"display_name": m["display_name"], "final_score": m["final_score"], "score_parts": m["score_parts"]}
+                    for m in mentors[:3]],
+        },
+        "explain": {"ms": round(timing.get("explain", 0.0), 1), "reasons": timing.get("reasons", 0)},
     }
 
 

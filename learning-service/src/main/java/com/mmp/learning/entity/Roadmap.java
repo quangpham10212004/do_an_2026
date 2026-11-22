@@ -21,6 +21,15 @@ public class Roadmap {
 
     private String description;
 
+    @Column(name = "cover_url")
+    private String coverUrl;
+
+    @Column(nullable = false)
+    private String level = "BEGINNER";
+
+    @Column(name = "estimated_weeks")
+    private Integer estimatedWeeks;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -31,5 +40,11 @@ public class Roadmap {
     public void setTrack(String track) { this.track = track; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public String getCoverUrl() { return coverUrl; }
+    public void setCoverUrl(String coverUrl) { this.coverUrl = coverUrl; }
+    public String getLevel() { return level; }
+    public void setLevel(String level) { this.level = level; }
+    public Integer getEstimatedWeeks() { return estimatedWeeks; }
+    public void setEstimatedWeeks(Integer estimatedWeeks) { this.estimatedWeeks = estimatedWeeks; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

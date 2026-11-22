@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -103,6 +104,35 @@ public class MentorReferralService {
 
     // ------------------------------------------------------------------ dùng mã
 
+    public record InvitedMentor(UUID id, String name, String headline, Double rating, int reviewCount,
+                                BigDecimal hourlyRate, boolean verified) {}
+    public record InviteInfo(String code, boolean valid, String errorCode, String inviterName,
+                             InvitedMentor mentor, String quote) {}
+
+    public InviteInfo preview(String rawCode, UUID viewerId) {
+        String code = rawCode.strip().toUpperCase(Locale.ROOT);
+        if (!code.matches("[A-Z2-9]{8}")) return invalidPreview(code, "NOT_FOUND");
+        var matches = jdbc.queryForList("SELECT owner_id, mentor_id FROM mentor_referral_codes WHERE code = ?", code);
+        if (matches.isEmpty()) return invalidPreview(code, "NOT_FOUND");
+        var row = matches.get(0);
+        UUID ownerId = (UUID) row.get("owner_id");
+        UUID mentorId = (UUID) row.get("mentor_id");
+        if (ownerId.equals(viewerId)) return invalidPreview(code, "SELF_REFERRAL");
+        if (viewerId != null && eligibleMentors(viewerId).contains(mentorId)) return invalidPreview(code, "ALREADY_LEARNED");
+        if (viewerId != null && Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM mentor_referrals WHERE referee_id = ? AND mentor_id = ?)
+                """, Boolean.class, viewerId, mentorId))) return invalidPreview(code, "NOT_FIRST_SESSION");
+        ProfileClient.MentorSummary mentor = profiles.mentorSummary(mentorId);
+        if (mentor == null || !"APPROVED".equals(mentor.verificationStatus())) return invalidPreview(code, "NOT_FOUND");
+        return new InviteInfo(code, true, null, profiles.displayName(ownerId), new InvitedMentor(mentorId,
+                mentor.displayName(), mentor.headline(), mentor.ratingCount() >= 3 ? mentor.rating() : null,
+                mentor.ratingCount(), mentor.hourlyRate(), true), null);
+    }
+
+    private static InviteInfo invalidPreview(String code, String reason) {
+        return new InviteInfo(code, false, reason, null, null, null);
+    }
+
     /** Kiểm tra mã trước khi tạo buổi (mentoring gọi): ném 400/404/409 với mã lỗi cụ thể; không ghi gì. */
     public void validate(String rawCode, UUID refereeId, UUID mentorId) {
         evaluateApply(rawCode, refereeId, mentorId);
@@ -174,6 +204,7 @@ public class MentorReferralService {
         Map<String, Object> row = t.get(0);
         boolean refunded = ((Number) row.get("refunds")).longValue() > 0 || "REFUNDED".equals(row.get("tx_status"));
         OffsetDateTime endedAt = row.get("ended_at") == null ? null : ((java.sql.Timestamp) row.get("ended_at")).toInstant().atZone(VN).toOffsetDateTime();
+        jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtext(?::text))", Object.class, "referral:" + ownerId);
         int qualified = jdbc.queryForObject("SELECT COUNT(*) FROM mentor_referrals WHERE owner_id = ? AND status = 'QUALIFIED' AND decided_at >= ?",
                 Integer.class, ownerId, now.atZoneSameInstant(VN).toLocalDate().withDayOfMonth(1).atStartOfDay(VN).toOffsetDateTime());
         Verdict v = MentorReferralRules.decide((String) row.get("final_state"), refunded, endedAt, now, pending, qualified, monthlyCap);
@@ -182,7 +213,11 @@ public class MentorReferralService {
                 return false;
             }
             case QUALIFY -> {
-                wallet.grantPromo(ownerId, reward, "REFERRAL", id.toString(), now);
+                String voucherCode = "REF-" + id.toString().replace("-", "").substring(0, 20).toUpperCase(Locale.ROOT);
+                jdbc.update("""
+                        INSERT INTO referral_vouchers (id, owner_id, code, amount, expires_at)
+                        VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING
+                        """, id, ownerId, voucherCode, reward, now.plusDays(60));
                 jdbc.update("UPDATE mentor_referrals SET status = 'QUALIFIED', reward_amount = ?, decided_at = ? WHERE id = ?", reward, now, id);
                 audit.system("REFERRAL_REWARDED", "REFERRAL", id, AuditClient.fields("ownerId", ownerId, "amount", reward));
                 log.info("Referral {} qualified: +{} promo for {}", id, reward, ownerId);

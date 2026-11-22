@@ -35,6 +35,16 @@ def write_chunk(storage_dir: str, kind: str, n: int, data: bytes) -> None:
         raise AiError("STORAGE_ERROR", "Không thể lưu đoạn video", status=500) from e
 
 
+def write_blob(storage_dir: str, name: str, data: bytes) -> None:
+    """Lưu nguyên một tệp (video của một câu trả lời) thành `<storage_dir>/<name>.bin`."""
+    try:
+        target = _safe(f"{storage_dir}/{name}.bin")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    except OSError as e:
+        raise AiError("STORAGE_ERROR", "Không thể lưu video", status=500) from e
+
+
 def assemble(storage_dir: str, kind: str, chunk_numbers: list[int]) -> int:
     """Ghép các đoạn theo thứ tự n thành `<kind>.bin`; trả về số byte. Không có đoạn nào thì không tạo file (trả 0)."""
     folder = _safe(f"{storage_dir}/{kind}")
@@ -78,6 +88,13 @@ def iter_range(storage_dir: str, kind: str, start: int, end: int, block: int = 2
                 break
             remaining -= len(chunk)
             yield chunk
+
+
+def delete_blob(storage_dir: str, name: str) -> bool:
+    path = _safe(f"{storage_dir}/{name}.bin")
+    existed = path.is_file()
+    path.unlink(missing_ok=True)
+    return existed
 
 
 def delete(storage_dir: str) -> bool:

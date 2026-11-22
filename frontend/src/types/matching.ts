@@ -30,6 +30,10 @@ export interface RankedMentor {
   overBudget: boolean;
   /** Số đồng vượt ngân sách mỗi giờ; null khi trong ngân sách. */
   overBudgetBy: number | null;
+  /** Lĩnh vực mentor từng làm trước lĩnh vực hiện tại. */
+  previousDomains: string[];
+  /** Chuyển ngách: mentor từng chuyển đúng từ lĩnh vực hiện tại của bạn. */
+  transitionFit: boolean;
 }
 
 export type ExclusionReason = "notVerified" | "unavailable" | "noSchedule" | "fullCapacity" | "domainMismatch";
@@ -41,6 +45,29 @@ export interface PipelineWeights {
   /** US-35 */
   scheduleFit: number;
   responsiveness: number;
+  /** Chỉ có ở chế độ chuyển ngách. */
+  transition?: number;
+}
+
+/** Số liệu thật từng bước của lượt tìm — dùng để trình bày pipeline AI Matching (PipelineRun). */
+export interface PipelineStages {
+  filter: { ms: number; considered: number; excluded: Partial<Record<ExclusionReason, number>>; eligible: number };
+  retrieve: {
+    ms: number;
+    model: string;
+    dim: number;
+    k: number;
+    retrieved: number;
+    /** Văn bản đã mã hoá làm truy vấn (chỉ chế độ chuyển ngách). */
+    queryText?: string | null;
+    nearest: { displayName: string; similarity: number }[];
+  };
+  rerank: {
+    ms: number;
+    weights: PipelineWeights;
+    top: { displayName: string; finalScore: number; scoreParts: Partial<Record<keyof PipelineWeights, number>> }[];
+  };
+  explain: { ms: number; reasons: number };
 }
 
 export interface PipelineStats {
@@ -60,6 +87,8 @@ export interface PipelineStats {
   weights: PipelineWeights;
   /** M4 (NFR-1) — thời gian xử lý pipeline tính trên server (ms); không tính overhead router. */
   tookMs: number;
+  /** Số liệu từng bước; thiếu ở phiên bản matching-service cũ. */
+  stages?: PipelineStages | null;
 }
 
 /** US-17 — tên bộ lọc = tên query param của GET /api/matching/mentors. */
@@ -80,8 +109,16 @@ export interface EffectiveFilters extends MatchFilterValues {
   fromProfileDefaults: MatchFilterName[];
 }
 
+/** Mục đích lượt tìm: CURRENT = lĩnh vực hồ sơ, SWITCH = học thứ mới / chuyển ngách. */
+export interface MatchIntentValue {
+  mode: "CURRENT" | "SWITCH";
+  targetDomain?: string;
+  goalText?: string;
+}
+
 export interface MatchQuery {
   limit?: number;
+  intent?: MatchIntentValue;
   /** Bỏ trống = dùng sở thích hồ sơ cho các bộ lọc không truyền. */
   filters?: MatchFilterValues;
   useProfileDefaults?: boolean;
@@ -92,6 +129,8 @@ export interface MatchResult {
   mentors: RankedMentor[];
   pipeline: PipelineStats;
   filters: EffectiveFilters;
+  /** Mục đích server đã áp dụng. */
+  intent: MatchIntentValue;
   /** US-18 — số mentor mỗi bộ lọc đang bật loại riêng (sẽ có thêm nếu chỉ bỏ bộ lọc đó). */
   excludedBy: Partial<Record<MatchFilterName, number>>;
   /** US-36 — id danh sách vừa hiển thị, gửi kèm phản hồi "Không phù hợp". */

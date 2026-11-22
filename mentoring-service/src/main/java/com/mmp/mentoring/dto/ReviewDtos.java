@@ -20,7 +20,12 @@ public final class ReviewDtos {
     /** Điểm thành phần bắt buộc với đánh giá mới (null chỉ có ở đánh giá trước US-41). */
     public record StructuredReviewInput(@NotNull @Min(1) @Max(5) Integer rating, @NotNull @Min(1) @Max(5) Integer knowledge,
                                         @NotNull @Min(1) @Max(5) Integer clarity, @NotNull @Min(1) @Max(5) Integer preparation,
-                                        @Size(max = 2000) String comment, @Size(max = 10) List<String> tags) {
+                                        @Size(max = 2000) String comment, @Size(max = 10) List<String> tags,
+                                        Boolean showName) {
+        public StructuredReviewInput(Integer rating, Integer knowledge, Integer clarity, Integer preparation,
+                                     String comment, List<String> tags) {
+            this(rating, knowledge, clarity, preparation, comment, tags, null);
+        }
     }
 
     public record ReplyInput(@NotNull @Size(max = 2000) String reply) {
@@ -34,13 +39,16 @@ public final class ReviewDtos {
     public record ReviewDetail(UUID id, UUID sessionId, UUID menteeId, String menteeName, UUID mentorId, int rating,
                                Integer knowledge, Integer clarity, Integer preparation, String comment, List<String> tags,
                                OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime editableUntil,
-                               String mentorReply, OffsetDateTime mentorRepliedAt, boolean canEdit, boolean canReply) {
+                               String mentorReply, OffsetDateTime mentorRepliedAt, boolean canEdit, boolean canReply,
+                               boolean showName) {
 
-        public static ReviewDetail from(Review r, String menteeName, boolean canEdit, boolean canReply) {
-            return new ReviewDetail(r.getId(), r.getSessionId(), r.getMenteeId(), menteeName, r.getMentorId(), r.getRating(),
+        public static ReviewDetail from(Review r, String menteeName, boolean canEdit, boolean canReply, boolean owner) {
+            boolean reveal = r.isShowName() || owner;
+            return new ReviewDetail(r.getId(), reveal ? r.getSessionId() : null, reveal ? r.getMenteeId() : null,
+                    reveal ? menteeName : "Mentee ẩn danh", r.getMentorId(), r.getRating(),
                     r.getKnowledge(), r.getClarity(), r.getPreparation(), r.getComment(), Arrays.asList(r.getTags()),
                     r.getCreatedAt(), r.getUpdatedAt(), r.getCreatedAt().plus(com.mmp.mentoring.service.ReviewRules.EDIT_WINDOW),
-                    r.getMentorReply(), r.getMentorRepliedAt(), canEdit, canReply);
+                    r.getMentorReply(), r.getMentorRepliedAt(), canEdit, canReply, r.isShowName());
         }
     }
 

@@ -14,7 +14,7 @@ from app.verification.views import (ApplicationView, ProposeSlotsInput, Round1Re
 router = APIRouter(prefix="/api/ai")
 
 
-@router.get("/verification/status", response_model=VerificationStatusView, response_model_by_alias=True)
+@router.get("/verification/legacy-status", response_model=VerificationStatusView, response_model_by_alias=True)
 async def my_status(user: AuthUser = Depends(require_role("MENTOR"))) -> VerificationStatusView:
     await interview_service.abandon_stale(user.user_id)  # kiểm tra lười: buổi quá hạn được đánh dấu trước khi báo trạng thái
     return await service.status_view(user.user_id)

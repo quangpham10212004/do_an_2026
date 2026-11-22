@@ -1800,3 +1800,22 @@ paths:
                     overall: { type: number }
                     verdict: { type: string, enum: [STRONG_HIRE, HIRE, LEAN_NO, NO_HIRE] }
         "403": { description: FORBIDDEN (chỉ MENTEE) }
+  /api/notifications/preferences:
+    get:
+      summary: "Tuỳ chọn thông báo của tôi: channels theo nhóm session|request|payment|blog|message ({inApp,email}) và reminders {d1,h1,m30}. Frontend gọi qua proxy service `notifications`."
+      responses:
+        "200": { description: NotificationPrefs }
+    put:
+      summary: "Lưu tuỳ chọn (nhóm thiếu giữ mặc định). Tắt inApp/email chặn thông báo thuộc nhóm đó; loại không thuộc nhóm (tài khoản, bảo mật, xác thực) luôn gửi. Nhắc lịch: d1 = nhắc 24 giờ, m30 = nhắc 15 phút."
+      responses:
+        "200": { description: NotificationPrefs đã lưu }
+  /internal/mentees/{id}/summary:
+    get:
+      summary: "(INTERNAL, profile-service) sessionsCompleted, onTimeRate, mentors[{mentorId,sessions}], feedbacks[]"
+      responses:
+        "200": { description: OK }
+  /internal/mentors/{id}/classmates:
+    get:
+      summary: "(INTERNAL, profile-service) { menteeIds (≤ 3, mới nhất), total } — mentee có phiên COMPLETED với mentor"
+      responses:
+        "200": { description: OK }

@@ -94,6 +94,7 @@ public class ReviewService {
             String[] tags = ReviewRules.normalizeTags(in.tags());
             Review r = new Review(sessionId, session.getMenteeId(), session.getMentorId(), in.rating(), comment);
             r.write(in.rating(), in.knowledge(), in.clarity(), in.preparation(), comment, tags, now, false);
+            if (in.showName() != null) r.setShowName(in.showName());
             return reviewRepo.save(r);
         });
     }
@@ -111,6 +112,7 @@ public class ReviewService {
             String comment = ReviewRules.validateComment(in.rating(), in.comment());
             String[] tags = ReviewRules.normalizeTags(in.tags());
             r.write(in.rating(), in.knowledge(), in.clarity(), in.preparation(), comment, tags, now, true);
+            if (in.showName() != null) r.setShowName(in.showName());
             return reviewRepo.save(r);
         });
         syncRating(saved.getMentorId());
@@ -168,6 +170,60 @@ public class ReviewService {
     }
 
     // ------------------------------------------------------------------ công khai
+
+    public Map<UUID, Long> completedCounts(List<UUID> ids) {
+        if (ids.size() > 100) {
+            throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "TOO_MANY_MENTORS",
+                    "Chỉ được tra tối đa 100 mentor mỗi lần");
+        }
+        if (ids.isEmpty()) return Map.of();
+        return sessionRepo.completedCounts(ids).stream().collect(Collectors.toMap(
+                SessionRepository.CompletedCount::getMentorId, SessionRepository.CompletedCount::getSessionCount));
+    }
+
+    public record MenteeScore(UUID sessionId, OffsetDateTime date, int preparation, int participation,
+                              String comment, String mentorName, String topic) {}
+    public record FeedbackTag(String label, long count) {}
+    public record FeedbackSummary(List<FeedbackTag> strengths, List<FeedbackTag> improvements,
+                                  Integer punctualityRate) {}
+
+    public List<MenteeScore> scores(AuthUser viewer, UUID menteeId, UUID mentorId) {
+        if (!menteeId.equals(viewer.userId())) {
+            throw ApiException.forbidden("Chỉ mentee được xem tiến độ của mình");
+        }
+        var feedback = feedbackRepo.findByMenteeId(menteeId).stream()
+                .filter(f -> mentorId == null || mentorId.equals(f.getMentorId())).toList();
+        var names = profileClient.displayNames(feedback.stream().map(MenteeFeedback::getMentorId).toList());
+        var sessions = sessionRepo.findAllById(feedback.stream().map(MenteeFeedback::getSessionId).toList())
+                .stream().collect(Collectors.toMap(MentoringSession::getId, s -> s));
+        return feedback.stream().filter(f -> sessions.containsKey(f.getSessionId())).map(f -> {
+            var session = sessions.get(f.getSessionId());
+            return new MenteeScore(f.getSessionId(), session.getScheduledAt(), f.getPreparation(), f.getEngagement(),
+                    f.getComment(), names.getOrDefault(f.getMentorId(), "Người dùng"), session.getTopic());
+        }).sorted(Comparator.comparing(MenteeScore::date)).toList();
+    }
+
+    public FeedbackSummary feedbackSummary(AuthUser viewer, UUID menteeId) {
+        if (!menteeId.equals(viewer.userId())) {
+            throw ApiException.forbidden("Chỉ mentee được xem tiến độ của mình");
+        }
+        var attended = sessionRepo.findByMenteeIdOrderByScheduledAtDesc(menteeId).stream()
+                .filter(s -> s.getStatus() == MentoringSession.Status.COMPLETED && s.getMenteeJoinedAt() != null).toList();
+        Integer rate = attended.isEmpty() ? null : (int) Math.round(100.0 * attended.stream()
+                .filter(s -> !s.getMenteeJoinedAt().isAfter(s.getScheduledAt())).count() / attended.size());
+        var feedback = feedbackRepo.findByMenteeId(menteeId);
+        long prepared = feedback.stream().filter(f -> f.getPreparation() >= 4).count();
+        long engaged = feedback.stream().filter(f -> f.getEngagement() >= 4).count();
+        long improvePreparation = feedback.stream().filter(f -> f.getPreparation() <= 2).count();
+        long improveEngagement = feedback.stream().filter(f -> f.getEngagement() <= 2).count();
+        List<FeedbackTag> strengths = new ArrayList<>();
+        List<FeedbackTag> improvements = new ArrayList<>();
+        if (prepared > 0) strengths.add(new FeedbackTag("Chuẩn bị tốt", prepared));
+        if (engaged > 0) strengths.add(new FeedbackTag("Tham gia tích cực", engaged));
+        if (improvePreparation > 0) improvements.add(new FeedbackTag("Cần chuẩn bị thêm", improvePreparation));
+        if (improveEngagement > 0) improvements.add(new FeedbackTag("Cần tham gia tích cực hơn", improveEngagement));
+        return new FeedbackSummary(strengths, improvements, rate);
+    }
 
     public MentorReviewSummary summary(AuthUser viewer, UUID mentorId) {
         List<Review> reviews = reviewRepo.findByMentorIdOrderByCreatedAtDesc(mentorId);
@@ -227,7 +283,7 @@ public class ReviewService {
         UUID me = viewer == null ? null : viewer.userId();
         boolean canEdit = r.getMenteeId().equals(me) && !now.isAfter(r.getCreatedAt().plus(ReviewRules.EDIT_WINDOW));
         boolean canReply = r.getMentorId().equals(me) && r.getMentorReply() == null;
-        return ReviewDetail.from(r, menteeName, canEdit, canReply);
+        return ReviewDetail.from(r, menteeName, canEdit, canReply, r.getMenteeId().equals(me));
     }
 
     private static Double avg(List<Review> reviews, ToIntFunctionNullable f) {

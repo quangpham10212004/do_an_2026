@@ -79,6 +79,10 @@ public class PayoutService {
     }
 
     public PayoutView request(AuthUser mentor) {
+        return request(mentor, null);
+    }
+
+    public PayoutView request(AuthUser mentor, BigDecimal requestedAmount) {
         UUID mentorId = mentor.userId();
         Payout saved = tx.execute(s -> {
             payouts.lockMentor(mentorId);
@@ -91,8 +95,12 @@ public class PayoutService {
             BankAccount bank = banks.findById(mentorId).orElseThrow(() ->
                     ApiException.badRequest("BANK_ACCOUNT_REQUIRED", "Hãy thêm tài khoản ngân hàng trước khi rút tiền"));
             BigDecimal available = earnings.summary(mentorId).available();
-            PayoutRules.requireMinimum(available);
-            return payouts.save(new Payout(mentorId, available, bank, OffsetDateTime.now()));
+            BigDecimal amount = requestedAmount == null ? available : requestedAmount;
+            PayoutRules.requireMinimum(amount);
+            if (amount.compareTo(available) > 0) {
+                throw ApiException.conflict("PAYOUT_EXCEEDS_AVAILABLE", "Số tiền rút vượt quá số dư khả dụng");
+            }
+            return payouts.save(new Payout(mentorId, amount, bank, OffsetDateTime.now()));
         });
         audit.record(mentorId, "MENTOR", "PAYOUT_REQUESTED", "PAYOUT", saved.getId().toString(), null,
                 AuditClient.fields("amount", saved.getAmount()));

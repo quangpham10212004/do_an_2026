@@ -2,6 +2,10 @@ server:
   port: 8085
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   application:
     name: learning-service
   datasource:
@@ -35,4 +39,9 @@ app:
   security:
     jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
     internal-api-key: ${INTERNAL_API_KEY:dev-internal-key}
-    public-paths: ""
+    public-paths: "/api/learning/blog/covers/*"
+  profile-service:
+    url: ${PROFILE_SERVICE_URL:http://localhost:8082}   # lấy tên hiển thị tác giả blog
+  blog:
+    posts-per-hour: ${BLOG_POSTS_PER_HOUR:10}           # giới hạn tạo bài / người / giờ
+    comments-per-hour: ${BLOG_COMMENTS_PER_HOUR:30}     # giới hạn bình luận / người / giờ

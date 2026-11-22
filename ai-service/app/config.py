@@ -69,6 +69,8 @@ VIDEO_RETENTION_DAYS = float(os.getenv("VIDEO_RETENTION_DAYS", "60"))
 # VIDEO_RECONNECT_SECONDS thì lần làm bị vô hiệu (INVALIDATED, tính vào số lần).
 VIDEO_MAX_GAP_SECONDS = float(os.getenv("VIDEO_MAX_GAP_SECONDS", "10"))
 VIDEO_RECONNECT_SECONDS = float(os.getenv("VIDEO_RECONNECT_SECONDS", "60"))
+# Phỏng vấn trực tiếp: kích thước tối đa video của MỘT câu trả lời (multipart `media`).
+LIVE_ANSWER_MAX_BYTES = int(os.getenv("LIVE_ANSWER_MAX_BYTES", str(60 * 1024 * 1024)))
 VIDEO_MAX_CHUNK_BYTES = int(os.getenv("VIDEO_MAX_CHUNK_BYTES", str(8 * 1024 * 1024)))
 VIDEO_PLAY_TOKEN_SECONDS = int(os.getenv("VIDEO_PLAY_TOKEN_SECONDS", "600"))
 # Mentor đã nộp bản chép lời mà không gọi finish (đóng tab): sau chừng này phút job nền tự chốt video.

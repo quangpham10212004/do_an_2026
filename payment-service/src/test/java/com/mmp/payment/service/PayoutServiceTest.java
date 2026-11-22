@@ -137,6 +137,18 @@ class PayoutServiceTest {
     }
 
     @Test
+    void partialRequestDebitsOnlyRequestedAmountWhenPaid() {
+        bank();
+        released(350000);
+        assertThatThrownBy(() -> service.request(mentor, new BigDecimal("400000")))
+                .hasFieldOrPropertyWithValue("code", "PAYOUT_EXCEEDS_AVAILABLE");
+        PayoutView payout = service.request(mentor, new BigDecimal("200000"));
+        assertThat(payout.amount()).isEqualByComparingTo("200000");
+        service.markPaid(admin, payout.id(), new MarkPaidInput("PARTIAL", null));
+        assertThat(service.overview(mentorId).available()).isEqualByComparingTo("150000");
+    }
+
+    @Test
     void markPaidWritesPayoutLedgerFifoAndZeroesAvailable() {
         bank();
         Transaction a = released(150000);

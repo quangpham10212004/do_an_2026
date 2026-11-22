@@ -121,7 +121,8 @@ export default function MatchingFilters({ value, fromProfile, busy, onSearch, on
         <CardFooter>
           <span className="mr-auto self-center text-small text-ink-muted">Bộ lọc chỉ áp dụng cho lượt tìm này, không thay đổi hồ sơ.</span>
           <Button variant="ghost" disabled={busy} onClick={onUseProfile}>Dùng sở thích trong hồ sơ</Button>
-          <Button type="submit" variant="primary" icon={Search} loading={busy}>Tìm mentor</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => onSearch(NO_FILTERS)}>Xoá bộ lọc</Button>
+          <Button type="submit" variant="primary" icon={Search} loading={busy}>Áp dụng</Button>
         </CardFooter>
       </Card>
     </form>

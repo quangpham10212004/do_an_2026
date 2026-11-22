@@ -80,6 +80,15 @@ public interface SessionRepository extends JpaRepository<MentoringSession, UUID>
     /** US-44 (PRD-MATCH-9) — số phiên đã hoàn thành của mentor (trang mentor công khai). */
     long countByMentorIdAndStatus(UUID mentorId, MentoringSession.Status status);
 
+    interface CompletedCount {
+        UUID getMentorId();
+        long getSessionCount();
+    }
+
+    @Query("SELECT s.mentorId AS mentorId, COUNT(s) AS sessionCount FROM MentoringSession s "
+            + "WHERE s.mentorId IN :ids AND s.status = 'COMPLETED' GROUP BY s.mentorId")
+    List<CompletedCount> completedCounts(@Param("ids") List<UUID> ids);
+
     /** US-27 — phiên sắp tới đang giữ chỗ (PENDING/AWAITING_MENTOR/CONFIRMED, chưa bắt đầu) của mentor. */
     /** Bản chốt v2.0 §2.1 — mọi buổi chưa diễn ra (đang giữ chỗ) của một người, dù là mentor hay mentee. */
     @Query("SELECT s FROM MentoringSession s WHERE (s.mentorId = :userId OR s.menteeId = :userId) AND s.status IN ('PENDING', 'AWAITING_MENTOR', 'CONFIRMED') AND s.scheduledAt > :now ORDER BY s.scheduledAt")

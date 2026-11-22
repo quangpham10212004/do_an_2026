@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
 import { Alert, Button, Card, CardBody, CardFooter, CardHeader, Chips, Field, Input, Textarea } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
@@ -28,6 +28,13 @@ interface CvReviewProps {
   busy: boolean;
   /** Lưu trường đã duyệt rồi bắt đầu chatbot — trang cha gọi API. */
   onConfirm: (fields: ConfirmedCvFields) => Promise<void>;
+  /** Nhãn nút xác nhận (mặc định: bắt đầu trò chuyện). */
+  submitLabel?: string;
+  /** Nút phụ cạnh nút xác nhận, vd. "Thay CV khác". */
+  footerExtra?: ReactNode;
+  /** Tiêu đề/mô tả tuỳ biến (màn kiểm tra thông tin riêng). */
+  title?: ReactNode;
+  description?: ReactNode;
 }
 
 const removeAt = <T,>(list: T[], i: number) => list.filter((_, j) => j !== i);
@@ -36,7 +43,7 @@ const removeAt = <T,>(list: T[], i: number) => list.filter((_, j) => j !== i);
  * US-20 (PRD-CV-2) — bước xem lại thông tin trích xuất: sửa/bỏ từng trường (vai trò, kỹ năng, số năm kinh
  * nghiệm, dự án, học vấn) TRƯỚC khi chatbot bắt đầu. Chưa có gì được ghi vào hồ sơ ở bước này.
  */
-export default function CvReview({ cv, busy, onConfirm }: CvReviewProps) {
+export default function CvReview({ cv, busy, onConfirm, submitLabel, footerExtra, title, description }: CvReviewProps) {
   const start = initialFields(cv);
   const [role, setRole] = useState(start.role ?? "");
   const [years, setYears] = useState(start.yearsExperience == null ? "" : String(start.yearsExperience));
@@ -90,8 +97,8 @@ export default function CvReview({ cv, busy, onConfirm }: CvReviewProps) {
     <form onSubmit={submit}>
       <Card>
         <CardHeader
-          title="Xem lại thông tin trích xuất từ CV"
-          description={<>{cv.fileName} · engine {cv.engine}. Sửa hoặc bỏ những gì chưa đúng. Chưa có gì được lưu vào hồ sơ: chatbot chỉ dùng
+          title={title ?? "Xem lại thông tin trích xuất từ CV"}
+          description={description ?? <>{cv.fileName} · engine {cv.engine}. Sửa hoặc bỏ những gì chưa đúng. Chưa có gì được lưu vào hồ sơ: chatbot chỉ dùng
             thông tin bạn xác nhận ở đây, và kỹ năng chỉ được thêm vào hồ sơ khi bạn chọn dùng mục tiêu cuối cùng.</>}
         />
         <CardBody className="flex flex-col gap-5">
@@ -158,7 +165,8 @@ export default function CvReview({ cv, busy, onConfirm }: CvReviewProps) {
           </Field>
         </CardBody>
         <CardFooter>
-          <Button type="submit" variant="primary" loading={busy}>{busy ? "Đang lưu…" : "Xác nhận và bắt đầu trò chuyện"}</Button>
+          {footerExtra}
+          <Button type="submit" variant="primary" loading={busy}>{busy ? "Đang lưu…" : submitLabel ?? "Xác nhận và bắt đầu trò chuyện"}</Button>
         </CardFooter>
       </Card>
     </form>

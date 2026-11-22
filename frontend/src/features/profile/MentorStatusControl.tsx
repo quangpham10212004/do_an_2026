@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Card, CardBody, CardHeader, Field, FlashAlerts, Input, type Flash } from "@/components/ui";
+import { Alert, Button, Field, FlashAlerts, Input, type Flash } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { MENTOR_STATUS_LABELS, mentorStatusText, profileApi } from "@/features/profile/api";
 import type { MentorProfile, MentorStatusInput } from "@/types";
@@ -44,9 +44,8 @@ export default function MentorStatusControl({ profile, onChange }: { profile: Me
   }
 
   return (
-    <Card>
-      <CardHeader title="Trạng thái nhận mentee" description={<>Hiện tại: <strong className="text-ink">{mentorStatusText(profile.status, profile.onLeaveUntil)}</strong></>} />
-      <CardBody className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
+      <p className="text-ink-muted">Hiện tại: <strong className="text-ink">{mentorStatusText(profile.status, profile.onLeaveUntil)}</strong></p>
         <FlashAlerts flash={msg} />
         <div className="flex flex-col gap-2" role="radiogroup" aria-label="Trạng thái nhận mentee">
           {CHOICES.map(([value, hint]) => (
@@ -65,9 +64,8 @@ export default function MentorStatusControl({ profile, onChange }: { profile: Me
           </Field>
         )}
         <div>
-          <Button variant="primary" loading={busy} disabled={status === "ON_LEAVE" && !until} onClick={save}>Lưu trạng thái</Button>
+          <Button variant="primary" loading={busy} disabled={status === "ON_LEAVE" && !until} onClick={save}>Áp dụng trạng thái</Button>
         </div>
-      </CardBody>
-    </Card>
+    </div>
   );
 }

@@ -28,6 +28,11 @@ public class CourseMaterial {
     @Column(name = "order_index", nullable = false)
     private int orderIndex;
 
+    @Column(name = "duration_minutes", nullable = false)
+    private int durationMinutes = 10;
+
+    public int getDurationMinutes() { return durationMinutes; }
+    public void setDurationMinutes(int durationMinutes) { this.durationMinutes = durationMinutes; }
     public UUID getId() { return id; }
     public UUID getCourseId() { return courseId; }
     public void setCourseId(UUID courseId) { this.courseId = courseId; }

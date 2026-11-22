@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
-import { Flag, Send } from "lucide-react";
-import { Alert, Avatar, Button, ButtonLink, Card, FlashAlerts, Loading, PageHeader, Select, Textarea } from "@/components/ui";
+import { Bell, BellOff, CalendarClock, FileText, Flag, Paperclip, Send, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { Alert, Avatar, Badge, Button, ButtonLink, Card, FlashAlerts, Loading, PageHeader, Select, Textarea } from "@/components/ui";
+import { authorHref } from "@/features/learning/AuthorAvatar";
 import { mentoringApi } from "@/features/mentoring/api";
 import { MESSAGE_MAX, MESSAGE_REPORT_REASONS, MESSAGE_REPORT_REASON_LABELS } from "@/features/mentoring/labels";
 import MentoringStatusBadge from "@/features/mentoring/StatusBadge";
+import { CONTACT_WARNING, detectContact, formatBytes, messageX, type Presence, type SharedFile, type UpcomingSession } from "@/features/socialx/api";
 import { errorMessage } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import type { ChatMessage, ConversationView, MessageReportReason } from "@/types";
 
 /** Gộp tin mới (polling) vào danh sách hiện có, bỏ trùng theo id, giữ thứ tự thời gian. */
@@ -61,6 +64,13 @@ function Thread({ id }: { id: string }) {
   const [ok, setOk] = useState("");
   const [sending, setSending] = useState(false);
   const [reporting, setReporting] = useState<string | null>(null);
+  const [presence, setPresence] = useState<Presence | null>(null);
+  const [upcoming, setUpcoming] = useState<UpcomingSession | null>(null);
+  const [files, setFiles] = useState<SharedFile[]>([]);
+  const [muted, setMuted] = useState(false);
+  const [flags, setFlags] = useState<Record<string, "phone" | "email">>({});
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const lastAt = useRef<string | undefined>(undefined);
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -78,6 +88,21 @@ function Thread({ id }: { id: string }) {
     load(false).catch((e) => setError(errorMessage(e)));
   }, [load]);
 
+  const counterpartId = view?.conversation.counterpartId;
+  useEffect(() => {
+    setFlags(messageX.flaggedMessages(id));
+    messageX.sharedFiles(id).then(setFiles).catch(() => setFiles([]));
+    messageX.getMuted(id).then(setMuted).catch(() => setMuted(false));
+    messageX.upcomingSession(id).then(setUpcoming).catch(() => setUpcoming(null));
+  }, [id]);
+  useEffect(() => {
+    if (!counterpartId) return;
+    const refresh = () => messageX.presence(id, counterpartId).then(setPresence).catch(() => setPresence(null));
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    return () => clearInterval(timer);
+  }, [counterpartId]);
+
   const interval = (view?.pollIntervalSeconds ?? 10) * 1000;
   useEffect(() => {
     const timer = setInterval(() => {
@@ -88,7 +113,7 @@ function Thread({ id }: { id: string }) {
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
-  }, [messages.length]);
+  }, [messages.length, files.length]);
 
   if (!view) return error ? <Alert>{error}</Alert> : <Loading />;
   const c = view.conversation;
@@ -101,7 +126,12 @@ function Thread({ id }: { id: string }) {
     setSending(true);
     setError("");
     try {
+      const kind = detectContact(body);
       const sent = await mentoringApi.sendMessage(id, body);
+      if (kind) {
+        messageX.flagMessage(id, sent.id, kind);
+        setFlags(messageX.flaggedMessages(id));
+      }
       setDraft("");
       setMessages((cur) => {
         const next = merge(cur, [sent]);
@@ -117,13 +147,56 @@ function Thread({ id }: { id: string }) {
     }
   };
 
+  async function attach(list: FileList | null) {
+    const file = list?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const f = await messageX.uploadAttachment(id, file);
+      setFiles((cur) => [...cur, f]);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function toggleMute() {
+    const next = !muted;
+    setMuted(next);
+    try {
+      await messageX.setMuted(id, next);
+      setOk(next ? "Đã tắt thông báo cho hội thoại này." : "Đã bật lại thông báo cho hội thoại này.");
+    } catch (e) {
+      setMuted(!next);
+      setError(errorMessage(e));
+    }
+  }
+
+  function downloadFile(event: React.MouseEvent<HTMLAnchorElement>, file: SharedFile) {
+    event.preventDefault();
+    messageX.downloadAttachment(file).catch((e) => setError(errorMessage(e)));
+  }
+
+  const draftContact = detectContact(draft);
+  // Tin nhắn và tệp đính kèm xếp chung theo thời gian.
+  type Item = { kind: "msg"; at: string; m: ChatMessage } | { kind: "file"; at: string; f: SharedFile };
+  const timeline: Item[] = [
+    ...messages.map((m): Item => ({ kind: "msg", at: m.createdAt, m })),
+    ...files.map((f): Item => ({ kind: "file", at: f.createdAt, f })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+
   const name = c.counterpartName || "Người dùng";
   return (
-    <div className="mx-auto flex max-w-[860px] flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <PageHeader
         back={{ href: "/messages", label: "Tin nhắn" }}
         title={<span className="inline-flex items-center gap-3"><Avatar name={name} />{name}</span>}
-        description={<span className="inline-flex flex-wrap items-center gap-2">{c.counterpartRole === "MENTOR" ? "Mentor" : "Mentee"} · Yêu cầu mentoring <MentoringStatusBadge status={c.requestStatus} /></span>}
+        description={<span className="inline-flex flex-wrap items-center gap-2">{c.counterpartRole === "MENTOR" ? "Mentor" : "Mentee"} · Yêu cầu mentoring <MentoringStatusBadge status={c.requestStatus} />
+          {presence && <span className="sc-presence" data-online={presence.online}><span className="dot" aria-hidden="true" />{presence.online ? "Đang hoạt động" : "Ngoại tuyến"}</span>}
+          {muted && <Badge plain>Đã tắt thông báo</Badge>}</span>}
         actions={<ButtonLink href="/mentoring/requests" size="sm">Xem yêu cầu</ButtonLink>}
       />
       <FlashAlerts flash={{ ok, error }} />
@@ -133,27 +206,65 @@ function Thread({ id }: { id: string }) {
           thanh toán trên MentorHub để được bảo vệ khi có sự cố — chia sẻ liên hệ nhiều lần sẽ được báo cho quản trị viên.
         </Alert>
       )}
-      <Card>
+      {upcoming && (
+        <div className="sc-upcoming">
+          <CalendarClock aria-hidden="true" />
+          <div className="grow"><b>Phiên sắp tới: {upcoming.title}</b><span>{formatDateTime(upcoming.startsAt)}</span></div>
+          <ButtonLink href={upcoming.href} size="sm">Xem phiên</ButtonLink>
+        </div>
+      )}
+      <div className="sc-thread">
+      <Card className="sc-thread-main">
         <div className="chat max-h-[60vh] overflow-y-auto p-5 max-sm:p-4">
-          {messages.length === 0 && <div className="bubble-system bubble">Chưa có tin nhắn. Hãy mở đầu cuộc trò chuyện.</div>}
-          {messages.map((m) => (
-            <div key={m.id} className="group flex flex-col gap-1">
-              <div className={`bubble ${m.mine ? "bubble-me" : ""}`}>{m.body}</div>
-              <div className={`bubble-meta flex items-center gap-2 ${m.mine ? "bubble-meta-me" : ""}`}>
-                {m.mine ? "Bạn" : name} · {formatDateTime(m.createdAt)}
-                {!m.mine && reporting !== m.id && (
-                  <button type="button" className="inline-flex cursor-pointer items-center gap-1 text-ink-subtle hover:text-danger"
-                    onClick={() => { setOk(""); setReporting(m.id); }}>
-                    <Flag aria-hidden="true" className="size-3" />Báo cáo
-                  </button>
+          {timeline.length === 0 && <div className="bubble-system bubble">Chưa có tin nhắn. Hãy mở đầu cuộc trò chuyện.</div>}
+          {timeline.map((it, i) => {
+            const prev = timeline[i - 1];
+            const sep = (i === 0 || formatDate(prev.at) !== formatDate(it.at)) && <div className="sc-datesep">{formatDate(it.at)}</div>;
+            if (it.kind === "file") {
+              const f = it.f;
+              return (
+                <div key={`f-${f.id}`} className="group flex flex-col gap-1">
+                  {sep}
+                  <div className={`flex ${f.mine ? "justify-end" : ""}`}>
+                    <div className="sc-file">
+                      <FileText aria-hidden="true" />
+                      <div className="grow">
+                        {f.url ? <a href={f.url} download={f.name} onClick={(e) => downloadFile(e, f)}>{f.name}</a> : <b>{f.name}</b>}
+                        <small>{formatBytes(f.size)}</small>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`bubble-meta ${f.mine ? "bubble-meta-me" : ""}`}>{f.mine ? "Bạn" : name} · {formatDateTime(f.createdAt)}</div>
+                </div>
+              );
+            }
+            const m = it.m;
+            const flag = m.mine ? flags[m.id] : undefined;
+            return (
+              <div key={m.id} className="group flex flex-col gap-1">
+                {sep}
+                {flag && (
+                  <div className="sc-contact-warn" role="note">
+                    <TriangleAlert aria-hidden="true" /><span>{CONTACT_WARNING[flag]}</span>
+                  </div>
+                )}
+                <div className={`bubble ${m.mine ? "bubble-me" : ""}`}>{m.body}</div>
+                <div className={`bubble-meta flex items-center gap-2 ${m.mine ? "bubble-meta-me" : ""}`}>
+                  {m.mine ? "Bạn" : name} · {formatDateTime(m.createdAt)}
+                  {!m.mine && reporting !== m.id && (
+                    <button type="button" className="inline-flex min-h-11 cursor-pointer items-center gap-1 text-ink-subtle hover:text-danger"
+                      onClick={() => { setOk(""); setReporting(m.id); }}>
+                      <Flag aria-hidden="true" className="size-3" />Báo cáo
+                    </button>
+                  )}
+                </div>
+                {reporting === m.id && (
+                  <ReportForm messageId={m.id} onCancel={() => setReporting(null)}
+                    onDone={(msg) => { setReporting(null); setOk(msg); }} />
                 )}
               </div>
-              {reporting === m.id && (
-                <ReportForm messageId={m.id} onCancel={() => setReporting(null)}
-                  onDone={(msg) => { setReporting(null); setOk(msg); }} />
-              )}
-            </div>
-          ))}
+            );
+          })}
           <div ref={bottom} />
         </div>
         <div className="card-foot flex-col items-stretch">
@@ -167,7 +278,14 @@ function Thread({ id }: { id: string }) {
               {view.readOnlyAt && (
                 <div className="text-small text-ink-muted">Yêu cầu đã đóng; cuộc trò chuyện chuyển sang chỉ xem lúc {formatDateTime(view.readOnlyAt)}.</div>
               )}
+              {draftContact && (
+                <div className="sc-contact-warn" role="alert">
+                  <TriangleAlert aria-hidden="true" /><span>{CONTACT_WARNING[draftContact]}</span>
+                </div>
+              )}
               <div className="flex items-end gap-2">
+                <input ref={fileInput} type="file" className="sr-only" tabIndex={-1} aria-label="Chọn tệp đính kèm" onChange={(e) => attach(e.target.files)} />
+                <Button variant="ghost" iconOnly icon={Paperclip} label="Đính kèm tệp" loading={uploading} disabled={blocked} onClick={() => fileInput.current?.click()} />
                 <Textarea value={draft} maxLength={MESSAGE_MAX} disabled={blocked} rows={2} aria-label="Tin nhắn" className="min-h-[44px]"
                   placeholder={blocked ? "Bạn đã dùng hết lượt nhắn trước khi được chấp nhận" : "Nhập tin nhắn…"}
                   onChange={(e) => setDraft(e.target.value)}
@@ -176,11 +294,50 @@ function Thread({ id }: { id: string }) {
                   }} />
                 <Button variant="primary" iconOnly icon={Send} label="Gửi" loading={sending} disabled={blocked || !draft.trim()} onClick={send} />
               </div>
-              <span className="text-small text-ink-subtle tabular">{draft.length}/{MESSAGE_MAX} · Ctrl/⌘ + Enter để gửi</span>
+              <span className="text-small text-ink-subtle tabular">{draft.length}/{MESSAGE_MAX} · Ctrl/⌘ + Enter để gửi · Tệp tối đa 10 MB</span>
             </>
           )}
         </div>
       </Card>
+      <aside className="sc-thread-side" aria-label="Thông tin hội thoại">
+        <section className="sc-side-card">
+          <div className="flex items-center gap-3">
+            <Avatar name={name} size="lg" />
+            <div className="min-w-0">
+              <b className="block truncate">{name}</b>
+              <span className="text-small text-ink-muted">{c.counterpartRole === "MENTOR" ? "Mentor" : "Mentee"}</span>
+            </div>
+          </div>
+          {presence && <p className="sc-presence mt-2" data-online={presence.online}><span className="dot" aria-hidden="true" />{presence.online ? "Đang hoạt động" : "Ngoại tuyến"}</p>}
+          <div className="mt-3 flex flex-col gap-2">
+            <ButtonLink href={authorHref(c.counterpartId, c.counterpartRole)} block>Xem trang cá nhân</ButtonLink>
+            <ButtonLink href="/mentoring/requests" block>Xem yêu cầu mentoring</ButtonLink>
+          </div>
+        </section>
+        <section className="sc-side-card">
+          <h2>Tệp đã chia sẻ ({files.length})</h2>
+          {files.length === 0 ? <p className="text-small text-ink-muted">Chưa có tệp nào trong hội thoại này.</p> : (
+            <ul className="flex flex-col gap-2">
+              {files.map((f) => (
+                <li key={f.id} className="sc-file-row">
+                  <FileText aria-hidden="true" />
+                  {f.url ? <a href={f.url} download={f.name} onClick={(e) => downloadFile(e, f)} className="truncate">{f.name}</a> : <span className="truncate">{f.name}</span>}
+                  <small>{formatBytes(f.size)}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3 flex flex-col gap-2">
+            <Button block icon={muted ? Bell : BellOff} aria-pressed={muted} onClick={toggleMute}>{muted ? "Bật lại thông báo" : "Tắt thông báo hội thoại"}</Button>
+          </div>
+        </section>
+        <section className="sc-side-card">
+          <h2>Lưu ý</h2>
+          <p className="text-small text-ink-muted">Hãy trao đổi và thanh toán trên MentorHub để được bảo vệ khi có sự cố. Bấm “Báo cáo” dưới tin nhắn của bên kia nếu có vi phạm; người bị báo cáo không biết ai đã báo.</p>
+          <Link href="/mentoring/sessions" className="mt-2 inline-flex min-h-11 items-center text-small font-semibold text-accent-ink">Đến phiên học của tôi</Link>
+        </section>
+      </aside>
+      </div>
     </div>
   );
 }

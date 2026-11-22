@@ -95,6 +95,21 @@ class ReviewServiceTest {
     }
 
     @Test
+    void publicAnonymousReviewHidesAuthorIdentifiersAndOwnerCanEdit() {
+        ReviewDetail owner = service.create(mentee, sessionId,
+                new StructuredReviewInput(5, 5, 4, 3, null, List.of(), false));
+        assertThat(owner.showName()).isFalse();
+        assertThat(owner.sessionId()).isEqualTo(sessionId);
+        assertThat(owner.canEdit()).isTrue();
+
+        ReviewDetail publicView = service.list(mentor, mentorId).getFirst();
+        assertThat(publicView.menteeName()).isEqualTo("Mentee ẩn danh");
+        assertThat(publicView.menteeId()).isNull();
+        assertThat(publicView.sessionId()).isNull();
+        assertThat(publicView.canEdit()).isFalse();
+    }
+
+    @Test
     void aFullyRefundedSessionCannotBeReviewedButAPartlyRefundedOneCan() {
         session.setRefundPercent(100);
         assertThatThrownBy(() -> service.create(mentee, sessionId, input(5, null)))

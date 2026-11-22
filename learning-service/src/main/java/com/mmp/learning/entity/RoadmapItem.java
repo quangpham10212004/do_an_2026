@@ -26,6 +26,15 @@ public class RoadmapItem {
     @Column(name = "course_id")
     private UUID courseId;
 
+    private String stage;
+
+    @Column(name = "estimated_hours")
+    private Integer estimatedHours;
+
+    public String getStage() { return stage; }
+    public void setStage(String stage) { this.stage = stage; }
+    public Integer getEstimatedHours() { return estimatedHours; }
+    public void setEstimatedHours(Integer estimatedHours) { this.estimatedHours = estimatedHours; }
     public UUID getId() { return id; }
     public UUID getRoadmapId() { return roadmapId; }
     public void setRoadmapId(UUID roadmapId) { this.roadmapId = roadmapId; }

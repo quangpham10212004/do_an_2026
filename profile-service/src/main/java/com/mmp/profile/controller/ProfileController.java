@@ -49,6 +49,11 @@ public class ProfileController {
         return CurrentUser.get().canAccess(userId) ? res : res.forPublicViewer();
     }
 
+    @GetMapping("/mentors/extras")
+    public List<ProfileService.MentorExtra> mentorExtras(@RequestParam List<UUID> ids) {
+        return profileService.mentorExtras(ids, CurrentUser.get().isAdmin());
+    }
+
     /** US-04 — cài đặt đặt lịch (link họp, buffer, báo trước, ngôn ngữ, loại phiên, múi giờ). */
     @PutMapping("/mentor/{userId}/booking-settings")
     public MentorProfileResponse updateBookingSettings(@PathVariable UUID userId, @Valid @RequestBody BookingSettingsInput input) {

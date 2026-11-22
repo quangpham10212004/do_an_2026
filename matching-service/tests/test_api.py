@@ -30,9 +30,9 @@ def fake_pipeline(monkeypatch):
     calls = []
 
     async def fake_match(mentee_id: str, limit: int = 10, requested=None, use_profile_defaults=True, exclude_ids=None,
-                         include_over_budget=True):
+                         include_over_budget=True, intent=None):
         calls.append({"limit": limit, "requested": requested, "use_profile_defaults": use_profile_defaults,
-                      "include_over_budget": include_over_budget})
+                      "include_over_budget": include_over_budget, "intent": intent})
         if mentee_id == OTHER_ID:
             return None
         filters = match_filters.resolve(requested or {}, {"budget_max_per_hour": 150000}, use_profile_defaults)
@@ -47,7 +47,16 @@ def fake_pipeline(monkeypatch):
             "filters": filters,
             "excluded_by": {name: 12 for name in sorted(filters.active())},
             "stats": {"considered": 20, "excluded": {"notVerified": 4}, "eligible": 3, "over_budget": 1, "k": 50,
-                      "retrieved": 3, "returned": 1},
+                      "retrieved": 3, "returned": 1,
+                      "stages": {
+                          "filter": {"ms": 1.5, "considered": 20, "excluded": {"notVerified": 4}, "eligible": 3},
+                          "retrieve": {"ms": 2.0, "model": "m", "dim": 384, "k": 50, "retrieved": 3,
+                                       "nearest": [{"display_name": "Anh Mentor", "similarity": 0.8}]},
+                          "rerank": {"ms": 3.0, "weights": {"similarity": 0.6},
+                                     "top": [{"display_name": "Anh Mentor", "final_score": 0.82,
+                                              "score_parts": {"similarity": 0.48}}]},
+                          "explain": {"ms": 0.2, "reasons": 1},
+                      }},
         }
 
     monkeypatch.setattr(matching_pipeline, "match_mentors_for_mentee", fake_match)
@@ -111,7 +120,7 @@ def test_matching_echoes_effective_filters_and_excluded_by(client, fake_pipeline
     url = (f"/api/matching/mentors?menteeId={MENTEE_ID}&maxRate=500000&days=1,3&days=5&timeOfDay=EVENING"
            f"&language=en&sessionType=CODE_REVIEW&minRating=4&useProfileDefaults=false&limit=5")
     body = client.get(url, headers=headers).json()
-    assert fake_pipeline[-1] == {
+    assert {k: v for k, v in fake_pipeline[-1].items() if k != "intent"} == {
         "limit": 5,
         "use_profile_defaults": False,
         "include_over_budget": True,
@@ -128,6 +137,39 @@ def test_matching_without_filter_params_passes_none(client, fake_pipeline):
                headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
     assert fake_pipeline[-1]["use_profile_defaults"] is True
     assert set(fake_pipeline[-1]["requested"].values()) == {None}
+
+
+def test_matching_exposes_pipeline_stages_in_camel_case(client, fake_pipeline):
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    stages = res.json()["pipeline"]["stages"]
+    assert stages["retrieve"]["dim"] == 384 and stages["retrieve"]["nearest"][0]["displayName"] == "Anh Mentor"
+    assert stages["rerank"]["top"][0]["scoreParts"] == {"similarity": 0.48}
+    assert stages["filter"]["eligible"] == 3 and stages["explain"]["reasons"] == 1
+
+
+def test_switch_intent_requires_target_domain(client, fake_pipeline):
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}&intent=SWITCH",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 400
+
+
+def test_switch_intent_reaches_pipeline_and_is_echoed(client, fake_pipeline):
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}&intent=SWITCH&targetDomain=Data&goalText=học ML",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 200
+    sent = fake_pipeline[-1]["intent"]
+    assert sent.is_switch and sent.target_domain == "data" and sent.goal_text == "học ML"
+    body = res.json()
+    assert body["intent"] == {"mode": "SWITCH", "targetDomain": "data", "goalText": "học ML"}
+    assert body["pipeline"]["weights"]["transition"] > 0
+
+
+def test_default_intent_is_current(client, fake_pipeline):
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert not fake_pipeline[-1]["intent"].is_switch
+    assert res.json()["intent"]["mode"] == "CURRENT" and "transition" not in res.json()["pipeline"]["weights"]
 
 
 def test_matching_reports_took_ms(client, fake_pipeline):

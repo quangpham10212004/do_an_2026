@@ -9,6 +9,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.util.UUID;
+import java.math.BigDecimal;
+import org.springframework.web.client.HttpClientErrorException;
 
 /** US-42 — tên hiển thị trên biên lai (profile-service GET /internal/profile-summary/{id}); lỗi → "Người dùng". */
 @Component
@@ -17,6 +19,17 @@ public class ProfileClient {
     private final RestClient restClient;
 
     record Summary(UUID userId, String displayName) {
+    }
+
+    public record MentorSummary(UUID userId, String displayName, String headline, double rating,
+                                int ratingCount, BigDecimal hourlyRate, String verificationStatus) {}
+
+    public MentorSummary mentorSummary(UUID mentorId) {
+        try {
+            return restClient.get().uri("/internal/mentor/{id}", mentorId).retrieve().body(MentorSummary.class);
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
     }
 
     public ProfileClient(@Value("${app.services.profile-url:http://localhost:8082}") String profileUrl,

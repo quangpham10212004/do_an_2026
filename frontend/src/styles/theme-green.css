@@ -1,0 +1,37 @@
+/* Phong cách xanh lá và trắng (theo bản thiết kế Claude Design): thẻ trắng viền xanh nhạt, nút pill, tiêu đề đậm Be Vietnam Pro.
+   Chỉ ghi đè hình dáng; màu đã đi qua token. */
+
+body { background: var(--bg); }
+
+/* Tiêu đề trang */
+.page-header h1 { font-size: clamp(26px, 3.4vw, 30px); line-height: 1.2; font-weight: 700; letter-spacing: 0; }
+.card-title { font-size: 18px; line-height: 26px; font-weight: 700; }
+.stat-value { font-size: 28px; line-height: 1.1; font-weight: 700; }
+
+/* Nút pill */
+.btn { border-radius: var(--radius-full); height: 44px; padding: 0 22px; font-weight: 600; }
+.btn-sm { height: 36px; padding: 0 16px; }
+.btn-lg { height: 48px; padding: 0 28px; }
+.btn-icon { padding: 0; width: 44px; }
+.btn-sm.btn-icon { width: 36px; }
+
+/* Thẻ, huy hiệu, chip, ô nhập */
+.card { border-radius: 14px; box-shadow: none; }
+.badge { border-radius: var(--radius-full); padding: 0 10px; }
+.chip { border-radius: var(--radius-full); }
+.input, .select, .textarea { border-radius: 12px; height: 44px; }
+.textarea { height: auto; }
+.table-wrap { border-radius: 14px; overflow-x: auto; }
+.brand-mark { background: var(--accent); color: var(--on-accent); border-radius: 8px; }
+
+/* Thanh bên (chỉ còn dùng cho quản trị viên) */
+.sidebar { background: var(--navy); }
+.nav-item { height: 44px; border-radius: var(--radius-md); }
+.nav-item[aria-current="page"] { background: #fff; color: var(--navy); font-weight: 600; box-shadow: none; }
+.nav-group-label { text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; }
+
+@media (max-width: 640px) {
+  .card { border-radius: 12px; }
+}
+
+/* Trang công khai và landing: xem landing.css */
