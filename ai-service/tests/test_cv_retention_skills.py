@@ -1,10 +1,11 @@
 """US-45 — chatbot CV: bỏ qua câu hỏi (PRD-CV-3), chọn kỹ năng gợi ý (PRD-CV-5), lưu giữ 12 tháng + gỡ kỹ năng khi xoá (PRD-CV-6)."""
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
-from app import storage
+from app import config, storage
 from app.enrichment import service
 from app.errors import AiError
 from tests.conftest import auth
@@ -138,7 +139,7 @@ def test_delete_without_flag_keeps_profile_skills(client, db, fake_profile, ment
 def test_purge_removes_file_and_raw_text_after_12_months(client, db, fake_profile, mentee_id):
     conversation = upload_and_start(client, mentee_id, fields={"skills": SKILLS})
     cv_id = conversation["cvId"]
-    folder = storage._root / str(mentee_id)
+    folder = Path(config.CV_STORAGE_DIR).resolve() / str(mentee_id)
     assert len(list(folder.glob("*.pdf"))) == 1
 
     # chưa đủ 12 tháng: không xoá gì

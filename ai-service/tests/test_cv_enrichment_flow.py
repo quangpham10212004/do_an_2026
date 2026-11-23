@@ -1,6 +1,7 @@
 """Luồng CV Parsing + Chatbot enrichment end-to-end trong ai-service."""
 import asyncio
 import uuid
+from pathlib import Path
 
 import httpx
 import pytest
@@ -242,7 +243,7 @@ def test_cannot_answer_someone_elses_conversation(client, db, fake_profile, ment
 
 
 def _cv_files(owner_id):
-    folder = storage._root / str(owner_id)
+    folder = Path(config.CV_STORAGE_DIR).resolve() / str(owner_id)
     return sorted(folder.glob("*.pdf")) if folder.exists() else []
 
 
