@@ -14,6 +14,7 @@ import com.mmp.profile.repository.MentorAvailabilityRepository;
 import com.mmp.profile.repository.MentorDomainRepository;
 import com.mmp.profile.repository.MentorProfileRepository;
 import com.mmp.profile.repository.ProfileAvatarRepository;
+import com.mmp.profile.storage.ObjectStorage;
 import com.mmp.profile.entity.ProfileAvatar;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -51,6 +52,13 @@ public class ProfileService {
     /** US-37 — null trong các unit test cũ (coi như không ai có ảnh). */
     private final ProfileAvatarRepository avatarRepo;
     private final MentorDomainRepository domainRepo;
+    /** Null trong unit test hoặc khi chưa cấu hình S3: ảnh đại diện lưu trong CSDL như trước. */
+    private ObjectStorage storage;
+
+    @Autowired(required = false)
+    void setObjectStorage(ObjectStorage storage) {
+        this.storage = storage;
+    }
 
     /**
      * Không thể kiểm tra trùng với phiên CONFIRMED: dữ liệu phiên thuộc mentoring-service và hiện chưa
@@ -516,17 +524,49 @@ public class ProfileService {
         if (mentorRepo.findById(userId).isEmpty() && menteeRepo.findById(userId).isEmpty()) {
             throw ApiException.notFound("PROFILE_NOT_FOUND", "Hãy tạo hồ sơ trước khi tải ảnh đại diện");
         }
-        tx.executeWithoutResult(st -> avatarRepo.save(new ProfileAvatar(userId, type, data, OffsetDateTime.now(clock))));
+        String previous = storedKey(userId);
+        if (storage != null && storage.enabled()) {
+            String key = "avatars/" + userId + "/" + UUID.randomUUID();
+            storage.put(key, data, type);
+            tx.executeWithoutResult(st -> avatarRepo.save(ProfileAvatar.stored(userId, type, key, OffsetDateTime.now(clock))));
+        } else {
+            tx.executeWithoutResult(st -> avatarRepo.save(new ProfileAvatar(userId, type, data, OffsetDateTime.now(clock))));
+        }
+        deleteStored(previous);
         return new AvatarResult(avatarUrl(userId));
     }
 
     public void deleteAvatar(UUID userId) {
+        String previous = storedKey(userId);
         tx.executeWithoutResult(st -> avatarRepo.deleteById(userId));
+        deleteStored(previous);
     }
 
     public ProfileAvatar avatar(UUID userId) {
         return avatarRepo.findById(userId)
                 .orElseThrow(() -> ApiException.notFound("AVATAR_NOT_FOUND", "Người dùng chưa có ảnh đại diện"));
+    }
+
+    /** Nội dung ảnh: lấy từ object storage nếu ảnh đã chuyển đi, ngược lại từ cột data (ảnh cũ). */
+    public byte[] avatarBytes(ProfileAvatar a) {
+        if (a.getStorageKey() == null) return a.getData();
+        byte[] data = storage == null ? null : storage.get(a.getStorageKey());
+        if (data == null) throw ApiException.notFound("AVATAR_NOT_FOUND", "Người dùng chưa có ảnh đại diện");
+        return data;
+    }
+
+    private String storedKey(UUID userId) {
+        return avatarRepo.findById(userId).map(ProfileAvatar::getStorageKey).orElse(null);
+    }
+
+    /** Dọn file cũ trên object storage; lỗi mạng chỉ bỏ lại một file mồ côi, không làm hỏng việc đổi ảnh. */
+    private void deleteStored(String key) {
+        if (key == null || storage == null) return;
+        try {
+            storage.delete(key);
+        } catch (ObjectStorage.StorageException ignored) {
+            // file mồ côi nhỏ; không chặn người dùng
+        }
     }
 
     /** URL công khai kèm ?v= mốc cập nhật để trình duyệt không giữ ảnh cũ trong cache. */

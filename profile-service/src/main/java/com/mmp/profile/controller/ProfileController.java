@@ -153,7 +153,7 @@ public class ProfileController {
                 .contentType(MediaType.parseMediaType(a.getContentType()))
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
                 .header("X-Content-Type-Options", "nosniff")
-                .body(a.getData());
+                .body(profileService.avatarBytes(a));
     }
 
     // ---- Mentee ----

@@ -1,41 +1,34 @@
-"""Lưu file CV trên đĩa (docker volume). Có thể thay bằng object storage (S3/MinIO) khi triển khai thật."""
+"""Lưu file CV: object storage (MinIO / S3) khi có cấu hình S3_*, ngược lại lưu trên đĩa (docker volume). Xem app/blobstore.py."""
 import uuid
-from pathlib import Path
 
 from app import config
+from app.blobstore import Store
 from app.errors import AiError
 
-_root = Path(config.CV_STORAGE_DIR).resolve()
+_store = Store("cv", lambda: config.CV_STORAGE_DIR)
 
 
 def save(user_id: uuid.UUID, content: bytes) -> str:
+    key = f"{user_id}/{uuid.uuid4()}.pdf"
     try:
-        folder = _root / str(user_id)
-        folder.mkdir(parents=True, exist_ok=True)
-        file = folder / f"{uuid.uuid4()}.pdf"
-        file.write_bytes(content)
-        return str(file.relative_to(_root))
+        _store.put(key, content)
     except OSError as e:
         raise AiError("STORAGE_ERROR", "Không thể lưu file CV", status=500) from e
+    return key
 
 
 def read(relative_path: str) -> bytes:
-    file = (_root / relative_path).resolve()
-    if not file.is_relative_to(_root):
-        raise AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403)
     try:
-        return file.read_bytes()
+        return _store.get(relative_path)
+    except PermissionError:
+        raise AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403) from None
     except OSError:
         raise AiError("CV_FILE_NOT_FOUND", "Không tìm thấy file CV", status=404) from None
 
 
 def delete(relative_path: str) -> bool:
     """Xoá file CV. File đã mất thì bỏ qua (trả False) — không làm hỏng việc xoá CV."""
-    file = (_root / relative_path).resolve()
-    if not file.is_relative_to(_root):
-        raise AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403)
     try:
-        file.unlink()
-        return True
-    except FileNotFoundError:
-        return False
+        return _store.delete(relative_path)
+    except PermissionError:
+        raise AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403) from None

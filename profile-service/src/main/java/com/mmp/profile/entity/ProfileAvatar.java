@@ -17,8 +17,11 @@ public class ProfileAvatar {
     @Column(name = "content_type", nullable = false)
     private String contentType;
 
-    @Column(nullable = false)
+    /** Ảnh cũ nằm trong CSDL; ảnh mới nằm ở object storage (data = null, storageKey != null). */
     private byte[] data;
+
+    @Column(name = "storage_key")
+    private String storageKey;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
@@ -33,8 +36,15 @@ public class ProfileAvatar {
         this.updatedAt = now;
     }
 
+    public static ProfileAvatar stored(UUID userId, String contentType, String storageKey, OffsetDateTime now) {
+        ProfileAvatar a = new ProfileAvatar(userId, contentType, null, now);
+        a.storageKey = storageKey;
+        return a;
+    }
+
     public UUID getUserId() { return userId; }
     public String getContentType() { return contentType; }
     public byte[] getData() { return data; }
+    public String getStorageKey() { return storageKey; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

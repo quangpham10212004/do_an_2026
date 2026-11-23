@@ -50,3 +50,11 @@ app:
     # (POST /internal/mentors/{id}/suspend, Team A) và ghi audit log (POST /internal/audit, auth-service).
     mentoring-url: ${MENTORING_SERVICE_URL:http://localhost:8083}
     auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  # Object storage S3 (MinIO trong docker compose). Trống S3_ENDPOINT_URL và S3_ENABLED => ảnh đại diện lưu trong CSDL như cũ.
+  storage:
+    endpoint: ${S3_ENDPOINT_URL:}
+    enabled: ${S3_ENABLED:false}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+    bucket: ${S3_BUCKET:mmp-files}
+    region: ${S3_REGION:us-east-1}

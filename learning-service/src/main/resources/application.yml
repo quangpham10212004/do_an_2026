@@ -45,3 +45,10 @@ app:
   blog:
     posts-per-hour: ${BLOG_POSTS_PER_HOUR:10}           # giới hạn tạo bài / người / giờ
     comments-per-hour: ${BLOG_COMMENTS_PER_HOUR:30}     # giới hạn bình luận / người / giờ
+  storage:                         # Object storage S3 (MinIO trong docker compose). Trống S3_ENDPOINT_URL và S3_ENABLED => ảnh bìa lưu trong CSDL như cũ
+    endpoint: ${S3_ENDPOINT_URL:}
+    enabled: ${S3_ENABLED:false}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+    bucket: ${S3_BUCKET:mmp-files}
+    region: ${S3_REGION:us-east-1}

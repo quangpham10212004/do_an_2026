@@ -1,36 +1,32 @@
 """
-Lưu video / âm thanh vòng 1 trên đĩa (docker volume `verification-media`); không dùng chung volume với CV.
-Có thể thay bằng object storage khi triển khai thật. Mẫu chống path traversal giống app/storage.py.
+Lưu video / âm thanh vòng 1: object storage (MinIO / S3) khi có cấu hình S3_*, ngược lại trên đĩa
+(docker volume `verification-media`, không dùng chung với CV). Xem app/blobstore.py.
 
-Cấu trúc: <root>/<interview_id>/<kind>/<n>.part (đoạn) rồi <root>/<interview_id>/<kind>.bin (ghép khi kết thúc),
-kind = video | audio. Thư mục gốc đọc lúc gọi để test đổi được.
+Cấu trúc key: <interview_id>/<kind>/<n>.part (đoạn) rồi <interview_id>/<kind>.bin (ghép khi kết thúc),
+kind = video | audio. Thư mục gốc trên đĩa đọc lúc gọi để test đổi được.
 """
-import shutil
+import os
+import tempfile
 from collections.abc import Iterator
-from pathlib import Path
 
 from app import config
+from app.blobstore import Store
 from app.errors import AiError
 
 KINDS = ("video", "audio")
 
-
-def _root() -> Path:
-    return Path(config.VERIFICATION_STORAGE_DIR).resolve()
+_store = Store("verification", lambda: config.VERIFICATION_STORAGE_DIR)
 
 
-def _safe(relative: str) -> Path:
-    path = (_root() / relative).resolve()
-    if not path.is_relative_to(_root()):
-        raise AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403)
-    return path
+def _forbidden() -> AiError:
+    return AiError("FORBIDDEN", "Đường dẫn file không hợp lệ", status=403)
 
 
 def write_chunk(storage_dir: str, kind: str, n: int, data: bytes) -> None:
     try:
-        folder = _safe(f"{storage_dir}/{kind}")
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / f"{n:06d}.part").write_bytes(data)
+        _store.put(f"{storage_dir}/{kind}/{n:06d}.part", data)
+    except PermissionError:
+        raise _forbidden() from None
     except OSError as e:
         raise AiError("STORAGE_ERROR", "Không thể lưu đoạn video", status=500) from e
 
@@ -38,69 +34,79 @@ def write_chunk(storage_dir: str, kind: str, n: int, data: bytes) -> None:
 def write_blob(storage_dir: str, name: str, data: bytes) -> None:
     """Lưu nguyên một tệp (video của một câu trả lời) thành `<storage_dir>/<name>.bin`."""
     try:
-        target = _safe(f"{storage_dir}/{name}.bin")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        _store.put(f"{storage_dir}/{name}.bin", data)
+    except PermissionError:
+        raise _forbidden() from None
     except OSError as e:
         raise AiError("STORAGE_ERROR", "Không thể lưu video", status=500) from e
 
 
 def assemble(storage_dir: str, kind: str, chunk_numbers: list[int]) -> int:
     """Ghép các đoạn theo thứ tự n thành `<kind>.bin`; trả về số byte. Không có đoạn nào thì không tạo file (trả 0)."""
-    folder = _safe(f"{storage_dir}/{kind}")
-    out = _safe(f"{storage_dir}/{kind}.bin")
     total = 0
+    tmp_path = None
     try:
-        with out.open("wb") as target:
+        with tempfile.NamedTemporaryFile(delete=False, prefix="assemble-") as tmp:
+            tmp_path = tmp.name
             for n in sorted(chunk_numbers):
-                part = folder / f"{n:06d}.part"
-                if part.is_file():
-                    data = part.read_bytes()
-                    target.write(data)
-                    total += len(data)
-        shutil.rmtree(folder, ignore_errors=True)
+                try:
+                    data = _store.get(f"{storage_dir}/{kind}/{n:06d}.part")
+                except FileNotFoundError:
+                    continue
+                tmp.write(data)
+                total += len(data)
+        if total:
+            _store.put_file(f"{storage_dir}/{kind}.bin", tmp_path)
+        else:
+            _store.delete(f"{storage_dir}/{kind}.bin")
+        _store.delete_prefix(f"{storage_dir}/{kind}")
+    except PermissionError:
+        raise _forbidden() from None
     except OSError as e:
         raise AiError("STORAGE_ERROR", "Không thể ghép video", status=500) from e
-    if total == 0:
-        out.unlink(missing_ok=True)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     return total
 
 
 def file_size(storage_dir: str, kind: str) -> int | None:
-    path = _safe(f"{storage_dir}/{kind}.bin")
-    return path.stat().st_size if path.is_file() else None
+    try:
+        return _store.size(f"{storage_dir}/{kind}.bin")
+    except PermissionError:
+        raise _forbidden() from None
 
 
 def read_all(storage_dir: str, kind: str) -> bytes | None:
-    path = _safe(f"{storage_dir}/{kind}.bin")
-    return path.read_bytes() if path.is_file() else None
+    try:
+        return _store.get(f"{storage_dir}/{kind}.bin")
+    except FileNotFoundError:
+        return None
+    except PermissionError:
+        raise _forbidden() from None
 
 
 def iter_range(storage_dir: str, kind: str, start: int, end: int, block: int = 256 * 1024) -> Iterator[bytes]:
     """Đọc [start, end] (bao gồm cả hai đầu) theo từng khối, cho phản hồi 206 / 200 dạng stream."""
-    path = _safe(f"{storage_dir}/{kind}.bin")
-    with path.open("rb") as f:
-        f.seek(start)
-        remaining = end - start + 1
-        while remaining > 0:
-            chunk = f.read(min(block, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
-            yield chunk
+    try:
+        yield from _store.iter_range(f"{storage_dir}/{kind}.bin", start, end)
+    except PermissionError:
+        raise _forbidden() from None
 
 
 def delete_blob(storage_dir: str, name: str) -> bool:
-    path = _safe(f"{storage_dir}/{name}.bin")
-    existed = path.is_file()
-    path.unlink(missing_ok=True)
-    return existed
+    try:
+        return _store.delete(f"{storage_dir}/{name}.bin")
+    except PermissionError:
+        raise _forbidden() from None
 
 
 def delete(storage_dir: str) -> bool:
     """Xoá toàn bộ file của một buổi. Đã mất thì bỏ qua (trả False)."""
-    folder = _safe(storage_dir)
-    if not folder.exists():
-        return False
-    shutil.rmtree(folder, ignore_errors=True)
-    return True
+    try:
+        return _store.delete_prefix(storage_dir)
+    except PermissionError:
+        raise _forbidden() from None

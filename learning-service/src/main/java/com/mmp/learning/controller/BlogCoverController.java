@@ -2,6 +2,7 @@ package com.mmp.learning.controller;
 
 import com.mmp.learning.exception.ApiException;
 import com.mmp.learning.security.CurrentUser;
+import com.mmp.learning.storage.ObjectStorage;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,13 +22,15 @@ import java.util.concurrent.TimeUnit;
 public class BlogCoverController {
     private static final int MAX_BYTES = 5 * 1024 * 1024;
     private final JdbcTemplate jdbc;
+    private final ObjectStorage storage;
 
-    public BlogCoverController(JdbcTemplate jdbc) {
+    public BlogCoverController(JdbcTemplate jdbc, ObjectStorage storage) {
         this.jdbc = jdbc;
+        this.storage = storage;
     }
 
     public record CoverUrl(String url) {}
-    private record Image(String mediaType, byte[] content) {}
+    private record Image(String mediaType, byte[] content, String storageKey) {}
 
     @PostMapping("/uploads/cover")
     @PreAuthorize("hasAnyRole('MENTOR', 'MENTEE')")
@@ -47,19 +50,29 @@ public class BlogCoverController {
                     "Bạn tải ảnh bìa quá nhanh, hãy thử lại sau.");
         }
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO blog_cover_images (id, owner_id, media_type, content) VALUES (?, ?, ?, ?)",
-                id, owner, type.toString(), bytes);
+        if (storage.enabled()) {
+            // Lưu file trước khi ghi hàng: giao dịch lỗi chỉ để lại một file mồ côi, không có hàng trỏ vào file không tồn tại.
+            String key = "blog-covers/" + id;
+            storage.put(key, bytes, type.toString());
+            jdbc.update("INSERT INTO blog_cover_images (id, owner_id, media_type, storage_key) VALUES (?, ?, ?, ?)",
+                    id, owner, type.toString(), key);
+        } else {
+            jdbc.update("INSERT INTO blog_cover_images (id, owner_id, media_type, content) VALUES (?, ?, ?, ?)",
+                    id, owner, type.toString(), bytes);
+        }
         return new CoverUrl("/api/learning/blog/covers/" + id);
     }
 
     @GetMapping("/covers/{id}")
     public ResponseEntity<byte[]> cover(@PathVariable UUID id) {
-        Image image = jdbc.query("SELECT media_type, content FROM blog_cover_images WHERE id = ?",
-                (rs, n) -> new Image(rs.getString(1), rs.getBytes(2)), id).stream().findFirst()
+        Image image = jdbc.query("SELECT media_type, content, storage_key FROM blog_cover_images WHERE id = ?",
+                (rs, n) -> new Image(rs.getString(1), rs.getBytes(2), rs.getString(3)), id).stream().findFirst()
                 .orElseThrow(() -> ApiException.notFound("BLOG_COVER_NOT_FOUND", "Không tìm thấy ảnh bìa."));
+        byte[] content = image.storageKey() == null ? image.content() : storage.get(image.storageKey());
+        if (content == null) throw ApiException.notFound("BLOG_COVER_NOT_FOUND", "Không tìm thấy ảnh bìa.");
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(image.mediaType()))
                 .header("X-Content-Type-Options", "nosniff")
-                .cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic()).body(image.content());
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic()).body(content);
     }
 
     private static MediaType imageType(byte[] image) {

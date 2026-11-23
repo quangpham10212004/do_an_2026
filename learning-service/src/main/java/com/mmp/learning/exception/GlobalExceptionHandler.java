@@ -26,6 +26,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(ErrorResponse.of(e.getCode(), e.getMessage()));
     }
 
+    @ExceptionHandler(com.mmp.learning.storage.ObjectStorage.StorageException.class)
+    ResponseEntity<ErrorResponse> handleStorage(com.mmp.learning.storage.ObjectStorage.StorageException e) {
+        log.error("Object storage error", e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("STORAGE_UNAVAILABLE", "Kho lưu trữ file tạm thời không khả dụng, vui lòng thử lại sau"));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()

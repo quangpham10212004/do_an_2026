@@ -3,6 +3,7 @@ package com.mmp.mentoring.service;
 import com.mmp.mentoring.exception.ApiException;
 import com.mmp.mentoring.repository.MentoringRequestRepository;
 import com.mmp.mentoring.security.AuthUser;
+import com.mmp.mentoring.storage.ObjectStorage;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +22,12 @@ public class ConversationAttachmentService {
             Pattern.CASE_INSENSITIVE);
     private final MentoringRequestRepository requests;
     private final JdbcTemplate jdbc;
+    private final ObjectStorage storage;
 
-    public ConversationAttachmentService(MentoringRequestRepository requests, JdbcTemplate jdbc) {
+    public ConversationAttachmentService(MentoringRequestRepository requests, JdbcTemplate jdbc, ObjectStorage storage) {
         this.requests = requests;
         this.jdbc = jdbc;
+        this.storage = storage;
     }
 
     public record Attachment(UUID id, UUID conversationId, String name, long size, String mime,
@@ -72,18 +75,33 @@ public class ConversationAttachmentService {
         UUID id = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now();
         String mime = "application/octet-stream";
-        jdbc.update("""
-                INSERT INTO conversation_attachments (id, conversation_id, uploader_id, name, mime, size, content, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, id, conversation, owner, name, mime, file.getSize(), file.getBytes(), now);
+        if (storage.enabled()) {
+            // Lưu file trước khi ghi hàng: giao dịch lỗi chỉ để lại một file mồ côi, không có hàng trỏ vào file không tồn tại.
+            String key = "attachments/" + conversation + "/" + id;
+            storage.put(key, file.getBytes(), mime);
+            jdbc.update("""
+                    INSERT INTO conversation_attachments (id, conversation_id, uploader_id, name, mime, size, storage_key, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, id, conversation, owner, name, mime, file.getSize(), key, now);
+        } else {
+            jdbc.update("""
+                    INSERT INTO conversation_attachments (id, conversation_id, uploader_id, name, mime, size, content, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, id, conversation, owner, name, mime, file.getSize(), file.getBytes(), now);
+        }
         return new Attachment(id, conversation, name, file.getSize(), mime, now, url(conversation, id), true);
     }
 
     public Download download(AuthUser user, UUID conversation, UUID attachment) {
         requireParticipant(user, conversation);
-        return jdbc.query("SELECT name, content FROM conversation_attachments WHERE conversation_id = ? AND id = ?",
-                (rs, n) -> new Download(rs.getString(1), rs.getBytes(2)), conversation, attachment)
+        record Row(String name, byte[] content, String storageKey) {}
+        Row row = jdbc.query("SELECT name, content, storage_key FROM conversation_attachments WHERE conversation_id = ? AND id = ?",
+                (rs, n) -> new Row(rs.getString(1), rs.getBytes(2), rs.getString(3)), conversation, attachment)
                 .stream().findFirst().orElseThrow(() -> ApiException.notFound("ATTACHMENT_NOT_FOUND", "Không tìm thấy tệp."));
+        if (row.storageKey() == null) return new Download(row.name(), row.content());
+        byte[] content = storage.get(row.storageKey());
+        if (content == null) throw ApiException.notFound("ATTACHMENT_NOT_FOUND", "Không tìm thấy tệp.");
+        return new Download(row.name(), content);
     }
 
     private com.mmp.mentoring.entity.MentoringRequest requireParticipant(AuthUser user, UUID conversation) {

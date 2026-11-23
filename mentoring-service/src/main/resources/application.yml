@@ -101,3 +101,10 @@ app:
     first-response-sla: PT48H       # admin phản hồi đầu tiên trong 48 giờ (cờ overdue ở danh sách admin)
   outbox:
     interval: PT1M                  # gửi lại lời gọi payment-service chưa thành công (REFUND, HOLD, RELEASE, FINAL_STATE)
+  storage:                         # Object storage S3 (MinIO trong docker compose). Trống S3_ENDPOINT_URL và S3_ENABLED => file đính kèm lưu trong CSDL như cũ
+    endpoint: ${S3_ENDPOINT_URL:}
+    enabled: ${S3_ENABLED:false}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+    bucket: ${S3_BUCKET:mmp-files}
+    region: ${S3_REGION:us-east-1}

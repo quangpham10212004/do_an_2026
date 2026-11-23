@@ -61,8 +61,8 @@ VERIFICATION_ROOM_MAX_HOURS = float(os.getenv("VERIFICATION_ROOM_MAX_HOURS", "4"
 VERIFICATION_ROOM_OPENS_BEFORE_MINUTES = float(os.getenv("VERIFICATION_ROOM_OPENS_BEFORE_MINUTES", "10"))
 VERIFICATION_ROOM_GRACE_MINUTES = float(os.getenv("VERIFICATION_ROOM_GRACE_MINUTES", "10"))
 
-# Vòng 1 có camera (docs/design-mentor-verification.md §5): video + âm thanh quay theo đoạn, lưu trên đĩa (docker volume).
-# Có thể thay bằng object storage khi triển khai thật. Thư mục đọc lúc gọi (test đổi được), không cố định lúc import.
+# Vòng 1 có camera (docs/design-mentor-verification.md §5): video + âm thanh quay theo đoạn. Lưu ở object storage khi có S3_*, ngược lại trên đĩa (docker volume).
+# Thư mục (khi lưu trên đĩa) đọc lúc gọi (test đổi được), không cố định lúc import.
 VERIFICATION_STORAGE_DIR = os.getenv("VERIFICATION_STORAGE_DIR", "./data/verification")
 VIDEO_RETENTION_DAYS = float(os.getenv("VIDEO_RETENTION_DAYS", "60"))
 # Camera/micro ngắt: khoảng trống giữa hai đoạn > VIDEO_MAX_GAP_SECONDS bật cờ CAMERA_OFF; tổng thời gian mất >
@@ -81,7 +81,7 @@ TRANSCRIBE_TIMEOUT_SECONDS = float(os.getenv("TRANSCRIBE_TIMEOUT_SECONDS", "90")
 TRANSCRIBE_MAX_BYTES = 24 * 1024 * 1024  # API chép lời nhận tối đa 25 MB
 MAX_ANSWER_LENGTH = 5000
 
-# Lưu file CV (docker volume). Có thể thay bằng object storage (S3/MinIO) khi triển khai thật.
+# Lưu file CV: object storage khi có S3_* (xem app/blobstore.py), ngược lại thư mục này (docker volume).
 CV_STORAGE_DIR = os.getenv("CV_STORAGE_DIR", "./data/cv")
 MAX_CV_BYTES = 5 * 1024 * 1024
 

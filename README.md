@@ -51,7 +51,7 @@ flowchart LR
 - Mỗi service Java (Spring Boot 3.3, Java 21) hoặc Python (FastAPI 3.11) có **CSDL PostgreSQL 16 riêng** (7 CSDL; `matching_db` dùng pgvector). Không service nào ghi vào CSDL của service khác; liên kết chéo chỉ là UUID.
 - Frontend không gọi thẳng service: Next.js proxy `/api/<service>/**` tới service tương ứng (không có API Gateway riêng). `/internal/**` chỉ giữa các service, xác thực bằng header `X-Internal-Token`.
 - Xác thực bằng JWT HS256 (`JWT_SECRET` dùng chung), phân quyền `MENTEE` / `MENTOR` / `ADMIN`. Lỗi trả thống nhất `{ "error": { "code", "message" } }`.
-- Hạ tầng: Docker Compose, Redis, Mailpit (email dev), Jitsi tự host (profile `jitsi`) cho phòng học video, GitHub Actions.
+- Hạ tầng: Docker Compose, Redis, MinIO (object storage S3), Mailpit (email dev), Jitsi tự host (profile `jitsi`) cho phòng học video, GitHub Actions.
 - Contract-first: mọi endpoint được khai báo trong `contracts/<service>.yaml` (OpenAPI 3) trước khi code.
 
 ### Luồng chính
@@ -117,6 +117,6 @@ frontend/                 Next.js 14 + TypeScript (src/app = trang, src/features
 - AI Matching nhất quán cuối cùng: hồ sơ mới hoặc sửa có thể chưa có trong kết quả tới ~60 giây (`INDEX_SYNC_INTERVAL`).
 - Thanh toán là sandbox (MoMo test, VNPay sandbox), chưa thử cổng thật; học phí chỉ trả từ ví.
 - Nhận dạng giọng nói trong xác thực mentor phụ thuộc trình duyệt (Chrome, Edge ổn); thiếu văn bản thì câu đó chuyển admin xem video.
-- Video xác thực lưu trên volume của container, chưa dùng object storage.
+- File (CV, video xác thực, ảnh đại diện, ảnh bìa blog, file đính kèm) lưu ở MinIO (API chuẩn S3) trong docker compose; muốn dùng AWS S3 / Cloudflare R2 chỉ đổi biến `S3_*`. Tin nhắn vẫn nằm trong Postgres. Chưa mã hoá phía server và chưa có dọn dẹp file mồ côi khi xoá hội thoại.
 - Không có API Gateway riêng; `.env.example` và code có bí mật mặc định cho dev (`JWT_SECRET`, `INTERNAL_API_KEY`, mật khẩu CSDL) — bắt buộc thay khi triển khai thật.
 - CV xoá được nhưng chưa có thời hạn lưu tự động và mã hoá khi lưu.
