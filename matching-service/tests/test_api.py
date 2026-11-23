@@ -30,9 +30,11 @@ def fake_pipeline(monkeypatch):
     calls = []
 
     async def fake_match(mentee_id: str, limit: int = 10, requested=None, use_profile_defaults=True, exclude_ids=None,
-                         include_over_budget=True, intent=None):
+                         include_over_budget=True, intent=None, domain=None):
         calls.append({"limit": limit, "requested": requested, "use_profile_defaults": use_profile_defaults,
-                      "include_over_budget": include_over_budget, "intent": intent})
+                      "include_over_budget": include_over_budget, "intent": intent, "domain": domain})
+        if domain == "mobile":
+            raise matching_pipeline.DomainNotInProfileError("mobile", ["backend", "devops"])
         if mentee_id == OTHER_ID:
             return None
         filters = match_filters.resolve(requested or {}, {"budget_max_per_hour": 150000}, use_profile_defaults)
@@ -120,7 +122,7 @@ def test_matching_echoes_effective_filters_and_excluded_by(client, fake_pipeline
     url = (f"/api/matching/mentors?menteeId={MENTEE_ID}&maxRate=500000&days=1,3&days=5&timeOfDay=EVENING"
            f"&language=en&sessionType=CODE_REVIEW&minRating=4&useProfileDefaults=false&limit=5")
     body = client.get(url, headers=headers).json()
-    assert {k: v for k, v in fake_pipeline[-1].items() if k != "intent"} == {
+    assert {k: v for k, v in fake_pipeline[-1].items() if k not in ("intent", "domain")} == {
         "limit": 5,
         "use_profile_defaults": False,
         "include_over_budget": True,
@@ -163,6 +165,28 @@ def test_switch_intent_reaches_pipeline_and_is_echoed(client, fake_pipeline):
     body = res.json()
     assert body["intent"] == {"mode": "SWITCH", "targetDomain": "data", "goalText": "học ML"}
     assert body["pipeline"]["weights"]["transition"] > 0
+
+
+def test_domain_param_is_passed_to_pipeline(client, fake_pipeline):
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}&domain=DevOps",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 200
+    assert fake_pipeline[-1]["domain"] == "devops"
+    assert fake_pipeline[-1]["intent"].target_domain == "devops"
+
+
+def test_domain_outside_profile_is_rejected_with_available_domains(client, fake_pipeline):
+    res = client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}&domain=mobile",
+                     headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert res.status_code == 400
+    body = res.json()["error"]
+    assert body["code"] == "DOMAIN_NOT_IN_PROFILE" and body["availableDomains"] == ["backend", "devops"]
+
+
+def test_no_domain_means_primary_domain(client, fake_pipeline):
+    client.get(f"/api/matching/mentors?menteeId={MENTEE_ID}",
+               headers={"Authorization": f"Bearer {token(MENTEE_ID, 'MENTEE')}"})
+    assert fake_pipeline[-1]["domain"] is None and not fake_pipeline[-1]["intent"].is_switch
 
 
 def test_default_intent_is_current(client, fake_pipeline):

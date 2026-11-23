@@ -85,7 +85,8 @@ async def get_matches(
     minRating: float | None = Query(None, ge=0, le=5),
     useProfileDefaults: bool = Query(True),
     includeOverBudget: bool = Query(True),
-    intent: Literal["CURRENT", "SWITCH"] = Query("CURRENT"),
+    domain: str | None = Query(None, max_length=50, description="Lĩnh vực muốn tìm, phải nằm trong hồ sơ mentee (chính hoặc phụ); bỏ trống = lĩnh vực chính"),
+    intent: Literal["CURRENT", "SWITCH"] = Query("CURRENT", description="Cũ: SWITCH + targetDomain tương đương domain=<lĩnh vực>"),
     targetDomain: str | None = Query(None, max_length=50),
     goalText: str | None = Query(None, max_length=500),
     caller: Caller = Depends(require_user),
@@ -106,11 +107,13 @@ async def get_matches(
                 headers={"Retry-After": str(wait)},
             )
     target = (targetDomain or "").strip().lower() or None
-    if intent == "SWITCH" and target is None:
+    if intent == "SWITCH" and target is None and not (domain or "").strip():
         raise _bad_request("targetDomain là bắt buộc khi intent=SWITCH")
+    chosen = (domain or "").strip().lower() or (target if intent == "SWITCH" else None)
+    # Lĩnh vực phải nằm trong hồ sơ mentee; pipeline kiểm tra và đổi thành CURRENT (lĩnh vực chính) hoặc SWITCH (lĩnh vực phụ).
     match_intent = pipeline.MatchIntent(
-        mode=intent, target_domain=target if intent == "SWITCH" else None,
-        goal_text=(goalText or "").strip() or None if intent == "SWITCH" else None,
+        mode="SWITCH" if chosen else "CURRENT", target_domain=chosen,
+        goal_text=(goalText or "").strip() or None if chosen else None,
     )
     requested = {
         match_filters.MAX_RATE: maxRate,
@@ -124,10 +127,18 @@ async def get_matches(
     # M4 (NFR-1, docs/design-ai-matching-spec.md §8) — đo đúng phần việc của pipeline (hard filter,
     # top-K vector, re-rank, giải thích), không tính overhead xác thực/rate-limit phía trên.
     started = time.perf_counter()
-    result = await pipeline.match_mentors_for_mentee(
-        menteeId, limit=limit, requested=requested, use_profile_defaults=useProfileDefaults,
-        include_over_budget=includeOverBudget, intent=match_intent,
-    )
+    try:
+        result = await pipeline.match_mentors_for_mentee(
+            menteeId, limit=limit, requested=requested, use_profile_defaults=useProfileDefaults,
+            include_over_budget=includeOverBudget, intent=match_intent, domain=chosen,
+        )
+    except pipeline.DomainNotInProfileError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "DOMAIN_NOT_IN_PROFILE",
+                    "message": f"Lĩnh vực '{e.domain}' chưa có trong hồ sơ của bạn. Hãy thêm lĩnh vực vào hồ sơ trước khi tìm mentor.",
+                    "availableDomains": e.available},
+        ) from None
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -167,6 +178,7 @@ async def get_matches(
         for m in result["mentors"]
     ]
     stats = result["stats"]
+    match_intent = result.get("intent", match_intent)   # mục đích ĐÃ phân giải (lĩnh vực chính => CURRENT)
     filters_echo = match_filters.to_echo(result["filters"])
     impression_id = await feedback_service.log_impressions(menteeId, result["mentors"], filters_echo, pipeline.WEIGHTS)
     took_ms = round((time.perf_counter() - started) * 1000, 1)

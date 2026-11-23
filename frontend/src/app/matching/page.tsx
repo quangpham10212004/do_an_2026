@@ -7,6 +7,7 @@ import { Check, ChevronRight, EyeOff, Send, SlidersHorizontal, Sparkles, Users, 
 import { Alert, Avatar, Badge, Button, ButtonLink, Card, Chip, Chips, EmptyState, Input, Loading, PageHeader, Stars } from "@/components/ui";
 import { NOT_RELEVANT_LABELS, matchingApi } from "@/features/matching/api";
 import FindMentorTabs from "@/features/matching/FindMentorTabs";
+import DomainStep from "@/features/matching/DomainStep";
 import IntentBar from "@/features/matching/IntentBar";
 import FilterSheet from "@/features/matching/FilterSheet";
 import PipelineRun, { PipelineStrip } from "@/features/matching/PipelineRun";
@@ -278,6 +279,11 @@ function Matching({ user }: { user: SessionUser }) {
   /** Mục đích tìm (chuyển ngách...) áp cho mọi lượt tìm tiếp theo, kể cả khi đổi bộ lọc. */
   const [intent, setIntent] = useState<MatchIntentValue>({ mode: "CURRENT" });
   const [menteeDomain, setMenteeDomain] = useState<string | null>(null);
+  /** Các lĩnh vực trong hồ sơ (chính trước, rồi các lĩnh vực phụ) và lĩnh vực đang tìm; null = chưa chọn (chưa tìm). */
+  const [domains, setDomains] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<string | null>(null);
+  /** Lĩnh vực nhắc tới trong ô nhập nhưng chưa có trong hồ sơ. */
+  const [otherDomain, setOtherDomain] = useState<string | null>(null);
   const intentRef = useRef<MatchIntentValue>({ mode: "CURRENT" });
   const [pending, setPending] = useState<MatchResult | undefined>(undefined);
   /** US-37 — hồ sơ hoàn thiện < 50% thì chưa cho dùng AI Matching. */
@@ -310,9 +316,16 @@ function Matching({ user }: { user: SessionUser }) {
   useEffect(() => {
     profileApi.getMentee(user.userId)
       .then((p) => {
+        const mine = [p.domain, ...(p.extraDomains ?? []).map((d) => d.domain)];
         setMenteeDomain(p.domain);
-        if (p.matchingEnabled) search();
-        else {
+        setDomains(mine);
+        if (p.matchingEnabled) {
+          if (mine.length > 1) setData(null); // nhiều lĩnh vực: mentee chọn lĩnh vực trước, chưa tìm ngay
+          else {
+            setChosen(p.domain);
+            search();
+          }
+        } else {
           setGate(p.completeness);
           setData(null);
         }
@@ -330,6 +343,12 @@ function Matching({ user }: { user: SessionUser }) {
       })));
     } catch { /* sessionStorage có thể bị chặn — chỉ mất phần giải thích trên trang mentor */ }
   }, [data]);
+
+  const chooseDomain = (domain: string) => {
+    setChosen(domain);
+    setOtherDomain(null);
+    search(lastFilters.current, domain === menteeDomain ? { mode: "CURRENT" } : { mode: "SWITCH", targetDomain: domain });
+  };
 
   const finishPlaying = useCallback((result: MatchResult) => {
     setData(result);
@@ -397,12 +416,20 @@ function Matching({ user }: { user: SessionUser }) {
           <Alert tone="warning" action={<ButtonLink href="/profile" size="sm">Tạo hồ sơ</ButtonLink>}>{error.message}.</Alert>
         )}
         {error && error.code !== "MENTEE_PROFILE_INCOMPLETE" && <Alert>{error.message}</Alert>}
-        <IntentBar key={intent.mode} value={intent} menteeDomain={menteeDomain} busy={busy}
-          onChange={(next) => (next.mode === "SWITCH" && !next.targetDomain ? setIntent(next) : search(lastFilters.current, next))} />
+        {domains.length > 1 && <DomainStep domains={domains} primary={menteeDomain} value={chosen} busy={busy} onChange={chooseDomain} />}
+        {otherDomain && (
+          <Alert tone="info" action={<ButtonLink href="/profile#ld" size="sm">Thêm vào hồ sơ</ButtonLink>}>
+            <b>{domainLabel(otherDomain)}</b> chưa có trong hồ sơ của bạn. Thêm lĩnh vực này (kèm kỹ năng và mục tiêu riêng) để tìm mentor cho nó.
+          </Alert>
+        )}
+        {chosen !== null && (
+          <IntentBar key={chosen} value={intent} domains={domains} busy={busy} onOtherDomain={setOtherDomain}
+            onChange={(next) => { setOtherDomain(null); search(lastFilters.current, next); }} />
+        )}
         {data?.intent.mode === "SWITCH" && data.intent.targetDomain && (
           <Alert tone="info">
-            Đang tìm mentor <b>{domainLabel(data.intent.targetDomain)}</b> cho bạn
-            {menteeDomain ? <> (chuyển từ {domainLabel(menteeDomain)})</> : null}. Mentor từng chuyển đúng hướng được ưu tiên.
+            Đang tìm mentor <b>{domainLabel(data.intent.targetDomain)}</b> bằng kỹ năng và mục tiêu riêng của lĩnh vực này
+            {menteeDomain ? <>. Mentor từng chuyển từ {domainLabel(menteeDomain)} sang đây được ưu tiên</> : null}.
           </Alert>
         )}
         {data && (

@@ -37,7 +37,7 @@ export const QUICK_INTENTS: { label: string; text: string; mode: "CURRENT" | "SW
   { label: "Luyện phỏng vấn", text: "Luyện phỏng vấn kỹ thuật", mode: "CURRENT" },
   { label: "Review dự án cá nhân", text: "Review dự án cá nhân của tôi", mode: "CURRENT" },
   { label: "Định hướng nghề nghiệp", text: "Định hướng nghề nghiệp cho 6 tháng tới", mode: "CURRENT" },
-  { label: "Chuyển sang Data / AI", text: "Chuyển sang lĩnh vực Data / AI", mode: "SWITCH", domain: "data" },
+  { label: "Tìm mentor Data / AI", text: "Chuyển sang lĩnh vực Data / AI", mode: "SWITCH", domain: "data" },
 ];
 
 /** Từ khoá tự do -> lĩnh vực đích (chuyển ngách); không khớp thì giữ CURRENT. */

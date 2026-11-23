@@ -109,7 +109,7 @@ export interface EffectiveFilters extends MatchFilterValues {
   fromProfileDefaults: MatchFilterName[];
 }
 
-/** Mục đích lượt tìm: CURRENT = lĩnh vực hồ sơ, SWITCH = học thứ mới / chuyển ngách. */
+/** Lượt tìm: CURRENT = lĩnh vực chính của hồ sơ; SWITCH = một lĩnh vực phụ mentee đã chọn trong hồ sơ. */
 export interface MatchIntentValue {
   mode: "CURRENT" | "SWITCH";
   targetDomain?: string;

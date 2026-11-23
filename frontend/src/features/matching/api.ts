@@ -34,9 +34,9 @@ export const matchingApi = {
     p.set("menteeId", menteeId);
     p.set("limit", String(limit));
     p.set("useProfileDefaults", String(useProfileDefaults));
-    if (intent?.mode === "SWITCH" && intent.targetDomain) {
-      p.set("intent", "SWITCH");
-      p.set("targetDomain", intent.targetDomain);
+    // Lĩnh vực mentee chọn trong hồ sơ (chính hoặc phụ); bỏ trống = lĩnh vực chính.
+    if (intent?.targetDomain) {
+      p.set("domain", intent.targetDomain);
       if (intent.goalText) p.set("goalText", intent.goalText);
     }
     return api<MatchResult>(`/api/matching/mentors?${p.toString()}`);

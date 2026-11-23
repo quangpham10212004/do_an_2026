@@ -13,7 +13,9 @@ import com.mmp.profile.repository.MentorAvailabilityExceptionRepository;
 import com.mmp.profile.repository.MentorAvailabilityRepository;
 import com.mmp.profile.repository.MentorDomainRepository;
 import com.mmp.profile.repository.MentorProfileRepository;
+import com.mmp.profile.repository.MenteeDomainRepository;
 import com.mmp.profile.repository.ProfileAvatarRepository;
+import com.mmp.profile.entity.MenteeDomain;
 import com.mmp.profile.storage.ObjectStorage;
 import com.mmp.profile.entity.ProfileAvatar;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +60,14 @@ public class ProfileService {
     @Autowired(required = false)
     void setObjectStorage(ObjectStorage storage) {
         this.storage = storage;
+    }
+
+    /** Null trong unit test cũ: coi như mentee chỉ có lĩnh vực chính. */
+    private MenteeDomainRepository menteeDomainRepo;
+
+    @Autowired(required = false)
+    void setMenteeDomainRepo(MenteeDomainRepository menteeDomainRepo) {
+        this.menteeDomainRepo = menteeDomainRepo;
     }
 
     /**
@@ -410,6 +420,8 @@ public class ProfileService {
     }
 
     public MenteeProfileResponse upsertMentee(UUID userId, MenteeProfileInput in) {
+        String primary = normalizeDomain(in.domain());
+        List<MenteeExtraDomain> extras = in.extraDomains() == null ? null : validateExtraDomains(primary, in.extraDomains());
         MenteeProfile saved = tx.execute(status -> {
             MenteeProfile p = menteeRepo.findById(userId).orElseGet(() -> {
                 MenteeProfile n = new MenteeProfile();
@@ -427,10 +439,57 @@ public class ProfileService {
             if (in.cvFileUrl() != null) {
                 p.setCvFileUrl(in.cvFileUrl());
             }
-            return menteeRepo.save(p);
+            MenteeProfile result = menteeRepo.save(p);
+            saveExtraDomains(userId, primary, extras);
+            return result;
         });
         matchingIndexClient.reindexAsync(ROLE_MENTEE, saved.getUserId());
         return menteeResponse(findMentee(userId));
+    }
+
+    /**
+     * Lĩnh vực phụ: thuộc danh mục, khác lĩnh vực chính, không trùng nhau, tối đa MAX_DOMAINS - 1.
+     * Mỗi lĩnh vực có kỹ năng và mục tiêu riêng (đã chuẩn hoá).
+     */
+    static List<MenteeExtraDomain> validateExtraDomains(String primary, List<MenteeExtraDomain> input) {
+        if (input.size() > DomainCatalog.MAX_DOMAINS - 1) {
+            throw ApiException.badRequest("TOO_MANY_DOMAINS", "Tối đa " + DomainCatalog.MAX_DOMAINS + " lĩnh vực (1 chính + 2 phụ)");
+        }
+        LinkedHashMap<String, MenteeExtraDomain> out = new LinkedHashMap<>();
+        for (MenteeExtraDomain d : input) {
+            String code = normalizeDomain(d.domain());
+            if (!DomainCatalog.CODES.contains(code)) {
+                throw ApiException.badRequest("INVALID_DOMAIN", "Lĩnh vực không hợp lệ: " + d.domain());
+            }
+            if (code.equals(primary)) {
+                throw ApiException.badRequest("DUPLICATE_DOMAIN", "Lĩnh vực phụ phải khác lĩnh vực chính");
+            }
+            if (out.containsKey(code)) {
+                throw ApiException.badRequest("DUPLICATE_DOMAIN", "Mỗi lĩnh vực chỉ khai một lần");
+            }
+            String goal = d.goal() == null || d.goal().isBlank() ? null : d.goal().trim();
+            out.put(code, new MenteeExtraDomain(code, Arrays.asList(normalizeList(d.skills())), goal));
+        }
+        return List.copyOf(out.values());
+    }
+
+    /** extras == null: giữ nguyên các lĩnh vực phụ (chỉ bỏ lĩnh vực phụ vừa trở thành lĩnh vực chính). */
+    private void saveExtraDomains(UUID userId, String primary, List<MenteeExtraDomain> extras) {
+        if (menteeDomainRepo == null) return;
+        List<MenteeExtraDomain> target = extras != null ? extras
+                : extraDomainsOf(userId).stream().filter(d -> !d.domain().equals(primary)).toList();
+        menteeDomainRepo.deleteByMenteeId(userId);
+        menteeDomainRepo.flush(); // xoá trước khi thêm lại, tránh vi phạm UNIQUE (mentee_id, domain)
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        for (MenteeExtraDomain d : target) {
+            menteeDomainRepo.save(new MenteeDomain(userId, d.domain(), d.skills().toArray(String[]::new), d.goal(), now));
+        }
+    }
+
+    private List<MenteeExtraDomain> extraDomainsOf(UUID userId) {
+        if (menteeDomainRepo == null) return List.of();
+        return menteeDomainRepo.findByMenteeIdOrderByAddedAt(userId).stream()
+                .map(d -> new MenteeExtraDomain(d.getDomain(), Arrays.asList(d.getSkills()), d.getGoal())).toList();
     }
 
     /**
@@ -589,7 +648,7 @@ public class ProfileService {
     }
 
     private MenteeProfileResponse menteeResponse(MenteeProfile p) {
-        return MenteeProfileResponse.from(p, avatarUrl(p.getUserId()));
+        return MenteeProfileResponse.from(p, avatarUrl(p.getUserId()), extraDomainsOf(p.getUserId()));
     }
 
     public ProfileSummary summary(UUID userId) {

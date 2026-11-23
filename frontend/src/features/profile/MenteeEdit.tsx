@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Briefcase, Eye, GraduationCap, Lock, Search, Sparkles, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { Briefcase, Eye, GraduationCap, Layers, Lock, Search, Sparkles, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { Button, ButtonLink, Field, FlashAlerts, Input, Loading, PageHeader, Select, Textarea, type Flash } from "@/components/ui";
 import { profileApi } from "@/features/profile/api";
 import { aiApi } from "@/features/ai/api";
 import MyCvs, { openCvFile } from "@/features/ai/MyCvs";
 import CvConsent from "@/features/ai/CvConsent";
+import MenteeDomains, { type ExtraDomainForm } from "@/features/profile/MenteeDomains";
 import MenteePreferences, { prefsErrors, prefsFromProfile, prefsToInput, type PrefsForm } from "@/features/profile/MenteePreferences";
 import {
   AvatarRow, ChipEditor, CompletenessBar, ConfirmModal, DangerZone, DomainSelect, EditSection, EmbeddingInfo, LinkEditor, MOCK_PROFILE_DELETE,
@@ -25,6 +26,8 @@ interface MenteeForm {
   /** Kỹ năng muốn học — MOCK: backend chưa có trường này, lưu tạm ở trình duyệt. */
   wantSkills: string[];
   links: string[];
+  /** Lĩnh vực phụ, mỗi lĩnh vực có kỹ năng + mục tiêu riêng. */
+  extras: ExtraDomainForm[];
 }
 interface Snapshot { form: MenteeForm; prefs: PrefsForm }
 
@@ -42,8 +45,9 @@ const writeWant = (id: string, v: string[]) => { try { window.localStorage.setIt
 
 const formFromProfile = (p: MenteeProfile, want: string[]): MenteeForm => ({
   displayName: p.displayName, goal: p.goal || "", domain: p.domain, currentLevel: p.currentLevel, skills: p.skills, wantSkills: want, links: p.portfolioLinks,
+  extras: (p.extraDomains ?? []).map((d) => ({ domain: d.domain, skills: d.skills, goal: d.goal ?? "" })),
 });
-const emptyForm = (name: string): MenteeForm => ({ displayName: name, goal: "", domain: "", currentLevel: "BEGINNER", skills: [], wantSkills: [], links: [] });
+const emptyForm = (name: string): MenteeForm => ({ displayName: name, goal: "", domain: "", currentLevel: "BEGINNER", skills: [], wantSkills: [], links: [], extras: [] });
 const emptyPrefs: PrefsForm = { days: [], timeOfDay: "", budget: "", languages: [] };
 const j = (v: unknown) => JSON.stringify(v);
 const HASH_ALIAS: Record<string, string> = { preferences: "luuy", "my-cvs": "pf" };
@@ -94,9 +98,10 @@ export default function MenteeEdit({ user }: { user: SessionUser }) {
     hh: j([form.displayName, form.currentLevel, form.domain, form.goal]) !== j([base.form.displayName, base.form.currentLevel, base.form.domain, base.form.goal]),
     ks: j([form.skills, form.wantSkills]) !== j([base.form.skills, base.form.wantSkills]),
     pf: j(form.links) !== j(base.form.links),
+    ld: j(form.extras) !== j(base.form.extras),
     luuy: j(prefs) !== j(base.prefs),
   }), [form, prefs, base]);
-  const names: Record<keyof typeof dirtyBy, string> = { hh: "Thông tin học tập", ks: "Kỹ năng", pf: "Portfolio và CV", luuy: "Lưu ý khi tìm mentor" };
+  const names: Record<keyof typeof dirtyBy, string> = { hh: "Thông tin học tập", ks: "Kỹ năng", pf: "Portfolio và CV", ld: "Lĩnh vực học", luuy: "Lưu ý khi tìm mentor" };
   const dirtyNames = (Object.keys(dirtyBy) as (keyof typeof dirtyBy)[]).filter((k) => dirtyBy[k]).map((k) => names[k]);
   const dirty = dirtyNames.length > 0;
 
@@ -105,6 +110,10 @@ export default function MenteeEdit({ user }: { user: SessionUser }) {
     if (!form.displayName.trim()) e.displayName = "Nhập tên hiển thị.";
     if (!form.domain) e.domain = "Chọn lĩnh vực muốn học.";
     if (!form.goal.trim()) e.goal = "Nhập mục tiêu học tập để AI gợi ý đúng mentor.";
+    form.extras.forEach((d, i) => {
+      if (!d.domain) e[`extra${i}`] = "Chọn lĩnh vực hoặc bỏ lĩnh vực này.";
+      else if (d.domain === form.domain) e[`extra${i}`] = "Lĩnh vực phụ phải khác lĩnh vực chính.";
+    });
     return { ...e, ...prefsErrors(prefs) };
   }
 
@@ -113,14 +122,15 @@ export default function MenteeEdit({ user }: { user: SessionUser }) {
     setErrors(e);
     setMsg({});
     if (Object.keys(e).length) {
-      jumpToSection(e.displayName || e.domain || e.goal ? "hh" : "luuy");
+      jumpToSection(e.displayName || e.domain || e.goal ? "hh" : Object.keys(e).some((k) => k.startsWith("extra")) ? "ld" : "luuy");
       return false;
     }
     setSaving(true);
     try {
-      if (!profile || dirtyBy.hh || dirtyBy.ks || dirtyBy.pf) {
+      if (!profile || dirtyBy.hh || dirtyBy.ks || dirtyBy.pf || dirtyBy.ld) {
         await profileApi.saveMentee(user.userId, {
           displayName: form.displayName.trim(), goal: form.goal, domain: form.domain, currentLevel: form.currentLevel, skills: form.skills, portfolioLinks: form.links,
+          extraDomains: form.extras.map((d) => ({ domain: d.domain, skills: d.skills, goal: d.goal.trim() || null })),
         });
       }
       if (MOCK_WANT_SKILLS && dirtyBy.ks) writeWant(user.userId, form.wantSkills);
@@ -200,6 +210,7 @@ export default function MenteeEdit({ user }: { user: SessionUser }) {
 
   const railItems: RailItem[] = [
     { id: "hh", label: "Thông tin học tập", icon: GraduationCap, dirty: dirtyBy.hh },
+    { id: "ld", label: "Lĩnh vực học", icon: Layers, dirty: dirtyBy.ld },
     { id: "ks", label: "Kỹ năng", icon: Sparkles, dirty: dirtyBy.ks },
     { id: "pf", label: "Portfolio và CV", icon: Briefcase, dirty: dirtyBy.pf },
     { id: "luuy", label: "Lưu ý khi tìm mentor", icon: Search, dirty: dirtyBy.luuy },
@@ -209,6 +220,7 @@ export default function MenteeEdit({ user }: { user: SessionUser }) {
   const locate = (key: string, label: string) => {
     const k = `${key} ${label}`.toLowerCase();
     if (/cv|portfolio|link/.test(k)) return "pf";
+    if (/lĩnh vực phụ|extra/.test(k)) return "ld";
     if (/skill|kỹ năng/.test(k)) return "ks";
     if (/pref|lưu ý|sở thích/.test(k)) return "luuy";
     return "hh";
@@ -263,7 +275,12 @@ export default function MenteeEdit({ user }: { user: SessionUser }) {
             </div>
           </EditSection>
 
-          <EditSection id="ks" icon={Sparkles} title="Kỹ năng" description="Gõ tên kỹ năng rồi Enter. Bấm dấu X để xoá.">
+          <EditSection id="ld" icon={Layers} title="Lĩnh vực học"
+            description="Học nhiều lĩnh vực cùng lúc? Thêm lĩnh vực phụ, mỗi lĩnh vực có kỹ năng và mục tiêu riêng.">
+            <MenteeDomains primary={form.domain} value={form.extras} onChange={(v) => set("extras", v)} errors={errors} />
+          </EditSection>
+
+          <EditSection id="ks" icon={Sparkles} title="Kỹ năng" description="Gõ tên kỹ năng (của lĩnh vực chính) rồi Enter. Bấm dấu X để xoá.">
             <div className="pe-two">
               <div>
                 <div className="pe-sub">Đã có</div>

@@ -227,6 +227,21 @@ components:
         skills: { type: array, items: { type: string } }
         portfolioLinks: { type: array, items: { type: string } }
         cvFileUrl: { type: string, nullable: true }
+        extraDomains:
+          type: array
+          maxItems: 2
+          description: >
+            Lĩnh vực PHỤ (lĩnh vực chính là `domain`), tối đa 2 → mentee có tối đa 3 lĩnh vực. Mỗi lĩnh vực có kỹ năng
+            và mục tiêu riêng; matching-service dùng chúng khi mentee chọn tìm mentor cho lĩnh vực đó. Bỏ trường
+            (null) = giữ nguyên; mảng rỗng = xoá hết. Lỗi 400: INVALID_DOMAIN (ngoài danh mục), DUPLICATE_DOMAIN
+            (trùng lĩnh vực chính hoặc trùng nhau), TOO_MANY_DOMAINS.
+          items:
+            type: object
+            required: [domain]
+            properties:
+              domain: { type: string, example: devops }
+              skills: { type: array, items: { type: string }, maxItems: 30 }
+              goal: { type: string, nullable: true, maxLength: 1000 }
     MenteePreferences:
       type: object
       description: >

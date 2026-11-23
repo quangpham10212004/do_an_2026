@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import asyncpg
+
 from app import config
 from app.db import get_matching_pool, get_profile_pool
 from app.services.embedding_service import EMBEDDING_DIM
@@ -70,6 +72,8 @@ class MatchIntent:
     mode: str = INTENT_CURRENT
     target_domain: str | None = None
     goal_text: str | None = None
+    # Kỹ năng riêng của lĩnh vực được chọn (lĩnh vực phụ trong hồ sơ); rỗng = dùng kỹ năng hồ sơ chính.
+    skills: tuple[str, ...] = ()
 
     @property
     def is_switch(self) -> bool:
@@ -86,7 +90,7 @@ def query_text(mentee: dict, intent: MatchIntent) -> str:
     """Văn bản đưa vào embedding làm truy vấn: mục tiêu mới + kỹ năng nền, cùng cấu trúc với hồ sơ mentee."""
     return profile_text.normalize_mentee({
         "domain": intent.target_domain,
-        "skills": mentee.get("skills"),
+        "skills": list(intent.skills) or mentee.get("skills"),
         "current_level": mentee.get("current_level"),
         "goal": intent.goal_text or mentee.get("goal"),
     })
@@ -115,7 +119,49 @@ async def get_mentee(mentee_id: str) -> dict | None:
         """,
         mentee_id,
     )
-    return dict(row) if row else None
+    if row is None:
+        return None
+    mentee = dict(row)
+    mentee["extra_domains"] = await _extra_domains(pool, mentee_id)
+    return mentee
+
+
+async def _extra_domains(pool, mentee_id: str) -> list[dict]:
+    """Lĩnh vực phụ của mentee (mỗi lĩnh vực có kỹ năng + mục tiêu riêng). Bảng chưa có (profile-service chưa migrate) = rỗng."""
+    try:
+        rows = await pool.fetch(
+            "SELECT domain, skills, goal FROM mentee_domains WHERE mentee_id = $1::uuid ORDER BY added_at", mentee_id)
+    except asyncpg.UndefinedTableError:
+        return []
+    return [dict(r) for r in rows]
+
+
+class DomainNotInProfileError(Exception):
+    """Lĩnh vực được chọn không nằm trong hồ sơ mentee (không phải lĩnh vực chính cũng không phải lĩnh vực phụ)."""
+
+    def __init__(self, domain: str, available: list[str]):
+        super().__init__(domain)
+        self.domain = domain
+        self.available = available
+
+
+def resolve_intent(mentee: dict, domain: str | None, intent: MatchIntent | None = None) -> MatchIntent:
+    """
+    Đổi lĩnh vực mentee chọn để tìm thành mục đích lượt tìm. Chỉ được chọn lĩnh vực trong hồ sơ (chính hoặc phụ):
+    lĩnh vực chính = CURRENT (vector mentee đã lập chỉ mục); lĩnh vực phụ = vector truy vấn dựng từ kỹ năng + mục tiêu
+    RIÊNG của lĩnh vực đó, kèm tín hiệu transition (mentor từng làm đúng lĩnh vực chính). `domain` rỗng = lĩnh vực chính,
+    trừ khi `intent` (tương thích ngược intent=SWITCH&targetDomain) đã chỉ định lĩnh vực đích.
+    """
+    wanted = (domain or (intent.target_domain if intent is not None and intent.is_switch else None) or "").strip().lower()
+    primary = (mentee.get("domain") or "").strip().lower()
+    if not wanted or wanted == primary:
+        return MatchIntent()
+    extras = {(e["domain"] or "").lower(): e for e in mentee.get("extra_domains") or []}
+    extra = extras.get(wanted)
+    if extra is None:
+        raise DomainNotInProfileError(wanted, [primary, *extras])
+    goal = (intent.goal_text if intent is not None and intent.goal_text else None) or extra.get("goal")
+    return MatchIntent(mode=INTENT_SWITCH, target_domain=wanted, goal_text=goal, skills=tuple(extra.get("skills") or ()))
 
 
 # Một dòng cho MỖI mentor: `reason` = lý do bị ràng buộc hệ thống loại (NULL = qua), kèm cờ đúng/sai
@@ -373,9 +419,12 @@ async def match_mentors_for_mentee(
     exclude_ids: list[str] | None = None,
     include_over_budget: bool = True,
     intent: MatchIntent | None = None,
+    domain: str | None = None,
 ) -> dict | None:
     """
     Chạy toàn bộ pipeline. Trả về None nếu mentee chưa có hồ sơ/embedding.
+    domain: lĩnh vực mentee chọn để tìm (phải nằm trong hồ sơ, xem resolve_intent); bỏ trống = lĩnh vực chính.
+    Raise DomainNotInProfileError khi lĩnh vực không thuộc hồ sơ.
 
     requested: bộ lọc từ query (khoá = match_filters.FILTER_NAMES, None = không truyền); bộ lọc thiếu
     lấy từ sở thích hồ sơ khi use_profile_defaults. exclude_ids: mentor không bao giờ được trả về.
@@ -384,6 +433,7 @@ async def match_mentors_for_mentee(
     mentee = await get_mentee(mentee_id)
     if mentee is None:
         return None
+    intent = resolve_intent(mentee, domain, intent)
     if not await index_service.has_embedding(index_service.MENTEE, mentee_id):
         # Hồ sơ có nhưng chưa được lập chỉ mục: thông báo của profile-service là
         # best-effort nên có thể chưa tới. Lập chỉ mục ngay thay vì bắt mentee chờ

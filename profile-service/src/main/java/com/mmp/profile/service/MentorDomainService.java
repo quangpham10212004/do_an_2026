@@ -27,8 +27,8 @@ import java.util.*;
 @Service
 public class MentorDomainService {
     private static final Logger log = LoggerFactory.getLogger(MentorDomainService.class);
-    private static final int MAX_DOMAINS = 3;
-    private static final Set<String> CATALOG = Set.of("backend", "frontend", "fullstack", "devops", "data", "mobile");
+    private static final int MAX_DOMAINS = DomainCatalog.MAX_DOMAINS;
+    private static final Set<String> CATALOG = DomainCatalog.CODES;
     private static final List<String> STAGE_LABELS = List.of("CV", "Bài đánh giá", "Video", "Admin duyệt");
 
     private final MentorProfileRepository profiles;

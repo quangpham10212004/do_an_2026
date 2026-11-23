@@ -95,6 +95,12 @@ async def add_mentee(conn, **prefs) -> str:
     return user_id
 
 
+async def add_extra_domain(conn, mentee_id: str, domain: str, skills: list[str], goal: str | None = None) -> None:
+    await conn.execute(
+        "INSERT INTO mentee_domains (mentee_id, domain, skills, goal) VALUES ($1::uuid, $2, $3, $4)",
+        mentee_id, domain, skills, goal)
+
+
 async def match(mentee_id, limit=10, use_profile_defaults=True, include_over_budget=False, **requested):
     """Mặc định lọc cứng theo giá (US-17); include_over_budget=True kiểm chế độ ưu tiên mềm."""
     await index_service.reconcile(batch=500)
@@ -393,6 +399,7 @@ async def test_switch_intent_targets_new_domain_and_rewards_past_switchers(conn)
     switcher = await add_mentor(conn, domain="data", bio="Chuyên gia dữ liệu")
     await conn.execute("UPDATE mentor_profiles SET previous_domains = '{backend}' WHERE user_id = $1::uuid", switcher)
     mentee = await add_mentee(conn)
+    await add_extra_domain(conn, mentee, "data", ["Python", "Pandas"], "Muốn học machine learning")
     await index_service.reconcile(batch=500)
 
     intent = matching_pipeline.MatchIntent(mode="SWITCH", target_domain="data", goal_text="Muốn học machine learning")
@@ -536,3 +543,40 @@ async def test_budget_from_profile_is_soft_too(conn):
 
     strict = await match(mentee)
     assert [str(m["mentor_id"]) for m in strict["mentors"]] == [cheap]
+
+
+async def test_search_uses_chosen_extra_domain_with_its_own_skills_and_goal(conn):
+    """Mentee backend + phụ devops: chọn devops => chỉ mentor devops, vector dựng từ kỹ năng/mục tiêu của devops."""
+    backend = await add_mentor(conn, domain="backend", bio="Chuyên gia backend")
+    devops = await add_mentor(conn, domain="devops", bio="Chuyên gia triển khai")
+    mentee = await add_mentee(conn)
+    await add_extra_domain(conn, mentee, "devops", ["Docker", "Kubernetes"], "Triển khai CI/CD")
+    await index_service.reconcile(batch=500)
+
+    primary = await matching_pipeline.match_mentors_for_mentee(mentee, limit=5)
+    assert ids(primary) == {backend}
+    assert primary["intent"].mode == "CURRENT"
+
+    chosen = await matching_pipeline.match_mentors_for_mentee(mentee, limit=5, domain="DevOps")
+    assert ids(chosen) == {devops}
+    assert chosen["intent"].is_switch and chosen["intent"].target_domain == "devops"
+    query = chosen["stats"]["stages"]["retrieve"]["query_text"]
+    assert "Domain: devops" in query and "Docker, Kubernetes" in query and "Triển khai CI/CD" in query
+    assert "Java" not in query   # kỹ năng của lĩnh vực chính không lẫn vào truy vấn lĩnh vực phụ
+
+
+async def test_choosing_the_primary_domain_explicitly_is_the_same_as_default(conn):
+    backend = await add_mentor(conn, domain="backend", bio="Chuyên gia backend")
+    mentee = await add_mentee(conn)
+    await index_service.reconcile(batch=500)
+    result = await matching_pipeline.match_mentors_for_mentee(mentee, limit=5, domain="backend")
+    assert ids(result) == {backend} and result["intent"].mode == "CURRENT"
+
+
+async def test_domain_outside_the_profile_is_rejected(conn):
+    mentee = await add_mentee(conn)
+    await add_extra_domain(conn, mentee, "devops", [], None)
+    await index_service.reconcile(batch=500)
+    with pytest.raises(matching_pipeline.DomainNotInProfileError) as e:
+        await matching_pipeline.match_mentors_for_mentee(mentee, limit=5, domain="mobile")
+    assert e.value.available == ["backend", "devops"]

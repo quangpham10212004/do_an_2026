@@ -149,7 +149,22 @@ public final class ProfileDtos {
             @Pattern(regexp = "BEGINNER|INTERMEDIATE|ADVANCED") String currentLevel,
             @Size(max = 30) List<@NotBlank @Size(max = 50) String> skills,
             @Size(max = 10) List<@Size(max = 300) String> portfolioLinks,
-            @Size(max = 500) String cvFileUrl) {
+            @Size(max = 500) String cvFileUrl,
+            /** Lĩnh vực phụ (tối đa 2). null = giữ nguyên; danh sách rỗng = xoá hết. */
+            @Size(max = 2) @Valid List<MenteeExtraDomain> extraDomains) {
+
+        /** Tương thích lời gọi cũ (không có lĩnh vực phụ): giữ nguyên các lĩnh vực phụ hiện có. */
+        public MenteeProfileInput(String displayName, String goal, String domain, String currentLevel,
+                                  List<String> skills, List<String> portfolioLinks, String cvFileUrl) {
+            this(displayName, goal, domain, currentLevel, skills, portfolioLinks, cvFileUrl, null);
+        }
+    }
+
+    /** Một lĩnh vực phụ của mentee: kỹ năng và mục tiêu riêng cho lĩnh vực đó. */
+    public record MenteeExtraDomain(
+            @NotBlank @Size(max = 50) String domain,
+            @Size(max = 30) List<@NotBlank @Size(max = 50) String> skills,
+            @Size(max = 1000) String goal) {
     }
 
     public record MenteeProfileResponse(
@@ -169,13 +184,19 @@ public final class ProfileDtos {
             String avatarUrl,
             CompletenessRules.Completeness completeness,
             /** US-37 — nút AI Matching bật khi completeness.score ≥ 50. */
-            boolean matchingEnabled) {
+            boolean matchingEnabled,
+            /** Lĩnh vực phụ (lĩnh vực chính là `domain`). */
+            List<MenteeExtraDomain> extraDomains) {
 
         public static MenteeProfileResponse from(MenteeProfile p) {
             return from(p, null);
         }
 
         public static MenteeProfileResponse from(MenteeProfile p, String avatarUrl) {
+            return from(p, avatarUrl, List.of());
+        }
+
+        public static MenteeProfileResponse from(MenteeProfile p, String avatarUrl, List<MenteeExtraDomain> extraDomains) {
             String timeOfDay = p.getPreferredTimeOfDay() == null ? null : p.getPreferredTimeOfDay().name();
             CompletenessRules.Completeness completeness = CompletenessRules.mentee(p.getDomain(),
                     p.getCurrentLevel() == null ? null : p.getCurrentLevel().name(), p.getSkills().length, p.getGoal(),
@@ -184,7 +205,7 @@ public final class ProfileDtos {
                     p.getCurrentLevel().name(), Arrays.asList(p.getSkills()), Arrays.asList(p.getPortfolioLinks()),
                     p.getCvFileUrl(), Arrays.asList(p.getPreferredDays()), timeOfDay,
                     p.getBudgetMaxPerHour(), Arrays.asList(p.getLanguages()), p.getTimezone(), avatarUrl, completeness,
-                    completeness.score() >= CompletenessRules.MENTEE_MATCHING_MIN);
+                    completeness.score() >= CompletenessRules.MENTEE_MATCHING_MIN, extraDomains);
         }
     }
 

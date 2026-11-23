@@ -140,6 +140,8 @@ export interface MenteeProfileInput {
   skills?: string[];
   portfolioLinks?: string[];
   cvFileUrl?: string | null;
+  /** Bỏ trống = giữ nguyên lĩnh vực phụ hiện có; mảng rỗng = xoá hết. */
+  extraDomains?: MenteeExtraDomain[];
 }
 
 /** US-16 — buổi muốn học: MORNING 06–12, AFTERNOON 12–18, EVENING 18–23. */
@@ -170,6 +172,17 @@ export interface MenteeProfile extends MenteePreferences {
   completeness: Completeness;
   /** Nút AI Matching bật khi completeness.score ≥ 50. */
   matchingEnabled: boolean;
+  /** Lĩnh vực phụ (lĩnh vực chính là `domain`); mỗi lĩnh vực có kỹ năng và mục tiêu riêng. Tối đa MAX_MENTEE_DOMAINS - 1. */
+  extraDomains: MenteeExtraDomain[];
+}
+
+/** Mentee học nhiều lĩnh vực: 1 chính + tối đa 2 phụ. */
+export const MAX_MENTEE_DOMAINS = 3;
+
+export interface MenteeExtraDomain {
+  domain: string;
+  skills: string[];
+  goal: string | null;
 }
 
 /** Thẻ mentor ở trang duyệt danh sách (GET /api/profile/mentors). */
