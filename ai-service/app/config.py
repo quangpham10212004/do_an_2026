@@ -40,7 +40,6 @@ VOICE_INTERVIEW_TOPICS = int(os.getenv("VOICE_INTERVIEW_TOPICS", "4"))
 # Buổi giọng nói là một lần ngồi: IN_PROGRESS quá VOICE_SESSION_MINUTES phút mà chưa có bản ghi => ABANDONED.
 VOICE_SESSION_MINUTES = float(os.getenv("VOICE_SESSION_MINUTES", "30"))
 # FR-10.x — số buổi luyện phỏng vấn với AI miễn phí của mỗi mentee (trọn đời).
-PRACTICE_FREE_LIMIT = int(os.getenv("PRACTICE_FREE_LIMIT", "1"))
 
 # FR-7.3 / FR-8.4 — số lượt hỏi-đáp cố định của mỗi tính năng.
 ENRICHMENT_MAX_TURNS = int(os.getenv("ENRICHMENT_MAX_TURNS", "4"))

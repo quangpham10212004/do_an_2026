@@ -1,4 +1,4 @@
-"""v2.1 phương án A — kế hoạch câu hỏi do AI soạn cho phỏng vấn giọng nói (mentor + luyện phỏng vấn của mentee)."""
+"""v2.1 phương án A — kế hoạch câu hỏi do AI soạn cho phỏng vấn giọng nói của mentor."""
 import asyncio
 import json
 import uuid
@@ -13,7 +13,6 @@ from app.interview import planner, question_bank
 from app.interview.planner import PlannedTopic, _Plan
 from tests.conftest import auth
 from tests.test_deepseek import FakeDeepSeek
-from tests.test_practice_interview import INTAKE, complete, start as start_practice, transcript
 from tests.test_voice_interview import post_transcript, start_voice
 
 
@@ -91,16 +90,8 @@ def test_mentor_plan_from_deepseek_keeps_the_fixed_mentoring_topic(deepseek):
 
 def test_invalid_deepseek_plan_falls_back_to_the_bank(deepseek):
     deepseek.reply(json.dumps({"topics": [topic(1)]}))  # thiếu chủ đề
-    p = asyncio.run(planner.practice_plan("BACKEND", "FRESHER", "Backend Developer", None, None, None))
+    p = asyncio.run(planner.mentor_plan({"domain": "backend", "skills": ["Java"]}, None))
     assert p.engine == engines.RULE_BASED and {t.source for t in p.topics} == {"BANK"}
-
-
-def test_practice_plan_from_deepseek_may_use_cv_and_goal(deepseek):
-    deepseek.reply(json.dumps({"topics": [topic(1, "CV"), topic(2, "GOAL"), topic(3), topic(4)]}))
-    p = asyncio.run(planner.practice_plan("BACKEND", "FRESHER", "Backend Developer", "FPT", "Làm backend fintech", CV))
-    assert [t.source for t in p.topics] == ["CV", "GOAL", "AI", "AI"]
-    sent = json.loads(deepseek.requests[0].content)["messages"][1]["content"]
-    assert "Làm backend fintech" in sent and "FPT" in sent
 
 
 # ---------- CV chỉ khi đồng ý gửi AI bên ngoài ----------
@@ -151,21 +142,6 @@ def ai_plan(monkeypatch):
         return [t.model_copy() for t in AI_TOPICS[:count]]
     monkeypatch.setattr(planner, "_generate", fake_generate)
     return calls
-
-
-def test_practice_saves_the_plan_reconnects_to_it_and_grades_by_its_concepts(client, db, ai_plan, monkeypatch):
-    mentee_id = uuid.uuid4()
-    first = start_practice(client, mentee_id).json()["practice"]
-    assert first["topics"] == [t.name for t in AI_TOPICS] and first["plan"] is None  # câu hỏi chưa lộ khi đang làm
-    assert start_practice(client, mentee_id, targetRole="Khác").json()["practice"]["topics"] == first["topics"]
-    assert len(ai_plan) == 1  # kết nối lại không soạn lại kế hoạch
-
-    good = "Toi chia topic thanh nhieu partition, moi consumer group doc song song va commit offset sau khi xu ly xong."
-    bad = "Toi khong ro lam, chua dung bao gio nhung chac la gui message di thoi va nhan lai."
-    done = complete(client, mentee_id, first["id"], transcript(good, bad)).json()
-    turns = done["result"]["turns"]
-    assert turns[0]["topic"] == AI_TOPICS[0].name and turns[0]["rubric"]["technical"] > turns[1]["rubric"]["technical"]
-    assert [p["source"] for p in done["plan"]] == ["CV", "AI", "AI", "AI"]
 
 
 def test_mentor_voice_saves_the_plan_and_only_admin_sees_it(client, db, fake_profile, ai_plan):

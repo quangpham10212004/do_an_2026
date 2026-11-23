@@ -301,48 +301,6 @@ components:
           allOf: [{ $ref: "#/components/schemas/VoiceSession" }]
           nullable: true
           description: null khi chưa cấu hình OPENAI_API_KEY (chỉ ngoài prod) — dev/e2e gửi bản ghi giả lập
-    PracticeRubric:
-      type: object
-      description: "FR-10.x — mỗi tiêu chí 0-10. Trọng số 35/25/25/15. Điểm câu = tổng có trọng số; điểm tổng = trung bình × 10."
-      required: [technical, problemSolving, communication, structure]
-      properties:
-        technical: { type: number, minimum: 0, maximum: 10, description: "Kiến thức kỹ thuật (35%)" }
-        problemSolving: { type: number, minimum: 0, maximum: 10, description: "Giải quyết vấn đề & chiều sâu (25%)" }
-        communication: { type: number, minimum: 0, maximum: 10, description: "Trình bày rõ ràng khi nói (25%)" }
-        structure: { type: number, minimum: 0, maximum: 10, description: "Cấu trúc: STAR (BEHAVIORAL) / cách tiếp cận (15%)" }
-    PracticeTurn:
-      type: object
-      properties:
-        topicNo: { type: integer }
-        topic: { type: string }
-        question: { type: string, description: Lời người phỏng vấn trong chủ đề, nối bằng " / " }
-        answer: { type: string, description: "Lời mentee; không trả lời => \"(Bạn không trả lời câu hỏi này.)\"" }
-        score: { type: number, description: 0-10 }
-        rubric: { $ref: "#/components/schemas/PracticeRubric" }
-        feedback: { type: string }
-        flags: { type: array, items: { type: string, enum: [PROMPT_INJECTION] } }
-    SpeakingReport:
-      type: object
-      properties:
-        fillerCount: { type: integer, description: "Tổng số từ đệm: ừm, à, ờ, uh, um, kiểu như, thì là" }
-        fillers: { type: object, additionalProperties: { type: integer }, example: { "ừm": 2, "kiểu như": 1 } }
-        answerCount: { type: integer, description: Số chủ đề mentee có trả lời }
-        avgWordsPerAnswer: { type: number }
-        shortAnswers: { type: integer, description: Số câu trả lời dưới 20 từ }
-        unanswered: { type: integer }
-    PracticeResult:
-      type: object
-      properties:
-        overallScore: { type: number, description: 0-100 }
-        summary: { type: string }
-        strengths: { type: array, items: { type: string }, minItems: 3, maxItems: 3 }
-        improvements: { type: array, items: { type: string }, minItems: 3, maxItems: 3, description: Danh sách hành động của mentee (chỉ là văn bản) }
-        turns: { type: array, items: { $ref: "#/components/schemas/PracticeTurn" } }
-        speaking: { $ref: "#/components/schemas/SpeakingReport" }
-        engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
-        model: { type: string, nullable: true }
-        promptVersion: { type: string, example: practice-v1, description: "practice-v1 (DeepSeek) | rule-based-practice-v1" }
-        fallbackUsed: { type: boolean }
     PlanTopic:
       type: object
       description: >
@@ -352,49 +310,6 @@ components:
         name: { type: string }
         question: { type: string }
         source: { type: string, enum: [BANK, CV, GOAL, AI] }
-    Practice:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        menteeId: { type: string, format: uuid }
-        interviewType: { type: string, enum: [BACKEND, FRONTEND, SYSTEM_DESIGN, BEHAVIORAL] }
-        level: { type: string, enum: [INTERN, FRESHER, JUNIOR] }
-        targetRole: { type: string }
-        targetCompany: { type: string, nullable: true }
-        status: { type: string, enum: [IN_PROGRESS, COMPLETED, ABANDONED] }
-        topics: { type: array, items: { type: string } }
-        plan:
-          type: array
-          nullable: true
-          items: { $ref: "#/components/schemas/PlanTopic" }
-          description: "v2.1 — kế hoạch câu hỏi + nguồn; null khi IN_PROGRESS (không lộ câu hỏi trước)"
-        engine: { type: string, enum: [DEEPSEEK, RULE_BASED] }
-        consentExternalAi: { type: boolean }
-        overallScore: { type: number, nullable: true }
-        result:
-          allOf: [{ $ref: "#/components/schemas/PracticeResult" }]
-          nullable: true
-          description: Có khi COMPLETED — hiện ngay cho mentee, không qua admin
-        createdAt: { type: string, format: date-time }
-        completedAt: { type: string, format: date-time, nullable: true }
-        resumeDeadline: { type: string, format: date-time, nullable: true, description: "IN_PROGRESS: bắt đầu + VOICE_SESSION_MINUTES (30 phút)" }
-    PracticeEligibility:
-      type: object
-      properties:
-        freeLimit: { type: integer, example: 1, description: PRACTICE_FREE_LIMIT }
-        used: { type: integer, description: Số buổi COMPLETED / ABANDONED (tối đa freeLimit) }
-        canStart: { type: boolean }
-        reason: { type: string, nullable: true, enum: [PRACTICE_FREE_USED, IN_PROGRESS], description: "IN_PROGRESS => bắt đầu = kết nối lại buổi đang dở" }
-        inProgressId: { type: string, format: uuid, nullable: true }
-        voiceAvailable: { type: boolean }
-    PracticeStart:
-      type: object
-      properties:
-        practice: { $ref: "#/components/schemas/Practice" }
-        voice:
-          allOf: [{ $ref: "#/components/schemas/VoiceSession" }]
-          nullable: true
-          description: null khi chưa cấu hình OPENAI_API_KEY (chỉ ngoài prod)
     InterviewStats:
       type: object
       properties:
@@ -866,91 +781,6 @@ paths:
         "409": { description: INTERVIEW_NOT_VOICE | INTERVIEW_ABANDONED | INTERVIEW_NOT_IN_PROGRESS (đã gửi rồi) }
 
   # ---------------- Luyện phỏng vấn với AI — mentee (FR-10.x) ----------------
-  /api/ai/practice-interviews/eligibility:
-    get:
-      summary: (MENTEE) Lượt luyện miễn phí đã dùng / còn, buổi đang dở
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PracticeEligibility" }
-  /api/ai/practice-interviews:
-    post:
-      summary: >
-        (MENTEE) Bắt đầu buổi luyện phỏng vấn giọng nói với AI (vai nhà tuyển dụng cho vị trí / cấp độ mentee nhắm tới).
-        PRACTICE_FREE_LIMIT (1) buổi miễn phí trọn đời — COMPLETED hoặc ABANDONED là đã dùng. Đang có buổi IN_PROGRESS
-        chưa quá 30 phút => trả lại buổi đó (giữ intake cũ) với client secret mới; quá 30 phút => ABANDONED.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [interviewType, level, targetRole, consentExternalAi]
-              properties:
-                interviewType: { type: string, enum: [BACKEND, FRONTEND, SYSTEM_DESIGN, BEHAVIORAL] }
-                level: { type: string, enum: [INTERN, FRESHER, JUNIOR] }
-                targetRole: { type: string, minLength: 2, maxLength: 120, description: Đã trim }
-                targetCompany: { type: string, maxLength: 120, nullable: true, description: Đã trim; rỗng => null }
-                consentExternalAi: { type: boolean, description: Phải là true }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PracticeStart" }
-        "400": { description: VOICE_CONSENT_REQUIRED | VALIDATION_ERROR }
-        "403": { description: FORBIDDEN — không phải MENTEE }
-        "409":
-          description: >
-            PRACTICE_FREE_USED — đã dùng lượt miễn phí; kèm CTA đặt phỏng vấn thử với mentor (US-58), vd.
-            {"error":{"code":"PRACTICE_FREE_USED","message":"...","ctaLabel":"Đặt phỏng vấn thử với mentor","ctaHref":"/matching"}}
-        "502": { description: VOICE_UNAVAILABLE — OpenAI lỗi (không tạo buổi, không tính lượt) }
-        "503": { description: "VOICE_UNAVAILABLE — APP_ENV=prod và chưa có OPENAI_API_KEY (không tạo buổi)" }
-  /api/ai/practice-interviews/me:
-    get:
-      summary: (MENTEE) Lịch sử luyện phỏng vấn, mới nhất trước
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/Practice" } }
-  /api/ai/practice-interviews/{id}:
-    get:
-      summary: Chi tiết một buổi luyện (chủ buổi hoặc admin)
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Practice" }
-        "403": { description: FORBIDDEN }
-        "404": { description: PRACTICE_NOT_FOUND }
-  /api/ai/practice-interviews/{id}/complete:
-    post:
-      summary: >
-        (MENTEE, chủ buổi) Gửi bản ghi buổi luyện IN_PROGRESS → chấm (DeepSeek prompt practice-v1 khi có DEEPSEEK_API_KEY,
-        ngược lại / khi lỗi rule-based) → COMPLETED, kết quả hiện ngay. Câu trả lời chứa mệnh lệnh cho người chấm không
-        được gửi tới LLM, chấm rule-based và gắn cờ PROMPT_INJECTION.
-      parameters: [{ $ref: "#/components/parameters/Id" }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/TranscriptInput" }
-      responses:
-        "200":
-          description: Practice (COMPLETED, có result)
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Practice" }
-        "400": { description: EMPTY_TRANSCRIPT | VALIDATION_ERROR }
-        "403": { description: FORBIDDEN }
-        "404": { description: PRACTICE_NOT_FOUND }
-        "409": { description: PRACTICE_NOT_IN_PROGRESS (đã nộp hoặc đã bị huỷ do quá 30 phút) }
   /api/ai/verification/videos/{id}/chunks/{n}:
     put:
       summary: >-

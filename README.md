@@ -11,7 +11,7 @@
 
 | Vai trò | Chức năng |
 |---|---|
-| **Mentee** | Hồ sơ + tải CV (AI phân tích, chatbot làm rõ mục tiêu) · gợi ý mentor bằng AI Matching · gửi yêu cầu, đặt lịch, trả học phí bằng ví · phòng học video · đánh giá · tranh chấp · blog · nhắn tin · thông báo · mã giới thiệu và voucher · theo dõi tiến độ · luyện phỏng vấn với AI |
+| **Mentee** | Hồ sơ + tải CV (AI phân tích, chatbot làm rõ mục tiêu) · gợi ý mentor bằng AI Matching · gửi yêu cầu, đặt lịch, trả học phí bằng ví · phòng học video · đánh giá · tranh chấp · blog · nhắn tin · thông báo · mã giới thiệu và voucher · theo dõi tiến độ |
 | **Mentor** | Hồ sơ nhiều lĩnh vực, lịch rảnh · **xác thực từng lĩnh vực bằng phỏng vấn AI trực tiếp** · nhận yêu cầu, xác nhận từng buổi · thu nhập và rút tiền · blog · nhắn tin |
 | **Admin** | Xử lý ca xác thực chưa rõ ràng · quản lý người dùng và mentor · tranh chấp · báo cáo tin nhắn và vi phạm liên hệ · kiểm duyệt blog · giao dịch và rút tiền · nhật ký kiểm toán |
 
@@ -26,7 +26,7 @@
 3. **CV Parsing + Chatbot enrichment** (ai-service): trích xuất kỹ năng, dự án, học vấn từ PDF; chatbot hỏi tối đa 4 lượt để chuẩn hoá mục tiêu nghề nghiệp, mentee duyệt rồi mới ghi vào hồ sơ.
 
 Engine AI: **DeepSeek** (khi có `DEEPSEEK_API_KEY`) hoặc **rule-based** chạy offline; lời gọi DeepSeek lỗi thì lượt đó tự dùng rule-based.
-`OPENAI_API_KEY` chỉ cần cho tính năng luyện phỏng vấn giọng nói của mentee, không cần cho xác thực mentor.
+`OPENAI_API_KEY` chỉ cần cho phỏng vấn bằng giọng nói của mentor (tuỳ chọn), không cần cho xác thực mentor bằng phỏng vấn trực tiếp.
 
 ## Kiến trúc
 
@@ -39,7 +39,7 @@ flowchart LR
     FE --> PAYMENT[payment-service :8084<br/>ví VND, nạp ví, thu nhập, referral, voucher]
     FE --> LEARNING[learning-service :8085<br/>blog]
     FE --> MATCHING[matching-service :8090<br/>AI Matching + chỉ mục embedding]
-    FE --> AI[ai-service :8091<br/>xác thực mentor, CV, chatbot, luyện phỏng vấn]
+    FE --> AI[ai-service :8091<br/>xác thực mentor, CV, chatbot]
     PROFILE -. "báo hồ sơ đổi" .-> MATCHING
     MATCHING -. "đọc read-only" .-> PDB[(profile_db)]
     AI -. "trạng thái xác thực,<br/>mục tiêu sau enrichment" .-> PROFILE

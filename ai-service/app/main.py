@@ -13,8 +13,7 @@ from app.enrichment.service import purge_expired_cvs_forever, retry_profile_sync
 from app.interview import service as interview_service
 from app.errors import AiError
 from app.llm.deepseek import get_client
-from app.practice import service as practice_service
-from app.routers import cv, enrichment, interview, live_verification, practice, verification
+from app.routers import cv, enrichment, interview, live_verification, verification
 from app.verification import live_admin, video_service
 
 observability.setup_logging("ai-service")  # US-46: log JSON có requestId
@@ -33,8 +32,6 @@ async def lifespan(_: FastAPI):
     retry_job = asyncio.create_task(retry_profile_sync_forever())
     # FR-7.7 — quét buổi phỏng vấn giọng nói bỏ dở quá VOICE_SESSION_MINUTES phút (hết lượt thì đóng đợt)
     abandon_job = asyncio.create_task(interview_service.abandon_stale_forever())
-    # FR-10.x — buổi luyện phỏng vấn giọng nói quá 30 phút chưa nộp bản ghi
-    practice_job = asyncio.create_task(practice_service.abandon_stale_forever())
     # US-45 (PRD-CV-6) — xoá file + văn bản gốc của CV quá 12 tháng
     retention_job = asyncio.create_task(purge_expired_cvs_forever())
     # Vòng 1 có camera — chốt video bị bỏ quên, xoá video quá 60 ngày
@@ -43,7 +40,6 @@ async def lifespan(_: FastAPI):
     yield
     retry_job.cancel()
     abandon_job.cancel()
-    practice_job.cancel()
     retention_job.cancel()
     video_job.cancel()
     assessment_job.cancel()
@@ -106,4 +102,3 @@ app.include_router(live_verification.router)
 app.include_router(verification.dev_router)  # chỉ dev/e2e, tự chặn ở APP_ENV=prod
 app.include_router(cv.router)
 app.include_router(enrichment.router)
-app.include_router(practice.router)

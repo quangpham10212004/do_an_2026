@@ -26,7 +26,7 @@ export const MOCK_VERDICT_TONE: Record<MockVerdict, "success" | "info" | "warnin
   NO_HIRE: "danger",
 };
 
-/** 4 tiêu chí chung (cùng thang 0–10 với AI practice sau này) + mô tả 3 mức điểm. */
+/** 4 tiêu chí chấm phỏng vấn thử (thang 0–10) + mô tả 3 mức điểm. */
 export const MOCK_DIMENSIONS = [
   { key: "technical", label: "Độ chính xác kỹ thuật", bands: ["Sai hoặc lạc đề", "Đúng nhưng chung chung", "Đúng, nêu được đánh đổi và giới hạn"] },
   { key: "problemSolving", label: "Giải quyết vấn đề", bands: ["Không có hướng, nhảy ngay vào đáp án", "Hướng làm ổn, chưa thấy lỗ hổng", "Hỏi lại yêu cầu, chia nhỏ, kiểm tra trường hợp biên"] },

@@ -346,7 +346,6 @@ services:
       VIDEO_RECONNECT_SECONDS: ${VIDEO_RECONNECT_SECONDS:-60}
       VIDEO_MAX_GAP_SECONDS: ${VIDEO_MAX_GAP_SECONDS:-10}
       TRANSCRIPT_MISMATCH_THRESHOLD: ${TRANSCRIPT_MISMATCH_THRESHOLD:-0.30}
-      PRACTICE_FREE_LIMIT: ${PRACTICE_FREE_LIMIT:-1}
     volumes:
       - cv-storage:/data/cv
       - verification-media:/data/verification

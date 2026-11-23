@@ -236,52 +236,6 @@ export interface VoiceInterviewStart {
   voice: VoiceSession | null;
 }
 
-// FR-10.x — Luyện phỏng vấn với AI (mentee)
-export type PracticeType = "BACKEND" | "FRONTEND" | "SYSTEM_DESIGN" | "BEHAVIORAL";
-export type PracticeLevel = "INTERN" | "FRESHER" | "JUNIOR";
-export type PracticeStatus = "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
-
-/** Rubric luyện phỏng vấn (0–10 mỗi tiêu chí), trọng số 35/25/25/15. */
-export interface PracticeRubric {
-  technical: number;
-  problemSolving: number;
-  communication: number;
-  structure: number;
-}
-
-export interface PracticeTurn {
-  topicNo: number;
-  topic: string;
-  question: string;
-  answer: string;
-  score: number;
-  rubric: PracticeRubric;
-  feedback: string;
-  flags: string[];
-}
-
-export interface SpeakingReport {
-  fillerCount: number;
-  fillers: Record<string, number>;
-  answerCount: number;
-  avgWordsPerAnswer: number;
-  shortAnswers: number;
-  unanswered: number;
-}
-
-export interface PracticeResult {
-  overallScore: number;
-  summary: string;
-  strengths: string[];
-  improvements: string[];
-  turns: PracticeTurn[];
-  speaking: SpeakingReport;
-  engine: "DEEPSEEK" | "RULE_BASED";
-  model: string | null;
-  promptVersion: string;
-  fallbackUsed: boolean;
-}
-
 /** v2.1 — nguồn của câu hỏi: ngân hàng câu hỏi, CV, mục tiêu / công việc nhắm tới, hoặc AI soạn theo lĩnh vực. */
 export type PlanSource = "BANK" | "CV" | "GOAL" | "AI";
 
@@ -289,48 +243,6 @@ export interface PlanTopic {
   name: string;
   question: string;
   source: PlanSource;
-}
-
-export interface Practice {
-  id: Uuid;
-  menteeId: Uuid;
-  interviewType: PracticeType;
-  level: PracticeLevel;
-  targetRole: string;
-  targetCompany: string | null;
-  status: PracticeStatus;
-  topics: string[];
-  /** v2.1 — kế hoạch câu hỏi kèm nguồn; null khi đang làm (không lộ câu hỏi trước) */
-  plan?: PlanTopic[] | null;
-  engine: "DEEPSEEK" | "RULE_BASED";
-  consentExternalAi: boolean;
-  overallScore: number | null;
-  result: PracticeResult | null;
-  createdAt: IsoDateTime;
-  completedAt: IsoDateTime | null;
-  resumeDeadline: IsoDateTime | null;
-}
-
-export interface PracticeEligibility {
-  freeLimit: number;
-  used: number;
-  canStart: boolean;
-  reason: "PRACTICE_FREE_USED" | "IN_PROGRESS" | null;
-  inProgressId: Uuid | null;
-  voiceAvailable: boolean;
-}
-
-export interface PracticeStart {
-  practice: Practice;
-  voice: VoiceSession | null;
-}
-
-export interface StartPracticeInput {
-  interviewType: PracticeType;
-  level: PracticeLevel;
-  targetRole: string;
-  targetCompany?: string | null;
-  consentExternalAi: boolean;
 }
 
 export interface InterviewStats {

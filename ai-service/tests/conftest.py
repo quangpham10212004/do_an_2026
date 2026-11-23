@@ -20,7 +20,7 @@ from app.main import app  # noqa: E402
 
 from app import migrations  # noqa: E402
 
-TABLES = "practice_interviews, interview_videos, interview_turns, interviews, verification_applications, enrichment_messages, enrichment_conversations, cv_documents"
+TABLES = "interview_videos, interview_turns, interviews, verification_applications, enrichment_messages, enrichment_conversations, cv_documents"
 
 
 async def _reset_schema() -> None:

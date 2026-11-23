@@ -23,7 +23,6 @@ from app import config, engines
 from app.cv.models import ConfirmedFields
 from app.interview import question_bank, rubric
 from app.llm.deepseek import get_client
-from app.practice import bank as practice_bank
 from app.schemas import CamelModel
 
 log = logging.getLogger(__name__)
@@ -159,19 +158,6 @@ Soạn đúng {count} chủ đề kỹ thuật:
 - KHÔNG soạn chủ đề về năng lực hướng dẫn / mentoring (hệ thống tự thêm).
 """ + _RULES
 
-PRACTICE_SYSTEM = """Bạn là nhà tuyển dụng soạn kế hoạch một buổi phỏng vấn THỬ bằng giọng nói cho ứng viên trẻ ngành phần mềm
-(sinh viên / mới đi làm) luyện tập. Viết bằng tiếng Việt, thuật ngữ kỹ thuật giữ tiếng Anh.
-
-Soạn đúng {count} chủ đề cho dạng phỏng vấn và cấp độ trong hồ sơ, như một buổi phỏng vấn thật cho vị trí và công ty ứng viên nhắm tới:
-- Độ khó đúng kỳ vọng của cấp độ (INTERN < FRESHER < JUNIOR).
-- Nếu hồ sơ có dự án (cv.projects): đúng MỘT chủ đề hỏi về dự án đó, source = "CV".
-- Nếu có mục tiêu (goal) hoặc công ty: ít nhất MỘT chủ đề gắn với mục tiêu / công việc đó, source = "GOAL".
-- Các chủ đề còn lại source = "AI".
-- Dạng BEHAVIORAL: mọi câu hỏi là câu hỏi hành vi trả lời được theo STAR (Situation, Task, Action, Result); expected_concepts
-  gồm các ý STAR cần có và năng lực được đánh giá.
-- Dạng BACKEND / FRONTEND / SYSTEM_DESIGN: mọi câu hỏi là câu hỏi kỹ thuật của đúng dạng đó, không có câu hỏi hành vi.
-""" + _RULES
-
 EXAMPLE = ('{"topics": [{"name": "Thiết kế REST API", "question": "Bạn sẽ thiết kế API đặt lịch học thế nào?", '
            '"follow_up": "Khi cần đổi API không tương thích ngược, bạn làm thế nào?", '
            '"expected_concepts": ["resource", "status code", "pagination", "versioning"], "source": "AI"}]}')
@@ -214,22 +200,4 @@ async def mentor_plan(mentor: dict, cv: ConfirmedFields | None) -> InterviewPlan
         return mentor_bank_plan(mentor.get("domain"), list(mentor.get("skills") or []))
     # Chủ đề mentoring cố định ở vị trí thứ 3 (giống ngân hàng câu hỏi) => cùng thước đo cho mọi mentor.
     generated.insert(min(2, len(generated)), _from_bank(question_bank.MENTORING_TOPIC))
-    return InterviewPlan(topics=generated, engine=engines.DEEPSEEK, prompt_version=PROMPT_VERSION)
-
-
-def practice_bank_plan(interview_type: str, level: str) -> InterviewPlan:
-    topics = practice_bank.topics_for(interview_type, level, config.VOICE_INTERVIEW_TOPICS)
-    return InterviewPlan(topics=[PlannedTopic(name=t.name, question=t.question, follow_up=t.follow_up,
-                                              expected_concepts=list(t.expected_concepts), source="BANK") for t in topics],
-                         engine=engines.RULE_BASED)
-
-
-async def practice_plan(interview_type: str, level: str, target_role: str, target_company: str | None,
-                        goal: str | None, cv: ConfirmedFields | None) -> InterviewPlan:
-    count = config.VOICE_INTERVIEW_TOPICS
-    profile = candidate_profile(cv, interviewType=interview_type, level=level, targetRole=target_role,
-                                targetCompany=target_company, goal=goal)
-    generated = await _generate(PRACTICE_SYSTEM, profile, count, ("AI", "CV", "GOAL"))
-    if generated is None:
-        return practice_bank_plan(interview_type, level)
     return InterviewPlan(topics=generated, engine=engines.DEEPSEEK, prompt_version=PROMPT_VERSION)
