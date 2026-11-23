@@ -37,7 +37,7 @@ flowchart LR
     FE --> PROFILE[profile-service :8082<br/>hồ sơ, lịch rảnh, lĩnh vực xác thực]
     FE --> MENTORING[mentoring-service :8083<br/>yêu cầu, lịch, đánh giá, tranh chấp,<br/>thông báo, tin nhắn]
     FE --> PAYMENT[payment-service :8084<br/>ví VND, nạp ví, thu nhập, referral, voucher]
-    FE --> LEARNING[learning-service :8085<br/>blog, khoá học, lộ trình]
+    FE --> LEARNING[learning-service :8085<br/>blog]
     FE --> MATCHING[matching-service :8090<br/>AI Matching + chỉ mục embedding]
     FE --> AI[ai-service :8091<br/>xác thực mentor, CV, chatbot, luyện phỏng vấn]
     PROFILE -. "báo hồ sơ đổi" .-> MATCHING
@@ -68,7 +68,7 @@ Yêu cầu: Docker Compose.
 cp .env.example .env               # tuỳ chọn: điền DEEPSEEK_API_KEY để chấm bằng DeepSeek
 docker compose up -d --build       # lần đầu 5–15 phút
 python3 scripts/seed_demo.py       # mentor + mentee mẫu
-python3 scripts/seed_content.py    # ảnh đại diện, khoá học, lộ trình, bài blog (chạy lại an toàn)
+python3 scripts/seed_content.py    # ảnh đại diện, bài blog (chạy lại an toàn)
 python3 scripts/seed_verification_demo.py   # 5 mentor ở các bước xác thực khác nhau
 ```
 
@@ -104,7 +104,7 @@ CONVENTIONS.md            quy ước nhóm: sở hữu service, Git workflow, co
 docker-compose.yml        toàn bộ hệ thống
 .env.example              mẫu biến môi trường (không chứa khoá thật)
 contracts/                OpenAPI từng service
-db/init/                  schema SQL + dữ liệu seed Learning Hub
+db/init/                  schema SQL ban đầu của từng CSDL
 scripts/                  seed_*.py, smoke_frontend_api.py, e2e_*.py, benchmark_matching.py
 auth-service/ learning-service/ profile-service/ mentoring-service/ payment-service/   Java 21, Spring Boot 3.3
 matching-service/         FastAPI, sentence-transformers, pgvector (matching_db)

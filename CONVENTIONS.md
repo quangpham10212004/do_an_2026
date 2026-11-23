@@ -187,7 +187,7 @@ kết quả (giống quy tắc `TransactionTemplate` ở các service Java).
 
 ## 10. Scope đã chốt (không mở rộng nếu chưa thống nhất nhóm)
 
-- Trong scope: Auth, Career Profile, Learning Hub (khoá học, roadmap và Blog của mentor/mentee), AI Matching (embedding + pgvector, do
+- Trong scope: Auth, Career Profile, Blog của mentor/mentee (learning-service), AI Matching (embedding + pgvector, do
   matching-service sở hữu trọn vẹn), AI Interview,
   CV Parsing + Chatbot enrichment, Mentoring workflow, Payment (sandbox) + Referral.
 - Ngoài scope: chatbot trợ lý học tập độc lập (chỉ giữ chatbot enrichment hẹp phục vụ matching),

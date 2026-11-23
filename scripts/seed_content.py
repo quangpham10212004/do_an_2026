@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Seed nội dung cho hệ thống: ảnh đại diện, khoá học (có bài học Markdown), roadmap và bài blog.
+Seed nội dung cho hệ thống: ảnh đại diện và bài blog.
 
 Chạy SAU `scripts/seed_demo.py` (cần các tài khoản demo đã có hồ sơ) và khi docker compose đã sẵn sàng:
     python scripts/seed_demo.py
@@ -8,8 +8,6 @@ Chạy SAU `scripts/seed_demo.py` (cần các tài khoản demo đã có hồ s�
 
 Chạy lại nhiều lần an toàn (idempotent):
   - ảnh đại diện: ghi đè bằng cùng một ảnh;
-  - khoá học / bài học / roadmap / bước: khớp theo tiêu đề, có thì cập nhật, chưa có thì tạo; bài học và bước
-    không còn trong nội dung chuẩn của một khoá/roadmap do script quản lý sẽ bị xoá để danh sách đúng thứ tự;
   - bài blog: khớp theo tiêu đề trong bài của tác giả, đã có thì bỏ qua.
 
 Ảnh bìa là SVG sinh bởi scripts/seed_data/make_covers.py, nằm trong frontend/public/seed/ (cần build lại image
@@ -24,7 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "see
 
 from common import AUTH, LEARNING, PROFILE, ApiError, call, multipart_file  # noqa: E402
 from blog_content import BOOKMARKS, COMMENTS, FOLLOWS, LIKES, POSTS  # noqa: E402
-from learning_content import COURSES, ROADMAPS  # noqa: E402
 
 try:  # In tiếng Việt được trên console Windows
     sys.stdout.reconfigure(encoding="utf-8")
@@ -77,72 +74,6 @@ def seed_avatars():
             print(f"  ok   {email}")
         except ApiError as e:
             print(f"  bỏ qua {email}: {e} (đã chạy seed_demo.py chưa?)")
-
-
-# ---------------------------------------------------------------- khoá học và roadmap
-
-def seed_courses(admin):
-    print("Khoá học")
-    base = f"{LEARNING}/api/learning"
-    existing = {c["title"]: c for c in call("GET", f"{base}/courses", token=admin)}
-    ids = {}
-    for spec in COURSES:
-        payload = {
-            "title": spec["title"], "description": spec["description"], "domain": spec["domain"], "level": spec["level"],
-            "skills": spec["skills"], "coverUrl": spec["cover"], "instructor": spec["instructor"], "outcomes": spec["outcomes"],
-        }
-        if spec["title"] in existing:
-            cid = existing[spec["title"]]["id"]
-            call("PUT", f"{base}/admin/courses/{cid}", payload, token=admin)
-        else:
-            cid = call("POST", f"{base}/admin/courses", payload, token=admin)["id"]
-        ids[spec["title"]] = cid
-
-        have = {m["title"]: m for m in call("GET", f"{base}/courses/{cid}", token=admin)["materials"]}
-        wanted = set()
-        for i, (title, mtype, url, minutes, content) in enumerate(spec["lessons"], start=1):
-            wanted.add(title)
-            m = {"title": title, "type": mtype, "url": url, "content": content, "orderIndex": i, "durationMinutes": minutes}
-            if title in have:
-                call("PUT", f"{base}/admin/materials/{have[title]['id']}", m, token=admin)
-            else:
-                call("POST", f"{base}/admin/courses/{cid}/materials", m, token=admin)
-        for title, m in have.items():
-            if title not in wanted:
-                call("DELETE", f"{base}/admin/materials/{m['id']}", token=admin)
-        print(f"  ok   {spec['title']} ({len(spec['lessons'])} bài)")
-    return ids
-
-
-def seed_roadmaps(admin, course_ids):
-    print("Roadmap")
-    base = f"{LEARNING}/api/learning"
-    existing = {r["title"]: r for r in call("GET", f"{base}/roadmaps", token=admin)}
-    for spec in ROADMAPS:
-        payload = {
-            "title": spec["title"], "track": spec["track"], "description": spec["description"],
-            "coverUrl": spec["cover"], "level": spec["level"], "estimatedWeeks": spec["weeks"],
-        }
-        if spec["title"] in existing:
-            rid = existing[spec["title"]]["id"]
-            call("PUT", f"{base}/admin/roadmaps/{rid}", payload, token=admin)
-        else:
-            rid = call("POST", f"{base}/admin/roadmaps", payload, token=admin)["id"]
-
-        have = {i["title"]: i for i in call("GET", f"{base}/roadmaps/{rid}", token=admin)["items"]}
-        wanted = set()
-        for n, (stage, title, desc, hours, course_title) in enumerate(spec["items"], start=1):
-            wanted.add(title)
-            item = {"title": title, "description": desc, "orderIndex": n, "stage": stage, "estimatedHours": hours,
-                    "courseId": course_ids[course_title] if course_title else None}
-            if title in have:
-                call("PUT", f"{base}/admin/roadmap-items/{have[title]['id']}", item, token=admin)
-            else:
-                call("POST", f"{base}/admin/roadmaps/{rid}/items", item, token=admin)
-        for title, i in have.items():
-            if title not in wanted:
-                call("DELETE", f"{base}/admin/roadmap-items/{i['id']}", token=admin)
-        print(f"  ok   {spec['title']} ({len(spec['items'])} bước)")
 
 
 # ---------------------------------------------------------------- blog
@@ -206,11 +137,9 @@ def main():
     print(f"Seeding content via {LEARNING} / {PROFILE}")
     admin = login(*ADMIN)["accessToken"]
     seed_avatars()
-    course_ids = seed_courses(admin)
-    seed_roadmaps(admin, course_ids)
     post_ids = seed_blog()
     backdate(post_ids)
-    print("\nXong. Mở /learning, /blog và trang mentor để xem kết quả.")
+    print("\nXong. Mở /blog và trang mentor để xem kết quả.")
 
 
 if __name__ == "__main__":

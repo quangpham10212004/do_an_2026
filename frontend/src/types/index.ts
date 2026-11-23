@@ -4,7 +4,6 @@ export * from "./profile";
 export * from "./matching";
 export * from "./mentoring";
 export * from "./payment";
-export * from "./learning";
 export * from "./blog";
 export * from "./ai";
 export * from "./relationship";

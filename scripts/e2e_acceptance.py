@@ -384,16 +384,10 @@ def main():
                                    [(referred["userId"], referred_token), (mentee["userId"], mentee_token)]))
     check(8, "Đặt lịch đồng thời cùng khung giờ: đúng 1 thành công, 1 bị từ chối (409)", statuses == [201, 409], statuses)
 
-    # ---------------- Learning hub ----------------
-    print("\nLearning Hub")
-    courses = call("GET", f"{LEARNING}/api/learning/courses", token=mentee_token)
-    course = call("POST", f"{LEARNING}/api/learning/courses/{courses[0]['id']}/enroll", token=mentee_token)
-    course = call("POST", f"{LEARNING}/api/learning/materials/{course['materials'][0]['id']}/complete", token=mentee_token)
-    expected = round(100 / len(course["materials"]), 1)
-    progress = call("GET", f"{LEARNING}/api/learning/courses/{course['id']}/progress/{mentee['userId']}", token=mentee_token)
-    check(0, f"Đăng ký khoá học & theo dõi tiến độ ({progress['percentComplete']}%)", abs(progress["percentComplete"] - expected) < 0.11)
-    roadmaps = call("GET", f"{LEARNING}/api/learning/roadmaps", token=mentee_token)
-    check(0, "Roadmap có sẵn dữ liệu seed", len(roadmaps) >= 3)
+    # ---------------- Blog ----------------
+    print("\nBlog")
+    posts = call("GET", f"{LEARNING}/api/learning/blog/posts?size=5", token=mentee_token)
+    check(0, "Danh sách bài blog trả về đúng dạng phân trang", isinstance(posts.get("items"), list))
 
     # ---------------- Admin lock ----------------
     print("\nAdmin")

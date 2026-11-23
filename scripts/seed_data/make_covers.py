@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sinh ảnh bìa SVG (1200x630) cho khoá học, roadmap và bài blog vào frontend/public/seed/.
+Sinh ảnh bìa SVG (1200x630) cho bài blog vào frontend/public/seed/.
 
 Không phụ thuộc mạng hay ảnh có bản quyền: mỗi ảnh là nền gradient theo lĩnh vực + hoạ tiết hình học
 + nhãn công nghệ. Chạy lại cho kết quả giống hệt (xác định theo slug), nên có thể commit kết quả.
@@ -25,21 +25,6 @@ PALETTES = {
 
 # slug -> (thư mục, lĩnh vực, nhãn lớn, nhãn nhỏ)
 COVERS = {
-    # Khoá học
-    "java-spring-boot": ("courses", "backend", "Spring Boot", "REST API · JPA · PostgreSQL"),
-    "system-design": ("courses", "backend", "System Design", "Cache · Queue · Sharding"),
-    "react-nextjs": ("courses", "frontend", "React + Next.js", "Hooks · App Router · Data fetching"),
-    "docker-cicd": ("courses", "devops", "Docker & CI/CD", "Container · Compose · Actions"),
-    "ml-python": ("courses", "data", "Machine Learning", "Pandas · scikit-learn"),
-    "sql-database": ("courses", "backend", "SQL", "Thiết kế · Index · Transaction"),
-    "git-teamwork": ("courses", "devops", "Git", "Branch · Pull request · Review"),
-    "technical-interview": ("courses", "career", "Phỏng vấn kỹ thuật", "Thuật toán · Giao tiếp · Hành vi"),
-    # Roadmap
-    "roadmap-backend": ("roadmaps", "backend", "Backend Developer", "Roadmap"),
-    "roadmap-devops": ("roadmaps", "devops", "DevOps Engineer", "Roadmap"),
-    "roadmap-frontend": ("roadmaps", "frontend", "Frontend Developer", "Roadmap"),
-    "roadmap-data": ("roadmaps", "data", "Data & ML Engineer", "Roadmap"),
-    "roadmap-fresher": ("roadmaps", "career", "Fresher đi làm", "Roadmap"),
     # Blog
     "blog-spring-layers": ("blog", "backend", "Spring Boot", "Blog"),
     "blog-n-plus-one": ("blog", "backend", "N+1 Query", "Blog"),
@@ -94,7 +79,7 @@ def main():
     for slug, (folder, domain, title, sub) in COVERS.items():
         d = os.path.join(OUT, folder)
         os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, f"{slug.removeprefix('blog-').removeprefix('roadmap-') if folder != 'courses' else slug}.svg"), "w", encoding="utf-8") as f:
+        with open(os.path.join(d, f"{slug.removeprefix('blog-')}.svg"), "w", encoding="utf-8") as f:
             f.write(svg(slug, domain, title, sub))
     print(f"Đã sinh {len(COVERS)} ảnh bìa vào {OUT}")
 
