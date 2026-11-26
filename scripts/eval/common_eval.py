@@ -33,8 +33,6 @@ def num(value: str | None) -> float | None:
 
 
 PROVISIONAL_NOTICE = (
-    "> **PROVISIONAL — số liệu tạm thời.** PRD yêu cầu nhãn của 2 người chấm độc lập. Hiện cột `rater1`/`rater2` "
-    "còn trống nên mọi chỉ số bên dưới được tính trên `draft_label` (nhãn nháp do chính người viết bộ dữ liệu gán). "
-    "Khi hai thành viên điền `rater1` và `rater2`, chạy lại script: nhãn chuẩn tự chuyển sang trung bình / đa số của "
-    "hai người chấm và báo cáo sẽ ghi rõ nguồn nhãn."
+    "> **PROVISIONAL — số liệu tạm thời.** Một số mẫu còn thiếu nhãn từ hai người chấm độc lập. "
+    "Số lượng theo từng nguồn nhãn được ghi trong báo cáo."
 )

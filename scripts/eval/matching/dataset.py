@@ -235,11 +235,20 @@ MENTEES = [
 
 TIME_WINDOWS = {"MORNING": ("06:00", "12:00"), "AFTERNOON": ("12:00", "18:00"), "EVENING": ("18:00", "23:00")}
 
+# Trung vị giờ phản hồi giả lập cho bộ đánh giá, gồm cả trường hợp chưa có dữ liệu.
+MEDIAN_RESPONSE_HOURS = {
+    "b1": 8, "b2": 24, "b3": 36, "b4": None, "b5": 72, "b6": 96, "b7": 20, "b8": 48, "b9": 73, "b10": None,
+    "f1": 12, "f2": 36, "f3": 80, "f4": 24, "f5": None, "f6": 72, "f7": 18,
+    "d1": 9, "d2": 32, "d3": 96, "d4": 72, "d5": 24, "d6": None, "d7": 56, "d8": 16,
+    "o1": 24, "o2": 50, "o3": None, "o4": 84, "o5": 18, "o6": 72,
+    "m1": 16, "m2": 72, "m3": 76, "m4": 22, "m5": None, "m6": 40,
+}
+
 
 def mentor_dicts() -> list[dict]:
     keys = ["key", "display_name", "domain", "skills", "years_experience", "bio", "hourly_rate", "rating",
             "rating_count", "slots"]
-    return [dict(zip(keys, m)) for m in MENTORS]
+    return [dict(zip(keys, m), median_response_hours=MEDIAN_RESPONSE_HOURS[m[0]]) for m in MENTORS]
 
 
 def mentee_dicts() -> list[dict]:
@@ -264,7 +273,7 @@ def _minutes(hhmm: str) -> int:
 
 def availability_overlap(mentor: dict, mentee: dict) -> float:
     """
-    Tín hiệu "trùng lịch" (PRD-MATCH-3) cho biến thể trọng số mới: tỉ lệ ngày mentee muốn học mà mentor có ít nhất
+    Tín hiệu "trùng lịch" cho bộ đánh giá offline: tỉ lệ ngày mentee muốn học mà mentor có ít nhất
     một khung rảnh giao với buổi mentee chọn. Mentee không khai báo sở thích => 1.0 cho mọi mentor (trung tính).
     """
     days = mentee["preferred_days"] or list(range(1, 8))

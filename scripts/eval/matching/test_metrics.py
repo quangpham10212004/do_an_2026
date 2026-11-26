@@ -56,13 +56,20 @@ def test_resolve_label_prefers_two_raters_then_one_then_draft():
 
 
 def test_weighted_score_matches_production_formula():
-    f = {"similarity": "0.8", "rating": "4.5", "rating_count": "10", "years_experience": "20", "availability_overlap": "0.5"}
-    # 0.7*0.8 + 0.2*0.9 + 0.1*1.0 = 0.84 (availability trọng số 0)
-    assert metrics.weighted_score(f, metrics.CURRENT_WEIGHTS) == pytest.approx(0.84)
-    # chưa có đánh giá → rating trung tính 3.5: 0.7*0.8 + 0.2*0.7 + 0.1*1 = 0.80
-    assert metrics.weighted_score({**f, "rating_count": "0"}, metrics.CURRENT_WEIGHTS) == pytest.approx(0.80)
-    # trọng số mới: 0.6*0.8 + 0.15*0.9 + 0.1*1 + 0.15*0.5 = 0.79
-    assert metrics.weighted_score(f, metrics.NEW_WEIGHTS) == pytest.approx(0.79)
+    f = {"similarity": "0.8", "rating": "4.5", "rating_count": "10", "years_experience": "20",
+         "availability_overlap": "0.5", "responsiveness": "1"}
+    assert metrics.weighted_score(f, metrics.CURRENT_WEIGHTS) == pytest.approx(0.815)
+    assert metrics.weighted_score({**f, "rating_count": "2"}, metrics.CURRENT_WEIGHTS) == pytest.approx(0.785)
+    assert metrics.weighted_score({**f, "responsiveness": ""}, metrics.CURRENT_WEIGHTS) == pytest.approx(0.790)
+    assert metrics.weighted_score({**f, "responsiveness": "0"}, metrics.CURRENT_WEIGHTS) == pytest.approx(0.765)
+
+
+def test_ablation_has_four_variants_with_language_breakdown():
+    suggestions, features = metrics.load(HERE / "out")
+    result = metrics.evaluate(suggestions, features)
+    assert list(result["variants"]) == ["similarity", "similarity_rating", "similarity_rating_experience", "full"]
+    for subsets in result["variants"].values():
+        assert {name: values["n"] for name, values in subsets.items()} == {"all": 30, "vi": 17, "en": 13}
 
 
 def test_rank_by_orders_by_score_with_deterministic_ties():
