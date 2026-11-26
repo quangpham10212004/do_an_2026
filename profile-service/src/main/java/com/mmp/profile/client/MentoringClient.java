@@ -75,21 +75,29 @@ public class MentoringClient {
     }
 
     public SuspendResult suspendMentor(UUID mentorId, String reason, UUID actorId) {
+        return cancelUpcoming("/internal/mentors/{id}/suspend", mentorId, reason, actorId);
+    }
+
+    public SuspendResult cancelForVerificationRevocation(UUID mentorId, String reason, UUID actorId) {
+        return cancelUpcoming("/internal/mentors/{id}/revoke-verification", mentorId, reason, actorId);
+    }
+
+    private SuspendResult cancelUpcoming(String path, UUID mentorId, String reason, UUID actorId) {
         Map<String, Object> body = new HashMap<>();
         body.put("reason", reason);
         body.put("actorId", actorId == null ? null : actorId.toString());
         try {
             SuspendResponse res = restClient.post()
-                    .uri("/internal/mentors/{id}/suspend", mentorId)
+                    .uri(path, mentorId)
                     .body(body)
                     .retrieve()
                     .body(SuspendResponse.class);
             return new SuspendResult(true, res == null ? null : res.cancelledSessions(), null);
         } catch (HttpClientErrorException.NotFound e) {
-            log.warn("mentoring-service chưa có /internal/mentors/{}/suspend (404) — phiên tương lai chưa được huỷ", mentorId);
+            log.warn("mentoring-service chưa có {} (404), chưa huỷ phiên của mentor {}", path, mentorId);
             return SuspendResult.failed("ENDPOINT_NOT_FOUND");
         } catch (RestClientException e) {
-            log.warn("Không báo được mentoring-service đình chỉ mentor {}: {}", mentorId, e.getMessage());
+            log.warn("Không báo được mentoring-service huỷ phiên của mentor {}: {}", mentorId, e.getMessage());
             return SuspendResult.failed("MENTORING_UNAVAILABLE");
         }
     }

@@ -25,6 +25,24 @@ def strip_accents(s: str) -> str:
     return "".join(c for c in decomposed if not unicodedata.category(c).startswith("M")).replace("đ", "d").replace("Đ", "D")
 
 
+def skill_guidance(question: str, skills: list[str]) -> str | None:
+    text = strip_accents(question).casefold()
+    if not (re.search(r"\b(ky nang|skills?)\b", text)
+            and re.search(r"\b(mo ta|trinh bay|viet|ghi|liet ke|describe|present|write|list)\b", text)
+            and ("?" in text or re.search(r"\b(cach|nhu the nao|lam sao|nen|how)\b", text))):
+        return None
+    mentioned = [skill for skill in skills if re.search(
+        rf"(?<!\w){re.escape(strip_accents(skill).casefold())}(?!\w)", text
+    )]
+    example = ", ".join((mentioned or skills)[:3]) or "[tên kỹ năng]"
+    return (
+        "Trong mục Kỹ năng, hãy nhóm các kỹ năng theo vai trò bạn ứng tuyển và ưu tiên những kỹ năng đã thực hành. "
+        "Với mỗi kỹ năng chính, nêu việc bạn đã làm, bối cảnh dự án và kết quả có thể kiểm chứng. "
+        f'Ví dụ để điền: “{example} — dùng để [việc bạn làm] trong [tên dự án], đạt [kết quả thực tế]”. '
+        "Nếu mới học, hãy ghi rõ mức độ và bài tập đã hoàn thành."
+    )
+
+
 def slot_order(cv: ParsedCv) -> list[str]:
     order = ["TARGET_ROLE", "FOCUS_AREAS",
              "PROJECT_EXPERIENCE" if not cv.projects else "CURRENT_GAPS",

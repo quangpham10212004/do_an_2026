@@ -128,6 +128,7 @@ function Enrichment({ user }: { user: SessionUser }) {
   const [errorTone, setErrorTone] = useState<"danger" | "warning">("danger");
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [phase, setPhase] = useState(0);
+  const [skillHelp, setSkillHelp] = useState<{ conversationId: string; question: string; reply: string } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const answerBox = useRef<HTMLTextAreaElement>(null);
 
@@ -201,6 +202,9 @@ function Enrichment({ user }: { user: SessionUser }) {
     setError("");
     try {
       const conversation = await aiApi.answerEnrichment(state.conversation.id, skip ? "" : text, skip);
+      setSkillHelp(conversation.assistantReply
+        ? { conversationId: conversation.id, question: text.trim(), reply: conversation.assistantReply }
+        : null);
       setState({ ...state, conversation });
       setAnswer("");
     } catch (err) {
@@ -294,6 +298,12 @@ function Enrichment({ user }: { user: SessionUser }) {
                     : m.answer && <div className="bubble bubble-me">{m.answer}</div>}
                 </div>
               ))}
+              {skillHelp?.conversationId === conv.id && (
+                <div className="chat" aria-live="polite">
+                  <div className="bubble bubble-me">{skillHelp.question}</div>
+                  <div className="bubble">{skillHelp.reply}</div>
+                </div>
+              )}
               <div ref={bottom} />
               {completed && <GoalDraft key={conv.id} conversation={conv} onChange={(conversation) => setState({ ...state, conversation })} />}
             </CardBody>

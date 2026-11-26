@@ -384,7 +384,12 @@ public class ProfileService {
 
     public MentorProfileResponse updateVerification(UUID mentorId, String status) {
         tx.executeWithoutResult(s -> {
-            MentorProfile p = findMentor(mentorId);
+            MentorProfile p = domainRepo == null ? findMentor(mentorId) : mentorRepo.findForUpdate(mentorId)
+                    .orElseThrow(() -> ApiException.notFound("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ mentor"));
+            if (domainRepo != null && domainRepo.findByMentorIdOrderByAddedAtAscDomainAsc(mentorId).stream()
+                    .anyMatch(domain -> domain.getVerificationEpoch() != null)) {
+                throw ApiException.conflict("VERIFICATION_RENEWAL_REQUIRED", "Mentor cần xác thực lại theo lĩnh vực");
+            }
             p.setVerificationStatus(MentorProfile.VerificationStatus.valueOf(status));
         });
         return getMentor(mentorId);

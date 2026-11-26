@@ -31,7 +31,7 @@ export interface VerifyMentorApi {
 }
 
 export interface VerifyAdminApi {
-  /** GET /api/ai/admin/verification/queue?filter=UNCLEAR|DECIDED&q=... → VerifyQueue. Chỉ ca "chưa rõ ràng" cần xem xét. */
+  /** UNCLEAR chứa ca chờ duyệt. DECIDED chứa ca đã có kết quả của AI hoặc admin. */
   queue(filter: VerifyQueueFilter, q: string): Promise<VerifyQueue>;
   /** GET /api/ai/admin/verification/{id} → VerifyAdminDetail (điểm từng tiêu chí, lý do AI, video và văn bản từng câu). */
   detail(id: string): Promise<VerifyAdminDetail>;

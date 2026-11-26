@@ -63,6 +63,8 @@ export const profileApi = {
     api<SuspensionResult>(`/api/profile/admin/mentors/${id}/suspend`, { method: "POST", body: { reason } }),
   adminUnsuspendMentor: (id: Uuid) =>
     api<SuspensionResult>(`/api/profile/admin/mentors/${id}/unsuspend`, { method: "POST" }),
+  adminRevokeMentorVerification: (id: Uuid, reason: string) =>
+    api<SuspensionResult>(`/api/profile/admin/mentors/${id}/revoke-verification`, { method: "POST", body: { reason } }),
   // US-37 — múi giờ (mọi giờ hiển thị theo múi giờ này) và ảnh đại diện
   saveTimezone: async (id: Uuid, timezone: string) => {
     const res = await api<{ timezone: string }>(`/api/profile/${id}/timezone`, { method: "PUT", body: { timezone } });

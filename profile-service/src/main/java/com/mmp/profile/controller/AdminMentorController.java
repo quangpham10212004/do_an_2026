@@ -6,6 +6,7 @@ import com.mmp.profile.dto.ProfileDtos.SuspendInput;
 import com.mmp.profile.dto.ProfileDtos.SuspensionResult;
 import com.mmp.profile.security.CurrentUser;
 import com.mmp.profile.service.MentorSuspensionService;
+import com.mmp.profile.service.MentorVerificationRevocationService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -19,9 +20,11 @@ import java.util.UUID;
 public class AdminMentorController {
 
     private final MentorSuspensionService suspensions;
+    private final MentorVerificationRevocationService revocations;
 
-    public AdminMentorController(MentorSuspensionService suspensions) {
+    public AdminMentorController(MentorSuspensionService suspensions, MentorVerificationRevocationService revocations) {
         this.suspensions = suspensions;
+        this.revocations = revocations;
     }
 
     @GetMapping
@@ -41,5 +44,10 @@ public class AdminMentorController {
     @PostMapping("/{mentorId}/unsuspend")
     public SuspensionResult unsuspend(@PathVariable UUID mentorId) {
         return suspensions.unsuspend(mentorId, CurrentUser.get().userId());
+    }
+
+    @PostMapping("/{mentorId}/revoke-verification")
+    public SuspensionResult revokeVerification(@PathVariable UUID mentorId, @Valid @RequestBody SuspendInput input) {
+        return revocations.revoke(mentorId, input.reason(), CurrentUser.get().userId());
     }
 }

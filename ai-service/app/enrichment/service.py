@@ -162,6 +162,10 @@ async def answer(user: AuthUser, conversation_id: UUID, text: str, skipped: bool
         raise errors.not_found("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ mentee")
     cv = await cv_repo.find(pool, conversation["cv_id"])
     ctx = _context(mentee, cv_repo.chat_context_of(cv), conversation["max_turns"])
+    if not skipped:
+        guidance = rule_based.skill_guidance(text, ctx.cv.skills)
+        if guidance:
+            return conversation_view(conversation, messages, cv).model_copy(update={"assistant_reply": guidance})
     allow_external = cv["consent_external_ai"]  # US-19: kiểm tra lại ở mỗi lượt
 
     history = [repo.to_exchange(m) for m in messages if m["answer"] is not None]

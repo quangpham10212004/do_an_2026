@@ -410,6 +410,7 @@ components:
         maxTurns: { type: integer }
         currentTurn: { type: integer }
         currentQuestion: { $ref: "#/components/schemas/EnrichmentMessage" }
+        assistantReply: { type: string, nullable: true, description: "Gợi ý cách mô tả kỹ năng. Lượt hỏi đáp hiện tại vẫn chờ trả lời." }
         messages: { type: array, items: { $ref: "#/components/schemas/EnrichmentMessage" } }
         enrichedGoal: { type: string, nullable: true, description: "Goal NHÁP do chatbot tổng hợp khi hội thoại xong (không tự ghi vào hồ sơ)" }
         goalStatus:
@@ -683,7 +684,7 @@ paths:
         "206": { description: Partial Content }
   /api/ai/admin/verification/queue:
     get:
-      summary: "(ADMIN) Hàng đợi ca phỏng vấn: UNCLEAR (cần xem xét) hoặc DECIDED (admin đã quyết)."
+      summary: "(ADMIN) Hàng đợi ca phỏng vấn: UNCLEAR (cần xem xét) hoặc DECIDED (AI hoặc admin đã kết luận)."
       parameters:
         - { name: filter, in: query, schema: { type: string, enum: [UNCLEAR, DECIDED], default: UNCLEAR } }
         - { name: q, in: query, schema: { type: string }, description: "Tìm theo tên / email" }
@@ -691,7 +692,7 @@ paths:
         "200": { description: "{ stats: { unclear, overdue, approvedThisMonth, rejectedThisMonth }, counts: { UNCLEAR, DECIDED }, items: LiveQueueItem[] }" }
   /api/ai/admin/verification/{id}:
     get:
-      summary: "(ADMIN) Chi tiết ca: điểm từng tiêu chí, lý do AI, văn bản + video từng câu (xem video được ghi nhật ký VIDEO_VIEWED)."
+      summary: "(ADMIN) Chi tiết ca: điểm, lý do AI, câu trả lời và kết luận. decision.decidedBy cho biết AI hay admin đã quyết định."
       parameters: [ { $ref: "#/components/parameters/Id" } ]
       responses:
         "200": { description: VerifyAdminDetail (frontend/src/types/verification.ts) }

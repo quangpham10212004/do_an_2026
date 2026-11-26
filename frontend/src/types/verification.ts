@@ -208,7 +208,7 @@ export interface VerifyAdminDetail {
   attempt: string;
   /** Video được lưu tới (ISO), sau đó tự xoá. */
   keepUntil: string | null;
-  decision?: { decision: VerifyDecision; note: string; decidedAt: string } | null;
+  decision?: { decision: VerifyDecision; decidedBy: "AI" | "ADMIN"; note: string; decidedAt: string } | null;
 }
 
 export interface VerifyDecisionInput { decision: VerifyDecision; note: string; reviewedVideo: boolean }

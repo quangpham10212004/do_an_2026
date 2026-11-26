@@ -26,6 +26,7 @@ function AdminMentors() {
   const [data, setData] = useState<PageResponse<AdminMentorRow> | null>(null);
   const [flash, setFlash] = useState<Flash>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [pendingRevocations, setPendingRevocations] = useState<Record<string, string>>({});
   const [dialog, ask] = useDialog();
 
   const load = useCallback(
@@ -36,16 +37,18 @@ function AdminMentors() {
     load();
   }, [load]);
 
-  async function suspend(m: AdminMentorRow) {
+  async function restrictMentor(m: AdminMentorRow, revoke: boolean) {
     setFlash({});
-    let reason: string | null = "";
+    let reason: string | null = revoke ? pendingRevocations[m.userId] || "" : "";
     // Hỏi lại tới khi lý do hợp lệ hoặc admin huỷ.
     for (;;) {
       reason = await ask({
-        title: `Tạm ngưng mentor ${m.displayName}`,
-        message: "Mentor vẫn đăng nhập được nhưng sẽ không được gợi ý, không nhận yêu cầu/đặt lịch mới; các phiên sắp tới sẽ bị huỷ và hoàn 100% cho mentee.",
+        title: revoke ? `Thu hồi xác thực của ${m.displayName}` : `Tạm ngưng mentor ${m.displayName}`,
+        message: revoke
+          ? "Mentor cần xác thực lại để được gợi ý và nhận lịch. Các phiên sắp tới sẽ bị hủy và hoàn 100% học phí cho mentee."
+          : "Mentor vẫn đăng nhập được nhưng sẽ không được gợi ý hoặc nhận yêu cầu, đặt lịch mới. Các phiên sắp tới sẽ bị hủy và hoàn 100% cho mentee.",
         input: { label: `Lý do (${REASON_MIN}–${REASON_MAX} ký tự)`, defaultValue: reason || "", maxLength: REASON_MAX },
-        confirmText: "Tạm ngưng",
+        confirmText: revoke ? "Thu hồi xác thực" : "Tạm ngưng",
         danger: true,
       });
       if (reason === null) return;
@@ -54,10 +57,15 @@ function AdminMentors() {
     }
     setBusy(m.userId);
     try {
-      const res = await profileApi.adminSuspendMentor(m.userId, reason.trim());
+      const res = await (revoke ? profileApi.adminRevokeMentorVerification : profileApi.adminSuspendMentor)(m.userId, reason.trim());
+      const action = revoke ? "thu hồi xác thực của" : "tạm ngưng";
+      if (revoke) {
+        const retryReason = res.mentoringNotified ? "" : reason.trim();
+        setPendingRevocations((previous) => ({ ...previous, [m.userId]: retryReason }));
+      }
       setFlash(res.mentoringNotified
-        ? { ok: `Đã tạm ngưng ${m.displayName}. Đã huỷ ${res.cancelledSessions ?? 0} phiên sắp tới.` }
-        : { info: res.warning || `Đã tạm ngưng ${m.displayName}.` });
+        ? { ok: `Đã ${action} ${m.displayName}. Đã hủy ${res.cancelledSessions ?? 0} phiên sắp tới.` }
+        : { info: res.warning || `Đã ${action} ${m.displayName}.` });
       await load();
     } catch (e) {
       setFlash({ error: errorMessage(e) });
@@ -138,7 +146,12 @@ function AdminMentors() {
                       {m.status === "SUSPENDED" ? (
                         <Button size="sm" loading={busy === m.userId} onClick={() => unsuspend(m)}>Gỡ tạm ngưng</Button>
                       ) : (
-                        <Button size="sm" variant="danger-quiet" loading={busy === m.userId} onClick={() => suspend(m)}>Tạm ngưng</Button>
+                        <Button size="sm" variant="danger-quiet" loading={busy === m.userId} onClick={() => restrictMentor(m, false)}>Tạm ngưng</Button>
+                      )}
+                      {(m.verificationStatus === "APPROVED" || pendingRevocations[m.userId]) && (
+                        <Button size="sm" variant="danger-quiet" loading={busy === m.userId} onClick={() => restrictMentor(m, true)}>
+                          {pendingRevocations[m.userId] ? "Thử lại hủy phiên" : "Thu hồi xác thực"}
+                        </Button>
                       )}
                     </td>
                   </tr>

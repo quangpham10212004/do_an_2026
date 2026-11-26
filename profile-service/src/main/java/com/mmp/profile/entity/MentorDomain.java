@@ -28,6 +28,7 @@ public class MentorDomain {
     private String rejectedReason;
     private OffsetDateTime retryAt;
     private UUID cvId;
+    private UUID verificationEpoch;
 
     protected MentorDomain() {}
 
@@ -49,6 +50,18 @@ public class MentorDomain {
     public String getRejectedReason() { return rejectedReason; }
     public OffsetDateTime getRetryAt() { return retryAt; }
     public UUID getCvId() { return cvId; }
+    public UUID getVerificationEpoch() { return verificationEpoch; }
+    public UUID getVerificationId() { return verificationEpoch == null ? id : verificationEpoch; }
+
+    public void revokeVerification(String reason) {
+        verificationEpoch = UUID.randomUUID();
+        state = State.REJECTED;
+        stage = Stage.TEST;
+        verifiedAt = null;
+        testScore = null;
+        rejectedReason = reason;
+        retryAt = null;
+    }
 
     public void linkCv(UUID cvId) {
         this.cvId = cvId;

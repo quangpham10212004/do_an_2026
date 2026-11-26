@@ -74,6 +74,7 @@ components:
                   domain: { type: string }
                   id: { type: string, format: uuid }
                   cvId: { type: string, format: uuid, nullable: true }
+                  renewed: { type: boolean, description: "Định danh xác thực đã được thay sau khi thu hồi." }
     AvailabilitySlot:
       type: object
       required: [dayOfWeek, startTime, endTime]
@@ -663,6 +664,28 @@ paths:
         "403": { description: Không phải ADMIN }
         "404": { description: PROFILE_NOT_FOUND }
         "409": { description: MENTOR_NOT_SUSPENDED }
+
+  /api/profile/admin/mentors/{userId}/revoke-verification:
+    post:
+      summary: ADMIN thu hồi xác thực mọi lĩnh vực của Mentor, hủy các phiên sắp tới và hoàn học phí.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Đã thu hồi xác thực. Có thể gọi lại khi mentoringNotified là false để hoàn tất việc hủy phiên.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuspensionResult" }
+        "403": { description: Không phải ADMIN }
+        "409": { description: MENTOR_NOT_VERIFIED }
 
   /api/profile/mentor/{userId}/availability:
     get:

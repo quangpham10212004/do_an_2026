@@ -102,8 +102,8 @@ export default function AdminDetail({ id }: { id: string }) {
                 </div>
               ))}
             </div>
-            <div className="vf-note"><b>Vì sao AI chuyển ca này cho bạn:</b> {d.ai.reason}</div>
-            <p className="mt-2 text-small text-ink-subtle">AI chỉ đề xuất. Giọng vùng miền và chất lượng âm thanh có thể ảnh hưởng văn bản nhận dạng: hãy xem video trước khi quyết định.</p>
+            <div className="vf-note"><b>Lý do đánh giá của AI:</b> {d.ai.reason}</div>
+            {!decided && <p className="mt-2 text-small text-ink-subtle">Giọng vùng miền và chất lượng âm thanh có thể ảnh hưởng văn bản nhận dạng. Hãy xem video trước khi quyết định.</p>}
           </Section>
 
           <Section icon={Mic} title="Câu trả lời từng chủ đề" aside={`Video lưu đến ${shortDate(d.keepUntil)}`}>
@@ -144,7 +144,7 @@ export default function AdminDetail({ id }: { id: string }) {
               {decided ? (
                 <div className="mt-3 grid gap-2 text-small">
                   <div><Badge tone={STATUS_TONE[d.status]}>{STATUS_TEXT[d.status]}</Badge></div>
-                  {d.decision && <><div className="text-ink-muted">Lúc {shortDateTime(d.decision.decidedAt)}</div><div className="vf-note" style={{ marginTop: 0 }}>{d.decision.note || "Không có nhận xét."}</div></>}
+                  {d.decision && <><div className="text-ink-muted">{d.decision.decidedBy === "AI" ? "AI" : "Quản trị viên"} · {shortDateTime(d.decision.decidedAt)}</div><div className="vf-note" style={{ marginTop: 0 }}>{d.decision.note || "Không có nhận xét."}</div></>}
                 </div>
               ) : (
                 <div className="mt-3 grid gap-4">

@@ -29,4 +29,9 @@ public class InternalMentorController {
         UUID actorId = in == null ? null : in.actorId();
         return new SuspendMentorResult(mentorId, suspension.suspend(mentorId, reason, actorId));
     }
+
+    @PostMapping("/{mentorId}/revoke-verification")
+    public SuspendMentorResult revokeVerification(@PathVariable UUID mentorId, @Valid @RequestBody SuspendMentorInput in) {
+        return new SuspendMentorResult(mentorId, suspension.revokeVerification(mentorId, in.reason(), in.actorId()));
+    }
 }

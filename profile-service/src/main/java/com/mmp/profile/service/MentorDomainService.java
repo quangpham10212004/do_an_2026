@@ -106,7 +106,7 @@ public class MentorDomainService {
         domains.delete(record);
         afterCommit(() -> {
             try {
-                verification.cancelTrack(id, record.getDomain(), record.getId());
+                verification.cancelTrack(id, record.getDomain(), record.getVerificationId());
             } catch (ApiException e) {
                 log.warn("Could not cancel verification track for mentor {} and domain {}: {}",
                         id, record.getDomain(), e.getCode());
@@ -137,8 +137,13 @@ public class MentorDomainService {
         var profile = findProfile(id, true);
         var records = records(id);
         var existing = find(records, code);
-        if (verdict.profileDomainId() != null && existing
-                .filter(d -> verdict.profileDomainId().equals(d.getId())).isEmpty()) throw domainNotFound();
+        if (verdict.profileDomainId() != null) {
+            if (existing.filter(d -> verdict.profileDomainId().equals(d.getVerificationId())).isEmpty()) {
+                throw domainNotFound();
+            }
+        } else if (existing.filter(d -> d.getVerificationEpoch() != null).isPresent()) {
+            throw domainNotFound();
+        }
         if (existing.isEmpty() && !code.equalsIgnoreCase(profile.getDomain())) {
             if (!Boolean.TRUE.equals(verdict.register()) || verdict.state() != State.PENDING) throw domainNotFound();
             code = catalogCode(code);
@@ -168,6 +173,25 @@ public class MentorDomainService {
             }
         }
         return internalResponse(profile, records(id));
+    }
+
+    @Transactional
+    public MentorProfile revokeVerification(UUID id, String reason) {
+        var profile = findProfile(id, true);
+        var records = records(id);
+        if (profile.getVerificationStatus() != VerificationStatus.APPROVED) {
+            if (records.stream().anyMatch(domain -> domain.getVerificationEpoch() != null)) {
+                return profile;
+            }
+            throw ApiException.conflict("MENTOR_NOT_VERIFIED", "Mentor chưa có xác thực để thu hồi");
+        }
+        if (find(records, profile.getDomain()).isEmpty()) {
+            saveLegacyPrimary(profile).revokeVerification(reason);
+        }
+        records.forEach(domain -> domain.revokeVerification(reason));
+        profile.setVerificationStatus(VerificationStatus.REJECTED);
+        reindexAfterCommit(id);
+        return profile;
     }
 
     @Transactional(readOnly = true)
@@ -207,7 +231,8 @@ public class MentorDomainService {
     private InternalDomains internalResponse(MentorProfile profile, List<MentorDomain> records) {
         var list = response(profile, records, false);
         return new InternalDomains(list.domains(), list.max(), records.stream()
-                .map(d -> new DomainRecord(d.getDomain(), d.getId(), d.getCvId())).toList());
+                .map(d -> new DomainRecord(d.getDomain(), d.getVerificationId(), d.getCvId(),
+                        d.getVerificationEpoch() != null)).toList());
     }
 
     private Domain view(MentorProfile profile, MentorDomain domain) {

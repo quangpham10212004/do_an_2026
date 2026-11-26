@@ -22,7 +22,7 @@ public final class MentorDomainDtos {
 
     public record Domains(List<Domain> domains, int max) {}
 
-    public record DomainRecord(String domain, UUID id, UUID cvId) {}
+    public record DomainRecord(String domain, UUID id, UUID cvId, boolean renewed) {}
     public record InternalDomains(List<Domain> domains, int max, List<DomainRecord> records) {}
 
     public record Settings(@DecimalMin("50000") @DecimalMax("100000000") @Digits(integer = 9, fraction = 2) BigDecimal hourlyRate,

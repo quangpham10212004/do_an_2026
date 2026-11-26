@@ -331,6 +331,7 @@ export interface Conversation {
   maxTurns: number;
   currentTurn: number;
   currentQuestion: EnrichmentMessage | null;
+  assistantReply?: string | null;
   messages: EnrichmentMessage[];
   /** Goal NHÁP do chatbot tổng hợp — không tự ghi vào hồ sơ (US-21). */
   enrichedGoal: string | null;

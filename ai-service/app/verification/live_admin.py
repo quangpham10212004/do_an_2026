@@ -18,11 +18,12 @@ from app.verification.video_service import _parse_range
 
 log = logging.getLogger(__name__)
 SELECT_RESULTS = """SELECT r.*, t.details AS track FROM mentor_live_results r
-                    JOIN mentor_assessment_tracks t ON t.id=r.track_id WHERE t.cancelled_at IS NULL"""
+                    JOIN mentor_assessment_tracks t ON t.id=r.track_id
+                    WHERE (t.cancelled_at IS NULL OR r.decided_by IS NOT NULL)"""
 
 
 def status_of(row) -> str:
-    if row["decided_by"] != "ADMIN":
+    if row["decided_by"] is None:
         return "UNCLEAR"
     return "APPROVED" if row["outcome"] == "PASSED" else "REJECTED"
 
@@ -40,7 +41,7 @@ def _item(row, at) -> dict:
 
 async def queue(filter_: str, query: str = "") -> dict:
     pool = await get_pool()
-    rows = await pool.fetch(SELECT_RESULTS + " AND (r.decided_by IS NULL OR r.decided_by='ADMIN')")
+    rows = await pool.fetch(SELECT_RESULTS)
     at = live.now()
     month = at.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     items = [(row, _item(row, at)) for row in rows]
@@ -70,7 +71,7 @@ def _video_url(answer, admin: AuthUser, at) -> str | None:
 async def detail(admin: AuthUser, result_id: UUID) -> dict:
     pool = await get_pool()
     row = await pool.fetchrow(SELECT_RESULTS + " AND r.id=$1", result_id)
-    if row is None or (row["decided_by"] == "AI"):
+    if row is None:
         raise errors.not_found("VERIFICATION_REVIEW_NOT_FOUND", "Không tìm thấy hồ sơ cần xem xét.")
     details, track = json.loads(row["details"]), json.loads(row["track"])
     answers = await pool.fetch("SELECT * FROM mentor_live_answers WHERE interview_id=$1 ORDER BY position",
@@ -91,7 +92,8 @@ async def detail(admin: AuthUser, result_id: UUID) -> dict:
     keep = [a["keep_until"] for a in answers if a["keep_until"] and not a["media_deleted_at"]]
     decision = None
     if status != "UNCLEAR":
-        decision = dict(decision="APPROVE" if status == "APPROVED" else "REJECT", note=row["admin_note"] or "",
+        decision = dict(decision="APPROVE" if status == "APPROVED" else "REJECT", decidedBy=row["decided_by"],
+                        note=row["admin_note"] or "",
                         decidedAt=row["decided_at"].isoformat())
     return dict(
         id=row["id"], name=track.get("name", ""), email=track.get("email", ""), years=track.get("years", 0),

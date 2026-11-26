@@ -1,6 +1,7 @@
 package com.mmp.profile.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -13,6 +14,7 @@ import java.util.UUID;
  * profile-service không lưu và không đọc vector.
  */
 @Entity
+@DynamicUpdate
 @Table(name = "mentor_profiles")
 public class MentorProfile {
 

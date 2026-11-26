@@ -57,6 +57,7 @@ class ConversationView(CamelModel):
     max_turns: int
     current_turn: int
     current_question: EnrichmentMessageView | None = None
+    assistant_reply: str | None = None
     messages: list[EnrichmentMessageView] = []
     enriched_goal: str | None = None  # bản nháp do chatbot tổng hợp
     # US-21: NONE | DRAFT | CONFIRMED | DISCARDED — hồ sơ chỉ đổi khi CONFIRMED

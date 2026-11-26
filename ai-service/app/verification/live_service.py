@@ -87,8 +87,8 @@ async def register_track(conn, user: AuthUser, info: dict, domain: str, stage: s
     if enrollment:
         await conn.execute("""UPDATE mentor_assessment_tracks SET cancelled_at=now()
                               WHERE mentor_id=$1 AND domain=$2 AND cancelled_at IS NULL
-                                AND profile_domain_id IS NOT NULL AND profile_domain_id<>$3""",
-                           user.user_id, domain, enrollment)
+                                AND (profile_domain_id<>$3 OR ($4 AND profile_domain_id IS NULL))""",
+                           user.user_id, domain, enrollment, bool(record.get("renewed")))
     await conn.execute("""INSERT INTO mentor_assessment_tracks(id, mentor_id, domain, details, profile_domain_id)
                           VALUES ($1,$2,$3,$4,$5)
                           ON CONFLICT (mentor_id, domain) WHERE cancelled_at IS NULL DO UPDATE
@@ -412,6 +412,10 @@ async def submit(user: AuthUser, interview_id: UUID) -> dict:
         await mentoring.notify_role("ADMIN", "VERIFICATION_REVIEW", "Hồ sơ xác thực cần xem xét",
                                     f"{state.get('name', 'Một mentor')} có kết quả phỏng vấn AI chưa rõ ràng "
                                     f"({details['domain']}).", "/admin/verification")
+    else:
+        title = "Lĩnh vực đã được xác thực" if outcome == "PASSED" else "Hồ sơ xác thực chưa đạt"
+        await mentoring.notify_user(user.user_id, "VERIFICATION_DECISION", title,
+                                    f"{title}: {details['domain']}. {grading['summary']}", "/interview")
     return result_view(created)
 
 

@@ -40,10 +40,18 @@ public class MentorSuspensionService {
      *         người gọi thử lại — các phiên đã huỷ không bị huỷ lại.
      */
     public int suspend(UUID mentorId, String reason, UUID actorId) {
+        return cancelUpcoming(mentorId, reason, actorId, CANCEL_REASON);
+    }
+
+    public int revokeVerification(UUID mentorId, String reason, UUID actorId) {
+        return cancelUpcoming(mentorId, reason, actorId, "Xác thực năng lực của mentor đã bị thu hồi");
+    }
+
+    private int cancelUpcoming(UUID mentorId, String reason, UUID actorId, String cancellationReason) {
         List<MentoringSession> upcoming = sessionRepo.findUpcomingHoldingByMentor(mentorId, OffsetDateTime.now());
         int cancelled = 0;
         int failed = 0;
-        String why = reason == null || reason.isBlank() ? CANCEL_REASON : CANCEL_REASON + " (" + reason.trim() + ")";
+        String why = reason == null || reason.isBlank() ? cancellationReason : cancellationReason + " (" + reason.trim() + ")";
         for (MentoringSession s : upcoming) {
             try {
                 sessionService.cancelWithPolicy(s, CancellationPolicy.Actor.SYSTEM, why);
@@ -51,10 +59,10 @@ public class MentorSuspensionService {
             } catch (ApiException e) {
                 if ("SESSION_NOT_CANCELLABLE".equals(e.getCode()) || "SESSION_ALREADY_STARTED".equals(e.getCode())) continue;
                 failed++;
-                log.warn("Could not cancel session {} of suspended mentor {}: {}", s.getId(), mentorId, e.getMessage());
+                log.warn("Could not cancel upcoming session {} of mentor {}: {}", s.getId(), mentorId, e.getMessage());
             }
         }
-        log.info("Mentor {} suspended ({}): {} upcoming sessions cancelled, {} failed", mentorId, reason, cancelled, failed);
+        log.info("Mentor {} ({}): {} upcoming sessions cancelled, {} failed", mentorId, cancellationReason, cancelled, failed);
         if (cancelled > 0 || failed > 0) {
             audit.record(actorId, actorId == null ? "SYSTEM" : "ADMIN", "MENTOR_SESSIONS_CANCELLED", "MENTOR", mentorId.toString(), null,
                     AuditClient.fields("reason", reason, "cancelledSessions", cancelled, "failed", failed));
